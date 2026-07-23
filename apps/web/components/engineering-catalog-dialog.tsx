@@ -95,6 +95,19 @@ export function EngineeringCatalogDialog({
       .finally(() => setLoading(false));
   }, [load]);
 
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') onClose();
+    }
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [onClose]);
+
   const groups = useMemo(
     () => ({
       FRONTEND: items.filter((item) => item.type === 'FRONTEND'),
@@ -308,6 +321,9 @@ export function EngineeringCatalogDialog({
   return (
     <div
       className="repair-overlay engineering-catalog-overlay"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
       role="presentation"
     >
       <section
