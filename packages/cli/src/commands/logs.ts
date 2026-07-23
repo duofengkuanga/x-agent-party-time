@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import {
+  CLI_NAME,
   DeploymentAttemptIdSchema,
   ENV_NAMES,
   ListLogsResultSchema,
@@ -74,7 +75,7 @@ async function showExecutionLogs(
 ) {
   const rawAttempt = optionString(parsed, 'attempt');
   if (!rawAttempt)
-    throw new Error(`用法：partytime logs ${kind} --attempt <id>`);
+    throw new Error(`用法：${CLI_NAME} logs ${kind} --attempt <id>`);
   const attemptId =
     kind === 'repair'
       ? RepairAttemptIdSchema.parse(rawAttempt)

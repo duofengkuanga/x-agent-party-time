@@ -1,5 +1,5 @@
 export const APP_NAME = 'Agent Party Time';
-export const CLI_NAME = 'partytime';
+export const CLI_NAME = 'xapt';
 export const PACKAGE_NAME = 'agent-party-time';
 export const PROTOCOL_VERSION = 'agent-party-time.v1';
 export const CONTROL_PLANE_PROTOCOL_VERSION =

@@ -9,7 +9,12 @@ import {
   CodexAppServerExecutor,
   RunnerStateStore,
 } from '@agent-party-time/local-service';
-import { DEFAULTS, ENV_NAMES, LOCAL_PATHS } from '@agent-party-time/shared';
+import {
+  CLI_NAME,
+  DEFAULTS,
+  ENV_NAMES,
+  LOCAL_PATHS,
+} from '@agent-party-time/shared';
 import { optionString, parseArgs } from '../args.js';
 import type { Output } from '../output.js';
 
@@ -62,7 +67,7 @@ export async function runCleanupCommand(
   }
   if (action !== 'run')
     throw new Error(
-      '用法：partytime cleanup list | cleanup run --bug <id> | --deployment <id> --confirm <label>',
+      `用法：${CLI_NAME} cleanup list | cleanup run --bug <id> | --deployment <id> --confirm <label>`,
     );
 
   const bugId = optionString(parsed, 'bug');
