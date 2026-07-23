@@ -58,7 +58,7 @@ export async function POST(request: Request) {
       );
     if (error instanceof RunnerUnavailableError)
       return NextResponse.json(
-        { error: '无法连接本机 Agent，请先启动 partytime 服务' },
+        { error: '无法连接本机 Agent Party Time，请先运行 xapt start' },
         { status: 503 },
       );
     if (error instanceof LocalAgentError)
@@ -68,7 +68,7 @@ export async function POST(request: Request) {
       );
     if ((error as NodeJS.ErrnoException).code === 'ENOENT')
       return NextResponse.json(
-        { error: '未找到本机 Agent，请先启动 partytime 服务' },
+        { error: '未找到本机 Agent Party Time，请先运行 xapt start' },
         { status: 503 },
       );
     return controlPlaneFailure(error, '工程绑定失败');

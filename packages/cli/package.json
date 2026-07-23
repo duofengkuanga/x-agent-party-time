@@ -4,8 +4,7 @@
   "private": true,
   "type": "module",
   "bin": {
-    "partytime": "src/index.ts",
-    "party": "src/index.ts"
+    "xapt": "src/index.ts"
   },
   "scripts": {
     "start": "bun src/index.ts",

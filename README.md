@@ -102,18 +102,18 @@ TESTER 的服务端查询结果和页面不展示仓库、Runner、本机路径�
 
 ## 环境变量
 
-| 变量                                  | 用途                                             | 默认值                   |
-| ------------------------------------- | ------------------------------------------------ | ------------------------ |
-| `AGENT_PARTY_TIME_HOME`               | Control Plane 与 Runner 的本地数据根目录         | `~/.agent-party-time`    |
-| `AGENT_PARTY_TIME_CONTROL_PLANE_URL`  | Web、Runner 和 CLI 访问 Control Plane 的地址     | `http://127.0.0.1:43121` |
-| `AGENT_PARTY_TIME_CONTROL_PLANE_HOST` | Control Plane 监听地址，仅允许回环地址           | `127.0.0.1`              |
-| `AGENT_PARTY_TIME_CONTROL_PLANE_PORT` | Control Plane 监听端口                           | `43121`                  |
-| `AGENT_PARTY_TIME_RUNNER_NAME`        | Runner 在 Control Plane 中显示的名称             | 当前主机名派生值         |
-| `AGENT_PARTY_TIME_CODEX_EXECUTABLE`   | Runner 使用的 Codex 可执行文件                   | `codex`                  |
-| `AGENT_PARTY_TIME_SERVER`             | 通用 `partytime` CLI 访问 Runner 本地 API 的地址 | capability 文件中的地址  |
-| `AGENT_PARTY_TIME_CAPABILITY_FILE`    | 通用 CLI 使用的本地 capability 文件              | `service/capability`     |
+| 变量                                  | 用途                                         | 默认值                   |
+| ------------------------------------- | -------------------------------------------- | ------------------------ |
+| `AGENT_PARTY_TIME_HOME`               | Control Plane 与 Runner 的本地数据根目录     | `~/.agent-party-time`    |
+| `AGENT_PARTY_TIME_CONTROL_PLANE_URL`  | Web、Runner 和 CLI 访问 Control Plane 的地址 | `http://127.0.0.1:43121` |
+| `AGENT_PARTY_TIME_CONTROL_PLANE_HOST` | Control Plane 监听地址，仅允许回环地址       | `127.0.0.1`              |
+| `AGENT_PARTY_TIME_CONTROL_PLANE_PORT` | Control Plane 监听端口                       | `43121`                  |
+| `AGENT_PARTY_TIME_RUNNER_NAME`        | Runner 在 Control Plane 中显示的名称         | 当前主机名派生值         |
+| `AGENT_PARTY_TIME_CODEX_EXECUTABLE`   | Runner 使用的 Codex 可执行文件               | `codex`                  |
+| `AGENT_PARTY_TIME_SERVER`             | 通用 `xapt` CLI 访问 Runner 本地 API 的地址  | capability 文件中的地址  |
+| `AGENT_PARTY_TIME_CAPABILITY_FILE`    | 通用 CLI 使用的本地 capability 文件          | `service/capability`     |
 
-Runner 本地 API 的 host / port 通过 `service/config.json` 的 `settings.localApiHost`、`settings.localApiPort`，或 `partytime start --host <host> --port <port>` 配置。Codex 可执行文件也可用 `--codex-executable <path>` 覆盖。
+Runner 本地 API 的 host / port 通过 `service/config.json` 的 `settings.localApiHost`、`settings.localApiPort`，或 `xapt start --host <host> --port <port>` 配置。Codex 可执行文件也可用 `--codex-executable <path>` 覆盖。
 
 ## 开发阶段数据策略
 
@@ -159,14 +159,14 @@ service/repair-attempts/        repair、update、cleanup 的本地 Codex artifa
 常用命令：
 
 ```text
-partytime start|stop|status
-partytime agent list|show|add|update|enable|disable
-partytime engineering bind|list
-partytime channel list|show|add|update|enable|disable|remove
-partytime run list|show|cancel|retry
-partytime session list|show|invalidate
-partytime task list|show|create|from|assign|claim|status|complete|review
-partytime logs [--follow]
+xapt start|stop|status
+xapt agent list|show|add|update|enable|disable
+xapt engineering bind|list
+xapt channel list|show|add|update|enable|disable|remove
+xapt run list|show|cancel|retry
+xapt session list|show|invalidate
+xapt task list|show|create|from|assign|claim|status|complete|review
+xapt logs [--follow]
 ```
 
 全局参数可以放在命令前后：
@@ -181,7 +181,7 @@ partytime logs [--follow]
 packages/shared/               公共 schema、事件、配置与 contracts
 packages/control-plane-client/ Control Plane 的 HTTP 与内存 adapter
 packages/local-service/        本地常驻服务、Runner 状态与 collaborative Worker
-packages/cli/                  partytime 命令行客户端
+packages/cli/                  xapt 命令行客户端
 apps/web/                      Next.js 登录页、频道控制台与协作提测工作台
 services/control-plane/        权威 SQLite 状态机与 HTTP 进程
 services/realtime-worker/      Cloudflare adapter seam

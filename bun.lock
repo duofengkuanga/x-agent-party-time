@@ -34,9 +34,10 @@
       "name": "@agent-party-time/cli",
       "version": "0.1.0",
       "bin": {
-        "party": "src/index.ts",
+        "xapt": "src/index.ts",
       },
       "dependencies": {
+        "@agent-party-time/control-plane-client": "workspace:*",
         "@agent-party-time/local-service": "workspace:*",
         "@agent-party-time/shared": "workspace:*",
         "zod": "^4.4.3",
