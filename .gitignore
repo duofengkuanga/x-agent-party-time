@@ -1,0 +1,59 @@
+# Dependencies and package-manager caches
+node_modules/
+.pnpm-store/
+
+# Environment files and local overrides
+.env
+.env.*
+!.env.example
+*.local
+
+# Credentials, private keys, and certificates
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa
+id_rsa.pub
+.netrc
+.npmrc
+!.npmrc.example
+credentials.json
+service-account*.json
+secrets.*
+!secrets.example.*
+
+# Local databases and runtime state
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Build, test, and tool output
+.next/
+.open-next/
+.wrangler/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+.gitnexus/
+
+# Local collaboration documents and drafts
+docs/
+.scratch/
+.claude/
+.codex/
+.agents/
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+CONTEXT.md
+
+# OS/editor/log files
+.DS_Store
+*.log
+.gitkeep

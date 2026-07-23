@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node", "bun"],
+    "paths": {
+      "@agent-party-time/shared": ["../shared/src/index.ts"],
+      "@agent-party-time/control-plane-client": [
+        "../control-plane-client/src/index.ts"
+      ],
+      "@agent-party-time/local-service": ["../local-service/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules"]
+}

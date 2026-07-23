@@ -1,0 +1,24 @@
+{
+  "name": "@agent-party-time/realtime-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "migrate:local": "wrangler d1 migrations apply agent-party-time --local",
+    "migrate:remote": "wrangler d1 migrations apply agent-party-time --remote",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agent-party-time/shared": "workspace:*",
+    "hono": "^4.12.28",
+    "partyserver": "^0.5.8",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.107.1"
+  }
+}

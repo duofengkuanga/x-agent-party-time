@@ -1,0 +1,23 @@
+{
+  "name": "@agent-party-time/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./config": "./src/config/index.ts",
+    "./control-plane": "./src/contracts/control-plane.ts",
+    "./error": "./src/schemas/error.ts",
+    "./runner-local": "./src/contracts/runner-local.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "typescript": "^5.9.3"
+  }
+}
