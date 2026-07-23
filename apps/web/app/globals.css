@@ -8,6 +8,12 @@
 
 * {
   box-sizing: border-box;
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
+*::-webkit-scrollbar {
+  display: none !important;
 }
 
 html,
@@ -1245,11 +1251,8 @@ body {
 .engineering-detail__actions {
   background: color-mix(in srgb, var(--paper), transparent 4%);
   border-top: 1px solid var(--line);
-  bottom: 0;
   margin-top: auto;
   padding: 14px 22px;
-  position: sticky;
-  z-index: 2;
 }
 
 .engineering-catalog-dialog .dialog-actions > button {
