@@ -11,6 +11,8 @@
   ],
   "scripts": {
     "dev": "bun scripts/dev-all.ts",
+    "status": "bun scripts/dev-processes.ts status",
+    "stop": "bun scripts/dev-processes.ts stop",
     "dev:web": "bun --cwd apps/web dev",
     "dev:runner": "bun packages/cli/src/index.ts start",
     "cli": "bun packages/cli/src/index.ts",

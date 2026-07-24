@@ -60,10 +60,17 @@ Runner 只负责领取任务、通过一个长生命周期 `codex app-server` �
 安装依赖后，在仓库根目录运行：
 
 ```bash
+# 同时启动 Control Plane、Runner 和 Web
 bun run dev
+
+# 查看三个开发服务是否正在运行
+bun run status
+
+# 停止当前仓库中单独或统一启动的全部开发服务
+bun run stop
 ```
 
-该命令前台管理三个独立进程，并在收到 `SIGINT` / `SIGTERM` 或任一进程退出时停止其余进程：
+`bun run dev` 会前台管理三个独立进程，并在收到 `SIGINT` / `SIGTERM` 或任一进程退出时停止其余进程。`bun run stop` 还会清理通过 `dev:control-plane`、`dev:runner`、`dev:web` 单独启动后遗留的进程，并通过进程工作目录避免影响其他仓库：
 
 - Control Plane：默认 `http://127.0.0.1:43121`
 - Runner 本地 API：默认 `http://127.0.0.1:43120`
