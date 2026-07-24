@@ -801,6 +801,259 @@ describe('collaborative test submission workflow', () => {
     ).toBe('COMPLETED');
   });
 
+  test('continues a waiting Bug on the original repair history and freezes the complete commit chain', async () => {
+    fixture = await createFixture();
+    const submission = await createSubmission(fixture);
+    const bug = await createBug(fixture, submission, 0, '继续修复提交链');
+    await moveToRepair(fixture, bug.id);
+    const first = await claimRepair(fixture, 0);
+    await finishRepair(fixture, first, {
+      sessionId: 'repair-chain',
+      outcome: 'READY',
+      summary: '首次修复',
+      candidateCommit: 'commit-a',
+    });
+
+    const continued = await fixture.developer.collaborativeCommand({
+      kind: 'repair_task.enqueue',
+      bugId: bug.id,
+      feedback: '首次修改的位置不对，请在现有提交上继续调整',
+      insertAtFront: true,
+    });
+    expect(continued.bug?.status).toBe('REPAIRING');
+    expect(continued.bug?.candidateCommits).toEqual(['commit-a']);
+    expect(continued.bug?.repairFeedback.at(-1)?.feedback).toContain(
+      '位置不对',
+    );
+
+    const second = await claimRepair(fixture, 0);
+    expect(second.resumeSessionId).toBe('repair-chain');
+    const ready = await finishRepair(fixture, second, {
+      sessionId: 'repair-chain',
+      outcome: 'READY',
+      summary: '继续修复完成',
+      candidateCommit: 'commit-b',
+    });
+    expect(ready.candidateCommits).toEqual(['commit-a', 'commit-b']);
+
+    const frozen = await fixture.developer.collaborativeCommand({
+      kind: 'update.trigger',
+      submissionItemId: submissionItem(fixture, submission, 0).id,
+    });
+    expect(frozen.updateBatch?.candidateCommitChains).toEqual([
+      { bugId: bug.id, commits: ['commit-a', 'commit-b'] },
+    ]);
+  });
+
+  test('starts a fresh pending commit chain after a completed update and verification feedback', async () => {
+    fixture = await createFixture();
+    const submission = await createSubmission(fixture);
+    const bug = await createBug(fixture, submission, 0, '验证失败后的新提交链');
+    await moveToRepair(fixture, bug.id);
+    const first = await claimRepair(fixture, 0);
+    await finishRepair(fixture, first, {
+      sessionId: 'repair-cycle',
+      outcome: 'READY',
+      summary: '第一轮修复',
+      candidateCommit: 'cycle-a',
+    });
+    await fixture.developer.collaborativeCommand({
+      kind: 'update.trigger',
+      submissionItemId: submissionItem(fixture, submission, 0).id,
+    });
+    const update = await claimUpdate(fixture, 0);
+    await fixture.system.collaborativeCommand({
+      kind: 'update_task.finish',
+      batchId: update.id,
+      runnerId: fixture.runnerIds[0],
+      leaseToken: update.leaseToken!,
+      sessionId: 'update-cycle',
+      outcome: 'COMPLETED',
+      summary: '第一轮更新完成',
+    });
+    await expect(
+      fixture.developer.collaborativeCommand({
+        kind: 'repair_task.enqueue',
+        bugId: bug.id,
+        feedback: '开发人员不能代替测试人员提交验证反馈',
+        insertAtFront: true,
+      }),
+    ).rejects.toBeInstanceOf(ControlPlaneClientError);
+    await fixture.tester.collaborativeCommand({
+      kind: 'repair_task.enqueue',
+      bugId: bug.id,
+      feedback: '测试环境仍有边界问题',
+      insertAtFront: true,
+    });
+    const second = await claimRepair(fixture, 0);
+    const repaired = await finishRepair(fixture, second, {
+      sessionId: 'repair-cycle',
+      outcome: 'READY',
+      summary: '第二轮修复',
+      candidateCommit: 'cycle-b',
+    });
+    expect(repaired.candidateCommits).toEqual(['cycle-b']);
+    const next = await fixture.developer.collaborativeCommand({
+      kind: 'update.trigger',
+      submissionItemId: submissionItem(fixture, submission, 0).id,
+    });
+    expect(next.updateBatch?.candidateCommitChains).toEqual([
+      { bugId: bug.id, commits: ['cycle-b'] },
+    ]);
+  });
+
+  test('cancels eligible Bugs into the trash and keeps cleanup independent', async () => {
+    fixture = await createFixture();
+    const submission = await createSubmission(fixture);
+    const waiting = await createBug(fixture, submission, 0, '登记错误');
+    const cancelledByTester = await fixture.tester.collaborativeCommand({
+      kind: 'bug.cancel',
+      bugId: waiting.id,
+    });
+    expect(cancelledByTester.bug?.status).toBe('CANCELLED');
+    expect(cancelledByTester.bug?.cleanup.state).toBe('NOT_REQUIRED');
+
+    const readyBug = await createBug(fixture, submission, 0, '待更新取消');
+    await moveToRepair(fixture, readyBug.id);
+    const repair = await claimRepair(fixture, 0);
+    await finishRepair(fixture, repair, {
+      sessionId: 'repair-cancel',
+      outcome: 'READY',
+      summary: '候选已生成',
+      candidateCommit: 'cancel-a',
+    });
+    await expect(
+      fixture.tester.collaborativeCommand({
+        kind: 'bug.cancel',
+        bugId: readyBug.id,
+      }),
+    ).rejects.toBeInstanceOf(ControlPlaneClientError);
+    const cancelled = await fixture.developer.collaborativeCommand({
+      kind: 'bug.cancel',
+      bugId: readyBug.id,
+    });
+    expect(cancelled.bug?.status).toBe('CANCELLED');
+    expect(cancelled.bug?.cleanup.state).toBe('QUEUED');
+    const cleanup = await claimCleanup(fixture, 0);
+    expect(cleanup.targetKind).toBe('BUG');
+    expect(cleanup.bugId).toBe(readyBug.id);
+    const failedCleanup = await fixture.system.collaborativeCommand({
+      kind: 'cleanup_task.finish',
+      taskId: cleanup.id,
+      runnerId: fixture.runnerIds[0],
+      leaseToken: cleanup.leaseToken!,
+      success: false,
+      summary: 'worktree 正在占用',
+    });
+    expect(failedCleanup.cleanupTask?.state).toBe('FAILED');
+    const developerView = await fixture.developer.collaborativeQuery({
+      kind: 'bug.get',
+      bugId: readyBug.id,
+    });
+    expect(developerView.bug?.cleanup).toMatchObject({
+      state: 'FAILED',
+      taskId: cleanup.id,
+      summary: 'worktree 正在占用',
+    });
+    const testerView = await fixture.tester.collaborativeQuery({
+      kind: 'bug.get',
+      bugId: readyBug.id,
+    });
+    expect(testerView.bug?.cleanup).toEqual({
+      state: 'FAILED',
+      taskId: null,
+      summary: null,
+    });
+    expect(
+      (
+        await fixture.system.collaborativeCommand({
+          kind: 'cleanup_task.claim',
+          runnerId: fixture.runnerIds[0],
+          leaseDurationMs: 60_000,
+        })
+      ).cleanupTask,
+    ).toBeNull();
+    const retried = await fixture.developer.collaborativeCommand({
+      kind: 'cleanup_task.retry',
+      taskId: cleanup.id,
+    });
+    expect(retried.cleanupTask?.state).toBe('QUEUED');
+    expect((await claimCleanup(fixture, 0)).id).toBe(cleanup.id);
+  });
+
+  test('counts cancelled Bugs separately and allows the tester to close the submission', async () => {
+    fixture = await createFixture();
+    const submission = await createSubmission(fixture);
+    const bug = await createBug(fixture, submission, 0, '不再需要修复');
+    await fixture.tester.collaborativeCommand({
+      kind: 'bug.cancel',
+      bugId: bug.id,
+    });
+    const summary = (
+      await fixture.tester.collaborativeQuery({
+        kind: 'submission.list',
+        includeClosed: true,
+      })
+    ).submissions?.find((candidate) => candidate.id === submission.id);
+    expect(summary?.bugCounts.done).toBe(0);
+    expect(summary?.bugCounts.cancelled).toBe(1);
+    const closed = await fixture.tester.collaborativeCommand({
+      kind: 'submission.close',
+      submissionId: submission.id,
+    });
+    expect(closed.submission?.status).toBe('CLOSED');
+  });
+
+  test('cancels an update batch as one unit and returns all Bugs to waiting', async () => {
+    fixture = await createFixture();
+    const submission = await createSubmission(fixture);
+    const bugs = await Promise.all([
+      createBug(fixture, submission, 0, '批次取消 A'),
+      createBug(fixture, submission, 0, '批次取消 B'),
+    ]);
+    for (const [index, bug] of bugs.entries()) {
+      await moveToRepair(fixture, bug.id);
+      const repair = await claimRepair(fixture, 0);
+      await finishRepair(fixture, repair, {
+        sessionId: `repair-batch-${index}`,
+        outcome: 'READY',
+        summary: '修复完成',
+        candidateCommit: `batch-${index}`,
+      });
+    }
+    await fixture.developer.collaborativeCommand({
+      kind: 'update.trigger',
+      submissionItemId: submissionItem(fixture, submission, 0).id,
+    });
+    const running = await claimUpdate(fixture, 0);
+    const requested = await fixture.developer.collaborativeCommand({
+      kind: 'update.cancel',
+      batchId: running.id,
+    });
+    expect(requested.updateBatch?.cancelRequested).toBe(true);
+    expect(
+      (
+        await fixture.system.collaborativeQuery({
+          kind: 'update_task.control',
+          batchId: running.id,
+          runnerId: fixture.runnerIds[0],
+        })
+      ).updateCancelRequested,
+    ).toBe(true);
+    const cancelled = await fixture.system.collaborativeCommand({
+      kind: 'update_task.finish',
+      batchId: running.id,
+      runnerId: fixture.runnerIds[0],
+      leaseToken: running.leaseToken!,
+      sessionId: 'update-cancelled',
+      outcome: 'CANCELLED',
+      summary: '更新已取消',
+    });
+    expect(cancelled.updateBatch?.state).toBe('CANCELLED');
+    for (const bug of bugs)
+      expect((await getBug(fixture, bug.id)).status).toBe('WAITING_FOR_UPDATE');
+  });
+
   test('requires tester verification before closing, releases environments, and retries cleanup without reopening', async () => {
     fixture = await createFixture();
     const submission = await createSubmission(fixture);

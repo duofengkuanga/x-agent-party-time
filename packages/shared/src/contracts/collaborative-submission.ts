@@ -16,6 +16,7 @@ export const SubmissionBugStatusSchema = z.enum([
   'UPDATING',
   'WAITING_FOR_VERIFICATION',
   'DONE',
+  'CANCELLED',
 ]);
 export const SubmissionRepairTaskStateSchema = z.enum([
   'QUEUED',
@@ -29,6 +30,7 @@ export const SubmissionUpdateBatchStateSchema = z.enum([
   'WAITING_EXTERNAL',
   'COMPLETED',
   'FAILED',
+  'CANCELLED',
 ]);
 export const SubmissionCleanupTaskStateSchema = z.enum([
   'QUEUED',
@@ -106,6 +108,7 @@ export const TestSubmissionSummarySchema = z.object({
     updating: z.number().int().nonnegative(),
     waitingForVerification: z.number().int().nonnegative(),
     done: z.number().int().nonnegative(),
+    cancelled: z.number().int().nonnegative(),
   }),
   createdByUserId: UserIdSchema,
   createdAt: IsoUtcDateTimeSchema,
@@ -176,6 +179,21 @@ export const SubmissionRepairRecordSchema = z.object({
   createdAt: IsoUtcDateTimeSchema,
 });
 
+export const SubmissionRepairFeedbackSchema = z.object({
+  id: IdSchema,
+  bugId: IdSchema,
+  taskId: IdSchema.nullable(),
+  actorUserId: UserIdSchema,
+  feedback: z.string().trim().min(1).max(8_000),
+  createdAt: IsoUtcDateTimeSchema,
+});
+
+export const SubmissionBugCleanupSchema = z.object({
+  state: z.enum(['NOT_REQUIRED', 'QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED']),
+  taskId: IdSchema.nullable(),
+  summary: z.string().trim().min(1).max(8_000).nullable(),
+});
+
 export const SubmissionBugSchema = z.object({
   id: IdSchema,
   shortId: z.string().regex(/^BUG-\d{4,}$/),
@@ -192,8 +210,16 @@ export const SubmissionBugSchema = z.object({
   updateActivity: SubmissionUpdateActivitySchema.nullable(),
   latestRepairFailed: z.boolean(),
   repairRecords: z.array(SubmissionRepairRecordSchema),
+  repairFeedback: z.array(SubmissionRepairFeedbackSchema),
+  candidateCommits: z.array(z.string().trim().min(1).max(200)),
   candidateCommit: z.string().trim().min(1).max(200).nullable(),
   repairSessionId: z.string().trim().min(1).max(240).nullable(),
+  cancelledFromStatus: SubmissionBugStatusSchema.exclude([
+    'CANCELLED',
+  ]).nullable(),
+  cancelledByUserId: UserIdSchema.nullable(),
+  cancelledAt: IsoUtcDateTimeSchema.nullable(),
+  cleanup: SubmissionBugCleanupSchema,
   createdByUserId: UserIdSchema,
   createdAt: IsoUtcDateTimeSchema,
   updatedAt: IsoUtcDateTimeSchema,
@@ -230,6 +256,13 @@ export const SubmissionUpdateBatchSchema = z.object({
   deploymentType: z.enum(['LOCAL_SCRIPT', 'CI_CD']),
   bugIds: z.array(IdSchema).min(1),
   candidateCommits: z.array(z.string().trim().min(1).max(200)),
+  candidateCommitChains: z.array(
+    z.object({
+      bugId: IdSchema,
+      commits: z.array(z.string().trim().min(1).max(200)).min(1),
+    }),
+  ),
+  cancelRequested: z.boolean(),
   eligibleAt: IsoUtcDateTimeSchema,
   immediateRequestedAt: IsoUtcDateTimeSchema.nullable(),
   sessionId: z.string().trim().min(1).max(240).nullable(),
@@ -248,6 +281,8 @@ export const SubmissionCleanupTaskSchema = z.object({
   id: IdSchema,
   submissionId: IdSchema,
   submissionItemId: IdSchema,
+  targetKind: z.enum(['SUBMISSION', 'BUG']),
+  bugId: IdSchema.nullable(),
   bindingId: IdSchema,
   runnerId: IdSchema,
   state: SubmissionCleanupTaskStateSchema,
@@ -360,6 +395,10 @@ export const CollaborativeCommandSchema = z.discriminatedUnion('kind', [
     targetStatus: z.literal('DONE'),
   }),
   z.object({
+    kind: z.literal('bug.cancel'),
+    bugId: IdSchema,
+  }),
+  z.object({
     kind: z.literal('repair_task.enqueue'),
     bugId: IdSchema,
     feedback: z.string().trim().min(1).max(8_000).nullable().optional(),
@@ -435,6 +474,10 @@ export const CollaborativeCommandSchema = z.discriminatedUnion('kind', [
     feedback: z.string().trim().min(1).max(12_000),
   }),
   z.object({
+    kind: z.literal('update.cancel'),
+    batchId: IdSchema,
+  }),
+  z.object({
     kind: z.literal('interaction.open'),
     executionKind: z.enum(['REPAIR', 'UPDATE', 'CLEANUP']),
     executionId: IdSchema,
@@ -486,7 +529,7 @@ export const CollaborativeCommandSchema = z.discriminatedUnion('kind', [
     runnerId: IdSchema,
     leaseToken: z.string().trim().min(1).max(240),
     sessionId: z.string().trim().min(1).max(240).nullable(),
-    outcome: z.enum(['PUSHED', 'COMPLETED', 'FAILED']),
+    outcome: z.enum(['PUSHED', 'COMPLETED', 'FAILED', 'CANCELLED']),
     summary: z.string().trim().min(1).max(12_000),
   }),
   z.object({
@@ -533,6 +576,10 @@ export const CollaborativeCommandSchema = z.discriminatedUnion('kind', [
     success: z.boolean(),
     summary: z.string().trim().min(1).max(8_000),
   }),
+  z.object({
+    kind: z.literal('cleanup_task.retry'),
+    taskId: IdSchema,
+  }),
 ]);
 export type CollaborativeCommand = z.input<typeof CollaborativeCommandSchema>;
 export type ParsedCollaborativeCommand = z.output<
@@ -553,6 +600,11 @@ export const CollaborativeQuerySchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('update_batches.list'),
     submissionItemId: IdSchema,
+  }),
+  z.object({
+    kind: z.literal('update_task.control'),
+    batchId: IdSchema,
+    runnerId: IdSchema,
   }),
   z.object({ kind: z.literal('cleanup_tasks.list'), runnerId: IdSchema }),
   z.object({ kind: z.literal('interaction.get'), interactionId: IdSchema }),
@@ -590,6 +642,7 @@ export const CollaborativeQueryResultSchema = z.object({
   interaction: CodexInteractionRequestSchema.optional(),
   attachment: SubmissionBugAttachmentSchema.optional(),
   contentBase64: z.string().min(1).optional(),
+  updateCancelRequested: z.boolean().optional(),
 });
 export type CollaborativeQueryResult = z.infer<
   typeof CollaborativeQueryResultSchema

@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS submission_bug (
  title TEXT NOT NULL, operation_path TEXT, actual_result TEXT,
  expected_result TEXT, supplemental_description TEXT, latest_feedback TEXT,
  candidate_commit TEXT, repair_session_id TEXT, created_by_user_id TEXT NOT NULL,
+ cancelled_from_status TEXT, cancelled_by_user_id TEXT, cancelled_at TEXT,
  created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS submission_bug_board ON submission_bug(submission_id,status,sequence);
 CREATE TABLE IF NOT EXISTS submission_bug_attachment (
@@ -78,17 +79,22 @@ CREATE TABLE IF NOT EXISTS submission_repair_attempt (
  id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES submission_repair_task(id),
  bug_id TEXT NOT NULL REFERENCES submission_bug(id), session_id TEXT, outcome TEXT NOT NULL,
  summary TEXT NOT NULL, candidate_commit TEXT, created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS submission_repair_feedback (
+ id TEXT PRIMARY KEY, bug_id TEXT NOT NULL REFERENCES submission_bug(id),
+ task_id TEXT REFERENCES submission_repair_task(id), actor_user_id TEXT NOT NULL,
+ feedback TEXT NOT NULL, created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS submission_update_batch (
  id TEXT PRIMARY KEY, submission_item_id TEXT NOT NULL REFERENCES test_submission_item(id),
  binding_id TEXT NOT NULL, runner_id TEXT NOT NULL, state TEXT NOT NULL,
  deployment_type TEXT NOT NULL, eligible_at TEXT NOT NULL, immediate_requested_at TEXT,
  session_id TEXT, lease_token TEXT, lease_expires_at TEXT, external_failure TEXT,
+ cancel_requested INTEGER NOT NULL DEFAULT 0,
  created_at TEXT NOT NULL, updated_at TEXT NOT NULL, completed_at TEXT);
 CREATE INDEX IF NOT EXISTS submission_update_queue ON submission_update_batch(binding_id,state,eligible_at,created_at,id);
 CREATE TABLE IF NOT EXISTS submission_update_batch_member (
  batch_id TEXT NOT NULL REFERENCES submission_update_batch(id) ON DELETE CASCADE,
  bug_id TEXT NOT NULL REFERENCES submission_bug(id), candidate_commit TEXT NOT NULL,
- PRIMARY KEY(batch_id,bug_id));
+ position INTEGER NOT NULL, PRIMARY KEY(batch_id,bug_id,position));
 CREATE TABLE IF NOT EXISTS submission_update_feedback_attachment (
  id TEXT PRIMARY KEY, batch_id TEXT NOT NULL REFERENCES submission_update_batch(id) ON DELETE CASCADE,
  file_name TEXT NOT NULL, media_type TEXT NOT NULL, size_bytes INTEGER NOT NULL,
@@ -96,10 +102,9 @@ CREATE TABLE IF NOT EXISTS submission_update_feedback_attachment (
 CREATE TABLE IF NOT EXISTS submission_cleanup_task (
  id TEXT PRIMARY KEY, submission_id TEXT NOT NULL REFERENCES test_submission(id),
  submission_item_id TEXT NOT NULL REFERENCES test_submission_item(id), binding_id TEXT NOT NULL,
- runner_id TEXT NOT NULL, state TEXT NOT NULL, session_ids_json TEXT NOT NULL,
- summary TEXT, lease_token TEXT, lease_expires_at TEXT, retry_count INTEGER NOT NULL DEFAULT 0,
- created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
- UNIQUE(submission_id,submission_item_id));
+ runner_id TEXT NOT NULL, state TEXT NOT NULL, target_kind TEXT NOT NULL,
+ bug_id TEXT REFERENCES submission_bug(id), session_ids_json TEXT NOT NULL, summary TEXT, lease_token TEXT, lease_expires_at TEXT, retry_count INTEGER NOT NULL DEFAULT 0,
+ created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS submission_cleanup_queue ON submission_cleanup_task(runner_id,state,created_at,id);
 CREATE TABLE IF NOT EXISTS codex_interaction_request (
  id TEXT PRIMARY KEY, execution_kind TEXT NOT NULL, execution_id TEXT NOT NULL,
@@ -209,6 +214,8 @@ export class CollaborativeSubmissionStore {
         return { kind: command.kind, bug: this.assignBug(command, actor) };
       case 'bug.move':
         return { kind: command.kind, bug: this.moveBug(command, actor) };
+      case 'bug.cancel':
+        return { kind: command.kind, bug: this.cancelBug(command, actor) };
       case 'repair_task.enqueue':
         return {
           kind: command.kind,
@@ -258,6 +265,11 @@ export class CollaborativeSubmissionStore {
         return {
           kind: command.kind,
           updateBatch: this.continueUpdate(command, actor),
+        };
+      case 'update.cancel':
+        return {
+          kind: command.kind,
+          updateBatch: this.requestUpdateCancellation(command, actor),
         };
       case 'interaction.open':
         return {
@@ -319,6 +331,11 @@ export class CollaborativeSubmissionStore {
           kind: command.kind,
           cleanupTask: this.finishCleanupTask(command, actor),
         };
+      case 'cleanup_task.retry':
+        return {
+          kind: command.kind,
+          cleanupTask: this.retryCleanupTask(command, actor),
+        };
     }
   }
 
@@ -365,6 +382,11 @@ export class CollaborativeSubmissionStore {
         return {
           kind: query.kind,
           updateBatches: this.updateBatches(query.submissionItemId, actor),
+        };
+      case 'update_task.control':
+        return {
+          kind: query.kind,
+          updateCancelRequested: this.updateCancellationRequested(query, actor),
         };
       case 'cleanup_tasks.list':
         this.requireRunnerActor(actor);
@@ -741,13 +763,20 @@ export class CollaborativeSubmissionStore {
     if (!bug.submission_item_id)
       throw this.invalidTransition('暂不确定工程的 Bug 必须先完成分诊');
     if (
-      !['WAITING_FOR_REPAIR', 'WAITING_FOR_VERIFICATION', 'DONE'].includes(
-        source,
-      )
+      ![
+        'WAITING_FOR_REPAIR',
+        'WAITING_FOR_UPDATE',
+        'WAITING_FOR_VERIFICATION',
+        'DONE',
+      ].includes(source)
     )
       throw this.invalidTransition('当前状态不能加入修复队列');
     if (source !== 'WAITING_FOR_REPAIR' && !command.feedback)
-      throw this.validation('验证失败或重新打开必须填写反馈');
+      throw this.validation('继续修复、验证失败或重新打开必须填写反馈');
+    if (source === 'WAITING_FOR_UPDATE')
+      this.requireResponsibleDeveloper(String(bug.submission_item_id), actor);
+    if (source === 'WAITING_FOR_VERIFICATION' || source === 'DONE')
+      this.requireTesterForSubmission(String(bug.submission_id), actor);
     this.enqueueRepair(
       command.bugId,
       String(bug.submission_item_id),
@@ -822,6 +851,89 @@ export class CollaborativeSubmissionStore {
       this.actorId(actor),
       now,
     );
+    return this.bugDetail(command.bugId, actor);
+  }
+
+  private cancelBug(
+    command: Extract<ParsedCollaborativeCommand, { kind: 'bug.cancel' }>,
+    actor: ControlPlaneActor,
+  ) {
+    const bug = this.bugRow(command.bugId);
+    this.requireSubmissionActive(String(bug.submission_id));
+    if (bug.status === 'CANCELLED') return this.bugDetail(command.bugId, actor);
+    if (
+      !['WAITING_FOR_REPAIR', 'WAITING_FOR_UPDATE'].includes(String(bug.status))
+    )
+      throw this.invalidTransition('当前状态不能取消 Bug');
+    if (bug.status === 'WAITING_FOR_REPAIR') {
+      if (actor.kind === 'user' && actor.accountType === 'TESTER')
+        this.requireTesterForSubmission(String(bug.submission_id), actor);
+      else if (bug.submission_item_id)
+        this.requireResponsibleDeveloper(String(bug.submission_item_id), actor);
+      else
+        throw this.permission('未分配工程的待修复 Bug 只能由指定测试人员取消');
+    } else {
+      this.requireResponsibleDeveloper(String(bug.submission_item_id), actor);
+    }
+    const now = this.iso();
+    this.database.transaction(() => {
+      const cancelled = this.database
+        .query(
+          `UPDATE submission_bug SET status='CANCELLED',cancelled_from_status=?,cancelled_by_user_id=?,cancelled_at=?,updated_at=? WHERE id=? AND status=?`,
+        )
+        .run(
+          bug.status,
+          this.actorId(actor),
+          now,
+          now,
+          command.bugId,
+          bug.status,
+        );
+      if (!cancelled.changes)
+        throw this.invalidTransition('Bug 状态已变化，无法取消');
+      this.database
+        .query(
+          `DELETE FROM submission_repair_task WHERE bug_id=? AND state='QUEUED'`,
+        )
+        .run(command.bugId);
+      if (
+        bug.submission_item_id &&
+        (bug.status === 'WAITING_FOR_UPDATE' || bug.repair_session_id)
+      ) {
+        const item = this.itemRow(String(bug.submission_item_id));
+        this.database
+          .query(
+            `INSERT INTO submission_cleanup_task(id,submission_id,submission_item_id,binding_id,runner_id,state,target_kind,bug_id,session_ids_json,summary,lease_token,lease_expires_at,retry_count,created_at,updated_at) VALUES(?,?,?,?,?,'QUEUED','BUG',?,?,NULL,NULL,NULL,0,?,?)`,
+          )
+          .run(
+            randomUUID(),
+            bug.submission_id,
+            bug.submission_item_id,
+            item.binding_id,
+            item.runner_id,
+            command.bugId,
+            JSON.stringify(
+              bug.repair_session_id ? [bug.repair_session_id] : [],
+            ),
+            now,
+            now,
+          );
+        this.event(
+          String(bug.submission_id),
+          command.bugId,
+          'bug.cleanup_queued',
+          this.actorId(actor),
+          now,
+        );
+      }
+      this.event(
+        String(bug.submission_id),
+        command.bugId,
+        'bug.cancelled',
+        this.actorId(actor),
+        now,
+      );
+    })();
     return this.bugDetail(command.bugId, actor);
   }
 
@@ -1111,7 +1223,7 @@ export class CollaborativeSubmissionStore {
     this.database
       .query(
         `UPDATE submission_update_batch
-         SET state='QUEUED',eligible_at=?,external_failure=?,updated_at=?
+         SET state='QUEUED',eligible_at=?,external_failure=?,cancel_requested=0,updated_at=?
          WHERE id=?`,
       )
       .run(now, command.feedback, now, command.batchId);
@@ -1315,7 +1427,11 @@ export class CollaborativeSubmissionStore {
     const batch = this.updateBatchRow(command.batchId);
     if (batch.runner_id !== command.runnerId)
       throw this.leaseLost('更新任务不属于当前 Runner');
-    if (batch.state === 'COMPLETED' || batch.state === 'WAITING_EXTERNAL')
+    if (
+      batch.state === 'COMPLETED' ||
+      batch.state === 'WAITING_EXTERNAL' ||
+      batch.state === 'CANCELLED'
+    )
       return this.updateBatch(command.batchId, actor);
     if (
       batch.state === 'QUEUED' &&
@@ -1328,14 +1444,28 @@ export class CollaborativeSubmissionStore {
     if (batch.state !== 'RUNNING')
       throw this.taskTransitionInvalid('更新任务不在运行中');
     const now = this.iso();
-    if (command.outcome === 'FAILED') {
+    if (command.outcome === 'CANCELLED') {
+      if (!batch.cancel_requested)
+        throw this.invalidTransition('更新批次没有待处理的取消请求');
+      this.cancelUpdateBatch(command.batchId, now);
+    } else if (command.outcome === 'FAILED') {
       this.database
         .query(
           `UPDATE submission_update_batch
-           SET state='FAILED',session_id=?,external_failure=?,
+           SET state='FAILED',session_id=?,external_failure=?,cancel_requested=0,
                lease_token=NULL,lease_expires_at=NULL,updated_at=? WHERE id=?`,
         )
         .run(command.sessionId, command.summary, now, command.batchId);
+      if (batch.cancel_requested) {
+        const item = this.itemRow(String(batch.submission_item_id));
+        this.event(
+          String(item.submission_id),
+          null,
+          'update_batch.cancel_failed',
+          null,
+          now,
+        );
+      }
     } else if (
       batch.deployment_type === 'CI_CD' ||
       command.outcome === 'PUSHED'
@@ -1343,7 +1473,7 @@ export class CollaborativeSubmissionStore {
       this.database
         .query(
           `UPDATE submission_update_batch
-           SET state='WAITING_EXTERNAL',session_id=?,external_failure=NULL,
+           SET state='WAITING_EXTERNAL',session_id=?,external_failure=NULL,cancel_requested=0,
                lease_token=NULL,lease_expires_at=NULL,updated_at=? WHERE id=?`,
         )
         .run(command.sessionId, now, command.batchId);
@@ -1351,6 +1481,74 @@ export class CollaborativeSubmissionStore {
       this.completeBatch(command.batchId, command.sessionId, now);
     }
     return this.updateBatch(command.batchId, actor);
+  }
+
+  private requestUpdateCancellation(
+    command: Extract<ParsedCollaborativeCommand, { kind: 'update.cancel' }>,
+    actor: ControlPlaneActor,
+  ) {
+    const batch = this.updateBatchRow(command.batchId);
+    this.requireResponsibleDeveloper(String(batch.submission_item_id), actor);
+    if (batch.state === 'CANCELLED' || batch.state === 'COMPLETED')
+      return this.updateBatch(command.batchId, actor);
+    if (!['QUEUED', 'RUNNING', 'FAILED'].includes(String(batch.state)))
+      throw this.invalidTransition('当前更新批次不能取消');
+    const now = this.iso();
+    if (batch.state === 'QUEUED' && !batch.session_id) {
+      this.cancelUpdateBatch(command.batchId, now);
+    } else {
+      this.database
+        .query(
+          `UPDATE submission_update_batch
+           SET state=CASE WHEN state='FAILED' THEN 'QUEUED' ELSE state END,
+               eligible_at=?,cancel_requested=1,updated_at=? WHERE id=?`,
+        )
+        .run(now, now, command.batchId);
+    }
+    const item = this.itemRow(String(batch.submission_item_id));
+    this.event(
+      String(item.submission_id),
+      null,
+      'update_batch.cancel_requested',
+      this.actorId(actor),
+      now,
+    );
+    return this.updateBatch(command.batchId, actor);
+  }
+
+  private updateCancellationRequested(
+    query: Extract<CollaborativeQuery, { kind: 'update_task.control' }>,
+    actor: ControlPlaneActor,
+  ) {
+    this.requireRunnerActor(actor);
+    const batch = this.updateBatchRow(query.batchId);
+    if (batch.runner_id !== query.runnerId)
+      throw this.leaseLost('更新任务不属于当前 Runner');
+    return Boolean(batch.cancel_requested);
+  }
+
+  private cancelUpdateBatch(batchId: string, now: string) {
+    this.database.transaction(() => {
+      this.database
+        .query(
+          `UPDATE submission_update_batch SET state='CANCELLED',cancel_requested=0,lease_token=NULL,lease_expires_at=NULL,updated_at=?,completed_at=? WHERE id=?`,
+        )
+        .run(now, now, batchId);
+      this.database
+        .query(
+          `UPDATE submission_bug SET status='WAITING_FOR_UPDATE',updated_at=? WHERE id IN (SELECT bug_id FROM submission_update_batch_member WHERE batch_id=?) AND status='UPDATING'`,
+        )
+        .run(now, batchId);
+    })();
+    const batch = this.updateBatchRow(batchId);
+    const item = this.itemRow(String(batch.submission_item_id));
+    this.event(
+      String(item.submission_id),
+      null,
+      'update_batch.cancelled',
+      null,
+      now,
+    );
   }
 
   private reportExternalFailure(
@@ -1428,7 +1626,7 @@ export class CollaborativeSubmissionStore {
     if (submission.status === 'CLOSED')
       return this.submissionDetail(command.submissionId, actor);
     const unfinished = this.count(
-      `SELECT COUNT(*) count FROM submission_bug WHERE submission_id=? AND status!='DONE'`,
+      `SELECT COUNT(*) count FROM submission_bug WHERE submission_id=? AND status NOT IN ('DONE','CANCELLED')`,
       command.submissionId,
     );
     if (unfinished > 0) throw this.conflict('仍有未完成 Bug，不能关闭提测单');
@@ -1464,7 +1662,7 @@ export class CollaborativeSubmissionStore {
           .map((row) => String(row.session_id));
         this.database
           .query(
-            `INSERT OR IGNORE INTO submission_cleanup_task(id,submission_id,submission_item_id,binding_id,runner_id,state,session_ids_json,summary,lease_token,lease_expires_at,retry_count,created_at,updated_at) VALUES(?,?,?,?,?,'QUEUED',?,NULL,NULL,NULL,0,?,?)`,
+            `INSERT INTO submission_cleanup_task(id,submission_id,submission_item_id,binding_id,runner_id,state,target_kind,bug_id,session_ids_json,summary,lease_token,lease_expires_at,retry_count,created_at,updated_at) VALUES(?,?,?,?,?,'QUEUED','SUBMISSION',NULL,?,NULL,NULL,NULL,0,?,?)`,
           )
           .run(
             randomUUID(),
@@ -1521,7 +1719,7 @@ export class CollaborativeSubmissionStore {
     const row = this.database
       .query<Row, [string]>(
         `SELECT * FROM submission_cleanup_task
-         WHERE runner_id=? AND state IN ('QUEUED','FAILED')
+         WHERE runner_id=? AND (state='QUEUED' OR (state='FAILED' AND target_kind='SUBMISSION'))
          ORDER BY created_at,id LIMIT 1`,
       )
       .get(command.runnerId);
@@ -1535,6 +1733,14 @@ export class CollaborativeSubmissionStore {
              updated_at=? WHERE id=?`,
       )
       .run(token, expires, now, row.id);
+    if (row.bug_id)
+      this.event(
+        String(row.submission_id),
+        String(row.bug_id),
+        'bug.cleanup_started',
+        null,
+        now,
+      );
     return this.cleanupTask(String(row.id));
   }
 
@@ -1595,6 +1801,35 @@ export class CollaborativeSubmissionStore {
         this.iso(),
         command.taskId,
       );
+    if (row.bug_id)
+      this.event(
+        String(row.submission_id),
+        String(row.bug_id),
+        command.success ? 'bug.cleanup_succeeded' : 'bug.cleanup_failed',
+        null,
+        this.iso(),
+      );
+    return this.cleanupTask(command.taskId);
+  }
+
+  private retryCleanupTask(
+    command: Extract<
+      ParsedCollaborativeCommand,
+      { kind: 'cleanup_task.retry' }
+    >,
+    actor: ControlPlaneActor,
+  ) {
+    const row = this.cleanupRow(command.taskId);
+    if (row.target_kind !== 'BUG' || !row.bug_id)
+      throw this.invalidTransition('只有已取消 Bug 的失败清理可以重试');
+    this.requireResponsibleDeveloper(String(row.submission_item_id), actor);
+    if (row.state !== 'FAILED')
+      throw this.invalidTransition('清理任务当前不能重试');
+    this.database
+      .query(
+        `UPDATE submission_cleanup_task SET state='QUEUED',summary=NULL,lease_token=NULL,lease_expires_at=NULL,retry_count=retry_count+1,updated_at=? WHERE id=?`,
+      )
+      .run(this.iso(), command.taskId);
     return this.cleanupTask(command.taskId);
   }
 
@@ -1630,13 +1865,14 @@ export class CollaborativeSubmissionStore {
         .run(item.binding_id);
     const now = this.iso();
     const bug = this.bugRow(bugId);
+    const taskId = randomUUID();
     this.database.transaction(() => {
       this.database
         .query(
           `INSERT INTO submission_repair_task(id,bug_id,submission_item_id,binding_id,runner_id,responsible_developer_user_id,state,position,lease_token,lease_expires_at,resume_session_id,failure_phase,failure_summary,created_at,started_at,completed_at) VALUES(?,?,?,?,?,?,'QUEUED',?,NULL,NULL,?,NULL,NULL,?,NULL,NULL)`,
         )
         .run(
-          randomUUID(),
+          taskId,
           bugId,
           itemId,
           item.binding_id,
@@ -1646,11 +1882,33 @@ export class CollaborativeSubmissionStore {
           bug.submission_item_id === itemId ? bug.repair_session_id : null,
           now,
         );
+      if (feedback) {
+        this.database
+          .query(
+            `INSERT INTO submission_repair_feedback(id,bug_id,task_id,actor_user_id,feedback,created_at) VALUES(?,?,?,?,?,?)`,
+          )
+          .run(randomUUID(), bugId, taskId, this.actorId(actor), feedback, now);
+        this.event(
+          String(bug.submission_id),
+          bugId,
+          'bug.repair_feedback_added',
+          this.actorId(actor),
+          now,
+        );
+      }
       this.database
         .query(
-          `UPDATE submission_bug SET submission_item_id=?,status='REPAIRING',latest_feedback=?,candidate_commit=NULL,updated_at=? WHERE id=?`,
+          `UPDATE submission_bug SET submission_item_id=?,status='REPAIRING',latest_feedback=?,candidate_commit=CASE WHEN status='WAITING_FOR_UPDATE' THEN candidate_commit ELSE NULL END,updated_at=? WHERE id=?`,
         )
         .run(itemId, feedback ?? bug.latest_feedback, now, bugId);
+      if (bug.status === 'WAITING_FOR_UPDATE')
+        this.event(
+          String(bug.submission_id),
+          bugId,
+          'bug.repair_continued',
+          this.actorId(actor),
+          now,
+        );
       this.event(
         String(bug.submission_id),
         bugId,
@@ -1659,6 +1917,27 @@ export class CollaborativeSubmissionStore {
         now,
       );
     })();
+  }
+
+  private pendingCandidateCommits(bugId: string) {
+    return this.database
+      .query<Row, [string]>(
+        `SELECT attempt.candidate_commit
+         FROM submission_repair_attempt attempt
+         WHERE attempt.bug_id=? AND attempt.outcome='READY'
+           AND attempt.candidate_commit IS NOT NULL
+           AND NOT EXISTS (
+             SELECT 1
+             FROM submission_update_batch batch
+             JOIN submission_update_batch_member member ON member.batch_id=batch.id
+             WHERE batch.state='COMPLETED'
+               AND member.bug_id=attempt.bug_id
+               AND member.candidate_commit=attempt.candidate_commit
+           )
+         ORDER BY attempt.created_at,attempt.rowid`,
+      )
+      .all(bugId)
+      .map((row) => String(row.candidate_commit));
   }
 
   private freezeEligibleUpdateBatches(runnerId: string, now: string) {
@@ -1696,13 +1975,19 @@ export class CollaborativeSubmissionStore {
         `SELECT id,candidate_commit,updated_at FROM submission_bug
          WHERE submission_item_id=? AND status='WAITING_FOR_UPDATE'
            AND candidate_commit IS NOT NULL
-         ORDER BY sequence`,
+         ORDER BY updated_at,id`,
       )
-      .all(itemId);
+      .all(itemId)
+      .map((candidate) => ({
+        id: String(candidate.id),
+        updatedAt: String(candidate.updated_at),
+        commits: this.pendingCandidateCommits(String(candidate.id)),
+      }))
+      .filter((candidate) => candidate.commits.length > 0);
     if (!candidates.length) return null;
     const latestCandidateAt = Math.max(
       ...candidates.map((candidate) =>
-        new Date(String(candidate.updated_at)).getTime(),
+        new Date(String(candidate.updatedAt)).getTime(),
       ),
     );
     if (
@@ -1730,17 +2015,22 @@ export class CollaborativeSubmissionStore {
           now,
         );
       for (const candidate of candidates)
-        this.database
-          .query(
-            'INSERT INTO submission_update_batch_member(batch_id,bug_id,candidate_commit) VALUES(?,?,?)',
-          )
-          .run(id, candidate.id, candidate.candidate_commit);
-      this.database
+        candidate.commits.forEach((commit, position) =>
+          this.database
+            .query(
+              'INSERT INTO submission_update_batch_member(batch_id,bug_id,candidate_commit,position) VALUES(?,?,?,?)',
+            )
+            .run(id, candidate.id, commit, position),
+        );
+      const frozen = this.database
         .query(
           `UPDATE submission_bug SET status='UPDATING',updated_at=?
-           WHERE id IN (SELECT bug_id FROM submission_update_batch_member WHERE batch_id=?)`,
+           WHERE id IN (SELECT bug_id FROM submission_update_batch_member WHERE batch_id=?)
+             AND status='WAITING_FOR_UPDATE'`,
         )
         .run(now, id);
+      if (frozen.changes !== candidates.length)
+        throw this.conflict('待更新列表已变化，请重新冻结更新批次');
     })();
     return { id } as Row;
   }
@@ -1753,12 +2043,12 @@ export class CollaborativeSubmissionStore {
     this.database.transaction(() => {
       this.database
         .query(
-          `UPDATE submission_update_batch SET state='COMPLETED',session_id=?,lease_token=NULL,lease_expires_at=NULL,external_failure=NULL,updated_at=?,completed_at=? WHERE id=?`,
+          `UPDATE submission_update_batch SET state='COMPLETED',session_id=?,cancel_requested=0,lease_token=NULL,lease_expires_at=NULL,external_failure=NULL,updated_at=?,completed_at=? WHERE id=?`,
         )
         .run(sessionId, now, now, batchId);
       this.database
         .query(
-          `UPDATE submission_bug SET status='WAITING_FOR_VERIFICATION',updated_at=? WHERE id IN (SELECT bug_id FROM submission_update_batch_member WHERE batch_id=?)`,
+          `UPDATE submission_bug SET status='WAITING_FOR_VERIFICATION',candidate_commit=NULL,updated_at=? WHERE id IN (SELECT bug_id FROM submission_update_batch_member WHERE batch_id=?)`,
         )
         .run(now, batchId);
     })();
@@ -1842,6 +2132,7 @@ export class CollaborativeSubmissionStore {
         updating: counts.UPDATING ?? 0,
         waitingForVerification: counts.WAITING_FOR_VERIFICATION ?? 0,
         done: counts.DONE ?? 0,
+        cancelled: counts.CANCELLED ?? 0,
       },
       createdByUserId: row.created_by_user_id,
       createdAt: row.created_at,
@@ -1953,9 +2244,51 @@ export class CollaborativeSubmissionStore {
         sizeBytes: Number(attachment.size_bytes),
         createdAt: attachment.created_at,
       }));
+    const repairFeedback = this.database
+      .query<Row, [string]>(
+        'SELECT * FROM submission_repair_feedback WHERE bug_id=? ORDER BY created_at,id',
+      )
+      .all(String(row.id))
+      .map((feedback) => ({
+        id: feedback.id,
+        bugId: feedback.bug_id,
+        taskId: feedback.task_id,
+        actorUserId: feedback.actor_user_id,
+        feedback: feedback.feedback,
+        createdAt: feedback.created_at,
+      }));
     const item = row.submission_item_id
       ? this.itemRow(String(row.submission_item_id))
       : null;
+    const canViewCurrentTechnical =
+      actor.kind === 'system' ||
+      (actor.kind === 'user' &&
+        item?.responsible_developer_user_id === actor.userId);
+    const cleanupRow = this.database
+      .query<Row, [string]>(
+        `SELECT * FROM submission_cleanup_task WHERE target_kind='BUG' AND bug_id=? ORDER BY created_at DESC,id DESC LIMIT 1`,
+      )
+      .get(String(row.id));
+    const cleanup = !cleanupRow
+      ? { state: 'NOT_REQUIRED' as const, taskId: null, summary: null }
+      : {
+          state: (
+            {
+              QUEUED: 'QUEUED',
+              RUNNING: 'RUNNING',
+              COMPLETED: 'SUCCEEDED',
+              FAILED: 'FAILED',
+            } as const
+          )[
+            String(cleanupRow.state) as
+              'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED'
+          ],
+          taskId: canViewCurrentTechnical ? String(cleanupRow.id) : null,
+          summary:
+            canViewCurrentTechnical && cleanupRow.summary
+              ? String(cleanupRow.summary)
+              : null,
+        };
     const latestTask = this.database
       .query<Row, [string]>(
         `SELECT t.*,
@@ -2007,10 +2340,6 @@ export class CollaborativeSubmissionStore {
       : activeUpdate.state === 'RUNNING' && activeUpdate.awaiting_interaction
         ? 'WAITING_INTERACTION'
         : activeUpdate.state;
-    const canViewCurrentTechnical =
-      actor.kind === 'system' ||
-      (actor.kind === 'user' &&
-        item?.responsible_developer_user_id === actor.userId);
     return SubmissionBugSchema.parse({
       id: row.id,
       shortId: `BUG-${String(row.sequence).padStart(4, '0')}`,
@@ -2032,8 +2361,16 @@ export class CollaborativeSubmissionStore {
       updateActivity,
       latestRepairFailed: latestTask?.state === 'FAILED',
       repairRecords,
+      repairFeedback,
+      candidateCommits: canViewCurrentTechnical
+        ? this.pendingCandidateCommits(String(row.id))
+        : [],
       candidateCommit: canViewCurrentTechnical ? row.candidate_commit : null,
       repairSessionId: canViewCurrentTechnical ? row.repair_session_id : null,
+      cancelledFromStatus: row.cancelled_from_status,
+      cancelledByUserId: row.cancelled_by_user_id,
+      cancelledAt: row.cancelled_at,
+      cleanup,
       createdByUserId: row.created_by_user_id,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -2090,7 +2427,7 @@ export class CollaborativeSubmissionStore {
     const row = this.updateBatchRow(id);
     const members = this.database
       .query<Row, [string]>(
-        'SELECT bug_id,candidate_commit FROM submission_update_batch_member WHERE batch_id=? ORDER BY rowid',
+        'SELECT bug_id,candidate_commit,position FROM submission_update_batch_member WHERE batch_id=? ORDER BY rowid',
       )
       .all(id);
     const attachments = this.database
@@ -2108,10 +2445,25 @@ export class CollaborativeSubmissionStore {
       runnerId: row.runner_id,
       state: row.state,
       deploymentType: row.deployment_type,
-      bugIds: members.map((member) => member.bug_id),
+      bugIds: [...new Set(members.map((member) => String(member.bug_id)))],
       candidateCommits: canSeeTechnical
-        ? members.map((member) => member.candidate_commit)
+        ? members.map((member) => String(member.candidate_commit))
         : [],
+      candidateCommitChains: canSeeTechnical
+        ? [...new Set(members.map((member) => String(member.bug_id)))].map(
+            (bugId) => ({
+              bugId,
+              commits: members
+                .filter((member) => member.bug_id === bugId)
+                .sort(
+                  (left, right) =>
+                    Number(left.position) - Number(right.position),
+                )
+                .map((member) => String(member.candidate_commit)),
+            }),
+          )
+        : [],
+      cancelRequested: Boolean(row.cancel_requested),
       eligibleAt: row.eligible_at,
       immediateRequestedAt: row.immediate_requested_at,
       sessionId: canSeeTechnical ? row.session_id : null,
@@ -2150,6 +2502,8 @@ export class CollaborativeSubmissionStore {
       id: row.id,
       submissionId: row.submission_id,
       submissionItemId: row.submission_item_id,
+      targetKind: row.target_kind,
+      bugId: row.bug_id,
       bindingId: row.binding_id,
       runnerId: row.runner_id,
       state: row.state,

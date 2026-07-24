@@ -44,6 +44,7 @@ export const UPDATE_BATCH_STATE_LABELS = {
   WAITING_EXTERNAL: '等待外部更新',
   COMPLETED: '已完成',
   FAILED: '已失败',
+  CANCELLED: '已取消',
 } as const satisfies Record<SubmissionUpdateBatch['state'], string>;
 
 export const INTERACTION_KIND_LABELS = {

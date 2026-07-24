@@ -88,7 +88,7 @@ export function SubmissionRail({
   const canCloseSubmission =
     currentUser.accountType === 'TESTER' &&
     snapshot?.submission.status === 'ACTIVE' &&
-    snapshot.bugs.every((bug) => bug.status === 'DONE');
+    snapshot.bugs.every((bug) => ['DONE', 'CANCELLED'].includes(bug.status));
 
   function collapseRail() {
     onToggleCollapsed();
@@ -176,7 +176,7 @@ export function SubmissionRail({
                   关闭提测单
                 </button>
                 {!canCloseSubmission ? (
-                  <small>所有缺陷完成后可关闭</small>
+                  <small>所有缺陷完成或取消后可关闭</small>
                 ) : null}
               </div>
             ) : null}
@@ -320,6 +320,14 @@ export function SubmissionHeader({
         <div>
           <dt>总缺陷个数</dt>
           <dd>{bugs.length}</dd>
+        </div>
+        <div>
+          <dt>已完成</dt>
+          <dd>{submission.bugCounts.done}</dd>
+        </div>
+        <div>
+          <dt>已取消</dt>
+          <dd>{submission.bugCounts.cancelled}</dd>
         </div>
         <div>
           <dt>创建时间</dt>
@@ -677,10 +685,7 @@ function EngineeringOperationCard({
     currentUser.id === item.responsibleDeveloper.id &&
     snapshot.submission.status === 'ACTIVE';
   const technical = item.technical;
-  const needsActionToolbar =
-    activeBatch?.state === 'WAITING_EXTERNAL' ||
-    activeBatch?.state === 'FAILED' ||
-    !canOperate;
+  const needsActionToolbar = Boolean(activeBatch && canOperate);
 
   return (
     <article className="collab-board-status">
@@ -756,6 +761,29 @@ function EngineeringOperationCard({
       </dl>
       {technical && needsActionToolbar ? (
         <div className="collab-board-status__actions">
+          {activeBatch &&
+          ['QUEUED', 'RUNNING', 'FAILED'].includes(activeBatch.state) ? (
+            <button
+              disabled={pending || activeBatch.cancelRequested}
+              onClick={() => {
+                if (
+                  !window.confirm(
+                    `确认取消本次更新？批次中的 ${activeBatch.bugIds.length} 个 Bug 将返回待更新。`,
+                  )
+                )
+                  return;
+                void mutate(
+                  { kind: 'update.cancel', batchId: activeBatch.id },
+                  activeBatch.state === 'QUEUED' && !activeBatch.sessionId
+                    ? '更新已取消，批次中的 Bug 已返回待更新。'
+                    : '已请求 Codex 安全取消更新。',
+                );
+              }}
+              type="button"
+            >
+              {activeBatch.cancelRequested ? '正在取消更新' : '取消更新'}
+            </button>
+          ) : null}
           {activeBatch?.state === 'WAITING_EXTERNAL' ? (
             <div className="collab-board-status__action-buttons">
               <button
@@ -984,11 +1012,17 @@ export function BugBoard({
     null,
   );
   const [bugDrawer, setBugDrawer] = useState<BugDrawerState | null>(null);
+  const [showTrash, setShowTrash] = useState(false);
+  const [trashDropActive, setTrashDropActive] = useState(false);
+  const [cancellingBugIds, setCancellingBugIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const draggingBug = snapshot.bugs.find((bug) => bug.id === draggingBugId);
 
   function finishDrag() {
     setDraggingBugId(null);
     setDropTargetStatus(null);
+    setTrashDropActive(false);
   }
 
   function dropBug(
@@ -1012,6 +1046,75 @@ export function BugBoard({
     void mutate(transition.command, transition.message);
   }
 
+  const cancelledBugs = snapshot.bugs.filter(
+    (bug) => bug.status === 'CANCELLED',
+  );
+
+  function canCancelBug(bug: SubmissionBug) {
+    const item = snapshot.submission.items.find(
+      (candidate) => candidate.id === bug.submissionItemId,
+    );
+    const responsible = item?.responsibleDeveloper.id === currentUser.id;
+    return (
+      snapshot.submission.status === 'ACTIVE' &&
+      ((bug.status === 'WAITING_FOR_REPAIR' &&
+        (currentUser.id === snapshot.submission.tester.id || responsible)) ||
+        (bug.status === 'WAITING_FOR_UPDATE' && responsible))
+    );
+  }
+
+  function cancelledByLabel(bug: SubmissionBug) {
+    if (bug.cancelledByUserId === snapshot.submission.tester.id)
+      return snapshot.submission.tester.displayName;
+    return (
+      snapshot.submission.items.find(
+        (item) => item.responsibleDeveloper.id === bug.cancelledByUserId,
+      )?.responsibleDeveloper.displayName ?? '未知用户'
+    );
+  }
+
+  function cancelledFromLabel(bug: SubmissionBug) {
+    return (
+      STATUS_COLUMNS.find((column) => column.status === bug.cancelledFromStatus)
+        ?.label ?? '未知状态'
+    );
+  }
+
+  function cancelledCleanupLabel(bug: SubmissionBug) {
+    return {
+      NOT_REQUIRED: '无需清理',
+      QUEUED: '等待清理',
+      RUNNING: '正在清理',
+      SUCCEEDED: '已清理',
+      FAILED: '清理失败',
+    }[bug.cleanup.state];
+  }
+
+  function cancelBug(bug: SubmissionBug) {
+    setCancellingBugIds((current) => new Set(current).add(bug.id));
+    void mutate(
+      { kind: 'bug.cancel', bugId: bug.id },
+      `${bug.shortId} 已移入垃圾桶。`,
+    ).finally(() =>
+      setCancellingBugIds((current) => {
+        const next = new Set(current);
+        next.delete(bug.id);
+        return next;
+      }),
+    );
+  }
+
+  function dropIntoTrash(event: ReactDragEvent<HTMLElement>) {
+    const bugId =
+      event.dataTransfer.getData('application/x-collaborative-bug-id') ||
+      draggingBugId;
+    const bug = snapshot.bugs.find((candidate) => candidate.id === bugId);
+    if (!bug || !canCancelBug(bug)) return;
+    event.preventDefault();
+    finishDrag();
+    cancelBug(bug);
+  }
+
   return (
     <section className="collab-board-section">
       <div className="collab-section-label collab-board-heading">
@@ -1024,6 +1127,27 @@ export function BugBoard({
         />
         <div className="collab-board-heading__actions">
           <small>每 3 秒同步控制平面</small>
+          <button
+            aria-label="查看已取消 Bug"
+            className="collab-trash-button"
+            data-drop-target={trashDropActive ? 'true' : undefined}
+            onClick={() => setShowTrash(true)}
+            onDragEnter={() => {
+              if (draggingBug && canCancelBug(draggingBug))
+                setTrashDropActive(true);
+            }}
+            onDragLeave={() => setTrashDropActive(false)}
+            onDragOver={(event) => {
+              if (!draggingBug || !canCancelBug(draggingBug)) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = 'move';
+            }}
+            onDrop={dropIntoTrash}
+            title="查看已取消 Bug"
+            type="button"
+          >
+            🗑 {cancelledBugs.length}
+          </button>
           {canCreateBug ? (
             <button
               disabled={pending}
@@ -1090,17 +1214,20 @@ export function BugBoard({
                       bug={bug}
                       draggable={
                         !pending &&
-                        STATUS_COLUMNS.some(
-                          (candidate) =>
-                            candidate.status !== bug.status &&
-                            collaborativeDragTransition(
-                              bug,
-                              candidate.status,
-                              currentUser,
-                              snapshot.submission.status,
-                            ),
-                        )
+                        !cancellingBugIds.has(bug.id) &&
+                        (canCancelBug(bug) ||
+                          STATUS_COLUMNS.some(
+                            (candidate) =>
+                              candidate.status !== bug.status &&
+                              collaborativeDragTransition(
+                                bug,
+                                candidate.status,
+                                currentUser,
+                                snapshot.submission.status,
+                              ),
+                          ))
                       }
+                      cancelling={cancellingBugIds.has(bug.id)}
                       dragging={draggingBugId === bug.id}
                       key={bug.id}
                       onDragEnd={finishDrag}
@@ -1115,7 +1242,11 @@ export function BugBoard({
                       onOpen={() =>
                         setBugDrawer({ mode: 'view', bugId: bug.id })
                       }
-                      visualLabel={presentation.label}
+                      visualLabel={
+                        cancellingBugIds.has(bug.id)
+                          ? '正在取消'
+                          : presentation.label
+                      }
                       visualState={presentation.state}
                     />
                   );
@@ -1128,6 +1259,64 @@ export function BugBoard({
           );
         })}
       </div>
+
+      {showTrash ? (
+        <div className="collab-drawer-scrim" role="presentation">
+          <section
+            aria-label="已取消 Bug"
+            aria-modal="true"
+            className="collab-bug-drawer"
+            role="dialog"
+          >
+            <header>
+              <div>
+                <small>垃圾桶</small>
+                <h2>已取消 Bug</h2>
+              </div>
+              <button
+                aria-label="关闭已取消 Bug 列表"
+                onClick={() => setShowTrash(false)}
+                type="button"
+              >
+                ×
+              </button>
+            </header>
+            <div className="collab-bug-drawer__body">
+              {cancelledBugs.length ? (
+                <ul className="collab-trash-list">
+                  {cancelledBugs.map((bug) => (
+                    <li key={bug.id}>
+                      <button
+                        onClick={() => {
+                          setShowTrash(false);
+                          setBugDrawer({ mode: 'view', bugId: bug.id });
+                        }}
+                        type="button"
+                      >
+                        <strong>
+                          {bug.shortId} · {bug.title}
+                        </strong>
+                        <small>
+                          {bug.engineeringDisplayName ?? '工程未确定'} ·{' '}
+                          {cancelledFromLabel(bug)} · {cancelledByLabel(bug)}
+                        </small>
+                        <small>
+                          {bug.cancelledAt
+                            ? formatDateTime(bug.cancelledAt)
+                            : '取消时间未知'}{' '}
+                          · {cancelledCleanupLabel(bug)}
+                        </small>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="collab-bug-detail-empty">垃圾桶为空</p>
+              )}
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       {bugDrawer ? (
         <BugDrawer
@@ -1152,6 +1341,7 @@ function BugCard({
   bug,
   draggable,
   dragging,
+  cancelling,
   visualLabel,
   visualState,
   onOpen,
@@ -1161,6 +1351,7 @@ function BugCard({
   bug: SubmissionBug;
   draggable: boolean;
   dragging: boolean;
+  cancelling: boolean;
   visualLabel: string;
   visualState: BugVisualState;
   onOpen: () => void;
@@ -1188,6 +1379,9 @@ function BugCard({
     >
       <span aria-hidden="true" className="collab-bug-card__state" />
       <h3>{bug.title}</h3>
+      {cancelling ? (
+        <small className="collab-bug-card__pending">正在取消</small>
+      ) : null}
     </article>
   );
 }

@@ -40,6 +40,10 @@ const CleanupExecutionResultSchema = z.object({
   success: z.boolean(),
   summary: z.string().trim().min(1).max(8_000),
 });
+const UpdateCancellationResultSchema = z.object({
+  outcome: z.enum(['CANCELLED', 'FAILED']),
+  summary: z.string().trim().min(1).max(12_000),
+});
 
 const UPDATE_OUTPUT_JSON_SCHEMA: RepairPrompt['outputSchema'] = {
   type: 'object',
@@ -50,6 +54,15 @@ const UPDATE_OUTPUT_JSON_SCHEMA: RepairPrompt['outputSchema'] = {
       type: 'string',
       enum: ['PUSHED', 'COMPLETED', 'FAILED'],
     },
+    summary: { type: 'string', minLength: 1, maxLength: 12000 },
+  },
+};
+const UPDATE_CANCELLATION_OUTPUT_JSON_SCHEMA: RepairPrompt['outputSchema'] = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['outcome', 'summary'],
+  properties: {
+    outcome: { type: 'string', enum: ['CANCELLED', 'FAILED'] },
     summary: { type: 'string', minLength: 1, maxLength: 12000 },
   },
 };
@@ -424,6 +437,39 @@ export class CollaborativeSubmissionWorker {
       signal,
       batch.id,
     );
+    const executionController = new AbortController();
+    const abortForShutdown = () => executionController.abort();
+    signal.addEventListener('abort', abortForShutdown, { once: true });
+    let cancelRequested = batch.cancelRequested;
+    let checkingCancellation = false;
+    const cancellationTimer = batch.cancelRequested
+      ? null
+      : setInterval(() => {
+          if (checkingCancellation || executionController.signal.aborted)
+            return;
+          checkingCancellation = true;
+          void this.options.controlPlane
+            .collaborativeQuery({
+              kind: 'update_task.control',
+              batchId: batch.id,
+              runnerId: this.options.runner.runnerId,
+            })
+            .then((result) => {
+              if (!result.updateCancelRequested) return;
+              cancelRequested = true;
+              executionController.abort();
+            })
+            .catch((error) =>
+              this.options.logger.warn(
+                'collaborative_submission.cancel_check_failed',
+                '更新取消状态检查失败，将继续轮询',
+                { batchId: batch.id, error: messageOf(error) },
+              ),
+            )
+            .finally(() => {
+              checkingCancellation = false;
+            });
+        }, this.options.pollIntervalMs ?? 1_000);
     let command: CollaborativeFinishCommand;
     try {
       const context = await this.loadUpdateContext(batch);
@@ -443,63 +489,146 @@ export class CollaborativeSubmissionWorker {
           executionKind: 'UPDATE',
           batchId: batch.id,
           deploymentType: batch.deploymentType,
-          candidateCommits: batch.bugIds.map((bugId, index) => ({
-            bugId,
-            candidateCommit: batch.candidateCommits[index] ?? null,
-          })),
+          candidateCommitChains: batch.candidateCommitChains,
           bugs: context.bugs.map((bug) => ({
             id: bug.id,
             shortId: bug.shortId,
             title: bug.title,
             latestFeedback: bug.latestFeedback,
-            candidateCommit: bug.candidateCommit,
+            candidateCommits: bug.candidateCommits,
           })),
           externalFailure: batch.externalFailure,
+          cancelRequested: batch.cancelRequested,
           feedbackAttachmentPaths: feedbackAttachments,
           updatedAt: batch.updatedAt,
         },
       );
-      const execution = await this.options.executor.executeStructured(
-        {
-          executionId: batch.id,
-          repositoryPath: context.repositoryPath,
-          prompt: updatePrompt(
-            context,
-            feedbackAttachments,
-            continuationContextPath,
-          ),
-          outputSchema: UPDATE_OUTPUT_JSON_SCHEMA,
-          resultSchema: UpdateExecutionResultSchema,
-          artifactsDirectory,
-          resumeSessionId: await this.options.stateStore.resumableSession(
-            batch.sessionId,
-          ),
-          onInteraction: (interaction) =>
-            slot.waitFor(
-              this.resolveInteraction(
-                'UPDATE',
-                batch.id,
-                batch.submissionItemId,
-                batch.bindingId,
-                interaction,
-                signal,
+      const executeCancellation = async (resumeSessionId: string | null) =>
+        this.options.executor.executeStructured(
+          {
+            executionId: batch.id,
+            repositoryPath: context.repositoryPath,
+            prompt: updateCancellationPrompt(context, continuationContextPath),
+            outputSchema: UPDATE_CANCELLATION_OUTPUT_JSON_SCHEMA,
+            resultSchema: UpdateCancellationResultSchema,
+            artifactsDirectory,
+            resumeSessionId:
+              await this.options.stateStore.resumableSession(resumeSessionId),
+            onInteraction: (interaction) =>
+              slot.waitFor(
+                this.resolveInteraction(
+                  'UPDATE',
+                  batch.id,
+                  batch.submissionItemId,
+                  batch.bindingId,
+                  interaction,
+                  signal,
+                ),
               ),
+          },
+          signal,
+        );
+
+      if (batch.cancelRequested) {
+        const cancellation = await executeCancellation(batch.sessionId);
+        command = {
+          kind: 'update_task.finish',
+          batchId: batch.id,
+          runnerId: this.options.runner.runnerId,
+          leaseToken: requireLease(batch.leaseToken),
+          sessionId: cancellation.sessionId,
+          outcome: cancellation.result.outcome,
+          summary: cancellation.result.summary,
+        };
+      } else {
+        try {
+          const execution = await this.options.executor.executeStructured(
+            {
+              executionId: batch.id,
+              repositoryPath: context.repositoryPath,
+              prompt: updatePrompt(
+                context,
+                feedbackAttachments,
+                continuationContextPath,
+              ),
+              outputSchema: UPDATE_OUTPUT_JSON_SCHEMA,
+              resultSchema: UpdateExecutionResultSchema,
+              artifactsDirectory,
+              resumeSessionId: await this.options.stateStore.resumableSession(
+                batch.sessionId,
+              ),
+              onInteraction: (interaction) =>
+                slot.waitFor(
+                  this.resolveInteraction(
+                    'UPDATE',
+                    batch.id,
+                    batch.submissionItemId,
+                    batch.bindingId,
+                    interaction,
+                    executionController.signal,
+                  ),
+                ),
+            },
+            executionController.signal,
+          );
+          command = {
+            kind: 'update_task.finish',
+            batchId: batch.id,
+            runnerId: this.options.runner.runnerId,
+            leaseToken: requireLease(batch.leaseToken),
+            sessionId: execution.sessionId,
+            outcome: normalizeUpdateOutcome(
+              batch.deploymentType,
+              execution.result.outcome,
             ),
-        },
-        signal,
-      );
-      command = {
-        kind: 'update_task.finish',
-        batchId: batch.id,
-        runnerId: this.options.runner.runnerId,
-        leaseToken: requireLease(batch.leaseToken),
-        sessionId: execution.sessionId,
-        outcome: normalizeUpdateOutcome(
-          batch.deploymentType,
-          execution.result.outcome,
-        ),
-        summary: execution.result.summary,
-      };
+            summary: execution.result.summary,
+          };
+        } catch (error) {
+          await this.invalidateInteraction('UPDATE', batch.id);
+          if (cancelRequested) {
+            try {
+              const cancellation = await executeCancellation(
+                sessionIdOf(error) ?? batch.sessionId,
+              );
+              command = {
+                kind: 'update_task.finish',
+                batchId: batch.id,
+                runnerId: this.options.runner.runnerId,
+                leaseToken: requireLease(batch.leaseToken),
+                sessionId: cancellation.sessionId,
+                outcome: cancellation.result.outcome,
+                summary: cancellation.result.summary,
+              };
+            } catch (cancellationError) {
+              command = {
+                kind: 'update_task.finish',
+                batchId: batch.id,
+                runnerId: this.options.runner.runnerId,
+                leaseToken: requireLease(batch.leaseToken),
+                sessionId: sessionIdOf(cancellationError) ?? sessionIdOf(error),
+                outcome: 'FAILED',
+                summary: truncate(
+                  `Codex 无法安全取消更新：${messageOf(cancellationError)}`,
+                  12_000,
+                ),
+              };
+            }
+          } else {
+            command = {
+              kind: 'update_task.finish',
+              batchId: batch.id,
+              runnerId: this.options.runner.runnerId,
+              leaseToken: requireLease(batch.leaseToken),
+              sessionId: sessionIdOf(error),
+              outcome: 'FAILED',
+              summary: truncate(
+                `Runner/Codex 执行失败：${messageOf(error)}`,
+                12_000,
+              ),
+            };
+          }
+        }
+      }
     } catch (error) {
       await this.invalidateInteraction('UPDATE', batch.id);
       command = {
@@ -509,9 +638,11 @@ export class CollaborativeSubmissionWorker {
         leaseToken: requireLease(batch.leaseToken),
         sessionId: sessionIdOf(error),
         outcome: 'FAILED',
-        summary: truncate(`Runner/Codex 执行失败：${messageOf(error)}`, 12_000),
+        summary: truncate(`更新任务准备失败：${messageOf(error)}`, 12_000),
       };
     } finally {
+      if (cancellationTimer) clearInterval(cancellationTimer);
+      signal.removeEventListener('abort', abortForShutdown);
       stopRenewal();
     }
     await this.persistAndSubmit(command);
@@ -853,22 +984,34 @@ function updatePrompt(
 ) {
   const { batch, bugs, submission, item, repositoryPath } = context;
   const technical = required(item.technical, '工程技术配置不可用');
-  return `你正在执行 ${batch.sessionId ? 'update-batch-resume' : 'update-batch-start'}@2.0.0。\n\n仓库路径：${repositoryPath}\n工程：${item.engineeringDisplayName} (${item.engineeringSlug})\n提测单：${submission.title}\n目标分支：${technical.targetBranch}\n部署类型：${technical.environment.deploymentType}\n本地部署命令：${technical.environment.localScriptCommand ?? '无（CI/CD 由外部人工确认）'}\n\n候选提交（每个 Bug 必须保持独立 Commit）：\n${batch.bugIds
-    .map(
-      (bugId, index) =>
-        `- ${bugId}: ${batch.candidateCommits[index] ?? '缺失候选提交'}`,
-    )
+  return `你正在执行 ${batch.sessionId ? 'update-batch-resume' : 'update-batch-start'}@2.0.0。\n\n仓库路径：${repositoryPath}\n工程：${item.engineeringDisplayName} (${item.engineeringSlug})\n提测单：${submission.title}\n目标分支：${technical.targetBranch}\n部署类型：${technical.environment.deploymentType}\n本地部署命令：${technical.environment.localScriptCommand ?? '无（CI/CD 由外部人工确认）'}\n\n候选提交链（每个 Bug 内按顺序处理，不自动 squash）：\n${batch.candidateCommitChains
+    .map((chain) => `- ${chain.bugId}: ${chain.commits.join(' -> ')}`)
     .join('\n')}\n\nBug 摘要：\n${JSON.stringify(
     bugs.map((bug) => ({
       id: bug.id,
       shortId: bug.shortId,
       title: bug.title,
       latestFeedback: bug.latestFeedback,
-      candidateCommit: bug.candidateCommit,
+      candidateCommits: bug.candidateCommits,
     })),
     null,
     2,
-  )}\n\n上次外部更新失败反馈：\n${batch.externalFailure ?? '无'}\n附件：\n${feedbackAttachmentPaths.length ? feedbackAttachmentPaths.map((path) => `- ${path}`).join('\n') : '- 无'}\n\n持续上下文文件：${continuationContextPath}\n\n要求：\n1. 这是已经冻结的原子 Batch。先读取并遵守仓库中的 AGENTS.md、README、贡献规范、脚本以及用户自定义工作流，校验仓库身份和目标分支。\n2. 开始执行以及每次收到“继续”后，都必须重新读取持续上下文文件，以获取最新外部失败反馈和附件路径；不要只依赖当前 Turn 的输入文本。\n3. 整批集成全部候选 Commit；不得自动拆批、跳过或排除冲突/失败候选。候选缺失、冲突或验证失败时，在当前 Update Thread 中继续解决。\n4. 保留原候选 Commit，不重写其历史；集成过程需要额外修正时创建 Batch integration Commit。\n5. 测试、构建、验证、普通 Push 与部署优先使用本工程或用户定义的工作流，并按整批统一执行一次；Control Plane 不规定具体命令，Runner 不执行任何仓库命令。整个批次只普通 Push 一次，禁止 force push。\n6. LOCAL_SCRIPT：按工程工作流完成整批集成、验证、普通 Push 和本地部署；全部完成返回 COMPLETED。\n7. CI_CD：完成整批集成、验证和普通 Push 后返回 PUSHED，禁止声称外部 Pipeline 已成功。\n8. 无法安全完成时保留原 Batch 与原 Thread 并返回 FAILED，等待负责人在原会话中输入“继续”。不修改持续上下文文件。最终只返回符合 Schema 的 JSON。`;
+  )}\n\n上次外部更新失败反馈：\n${batch.externalFailure ?? '无'}\n附件：\n${feedbackAttachmentPaths.length ? feedbackAttachmentPaths.map((path) => `- ${path}`).join('\n') : '- 无'}\n\n持续上下文文件：${continuationContextPath}\n\n要求：\n1. 这是已经冻结的原子 Batch。先读取并遵守仓库中的 AGENTS.md、README、贡献规范、脚本以及用户自定义工作流，校验仓库身份和目标分支。\n2. 开始执行以及每次收到“继续”后，都必须重新读取持续上下文文件，以获取最新外部失败反馈和附件路径；不要只依赖当前 Turn 的输入文本。\n3. 基于目标分支最新代码，按冻结顺序集成每个 Bug 的完整候选提交链；不得自动拆批、跳过或排除冲突/失败候选。候选缺失、冲突或验证失败时，在当前 Update Thread 中继续解决。\n4. 保持每个 Bug 的逻辑提交边界和内部顺序，不自动 squash；冲突解决仅发生在 Batch worktree，不修改原 Bug worktree。\n5. 测试、构建、验证、普通 Push 与部署优先使用本工程或用户定义的工作流，并按整批统一执行一次；Control Plane 不规定具体命令，Runner 不执行任何仓库命令。整个批次只普通 Push 一次，禁止 force push。\n6. LOCAL_SCRIPT：按工程工作流完成整批集成、验证、普通 Push 和本地部署；全部完成返回 COMPLETED。\n7. CI_CD：完成整批集成、验证和普通 Push 后返回 PUSHED，禁止声称外部 Pipeline 已成功。\n8. 无法安全完成时保留原 Batch 与原 Thread 并返回 FAILED，等待负责人在原会话中输入“继续”。不修改持续上下文文件。最终只返回符合 Schema 的 JSON。`;
+}
+
+function updateCancellationPrompt(
+  context: Awaited<
+    ReturnType<CollaborativeSubmissionWorker['loadUpdateContext']>
+  >,
+  continuationContextPath: string,
+) {
+  const { batch, submission, item, repositoryPath } = context;
+  const technical = required(item.technical, '工程技术配置不可用');
+  return `你正在执行 update-batch-cancel@2.1.0。\n\n仓库路径：${repositoryPath}\n工程：${item.engineeringDisplayName} (${item.engineeringSlug})\n提测单：${submission.title}\n目标分支：${technical.targetBranch}\n更新批次：${batch.id}\n候选提交链：\n${batch.candidateCommitChains
+    .map((chain) => `- ${chain.bugId}: ${chain.commits.join(' -> ')}`)
+    .join(
+      '\n',
+    )}\n\n持续上下文文件：${continuationContextPath}\n\n用户已经请求取消整个更新批次。要求：\n1. 读取仓库规则和持续上下文，检查当前 Batch worktree、目标分支与远端实际状态。\n2. 只有在没有已经完成的远端 Push、部署或其他不可安全撤销的副作用时，才清理本 Batch 的系统临时集成资源并返回 CANCELLED。\n3. 不修改各 Bug 的原修复 worktree和候选提交链，不删除目标分支、远端历史或用户资源。\n4. 如果已经产生远端副作用、无法证明可安全取消或清理失败，返回 FAILED 并准确说明现状；禁止生成反向提交、force push 或自动回滚环境。\n5. Runner 不执行或解释任何 Git 操作。最终只返回符合 Schema 的 JSON。`;
 }
 
 function cleanupPrompt(
@@ -877,7 +1020,7 @@ function cleanupPrompt(
   >,
 ) {
   const { task, submission, item, repositoryPath } = context;
-  return `你正在执行 cleanup-test-submission@2.0.0。\n\n仓库路径：${repositoryPath}\n已关闭提测单：${submission.title} (${submission.id})\n工程：${item.engineeringDisplayName} (${item.engineeringSlug})\n系统关联 Session：\n${task.sessionIds.length ? task.sessionIds.map((id) => `- ${id}`).join('\n') : '- 无'}\n\n要求：\n1. 先读取并遵守仓库规则，识别且只清理本提测单由系统明确创建的临时 worktree、临时分支和其他临时资源。\n2. 绝不删除目标分支、正式提交、远端历史、原始仓库、用户资源或 Runner 原始日志。\n3. 无法证明资源归属时保留并在 summary 中说明。\n4. 清理必须幂等；资源已不存在视为成功。最终只返回符合 Schema 的 JSON。`;
+  return `你正在执行 ${task.targetKind === 'BUG' ? 'cleanup-cancelled-bug' : 'cleanup-test-submission'}@2.1.0。\n\n仓库路径：${repositoryPath}\n提测单：${submission.title} (${submission.id})\n工程：${item.engineeringDisplayName} (${item.engineeringSlug})\n清理目标：${task.targetKind === 'BUG' ? `已取消 Bug ${task.bugId}` : '已关闭提测单'}\n系统关联 Session：\n${task.sessionIds.length ? task.sessionIds.map((id) => `- ${id}`).join('\n') : '- 无'}\n\n要求：\n1. 先读取并遵守仓库规则，识别且只清理上述目标由系统明确创建的未更新本地提交引用、临时 worktree、临时分支和其他临时资源。\n2. 绝不删除目标分支、正式提交、远端历史、原始仓库、用户资源或 Runner 原始日志。\n3. 无法证明资源归属时保留并在 summary 中说明。\n4. 清理必须幂等；资源已不存在视为成功。最终只返回符合 Schema 的 JSON。`;
 }
 
 function interactionResponse(

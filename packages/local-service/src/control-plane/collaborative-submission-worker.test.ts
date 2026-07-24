@@ -253,7 +253,7 @@ describe('CollaborativeSubmissionWorker', () => {
     expect(executor.inputs[0]!.prompt).toContain('deadbeef');
     expect(executor.inputs[0]!.prompt).toContain('已经冻结的原子 Batch');
     expect(executor.inputs[0]!.prompt).toContain('不得自动拆批');
-    expect(executor.inputs[0]!.prompt).toContain('Batch integration Commit');
+    expect(executor.inputs[0]!.prompt).toContain('不自动 squash');
     expect(executor.inputs[0]!.prompt).toContain(
       '每次收到“继续”后，都必须重新读取持续上下文文件',
     );
@@ -276,7 +276,7 @@ describe('CollaborativeSubmissionWorker', () => {
       },
     );
     expect(executor.inputs[1]!.prompt).toContain(
-      '只清理本提测单由系统明确创建',
+      '只清理上述目标由系统明确创建',
     );
     expect(executor.inputs[1]!.prompt).toContain('绝不删除目标分支');
     expect(fixture.controlPlane.successfulFinishes).toEqual([
@@ -511,6 +511,73 @@ describe('CollaborativeSubmissionWorker', () => {
     );
   });
 
+  test('asks Codex to assess a previously failed batch before cancelling it', async () => {
+    const fixture = await createFixture('LOCAL_SCRIPT');
+    directories.add(fixture.directory);
+    const batch = updateBatch(fixture);
+    batch.cancelRequested = true;
+    batch.sessionId = 'update-thread';
+    fixture.controlPlane.updateQueue.push(batch);
+    const executor = new ScriptedExecutor(({ input }) => ({
+      sessionId: 'update-thread',
+      result: input.resultSchema.parse({
+        outcome: 'CANCELLED',
+        summary: '检查确认可安全取消',
+      }),
+    }));
+    const worker = fixture.worker(executor, 1);
+
+    worker.start();
+    await waitFor(() => fixture.controlPlane.successfulFinishes.length === 1);
+    await worker.stop();
+
+    expect(executor.inputs).toHaveLength(1);
+    expect(executor.inputs[0]!.resumeSessionId).toBe('update-thread');
+    expect(executor.inputs[0]!.prompt).toContain('update-batch-cancel');
+    expect(fixture.controlPlane.successfulFinishes[0]).toMatchObject({
+      kind: 'update_task.finish',
+      outcome: 'CANCELLED',
+      summary: '检查确认可安全取消',
+    });
+  });
+
+  test('forwards a running update cancellation request to Codex and reports CANCELLED', async () => {
+    const fixture = await createFixture('LOCAL_SCRIPT');
+    directories.add(fixture.directory);
+    fixture.controlPlane.updateQueue.push(updateBatch(fixture));
+    fixture.controlPlane.updateCancelRequested = true;
+    const executor = new ScriptedExecutor(({ input, call, signal }) => {
+      if (call === 2)
+        return {
+          sessionId: 'update-thread',
+          result: input.resultSchema.parse({
+            outcome: 'CANCELLED',
+            summary: '确认没有远端副作用，批次资源已清理',
+          }),
+        };
+      return new Promise((_, reject) => {
+        if (signal.aborted) return reject(new Error('cancelled'));
+        signal.addEventListener('abort', () => reject(new Error('cancelled')), {
+          once: true,
+        });
+      });
+    });
+    const worker = fixture.worker(executor, 1);
+
+    worker.start();
+    await waitFor(() => fixture.controlPlane.successfulFinishes.length === 1);
+    await worker.stop();
+
+    expect(fixture.controlPlane.successfulFinishes[0]).toMatchObject({
+      kind: 'update_task.finish',
+      outcome: 'CANCELLED',
+      summary: '确认没有远端副作用，批次资源已清理',
+    });
+    expect(executor.inputs).toHaveLength(2);
+    expect(executor.inputs[1]!.prompt).toContain('没有已经完成的远端 Push');
+    expect(executor.inputs[1]!.prompt).toContain('禁止生成反向提交');
+  });
+
   test('runs different bindings concurrently and keeps Runner free of repository commands', async () => {
     const fixture = await createFixture('LOCAL_SCRIPT');
     directories.add(fixture.directory);
@@ -578,6 +645,7 @@ class FakeControlPlane {
   finishFailuresRemaining = 0;
   finishError: Error | null = null;
   bugQueryError: Error | null = null;
+  updateCancelRequested = false;
 
   async collaborativeCommand(
     input: CollaborativeCommand,
@@ -675,6 +743,11 @@ class FakeControlPlane {
       if (this.bugQueryError) throw this.bugQueryError;
       return { kind: input.kind, bug: this.bugs.get(input.bugId) };
     }
+    if (input.kind === 'update_task.control')
+      return {
+        kind: input.kind,
+        updateCancelRequested: this.updateCancelRequested,
+      };
     if (input.kind === 'interaction.get')
       return {
         kind: input.kind,
@@ -707,6 +780,7 @@ class ScriptedExecutor implements StructuredExecutor {
     private readonly execute: (context: {
       input: StructuredExecutionInput<unknown>;
       call: number;
+      signal: AbortSignal;
     }) =>
       | StructuredExecutionResult<unknown>
       | Promise<StructuredExecutionResult<unknown>>,
@@ -714,12 +788,14 @@ class ScriptedExecutor implements StructuredExecutor {
 
   async executeStructured<TResult>(
     input: StructuredExecutionInput<TResult>,
+    signal: AbortSignal,
   ): Promise<StructuredExecutionResult<TResult>> {
     this.calls += 1;
     this.inputs.push(input as StructuredExecutionInput<unknown>);
     return (await this.execute({
       input: input as StructuredExecutionInput<unknown>,
       call: this.calls,
+      signal,
     })) as StructuredExecutionResult<TResult>;
   }
 }
@@ -878,8 +954,14 @@ function bugFixture(
     updateActivity: null,
     latestRepairFailed: false,
     repairRecords: [],
+    repairFeedback: [],
+    candidateCommits: ['deadbeef'],
     candidateCommit: 'deadbeef',
     repairSessionId: null,
+    cancelledFromStatus: null,
+    cancelledByUserId: null,
+    cancelledAt: null,
+    cleanup: { state: 'NOT_REQUIRED', taskId: null, summary: null },
     createdByUserId: 'tester-1',
     createdAt: now(),
     updatedAt: now(),
@@ -921,6 +1003,8 @@ function updateBatch(fixture: Fixture): SubmissionUpdateBatch {
       fixture.submission.items[0]!.technical!.environment.deploymentType,
     bugIds: [fixture.bug.id],
     candidateCommits: ['deadbeef'],
+    candidateCommitChains: [{ bugId: fixture.bug.id, commits: ['deadbeef'] }],
+    cancelRequested: false,
     eligibleAt: now(),
     immediateRequestedAt: null,
     sessionId: null,
@@ -939,6 +1023,8 @@ function cleanupTask(fixture: Fixture): SubmissionCleanupTask {
     id: randomUUID(),
     submissionId: fixture.submission.id,
     submissionItemId: fixture.submission.items[0]!.id,
+    targetKind: 'SUBMISSION',
+    bugId: null,
     bindingId: fixture.bindingId,
     runnerId: fixture.runner.runnerId,
     state: 'RUNNING',
@@ -974,6 +1060,7 @@ function emptyBugCounts() {
     updating: 0,
     waitingForVerification: 0,
     done: 0,
+    cancelled: 0,
   };
 }
 

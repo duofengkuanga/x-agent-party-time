@@ -141,7 +141,9 @@ export function findBugInteraction(
       ? { kind: 'UPDATE', id: updateBatch.id }
       : repairTask
         ? { kind: 'REPAIR', id: repairTask.id }
-        : null;
+        : bug.status === 'CANCELLED' && bug.cleanup.taskId
+          ? { kind: 'CLEANUP', id: bug.cleanup.taskId }
+          : null;
   if (!execution) return undefined;
   return Object.values(snapshot.interactions)
     .flat()
@@ -438,8 +440,28 @@ function BugView({
   );
   const statusLabel =
     STATUS_COLUMNS.find((column) => column.status === bug.status)?.label ??
-    bug.status;
+    (bug.status === 'CANCELLED' ? '已取消' : bug.status);
   const [feedback, setFeedback] = useState('');
+  const [repairFeedback, setRepairFeedback] = useState('');
+  const [cancellingBug, setCancellingBug] = useState(false);
+  const isResponsibleDeveloper =
+    currentUser.accountType === 'DEVELOPER' &&
+    item?.responsibleDeveloper.id === currentUser.id;
+  const canContinueRepair =
+    bug.status === 'WAITING_FOR_UPDATE' && isResponsibleDeveloper;
+  const cancelledBy = bug.cancelledByUserId
+    ? bug.cancelledByUserId === snapshot.submission.tester.id
+      ? snapshot.submission.tester.displayName
+      : (snapshot.submission.items.find(
+          (candidate) =>
+            candidate.responsibleDeveloper.id === bug.cancelledByUserId,
+        )?.responsibleDeveloper.displayName ?? '未知用户')
+    : '未知用户';
+  const canCancelBug =
+    (bug.status === 'WAITING_FOR_REPAIR' &&
+      (currentUser.id === snapshot.submission.tester.id ||
+        isResponsibleDeveloper)) ||
+    (bug.status === 'WAITING_FOR_UPDATE' && isResponsibleDeveloper);
 
   return (
     <div className="collab-bug-drawer__body">
@@ -525,6 +547,112 @@ function BugView({
               </li>
             ))}
           </ol>
+        </section>
+      ) : null}
+
+      {bug.repairFeedback.length ? (
+        <section className="collab-bug-detail-section">
+          <h3>修复反馈记录</h3>
+          <ol className="collab-repair-records">
+            {[...bug.repairFeedback].reverse().map((entry) => (
+              <li key={entry.id}>
+                <header>
+                  <strong>
+                    {entry.actorUserId === snapshot.submission.tester.id
+                      ? '验证失败并返修'
+                      : '继续修复'}
+                  </strong>
+                  <time dateTime={entry.createdAt}>
+                    {formatDateTime(entry.createdAt)}
+                  </time>
+                </header>
+                <p>{entry.feedback}</p>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
+
+      {bug.status === 'CANCELLED' ? (
+        <section className="collab-bug-detail-section">
+          <h3>取消与清理</h3>
+          <dl className="collab-bug-detail-list">
+            <Detail label="取消前状态">
+              {bug.cancelledFromStatus
+                ? bugStatusLabel(bug.cancelledFromStatus)
+                : '未知'}
+            </Detail>
+            <Detail label="取消人">{cancelledBy}</Detail>
+            <Detail label="取消时间">
+              {bug.cancelledAt ? formatDateTime(bug.cancelledAt) : '未知'}
+            </Detail>
+            <Detail label="本地资源">{cleanupLabel(bug.cleanup.state)}</Detail>
+          </dl>
+          {bug.cleanup.summary ? <p>{bug.cleanup.summary}</p> : null}
+          {bug.cleanup.state === 'FAILED' &&
+          bug.cleanup.taskId &&
+          isResponsibleDeveloper ? (
+            <button
+              disabled={pending}
+              onClick={() =>
+                void mutate(
+                  { kind: 'cleanup_task.retry', taskId: bug.cleanup.taskId! },
+                  '本地资源清理已重新排队。',
+                )
+              }
+              type="button"
+            >
+              重试清理
+            </button>
+          ) : null}
+        </section>
+      ) : null}
+
+      {canContinueRepair || canCancelBug ? (
+        <section className="collab-bug-detail-section">
+          <h3>缺陷操作</h3>
+          {canContinueRepair ? (
+            <div className="collab-bug-verification">
+              <textarea
+                onChange={(event) => setRepairFeedback(event.target.value)}
+                placeholder="说明当前修复存在的问题，以及期望如何调整"
+                rows={3}
+                value={repairFeedback}
+              />
+              <button
+                disabled={pending || !repairFeedback.trim()}
+                onClick={() =>
+                  void mutate(
+                    {
+                      kind: 'repair_task.enqueue',
+                      bugId: bug.id,
+                      feedback: repairFeedback,
+                      insertAtFront: true,
+                    },
+                    '补充意见已提交，Bug 已重新进入修复队列。',
+                  )
+                }
+                type="button"
+              >
+                提交并继续修复
+              </button>
+            </div>
+          ) : null}
+          {canCancelBug ? (
+            <button
+              disabled={pending || cancellingBug}
+              onClick={() => {
+                setCancellingBug(true);
+                void mutate(
+                  { kind: 'bug.cancel', bugId: bug.id },
+                  'Bug 已移入垃圾桶。',
+                ).finally(() => setCancellingBug(false));
+              }}
+              type="button"
+            >
+              {cancellingBug ? '正在取消' : '取消 Bug'}
+            </button>
+          ) : null}
         </section>
       ) : null}
 
@@ -736,6 +864,23 @@ function drawerTitle(mode: BugDrawerState['mode'], bug: SubmissionBug | null) {
   if (mode === 'create') return '登记缺陷';
   if (mode === 'edit') return '编辑缺陷';
   return bug?.title ?? '查看缺陷';
+}
+
+function bugStatusLabel(status: SubmissionBug['status']) {
+  return (
+    STATUS_COLUMNS.find((column) => column.status === status)?.label ??
+    (status === 'CANCELLED' ? '已取消' : status)
+  );
+}
+
+function cleanupLabel(state: SubmissionBug['cleanup']['state']) {
+  return {
+    NOT_REQUIRED: '无需清理',
+    QUEUED: '等待清理',
+    RUNNING: '正在清理',
+    SUCCEEDED: '已清理',
+    FAILED: '清理失败',
+  }[state];
 }
 
 function repairRecordTitle(record: SubmissionBug['repairRecords'][number]) {
