@@ -1982,6 +1982,31 @@ export class CollaborativeSubmissionStore {
               ? 'WAITING_INTERACTION'
               : 'RUNNING'
             : null;
+    const activeUpdate =
+      row.status !== 'UPDATING'
+        ? null
+        : this.database
+            .query<Row, [string]>(
+              `SELECT update_batch.*,
+                      EXISTS(
+                        SELECT 1 FROM codex_interaction_request interaction
+                        WHERE interaction.execution_kind='UPDATE'
+                          AND interaction.execution_id=update_batch.id
+                          AND interaction.state='PENDING'
+                      ) awaiting_interaction
+               FROM submission_update_batch update_batch
+               JOIN submission_update_batch_member member
+                 ON member.batch_id=update_batch.id
+               WHERE member.bug_id=?
+                 AND update_batch.state IN ('QUEUED','RUNNING','WAITING_EXTERNAL','FAILED')
+               ORDER BY update_batch.created_at DESC,update_batch.id DESC LIMIT 1`,
+            )
+            .get(String(row.id));
+    const updateActivity = !activeUpdate
+      ? null
+      : activeUpdate.state === 'RUNNING' && activeUpdate.awaiting_interaction
+        ? 'WAITING_INTERACTION'
+        : activeUpdate.state;
     const canViewCurrentTechnical =
       actor.kind === 'system' ||
       (actor.kind === 'user' &&
@@ -2004,6 +2029,7 @@ export class CollaborativeSubmissionStore {
       latestFeedback: row.latest_feedback,
       attachments,
       repairActivity,
+      updateActivity,
       latestRepairFailed: latestTask?.state === 'FAILED',
       repairRecords,
       candidateCommit: canViewCurrentTechnical ? row.candidate_commit : null,

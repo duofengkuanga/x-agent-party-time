@@ -35,6 +35,7 @@ import {
   type SubmissionItem,
   type WorkspaceSnapshot,
 } from './model';
+import { bugVisualPresentation, type BugVisualState } from './bug-visual-state';
 import { ExternalFailureDialog } from './dialogs';
 import { BugDrawer, type BugDrawerState } from './bug-drawer';
 
@@ -1082,36 +1083,43 @@ export function BugBoard({
                 <b>{bugs.length.toString().padStart(2, '0')}</b>
               </header>
               <div className="collab-column__cards">
-                {bugs.map((bug) => (
-                  <BugCard
-                    bug={bug}
-                    draggable={
-                      !pending &&
-                      STATUS_COLUMNS.some(
-                        (candidate) =>
-                          candidate.status !== bug.status &&
-                          collaborativeDragTransition(
-                            bug,
-                            candidate.status,
-                            currentUser,
-                            snapshot.submission.status,
-                          ),
-                      )
-                    }
-                    dragging={draggingBugId === bug.id}
-                    key={bug.id}
-                    onDragEnd={finishDrag}
-                    onDragStart={(event) => {
-                      setDraggingBugId(bug.id);
-                      event.dataTransfer.effectAllowed = 'move';
-                      event.dataTransfer.setData(
-                        'application/x-collaborative-bug-id',
-                        bug.id,
-                      );
-                    }}
-                    onOpen={() => setBugDrawer({ mode: 'view', bugId: bug.id })}
-                  />
-                ))}
+                {bugs.map((bug) => {
+                  const presentation = bugVisualPresentation(bug);
+                  return (
+                    <BugCard
+                      bug={bug}
+                      draggable={
+                        !pending &&
+                        STATUS_COLUMNS.some(
+                          (candidate) =>
+                            candidate.status !== bug.status &&
+                            collaborativeDragTransition(
+                              bug,
+                              candidate.status,
+                              currentUser,
+                              snapshot.submission.status,
+                            ),
+                        )
+                      }
+                      dragging={draggingBugId === bug.id}
+                      key={bug.id}
+                      onDragEnd={finishDrag}
+                      onDragStart={(event) => {
+                        setDraggingBugId(bug.id);
+                        event.dataTransfer.effectAllowed = 'move';
+                        event.dataTransfer.setData(
+                          'application/x-collaborative-bug-id',
+                          bug.id,
+                        );
+                      }}
+                      onOpen={() =>
+                        setBugDrawer({ mode: 'view', bugId: bug.id })
+                      }
+                      visualLabel={presentation.label}
+                      visualState={presentation.state}
+                    />
+                  );
+                })}
                 {bugs.length === 0 ? (
                   <p className="collab-column__empty">暂无卡片</p>
                 ) : null}
@@ -1144,6 +1152,8 @@ function BugCard({
   bug,
   draggable,
   dragging,
+  visualLabel,
+  visualState,
   onOpen,
   onDragStart,
   onDragEnd,
@@ -1151,14 +1161,15 @@ function BugCard({
   bug: SubmissionBug;
   draggable: boolean;
   dragging: boolean;
+  visualLabel: string;
+  visualState: BugVisualState;
   onOpen: () => void;
   onDragStart: (event: ReactDragEvent<HTMLElement>) => void;
   onDragEnd: () => void;
 }) {
-  const visualState = bugVisualState(bug);
   return (
     <article
-      aria-label={`${bug.title}，${bugVisualLabel(bug)}`}
+      aria-label={`${bug.title}，${visualLabel}`}
       className={`collab-bug-card${draggable ? ' collab-bug-card--draggable' : ''}`}
       data-dragging={dragging ? 'true' : undefined}
       data-visual-state={visualState}
@@ -1179,25 +1190,4 @@ function BugCard({
       <h3>{bug.title}</h3>
     </article>
   );
-}
-
-function bugVisualState(bug: SubmissionBug) {
-  if (bug.status === 'WAITING_FOR_REPAIR' && bug.latestRepairFailed)
-    return 'failed';
-  if (bug.repairActivity === 'QUEUED') return 'queued';
-  if (bug.repairActivity === 'PREPARING') return 'preparing';
-  if (bug.repairActivity === 'RUNNING') return 'running';
-  if (bug.repairActivity === 'WAITING_INTERACTION')
-    return 'waiting-interaction';
-  return 'idle';
-}
-
-function bugVisualLabel(bug: SubmissionBug) {
-  if (bug.status === 'WAITING_FOR_REPAIR' && bug.latestRepairFailed)
-    return '最近一次修复失败';
-  if (bug.repairActivity === 'QUEUED') return '等待修复';
-  if (bug.repairActivity === 'PREPARING') return '正在启动修复';
-  if (bug.repairActivity === 'RUNNING') return 'Codex 正在修复';
-  if (bug.repairActivity === 'WAITING_INTERACTION') return '等待开发负责人处理';
-  return '缺陷卡片';
 }

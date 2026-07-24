@@ -7341,6 +7341,7 @@ kbd {
 }
 
 .collab-bug-card[data-visual-state='waiting-interaction'] {
+  background: color-mix(in srgb, var(--warning), var(--panel) 88%);
   border-color: var(--warning);
   box-shadow: 3px 3px 0 color-mix(in srgb, var(--warning), transparent 55%);
 }
@@ -7348,7 +7349,6 @@ kbd {
 .collab-bug-card[data-visual-state='waiting-interaction']
   .collab-bug-card__state {
   background: var(--warning);
-  animation: collab-running-pulse 1.2s ease-in-out infinite;
 }
 
 .collab-bug-card[data-visual-state='failed'] {
