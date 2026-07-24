@@ -7626,3 +7626,37 @@ kbd {
     animation: none;
   }
 }
+
+.collab-trash-button[data-drop-target='true'] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  transform: translateY(-2px);
+}
+
+.collab-trash-list {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.collab-trash-list button {
+  display: grid;
+  width: 100%;
+  gap: 0.3rem;
+  padding: 0.8rem;
+  text-align: left;
+}
+
+.collab-trash-list small {
+  color: var(--muted);
+}
+
+.collab-bug-card__pending {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 800;
+  grid-column: 2;
+}

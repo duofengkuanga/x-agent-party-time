@@ -22,6 +22,7 @@ Web 的 `/cooking` 页面已经切换到新的协作提测领域模型，不再�
 
 ```text
 待修复 -> 修复中 -> 待更新 -> 更新中 -> 待验证 -> 已完成
+                         └-> 已取消（垃圾桶终态，不占主看板列）
 ```
 
 主要能力：
@@ -34,7 +35,10 @@ Web 的 `/cooking` 页面已经切换到新的协作提测领域模型，不再�
 - Bug 创建、附件、暂不确定工程分诊和六状态状态机；
 - binding 级 repair queue、排序、撤回、立即修复、租约和离线恢复；
 - 修复失败后在原 Codex Thread 中继续，不创建替代 Thread 或迁移摘要；
+- 同一 Bug 可按正常人工开发方式连续产生候选提交；更新时冻结该 Bug 本轮完整待更新提交链，不自动 squash；
 - 候选提交按最新候选时间静默 2 分钟后冻结为 update Batch，或由负责开发人员立即更新；
+- 待更新 Bug 可由负责开发人员补充意见并沿用原 Thread/worktree 继续修复；待修复或待更新 Bug 可按权限取消并移入不可恢复的垃圾桶；
+- 更新中只允许批次级取消，取消成功后整批 Bug 返回待更新；
 - `LOCAL_SCRIPT` 自动更新，以及 `CI_CD` 外部失败反馈和人工确认；
 - TESTER 验证失败、DONE 重开、关闭提测单和幂等 cleanup；
 - Codex 原生权限/用户输入交互、finish outbox 持久化与 Runner 重启重放。
@@ -100,10 +104,10 @@ bun run dev:web
 4. DEVELOPER 创建包含一个或多个工程的提测单，为每项选择负责人、binding、分支、环境和部署配置，并指定唯一 TESTER。
 5. TESTER 创建 Bug，可选择一个工程或暂不确定；开发人员完成分诊后，Bug 才能进入修复队列。
 6. repair task 由对应 binding 的 Codex Thread 处理。同一 binding 的运行 Turn 串行，不同 binding 可在并发上限内并行；等待权限或用户输入时释放普通执行槽。
-7. 修复成功后 Bug 进入待更新。以最新候选时间为起点静默 2 分钟后冻结原子 Batch，也可以由负责开发人员立即更新。
+7. 修复成功后 Bug 进入待更新。负责开发人员可补充意见继续修复并追加正常 Git 提交；系统以最新候选时间为起点静默 2 分钟后冻结每个 Bug 的完整待更新提交链，也可以由负责开发人员立即更新。
 8. `LOCAL_SCRIPT` 由更新 Codex Thread 按工程或用户工作流统一完成整批集成、验证、单次普通 Push 和部署；`CI_CD` 在 Push 后等待开发人员反馈外部部署结果。
-9. TESTER 验证通过后 Bug 进入已完成；验证失败或重开时携带反馈恢复原 repair 上下文。
-10. 全部 Bug 完成且无活动任务后，TESTER 关闭提测单，环境释放，并为各 binding 创建 cleanup task。
+9. TESTER 验证通过后 Bug 进入已完成；验证失败或重开时携带反馈恢复原 repair 上下文。待修复 Bug 可由指定测试人员或负责开发人员取消，待更新 Bug 仅负责开发人员可取消；已取消 Bug 进入垃圾桶且不阻止提测单关闭。
+10. 全部 Bug 已完成或已取消且无活动任务后，TESTER 关闭提测单，环境释放，并为各 binding 创建 cleanup task。
 
 TESTER 的服务端查询结果和页面不展示仓库、Runner、本机路径、分支命令、Commit、Codex Thread 或 CI/CD 技术错误。
 
