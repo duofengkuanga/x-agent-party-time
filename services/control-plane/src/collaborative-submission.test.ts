@@ -498,7 +498,47 @@ describe('collaborative test submission workflow', () => {
     });
     expect(frozen.updateBatch?.bugIds).toEqual([candidate.id]);
     expect(frozen.updateBatch?.immediateRequestedAt).not.toBeNull();
-    expect((await claimUpdate(fixture, 0)).id).toBe(frozen.updateBatch!.id);
+    expect(
+      (
+        await fixture.tester.collaborativeQuery({
+          kind: 'bug.get',
+          bugId: candidate.id,
+        })
+      ).bug?.updateActivity,
+    ).toBe('QUEUED');
+
+    const running = await claimUpdate(fixture, 0);
+    expect(running.id).toBe(frozen.updateBatch!.id);
+    expect(
+      (
+        await fixture.tester.collaborativeQuery({
+          kind: 'bug.get',
+          bugId: candidate.id,
+        })
+      ).bug?.updateActivity,
+    ).toBe('RUNNING');
+
+    await fixture.system.collaborativeCommand({
+      kind: 'interaction.open',
+      executionKind: 'UPDATE',
+      executionId: running.id,
+      submissionItemId: item.id,
+      bindingId: running.bindingId,
+      interactionKind: 'PERMISSION',
+      method: 'item/commandExecution/requestApproval',
+      threadId: 'thread-update',
+      turnId: 'turn-update',
+      itemId: 'command-update',
+      payload: { command: 'git fetch origin test' },
+    });
+    expect(
+      (
+        await fixture.tester.collaborativeQuery({
+          kind: 'bug.get',
+          bugId: candidate.id,
+        })
+      ).bug?.updateActivity,
+    ).toBe('WAITING_INTERACTION');
   });
 
   test('keeps failed update batches stopped until the responsible developer continues the original thread', async () => {

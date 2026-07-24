@@ -150,6 +150,13 @@ export const SubmissionRepairActivitySchema = z.enum([
   'RUNNING',
   'WAITING_INTERACTION',
 ]);
+export const SubmissionUpdateActivitySchema = z.enum([
+  'QUEUED',
+  'RUNNING',
+  'WAITING_INTERACTION',
+  'WAITING_EXTERNAL',
+  'FAILED',
+]);
 
 export const SubmissionRepairRecordSchema = z.object({
   id: IdSchema,
@@ -182,6 +189,7 @@ export const SubmissionBugSchema = z.object({
   latestFeedback: z.string().trim().min(1).max(8_000).nullable(),
   attachments: z.array(SubmissionBugAttachmentSchema),
   repairActivity: SubmissionRepairActivitySchema.nullable(),
+  updateActivity: SubmissionUpdateActivitySchema.nullable(),
   latestRepairFailed: z.boolean(),
   repairRecords: z.array(SubmissionRepairRecordSchema),
   candidateCommit: z.string().trim().min(1).max(200).nullable(),

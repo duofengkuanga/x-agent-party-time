@@ -875,6 +875,7 @@ function bugFixture(
     latestFeedback: null,
     attachments: [],
     repairActivity: 'RUNNING',
+    updateActivity: null,
     latestRepairFailed: false,
     repairRecords: [],
     candidateCommit: 'deadbeef',

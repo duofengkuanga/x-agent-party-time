@@ -58,20 +58,7 @@ export function BugDrawer({
       ? null
       : (snapshot.bugs.find((candidate) => candidate.id === drawer.bugId) ??
         null);
-  const repairTask = bug
-    ? Object.values(snapshot.repairQueues)
-        .flat()
-        .find((task) => task.bugId === bug.id)
-    : undefined;
-  const interaction = repairTask
-    ? Object.values(snapshot.interactions)
-        .flat()
-        .find(
-          (candidate) =>
-            candidate.executionKind === 'REPAIR' &&
-            candidate.executionId === repairTask.id,
-        )
-    : undefined;
+  const interaction = bug ? findBugInteraction(bug, snapshot) : undefined;
   const canEditContent = Boolean(
     bug &&
     bug.status === 'WAITING_FOR_REPAIR' &&
@@ -131,6 +118,38 @@ export function BugDrawer({
       </section>
     </div>
   );
+}
+
+export function findBugInteraction(
+  bug: SubmissionBug,
+  snapshot: WorkspaceSnapshot,
+) {
+  const repairTask = Object.values(snapshot.repairQueues)
+    .flat()
+    .find((task) => task.bugId === bug.id);
+  const updateBatch = bug.submissionItemId
+    ? (snapshot.updateBatches[bug.submissionItemId] ?? []).find(
+        (batch) =>
+          batch.bugIds.includes(bug.id) &&
+          ['QUEUED', 'RUNNING', 'WAITING_EXTERNAL', 'FAILED'].includes(
+            batch.state,
+          ),
+      )
+    : undefined;
+  const execution =
+    bug.status === 'UPDATING' && updateBatch
+      ? { kind: 'UPDATE', id: updateBatch.id }
+      : repairTask
+        ? { kind: 'REPAIR', id: repairTask.id }
+        : null;
+  if (!execution) return undefined;
+  return Object.values(snapshot.interactions)
+    .flat()
+    .find(
+      (candidate) =>
+        candidate.executionKind === execution.kind &&
+        candidate.executionId === execution.id,
+    );
 }
 
 function BugForm({
