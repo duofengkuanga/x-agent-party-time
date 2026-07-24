@@ -1,10 +1,14 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+import { execFile } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 import type { ControlPlanePort } from '@agent-party-time/control-plane-client';
 import { EngineeringBindingService } from './engineering-binding-service.js';
 import { RunnerStateStore } from './runner-state-store.js';
+
+const execFileAsync = promisify(execFile);
 
 describe('engineering binding', () => {
   let directory: string | null = null;
@@ -14,10 +18,19 @@ describe('engineering binding', () => {
     directory = null;
   });
 
-  test('中心只接收逻辑标识，本机保存并恢复绝对目录', async () => {
+  test('中心接收仓库逻辑地址，本机保存并恢复绝对目录', async () => {
     directory = await mkdtemp(join(tmpdir(), 'apt-engineering-binding-'));
     const repositoryPath = join(directory, 'zj-soil-web');
     await mkdir(repositoryPath);
+    await execFileAsync('git', ['init', repositoryPath]);
+    await execFileAsync('git', [
+      '-C',
+      repositoryPath,
+      'remote',
+      'add',
+      'origin',
+      'git@example.com:team/zj-soil-web.git',
+    ]);
     const statePath = join(directory, 'runner.json');
     const stateStore = new RunnerStateStore(statePath);
     const runner = await stateStore.ensureIdentity('本机 Agent');
@@ -67,6 +80,7 @@ describe('engineering binding', () => {
         runnerId: runner.runnerId,
         runnerName: runner.runnerName,
         repositoryName: 'zj-soil-web',
+        repositoryUrl: 'git@example.com:team/zj-soil-web.git',
       },
     ]);
     expect(JSON.stringify(calls)).not.toContain(directory);
@@ -75,7 +89,7 @@ describe('engineering binding', () => {
     ).toEqual([result.binding]);
   });
 
-  test('初始化当前 Runner 状态，并且不要求目录是 Git 仓库', async () => {
+  test('初始化当前 Runner 状态时不要求立即绑定 Git 仓库', async () => {
     directory = await mkdtemp(join(tmpdir(), 'apt-engineering-state-'));
     const statePath = join(directory, 'runner.json');
     const store = new RunnerStateStore(statePath);

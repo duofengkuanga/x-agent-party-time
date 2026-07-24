@@ -3,7 +3,7 @@ import {
   BugAttachmentMediaTypeSchema,
   ERROR_CODES,
   createAppError,
-  type CreateBugCommand,
+  type ParsedCreateBugCommand,
 } from '@agent-party-time/shared';
 
 const ALLOWED_MEDIA_TYPES = {
@@ -17,7 +17,7 @@ const ALLOWED_MEDIA_TYPES = {
 } as const;
 
 export function decodeBugAttachment(
-  attachment: CreateBugCommand['attachments'][number],
+  attachment: ParsedCreateBugCommand['attachments'][number],
 ) {
   const extension = attachment.fileName.split('.').pop()?.toLowerCase();
   const allowed = extension

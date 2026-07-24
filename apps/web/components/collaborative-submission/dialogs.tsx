@@ -4,9 +4,6 @@ import Link from 'next/link';
 import { useEffect, useState, useTransition, type FormEvent } from 'react';
 import type {
   CollaborativeCommand,
-  EngineeringBindingSummary,
-  EngineeringDetail,
-  ProjectMemberSummary,
   ProjectSummary,
 } from '@agent-party-time/shared/control-plane';
 import type { CurrentUser } from '@/lib/auth/core';
@@ -40,7 +37,6 @@ export function SubmissionComposer({
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [projectId, setProjectId] = useState('');
   const [catalog, setCatalog] = useState<ItemCatalog[]>([]);
-  const [members, setMembers] = useState<ProjectMemberSummary[]>([]);
   const [items, setItems] = useState<CreateItemDraft[]>([]);
   const [title, setTitle] = useState('');
   const [requirementDescription, setRequirementDescription] = useState('');
@@ -65,15 +61,13 @@ export function SubmissionComposer({
   useEffect(() => {
     if (!projectId) {
       setCatalog([]);
-      setMembers([]);
       setItems([]);
       return;
     }
     setLoading(true);
     void loadProjectCatalog(projectId)
-      .then(({ catalog: nextCatalog, members: nextMembers }) => {
+      .then(({ catalog: nextCatalog }) => {
         setCatalog(nextCatalog);
-        setMembers(nextMembers);
         setItems([]);
         setError(null);
       })
@@ -221,7 +215,6 @@ export function SubmissionComposer({
                 entry={entry}
                 item={item}
                 key={item.engineeringId}
-                members={members}
                 onChange={(next) =>
                   setItems((current) =>
                     current.map((candidate, candidateIndex) =>
@@ -255,7 +248,8 @@ export function SubmissionComposer({
                     key={entry.engineering.id}
                     value={entry.engineering.id}
                   >
-                    {entry.engineering.displayName} · {entry.engineering.type}
+                    {entry.engineering.displayName} ·{' '}
+                    {ENGINEERING_TYPE_LABELS[entry.engineering.type]}
                   </option>
                 ))}
               </select>
@@ -301,20 +295,20 @@ export function SubmissionComposer({
 function CreateItemRow({
   entry,
   item,
-  members,
   onChange,
   onRemove,
 }: {
   entry: ItemCatalog;
   item: CreateItemDraft;
-  members: ProjectMemberSummary[];
   onChange: (item: CreateItemDraft) => void;
-  onRemove: () => void;
+  onRemove?: () => void;
 }) {
-  const developerBindings = entry.bindings.filter((binding) =>
-    members.some((member) => member.user.id === binding.developer.id),
+  const selectableMembers = entry.engineering.members.flatMap((member) =>
+    entry.bindings.some((binding) => binding.developer.id === member.user.id)
+      ? [{ ...member.user, engineeringRole: member.role }]
+      : [],
   );
-  const selectedBinding = developerBindings.find(
+  const selectedBinding = entry.bindings.find(
     (binding) => binding.developer.id === item.responsibleDeveloperUserId,
   );
 
@@ -325,17 +319,20 @@ function CreateItemRow({
           <b>{ENGINEERING_TYPE_LABELS[entry.engineering.type]}</b>
           <h3>{entry.engineering.displayName}</h3>
         </div>
-        <button onClick={onRemove} type="button">
-          移除
-        </button>
+        {onRemove ? (
+          <button onClick={onRemove} type="button">
+            移除
+          </button>
+        ) : null}
       </header>
       <div className="collab-form__grid collab-form__grid--four">
         <label>
           <span>负责人</span>
           <select
+            className="collab-select--truncate"
             onChange={(event) => {
               const developerId = event.target.value;
-              const binding = developerBindings.find(
+              const binding = entry.bindings.find(
                 (candidate) => candidate.developer.id === developerId,
               );
               onChange({
@@ -344,20 +341,28 @@ function CreateItemRow({
                 bindingId: binding?.id ?? '',
               });
             }}
+            title={
+              selectableMembers.find(
+                (developer) => developer.id === item.responsibleDeveloperUserId,
+              )?.displayName ?? '请选择负责人'
+            }
             value={item.responsibleDeveloperUserId}
           >
-            {[
-              ...new Map(
-                developerBindings.map((binding) => [
-                  binding.developer.id,
-                  binding.developer,
-                ]),
-              ).values(),
-            ].map((developer) => (
-              <option key={developer.id} value={developer.id}>
-                {developer.displayName}
-              </option>
-            ))}
+            {selectableMembers.length === 0 ? (
+              <option value="">暂无已绑定 Agent 的工程成员</option>
+            ) : null}
+            {selectableMembers.map((developer) => {
+              const roleLabel =
+                developer.engineeringRole === 'OWNER'
+                  ? '工程负责人'
+                  : '工程成员';
+              const label = `${developer.displayName} · ${roleLabel}`;
+              return (
+                <option key={developer.id} title={label} value={developer.id}>
+                  {label}
+                </option>
+              );
+            })}
           </select>
         </label>
         <label>
@@ -365,8 +370,15 @@ function CreateItemRow({
           <input
             aria-readonly="true"
             readOnly
+            title={
+              selectedBinding
+                ? `agent@${selectedBinding.repositoryName}`
+                : '未绑定 Agent（需先绑定）'
+            }
             value={
-              selectedBinding ? `agent@${selectedBinding.repositoryName}` : ''
+              selectedBinding
+                ? `agent@${selectedBinding.repositoryName}`
+                : '未绑定 Agent（需先绑定）'
             }
           />
         </label>
@@ -382,13 +394,30 @@ function CreateItemRow({
         <label>
           <span>测试环境</span>
           <select
+            className="collab-select--truncate"
             onChange={(event) =>
               onChange({ ...item, environmentId: event.target.value })
             }
+            title={(() => {
+              const environment = entry.engineering.environments.find(
+                (candidate) => candidate.id === item.environmentId,
+              );
+              return environment
+                ? `${environment.displayName} · ${
+                    DEPLOYMENT_TYPE_LABELS[environment.deploymentType]
+                  }`
+                : '请选择测试环境';
+            })()}
             value={item.environmentId}
           >
             {entry.engineering.environments.map((environment) => (
-              <option key={environment.id} value={environment.id}>
+              <option
+                key={environment.id}
+                title={`${environment.displayName} · ${
+                  DEPLOYMENT_TYPE_LABELS[environment.deploymentType]
+                }`}
+                value={environment.id}
+              >
                 {environment.displayName} ·{' '}
                 {DEPLOYMENT_TYPE_LABELS[environment.deploymentType]}
               </option>
@@ -400,261 +429,6 @@ function CreateItemRow({
   );
 }
 
-export function BugComposer({
-  submissionId,
-  items,
-  onClose,
-  onCreated,
-}: {
-  submissionId: string;
-  items: SubmissionItem[];
-  onClose: () => void;
-  onCreated: () => Promise<void>;
-}) {
-  const [submissionItemId, setSubmissionItemId] = useState('');
-  const [title, setTitle] = useState('');
-  const [operationPath, setOperationPath] = useState('');
-  const [actualResult, setActualResult] = useState('');
-  const [expectedResult, setExpectedResult] = useState('');
-  const [supplementalDescription, setSupplementalDescription] = useState('');
-  const [files, setFiles] = useState<File[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
-
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    startTransition(async () => {
-      try {
-        const attachments = await Promise.all(files.map(fileUpload));
-        await collaborativeCommand({
-          kind: 'bug.create',
-          submissionId,
-          submissionItemId: submissionItemId || null,
-          title,
-          operationPath,
-          actualResult,
-          expectedResult,
-          supplementalDescription: supplementalDescription || null,
-          attachments,
-        });
-        await onCreated();
-      } catch (requestError) {
-        setError(messageOf(requestError, '无法登记缺陷'));
-      }
-    });
-  }
-
-  return (
-    <DialogShell onClose={onClose} title="登记可复现缺陷">
-      <form className="collab-form" onSubmit={submit}>
-        <label>
-          <span>所属工程</span>
-          <select
-            onChange={(event) => setSubmissionItemId(event.target.value)}
-            value={submissionItemId}
-          >
-            <option value="">暂不确定，由开发分诊</option>
-            {items.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.engineeringDisplayName}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>缺陷标题</span>
-          <input
-            onChange={(event) => setTitle(event.target.value)}
-            required
-            value={title}
-          />
-        </label>
-        <label>
-          <span>操作路径</span>
-          <textarea
-            onChange={(event) => setOperationPath(event.target.value)}
-            required
-            rows={3}
-            value={operationPath}
-          />
-        </label>
-        <div className="collab-form__grid">
-          <label>
-            <span>实际结果</span>
-            <textarea
-              onChange={(event) => setActualResult(event.target.value)}
-              required
-              rows={4}
-              value={actualResult}
-            />
-          </label>
-          <label>
-            <span>期望结果</span>
-            <textarea
-              onChange={(event) => setExpectedResult(event.target.value)}
-              required
-              rows={4}
-              value={expectedResult}
-            />
-          </label>
-        </div>
-        <label>
-          <span>补充说明</span>
-          <textarea
-            onChange={(event) => setSupplementalDescription(event.target.value)}
-            rows={3}
-            value={supplementalDescription}
-          />
-        </label>
-        <label>
-          <span>附件（最多 5 个，单个不超过 10 兆字节）</span>
-          <input
-            accept="image/png,image/jpeg,image/webp,text/plain,application/json"
-            multiple
-            onChange={(event) =>
-              setFiles(Array.from(event.target.files ?? []).slice(0, 5))
-            }
-            type="file"
-          />
-        </label>
-        {files.length ? (
-          <ul className="collab-form__file-list">
-            {files.map((file) => (
-              <li key={`${file.name}:${file.lastModified}`}>
-                {file.name} · {formatBytes(file.size)}
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        {error ? <p className="collab-form__error">{error}</p> : null}
-        <div className="collab-dialog__actions">
-          <button onClick={onClose} type="button">
-            取消
-          </button>
-          <button className="collab-primary" disabled={pending}>
-            {pending ? '登记中…' : '登记缺陷'}
-          </button>
-        </div>
-      </form>
-    </DialogShell>
-  );
-}
-
-export function ItemConfigurationDialog({
-  item,
-  mutate,
-  onClose,
-  onSaved,
-}: {
-  item: SubmissionItem;
-  mutate: (command: CollaborativeCommand, message: string) => Promise<boolean>;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [source] = useState(() => ({
-    itemId: item.id,
-    engineeringId: item.engineeringId,
-    engineeringDisplayName: item.engineeringDisplayName,
-  }));
-  const [entry, setEntry] = useState<ItemCatalog | null>(null);
-  const [draft, setDraft] = useState<CreateItemDraft>(() => ({
-    engineeringId: item.engineeringId,
-    responsibleDeveloperUserId: item.responsibleDeveloper.id,
-    bindingId: item.technical?.bindingId ?? '',
-    targetBranch: item.technical?.targetBranch ?? 'develop',
-    environmentId: item.technical?.environment.id ?? '',
-  }));
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    void Promise.all([
-      requestJson<{ engineering?: EngineeringDetail; error?: string }>(
-        `/api/control-plane/engineerings/${source.engineeringId}`,
-      ),
-      requestJson<{ items?: EngineeringBindingSummary[]; error?: string }>(
-        `/api/control-plane/engineerings/${source.engineeringId}/bindings`,
-      ),
-    ])
-      .then(([detail, bindings]) => {
-        if (!detail.engineering) throw new Error('工程详情不存在');
-        setEntry({
-          engineering: detail.engineering,
-          bindings: bindings.items ?? [],
-        });
-      })
-      .catch((requestError) =>
-        setError(messageOf(requestError, '无法读取技术配置')),
-      );
-  }, [source.engineeringId]);
-
-  async function save() {
-    if (saving) return;
-    setSaving(true);
-    setError(null);
-    try {
-      const saved = await mutate(
-        {
-          kind: 'submission.item.update',
-          submissionItemId: source.itemId,
-          responsibleDeveloperUserId: draft.responsibleDeveloperUserId,
-          bindingId: draft.bindingId,
-          targetBranch: draft.targetBranch,
-          environmentId: draft.environmentId,
-        },
-        `${source.engineeringDisplayName} 技术配置已更新。`,
-      );
-      if (!saved) {
-        setError('保存技术配置失败，请检查页面提示后重试。');
-        return;
-      }
-      onSaved();
-    } catch (requestError) {
-      setError(messageOf(requestError, '保存技术配置失败'));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <DialogShell onClose={onClose} title="首个缺陷前技术配置">
-      {entry ? (
-        <div className="collab-form">
-          <CreateItemRow
-            entry={entry}
-            item={draft}
-            members={entry.engineering.members.map((member) => ({
-              projectId: entry.engineering.projectId,
-              user: member.user,
-              role: member.role === 'OWNER' ? 'OWNER' : 'DEVELOPER',
-              createdAt: member.createdAt,
-              updatedAt: member.updatedAt,
-            }))}
-            onChange={setDraft}
-            onRemove={onClose}
-          />
-          {error ? <p className="collab-form__error">{error}</p> : null}
-          <div className="collab-dialog__actions">
-            <button onClick={onClose} type="button">
-              取消
-            </button>
-            <button
-              className="collab-primary"
-              disabled={saving}
-              onClick={save}
-              type="button"
-            >
-              {saving ? '保存中…' : '保存配置'}
-            </button>
-          </div>
-        </div>
-      ) : (
-        <p className="collab-form__hint">{error ?? '正在读取工程配置…'}</p>
-      )}
-    </DialogShell>
-  );
-}
-
 export function ExternalFailureDialog({
   batchId,
   mutate,
@@ -662,7 +436,10 @@ export function ExternalFailureDialog({
   onSubmitted,
 }: {
   batchId: string;
-  mutate: (command: CollaborativeCommand, message: string) => Promise<boolean>;
+  mutate: (
+    command: CollaborativeCommand,
+    message: string | null,
+  ) => Promise<boolean>;
   onClose: () => void;
   onSubmitted: () => void;
 }) {

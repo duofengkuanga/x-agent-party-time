@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server';
-import {
-  CreateEngineeringCommandSchema,
-  ProjectIdSchema,
-} from '@agent-party-time/shared/control-plane';
+import { ProjectIdSchema } from '@agent-party-time/shared/control-plane';
 import { currentUser } from '@/lib/auth/server';
+import { prepareEngineeringCreation } from '@/lib/control-plane/engineering-create';
 import {
   controlPlaneFailure,
   controlPlaneForUser,
@@ -40,14 +38,17 @@ export async function POST(
     const user = await currentUser();
     if (!user) return unauthenticated();
     const projectId = ProjectIdSchema.parse((await context.params).projectId);
-    const input = CreateEngineeringCommandSchema.parse({
-      ...(await request.json()),
+    const idempotencyKey =
+      request.headers.get('idempotency-key') ??
+      `web-engineering:${crypto.randomUUID()}`;
+    const input = await prepareEngineeringCreation(
+      await request.json(),
       projectId,
-    });
+      idempotencyKey,
+    );
     const engineering = await controlPlaneForUser(user).createEngineering(
       input,
-      request.headers.get('idempotency-key') ??
-        `web-engineering:${crypto.randomUUID()}`,
+      idempotencyKey,
     );
     return NextResponse.json({ engineering }, { status: 201 });
   } catch (error) {

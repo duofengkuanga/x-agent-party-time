@@ -149,7 +149,7 @@ export function ProjectCollaborationDialog({
           <div>
             <p className="repair-kicker">私密项目</p>
             <h2 id="project-collaboration-title">
-              {project.title ?? project.slug} · 成员
+              {project.title ?? project.slug} · 成员与邀请
             </h2>
           </div>
           <button aria-label="关闭" onClick={onClose} type="button">

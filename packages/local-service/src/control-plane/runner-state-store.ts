@@ -38,6 +38,9 @@ export type PendingControlPlaneOutcome = z.infer<
 
 const CollaborativeFinishCommandSchema = z.discriminatedUnion('kind', [
   CollaborativeCommandSchema.options.find(
+    (schema) => schema.shape.kind.value === 'repair_task.fail_start',
+  )!,
+  CollaborativeCommandSchema.options.find(
     (schema) => schema.shape.kind.value === 'repair_task.finish',
   )!,
   CollaborativeCommandSchema.options.find(

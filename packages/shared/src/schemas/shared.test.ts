@@ -1,8 +1,14 @@
 import { describe, expect, test } from 'bun:test';
+import { randomUUID } from 'node:crypto';
 import {
+  CollaborativeCommandSchema,
+  CreateBugCommandSchema,
+  compactBugDescriptionFields,
+  createAppError,
   DurableEventSchema,
   EVENT_NAMES,
   EventNameSchema,
+  normalizeError,
   PROMPT_TEMPLATES,
   PROTOCOL_VERSION,
   ServiceConfigSchema,
@@ -49,6 +55,62 @@ describe('shared domain schemas', () => {
         payload: { instanceId: 'instance' },
       }).name,
     ).toBe(EVENT_NAMES.serviceStarted);
+  });
+
+  test('preserves an app error wrapped by a client error', () => {
+    const appError = createAppError({
+      code: 'engineering.binding_invalid',
+      category: 'validation',
+      message: '绑定票据已失效',
+      retryable: false,
+    });
+
+    expect(
+      normalizeError(Object.assign(new Error(appError.message), { appError })),
+    ).toEqual(appError);
+  });
+
+  test('omits blank optional bug details', () => {
+    const standalone = CreateBugCommandSchema.parse({
+      projectId: randomUUID(),
+      title: '缺陷标题',
+      operationPath: '   ',
+      actualResult: '',
+      expectedResult: '',
+      supplementalDescription: '',
+    });
+    for (const field of [
+      'operationPath',
+      'actualResult',
+      'expectedResult',
+      'supplementalDescription',
+    ] as const)
+      expect(standalone[field]).toBeUndefined();
+
+    const compact = compactBugDescriptionFields(standalone);
+    for (const field of [
+      'operationPath',
+      'actualResult',
+      'expectedResult',
+      'supplementalDescription',
+    ] as const)
+      expect(compact).not.toHaveProperty(field);
+
+    const collaborative = CollaborativeCommandSchema.parse({
+      kind: 'bug.create',
+      submissionId: randomUUID(),
+      submissionItemId: null,
+      title: '缺陷标题',
+    });
+    expect(collaborative.kind).toBe('bug.create');
+    if (collaborative.kind !== 'bug.create') throw new Error('命令类型不正确');
+    for (const field of [
+      'operationPath',
+      'actualResult',
+      'expectedResult',
+      'supplementalDescription',
+    ] as const)
+      expect(collaborative[field]).toBeUndefined();
   });
 
   test('deployment prompts prohibit production side effects', () => {

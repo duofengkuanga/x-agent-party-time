@@ -85,6 +85,11 @@ export function isAppError(value: unknown): value is AppError {
 export function normalizeError(error: unknown): AppError {
   if (isAppError(error)) return error;
 
+  if (typeof error === 'object' && error !== null && 'appError' in error) {
+    const wrapped = error as { appError?: unknown };
+    if (isAppError(wrapped.appError)) return wrapped.appError;
+  }
+
   if (error instanceof z.ZodError) {
     return createAppError({
       code: ERROR_CODES.configInvalid,

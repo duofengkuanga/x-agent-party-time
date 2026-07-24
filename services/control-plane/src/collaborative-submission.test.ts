@@ -50,7 +50,7 @@ describe('collaborative test submission workflow', () => {
     fixture = null;
   });
 
-  test('creates multi-engineering submissions, locks environments, and isolates tester technical data', async () => {
+  test('creates submissions, shares test targets, and isolates tester technical data', async () => {
     fixture = await createFixture();
     const submission = await createSubmission(fixture);
     expect(submission.items).toHaveLength(2);
@@ -72,6 +72,18 @@ describe('collaborative test submission workflow', () => {
     expect(
       testerDetail.submission?.items.every((item) => item.technical === null),
     ).toBe(true);
+    expect(
+      testerDetail.submission?.items.map((item) => item.testTarget),
+    ).toEqual([
+      {
+        targetBranch: 'main',
+        environment: { slug: 'test', displayName: '测试环境' },
+      },
+      {
+        targetBranch: 'main',
+        environment: { slug: 'test', displayName: '测试环境' },
+      },
+    ]);
 
     await expect(createSubmission(fixture, 'conflict')).rejects.toBeInstanceOf(
       ControlPlaneClientError,
@@ -125,7 +137,7 @@ describe('collaborative test submission workflow', () => {
     });
   });
 
-  test('accepts bug intake and triage while enforcing the six-state board', async () => {
+  test('accepts bug intake and assignment while enforcing the six-state board', async () => {
     fixture = await createFixture();
     const submission = await createSubmission(fixture);
     const attachment = Buffer.from('screen');
@@ -137,7 +149,6 @@ describe('collaborative test submission workflow', () => {
       operationPath: '订单 → 支付',
       actualResult: '仍为待付款',
       expectedResult: '显示已付款',
-      supplementalDescription: null,
       attachments: [
         {
           fileName: 'screen.txt',
@@ -150,9 +161,8 @@ describe('collaborative test submission workflow', () => {
     expect(created.bug?.status).toBe('WAITING_FOR_REPAIR');
     await expect(
       fixture.tester.collaborativeCommand({
-        kind: 'bug.move',
+        kind: 'repair_task.enqueue',
         bugId: created.bug!.id,
-        targetStatus: 'REPAIRING',
         feedback: null,
         insertAtFront: false,
       }),
@@ -161,17 +171,17 @@ describe('collaborative test submission workflow', () => {
     });
 
     const triaged = await fixture.developer.collaborativeCommand({
-      kind: 'bug.triage',
+      kind: 'bug.assign',
       bugId: created.bug!.id,
+      engineeringType: 'FRONTEND',
       submissionItemId: submissionItem(fixture, submission, 0).id,
     });
     expect(triaged.bug?.submissionItemId).toBe(
       submissionItem(fixture, submission, 0).id,
     );
     const repairing = await fixture.tester.collaborativeCommand({
-      kind: 'bug.move',
+      kind: 'repair_task.enqueue',
       bugId: created.bug!.id,
-      targetStatus: 'REPAIRING',
       feedback: null,
       insertAtFront: false,
     });
@@ -202,6 +212,84 @@ describe('collaborative test submission workflow', () => {
     expect(attachmentResult.contentBase64).toBe(attachment.toString('base64'));
   });
 
+  test('accepts a collaborative bug with only a title', async () => {
+    fixture = await createFixture();
+    const submission = await createSubmission(fixture);
+    const result = await fixture.tester.collaborativeCommand({
+      kind: 'bug.create',
+      submissionId: submission.id,
+      submissionItemId: null,
+      title: '只有标题也可以登记',
+    });
+    expect(result.bug).toBeDefined();
+    for (const field of [
+      'operationPath',
+      'actualResult',
+      'expectedResult',
+      'supplementalDescription',
+    ] as const)
+      expect(result.bug).not.toHaveProperty(field);
+  });
+
+  test('keeps an enqueued Bug repairing while claim only adds a lease', async () => {
+    fixture = await createFixture();
+    const submission = await createSubmission(fixture);
+    const bug = await createBug(fixture, submission, 0, '准备阶段失败');
+    await moveToRepair(fixture, bug.id);
+
+    const claimed = await tryClaimRepair(fixture, 0);
+    expect(claimed).not.toBeNull();
+    expect(claimed?.startedAt).toBeNull();
+    expect((await getBug(fixture, bug.id)).status).toBe('REPAIRING');
+    expect((await getBug(fixture, bug.id)).repairActivity).toBe('PREPARING');
+
+    const preparationFailed = await fixture.system.collaborativeCommand({
+      kind: 'repair_task.fail_start',
+      taskId: claimed!.id,
+      runnerId: claimed!.runnerId,
+      leaseToken: claimed!.leaseToken!,
+      summary: 'Bug 协议解析失败',
+    });
+    expect(preparationFailed.bug?.status).toBe('WAITING_FOR_REPAIR');
+    expect(preparationFailed.bug?.repairRecords).toEqual([
+      expect.objectContaining({
+        phase: 'STARTUP',
+        outcome: 'FAILED',
+        summary: 'Bug 协议解析失败',
+      }),
+    ]);
+    const testerFailureView = await fixture.tester.collaborativeQuery({
+      kind: 'bug.get',
+      bugId: bug.id,
+    });
+    expect(testerFailureView.bug?.latestRepairFailed).toBe(true);
+    expect(testerFailureView.bug?.repairRecords).toEqual([]);
+
+    expect(await tryClaimRepair(fixture, 0)).toBeNull();
+    await moveToRepair(fixture, bug.id);
+    const retry = await tryClaimRepair(fixture, 0);
+    expect(retry).not.toBeNull();
+    expect((await getBug(fixture, bug.id)).status).toBe('REPAIRING');
+    const started = await fixture.system.collaborativeCommand({
+      kind: 'repair_task.start',
+      taskId: retry!.id,
+      runnerId: retry!.runnerId,
+      leaseToken: retry!.leaseToken!,
+    });
+    expect(started.repairTask?.startedAt).not.toBeNull();
+    expect((await getBug(fixture, bug.id)).status).toBe('REPAIRING');
+    const executionFailed = await finishRepair(fixture, retry!, {
+      sessionId: 'repair-session-after-start',
+      outcome: 'INFRASTRUCTURE_ERROR',
+      summary: 'Codex 请求过于频繁',
+      candidateCommit: null,
+    });
+    expect(executionFailed.status).toBe('WAITING_FOR_REPAIR');
+    expect(executionFailed.repairRecords.map((record) => record.phase)).toEqual(
+      ['STARTUP', 'EXECUTION'],
+    );
+  });
+
   test('serializes each binding repair queue while supporting resume, leases, reassignment, and idempotent completion', async () => {
     fixture = await createFixture();
     const submission = await createSubmission(fixture);
@@ -225,11 +313,8 @@ describe('collaborative test submission workflow', () => {
 
     await expect(
       fixture.tester.collaborativeCommand({
-        kind: 'bug.move',
+        kind: 'repair_task.withdraw',
         bugId: second.id,
-        targetStatus: 'WAITING_FOR_REPAIR',
-        feedback: null,
-        insertAtFront: false,
       }),
     ).rejects.toMatchObject({
       appError: { code: 'bug.transition_invalid' },
@@ -285,8 +370,9 @@ describe('collaborative test submission workflow', () => {
       candidateCommit: null,
     });
     const reassigned = await fixture.developer.collaborativeCommand({
-      kind: 'bug.triage',
+      kind: 'bug.assign',
       bugId: backend.id,
+      engineeringType: 'FRONTEND',
       submissionItemId: submissionItem(fixture, submission, 0).id,
     });
     expect(reassigned.bug?.repairSessionId).toBeNull();
@@ -295,6 +381,15 @@ describe('collaborative test submission workflow', () => {
       kind: 'repair_queue.get',
       submissionItemId: submissionItem(fixture, submission, 0).id,
     });
+    expect(
+      reassignedQueue.repairTasks?.every(
+        (task) =>
+          task.leaseToken === null &&
+          task.leaseExpiresAt === null &&
+          task.resumeSessionId === null &&
+          task.failureSummary === null,
+      ),
+    ).toBe(true);
     expect(
       reassignedQueue.repairTasks?.find((task) => task.bugId === backend.id)
         ?.resumeSessionId,
@@ -490,12 +585,19 @@ describe('collaborative test submission workflow', () => {
     expect(opened.interaction?.state).toBe('PENDING');
     expect((await claimRepair(fixture, 0)).bugId).toBe(second.id);
 
-    const testerView = await fixture.tester.collaborativeQuery({
-      kind: 'interactions.list',
-      submissionItemId: item.id,
-      pendingOnly: true,
+    await expect(
+      fixture.tester.collaborativeQuery({
+        kind: 'interactions.list',
+        submissionItemId: item.id,
+        pendingOnly: true,
+      }),
+    ).rejects.toBeInstanceOf(ControlPlaneClientError);
+    const testerBug = await fixture.tester.collaborativeQuery({
+      kind: 'bug.get',
+      bugId: first.id,
     });
-    expect(testerView.interactions).toHaveLength(1);
+    expect(testerBug.bug?.repairActivity).toBe('WAITING_INTERACTION');
+    expect(testerBug.bug?.repairRecords).toEqual([]);
     await expect(
       fixture.tester.collaborativeCommand({
         kind: 'interaction.resolve',
@@ -688,11 +790,8 @@ describe('collaborative test submission workflow', () => {
 
     await expect(
       fixture.tester.collaborativeCommand({
-        kind: 'bug.move',
+        kind: 'repair_task.withdraw',
         bugId: bug.id,
-        targetStatus: 'WAITING_FOR_REPAIR',
-        feedback: null,
-        insertAtFront: false,
       }),
     ).rejects.toBeInstanceOf(ControlPlaneClientError);
     await expect(
@@ -700,16 +799,12 @@ describe('collaborative test submission workflow', () => {
         kind: 'bug.move',
         bugId: bug.id,
         targetStatus: 'DONE',
-        feedback: null,
-        insertAtFront: false,
       }),
     ).rejects.toBeInstanceOf(ControlPlaneClientError);
     await fixture.tester.collaborativeCommand({
       kind: 'bug.move',
       bugId: bug.id,
       targetStatus: 'DONE',
-      feedback: null,
-      insertAtFront: false,
     });
     await expect(
       fixture.developer.collaborativeCommand({
@@ -924,7 +1019,6 @@ async function createBug(
     operationPath: '订单 → 支付',
     actualResult: '实际结果不符合预期',
     expectedResult: '符合需求描述',
-    supplementalDescription: null,
     attachments: [],
   });
   return result.bug!;
@@ -936,9 +1030,8 @@ async function moveToRepair(
   insertAtFront = false,
 ) {
   await fixture.tester.collaborativeCommand({
-    kind: 'bug.move',
+    kind: 'repair_task.enqueue',
     bugId,
-    targetStatus: 'REPAIRING',
     feedback: null,
     insertAtFront,
   });
@@ -964,7 +1057,14 @@ async function claimRepair(
     leaseDurationMs,
   });
   expect(result.repairTask).not.toBeNull();
-  return result.repairTask!;
+  const task = result.repairTask!;
+  await fixture.system.collaborativeCommand({
+    kind: 'repair_task.start',
+    taskId: task.id,
+    runnerId: task.runnerId,
+    leaseToken: task.leaseToken!,
+  });
+  return task;
 }
 
 async function finishRepair(

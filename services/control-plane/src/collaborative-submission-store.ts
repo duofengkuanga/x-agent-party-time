@@ -14,8 +14,10 @@ import {
   TestSubmissionDetailSchema,
   TestSubmissionSummarySchema,
   createAppError,
+  compactBugDescription,
   type CollaborativeCommand,
   type CollaborativeCommandResult,
+  type ParsedCollaborativeCommand,
   type CollaborativeQuery,
   type CollaborativeQueryResult,
   type ControlPlaneActor,
@@ -53,9 +55,9 @@ CREATE TABLE IF NOT EXISTS test_submission_environment_lock (
 CREATE TABLE IF NOT EXISTS submission_bug (
  sequence INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE,
  submission_id TEXT NOT NULL REFERENCES test_submission(id) ON DELETE CASCADE,
- submission_item_id TEXT REFERENCES test_submission_item(id), status TEXT NOT NULL,
- title TEXT NOT NULL, operation_path TEXT NOT NULL, actual_result TEXT NOT NULL,
- expected_result TEXT NOT NULL, supplemental_description TEXT, latest_feedback TEXT,
+ submission_item_id TEXT REFERENCES test_submission_item(id), engineering_type TEXT, status TEXT NOT NULL,
+ title TEXT NOT NULL, operation_path TEXT, actual_result TEXT,
+ expected_result TEXT, supplemental_description TEXT, latest_feedback TEXT,
  candidate_commit TEXT, repair_session_id TEXT, created_by_user_id TEXT NOT NULL,
  created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS submission_bug_board ON submission_bug(submission_id,status,sequence);
@@ -66,8 +68,10 @@ CREATE TABLE IF NOT EXISTS submission_bug_attachment (
 CREATE TABLE IF NOT EXISTS submission_repair_task (
  id TEXT PRIMARY KEY, bug_id TEXT NOT NULL REFERENCES submission_bug(id),
  submission_item_id TEXT NOT NULL REFERENCES test_submission_item(id), binding_id TEXT NOT NULL,
- runner_id TEXT NOT NULL, state TEXT NOT NULL, position INTEGER NOT NULL,
- lease_token TEXT, lease_expires_at TEXT, resume_session_id TEXT, retry_count INTEGER NOT NULL DEFAULT 0,
+ runner_id TEXT NOT NULL, responsible_developer_user_id TEXT NOT NULL,
+ state TEXT NOT NULL, position INTEGER NOT NULL,
+ lease_token TEXT, lease_expires_at TEXT, resume_session_id TEXT,
+ failure_phase TEXT, failure_summary TEXT,
  created_at TEXT NOT NULL, started_at TEXT, completed_at TEXT);
 CREATE INDEX IF NOT EXISTS submission_repair_queue ON submission_repair_task(binding_id,state,position,created_at,id);
 CREATE TABLE IF NOT EXISTS submission_repair_attempt (
@@ -146,7 +150,6 @@ export interface CollaborativeSubmissionStoreOptions {
   now: () => Date;
   runnerOfflineAfterMs: number;
   automaticUpdateDelayMs?: number;
-  repairInfrastructureRetries?: number;
 }
 
 /**
@@ -156,15 +159,12 @@ export interface CollaborativeSubmissionStoreOptions {
  */
 export class CollaborativeSubmissionStore {
   readonly #automaticUpdateDelayMs: number;
-  readonly #repairInfrastructureRetries: number;
 
   constructor(
     private readonly database: Database,
     private readonly options: CollaborativeSubmissionStoreOptions,
   ) {
     this.#automaticUpdateDelayMs = options.automaticUpdateDelayMs ?? 120_000;
-    this.#repairInfrastructureRetries =
-      options.repairInfrastructureRetries ?? 2;
     database.exec(SCHEMA);
   }
 
@@ -187,7 +187,7 @@ export class CollaborativeSubmissionStore {
   }
 
   private executeCommand(
-    command: CollaborativeCommand,
+    command: ParsedCollaborativeCommand,
     actor: ControlPlaneActor,
   ): CollaborativeCommandResult {
     switch (command.kind) {
@@ -203,10 +203,22 @@ export class CollaborativeSubmissionStore {
         };
       case 'bug.create':
         return { kind: command.kind, bug: this.createBug(command, actor) };
-      case 'bug.triage':
-        return { kind: command.kind, bug: this.triageBug(command, actor) };
+      case 'bug.update':
+        return { kind: command.kind, bug: this.updateBug(command, actor) };
+      case 'bug.assign':
+        return { kind: command.kind, bug: this.assignBug(command, actor) };
       case 'bug.move':
         return { kind: command.kind, bug: this.moveBug(command, actor) };
+      case 'repair_task.enqueue':
+        return {
+          kind: command.kind,
+          bug: this.enqueueRepairTask(command, actor),
+        };
+      case 'repair_task.withdraw':
+        return {
+          kind: command.kind,
+          bug: this.withdrawRepairTask(command, actor),
+        };
       case 'repair_queue.reorder':
         return {
           kind: command.kind,
@@ -217,10 +229,20 @@ export class CollaborativeSubmissionStore {
           kind: command.kind,
           repairTask: this.claimRepairTask(command, actor),
         };
+      case 'repair_task.start':
+        return {
+          kind: command.kind,
+          repairTask: this.startRepairTask(command, actor),
+        };
       case 'repair_task.renew':
         return {
           kind: command.kind,
           repairTask: this.renewRepairTask(command, actor),
+        };
+      case 'repair_task.fail_start':
+        return {
+          kind: command.kind,
+          bug: this.failRepairStart(command, actor),
         };
       case 'repair_task.finish':
         return {
@@ -336,7 +358,7 @@ export class CollaborativeSubmissionStore {
         this.requireItemDeveloper(query.submissionItemId, actor, true);
         return {
           kind: query.kind,
-          repairTasks: this.repairQueue(query.submissionItemId),
+          repairTasks: this.repairQueue(query.submissionItemId, actor),
         };
       case 'update_batches.list':
         this.requireItemAccess(query.submissionItemId, actor);
@@ -352,11 +374,11 @@ export class CollaborativeSubmissionStore {
         };
       case 'interaction.get': {
         const interaction = this.interaction(query.interactionId);
-        this.requireItemAccess(interaction.submissionItemId, actor);
+        this.requireInteractionAccess(interaction.submissionItemId, actor);
         return { kind: query.kind, interaction };
       }
       case 'interactions.list':
-        this.requireItemAccess(query.submissionItemId, actor);
+        this.requireInteractionAccess(query.submissionItemId, actor);
         return {
           kind: query.kind,
           interactions: this.interactions(
@@ -368,7 +390,7 @@ export class CollaborativeSubmissionStore {
   }
 
   private createSubmission(
-    command: Extract<CollaborativeCommand, { kind: 'submission.create' }>,
+    command: Extract<ParsedCollaborativeCommand, { kind: 'submission.create' }>,
     actor: ControlPlaneActor,
   ) {
     const creator = this.requireDeveloper(actor);
@@ -451,7 +473,10 @@ export class CollaborativeSubmissionStore {
   }
 
   private updateSubmissionItem(
-    command: Extract<CollaborativeCommand, { kind: 'submission.item.update' }>,
+    command: Extract<
+      ParsedCollaborativeCommand,
+      { kind: 'submission.item.update' }
+    >,
     actor: ControlPlaneActor,
   ) {
     const item = this.itemRow(command.submissionItemId);
@@ -529,7 +554,7 @@ export class CollaborativeSubmissionStore {
   }
 
   private createBug(
-    command: Extract<CollaborativeCommand, { kind: 'bug.create' }>,
+    command: Extract<ParsedCollaborativeCommand, { kind: 'bug.create' }>,
     actor: ControlPlaneActor,
   ) {
     const tester = this.requireTesterForSubmission(command.submissionId, actor);
@@ -544,16 +569,21 @@ export class CollaborativeSubmissionStore {
     this.database.transaction(() => {
       this.database
         .query(
-          `INSERT INTO submission_bug(id,submission_id,submission_item_id,status,title,operation_path,actual_result,expected_result,supplemental_description,latest_feedback,candidate_commit,repair_session_id,created_by_user_id,created_at,updated_at) VALUES(?,?,?,'WAITING_FOR_REPAIR',?,?,?,?,?,NULL,NULL,NULL,?,?,?)`,
+          `INSERT INTO submission_bug(id,submission_id,submission_item_id,engineering_type,status,title,operation_path,actual_result,expected_result,supplemental_description,latest_feedback,candidate_commit,repair_session_id,created_by_user_id,created_at,updated_at) VALUES(?,?,?,?,'WAITING_FOR_REPAIR',?,?,?,?,?,NULL,NULL,NULL,?,?,?)`,
         )
         .run(
           id,
           command.submissionId,
           command.submissionItemId,
+          this.resolveBugEngineeringType(
+            command.submissionId,
+            command.submissionItemId,
+            command.engineeringType ?? null,
+          ),
           command.title,
-          command.operationPath,
-          command.actualResult,
-          command.expectedResult,
+          command.operationPath ?? null,
+          command.actualResult ?? null,
+          command.expectedResult ?? null,
           command.supplementalDescription ?? null,
           tester,
           now,
@@ -586,120 +616,220 @@ export class CollaborativeSubmissionStore {
     return this.bugDetail(id, actor);
   }
 
-  private triageBug(
-    command: Extract<CollaborativeCommand, { kind: 'bug.triage' }>,
+  private updateBug(
+    command: Extract<ParsedCollaborativeCommand, { kind: 'bug.update' }>,
     actor: ControlPlaneActor,
   ) {
     const bug = this.bugRow(command.bugId);
-    const developer = this.requireDeveloper(actor);
-    this.requireProjectMember(String(bug.project_id), developer);
+    if (actor.kind !== 'user' || actor.userId !== bug.created_by_user_id)
+      throw this.permission('只有缺陷登记人可以编辑缺陷内容');
     if (bug.status !== 'WAITING_FOR_REPAIR')
-      throw this.invalidTransition('只有待修复 Bug 可以改派工程');
-    this.requireItemBelongsToSubmission(
-      command.submissionItemId,
+      throw this.invalidTransition('只有待修复 Bug 可以编辑');
+    const engineeringType = this.resolveBugEngineeringType(
       String(bug.submission_id),
+      command.submissionItemId,
+      command.engineeringType,
     );
+    const existing = new Set(command.existingAttachmentIds);
+    const current = this.database
+      .query<Row, [string]>(
+        'SELECT id FROM submission_bug_attachment WHERE bug_id=?',
+      )
+      .all(command.bugId);
+    if (
+      command.existingAttachmentIds.some(
+        (id) => !current.some((row) => row.id === id),
+      )
+    )
+      throw this.validation('附件不属于当前 Bug');
+    if (existing.size + command.attachments.length > 5)
+      throw this.validation('每个 Bug 最多 5 个附件');
     const now = this.iso();
+    this.database.transaction(() => {
+      this.database
+        .query(
+          `UPDATE submission_bug SET submission_item_id=?,engineering_type=?,title=?,operation_path=?,actual_result=?,expected_result=?,supplemental_description=?,repair_session_id=NULL,candidate_commit=NULL,updated_at=? WHERE id=?`,
+        )
+        .run(
+          command.submissionItemId,
+          engineeringType,
+          command.title,
+          command.operationPath ?? null,
+          command.actualResult ?? null,
+          command.expectedResult ?? null,
+          command.supplementalDescription ?? null,
+          now,
+          command.bugId,
+        );
+      for (const row of current)
+        if (!existing.has(String(row.id)))
+          this.database
+            .query('DELETE FROM submission_bug_attachment WHERE id=?')
+            .run(row.id);
+      for (const attachment of command.attachments)
+        this.database
+          .query(
+            'INSERT INTO submission_bug_attachment(id,bug_id,file_name,media_type,size_bytes,content_base64,created_at) VALUES(?,?,?,?,?,?,?)',
+          )
+          .run(
+            randomUUID(),
+            command.bugId,
+            attachment.fileName,
+            attachment.mediaType,
+            attachment.sizeBytes,
+            attachment.contentBase64,
+            now,
+          );
+    })();
+    return this.bugDetail(command.bugId, actor);
+  }
+
+  private assignBug(
+    command: Extract<ParsedCollaborativeCommand, { kind: 'bug.assign' }>,
+    actor: ControlPlaneActor,
+  ) {
+    const bug = this.bugRow(command.bugId);
+    if (actor.kind !== 'user' || actor.accountType !== 'DEVELOPER')
+      throw this.permission('只有开发人员可以修改问题归属');
+    this.requireSubmissionAccess(String(bug.submission_id), actor);
+    if (bug.status !== 'WAITING_FOR_REPAIR')
+      throw this.invalidTransition('只有待修复 Bug 可以修改问题归属');
+    const engineeringType = this.resolveBugEngineeringType(
+      String(bug.submission_id),
+      command.submissionItemId,
+      command.engineeringType,
+    );
     this.database
       .query(
-        'UPDATE submission_bug SET submission_item_id=?,repair_session_id=NULL,updated_at=? WHERE id=?',
+        `UPDATE submission_bug SET submission_item_id=?,engineering_type=?,repair_session_id=NULL,candidate_commit=NULL,updated_at=? WHERE id=?`,
       )
-      .run(command.submissionItemId, now, command.bugId);
+      .run(
+        command.submissionItemId,
+        engineeringType,
+        this.iso(),
+        command.bugId,
+      );
+    return this.bugDetail(command.bugId, actor);
+  }
+
+  private resolveBugEngineeringType(
+    submissionId: string,
+    itemId: string | null,
+    requested: 'FRONTEND' | 'BACKEND' | null,
+  ) {
+    if (!itemId) return requested;
+    const item = this.itemRow(itemId);
+    if (item.submission_id !== submissionId)
+      throw this.validation('具体工程不属于当前提测单');
+    const actual = String(item.engineering_type) as 'FRONTEND' | 'BACKEND';
+    if (requested && requested !== actual)
+      throw this.validation('问题类型与具体工程不一致');
+    return actual;
+  }
+
+  private enqueueRepairTask(
+    command: Extract<
+      ParsedCollaborativeCommand,
+      { kind: 'repair_task.enqueue' }
+    >,
+    actor: ControlPlaneActor,
+  ) {
+    const bug = this.bugRow(command.bugId);
+    this.requireSubmissionActive(String(bug.submission_id));
+    this.requireSubmissionAccess(String(bug.submission_id), actor);
+    const source = String(bug.status);
+    if (!bug.submission_item_id)
+      throw this.invalidTransition('暂不确定工程的 Bug 必须先完成分诊');
+    if (
+      !['WAITING_FOR_REPAIR', 'WAITING_FOR_VERIFICATION', 'DONE'].includes(
+        source,
+      )
+    )
+      throw this.invalidTransition('当前状态不能加入修复队列');
+    if (source !== 'WAITING_FOR_REPAIR' && !command.feedback)
+      throw this.validation('验证失败或重新打开必须填写反馈');
+    this.enqueueRepair(
+      command.bugId,
+      String(bug.submission_item_id),
+      command.insertAtFront || source !== 'WAITING_FOR_REPAIR',
+      command.feedback ?? null,
+      actor,
+    );
+    return this.bugDetail(command.bugId, actor);
+  }
+
+  private withdrawRepairTask(
+    command: Extract<
+      ParsedCollaborativeCommand,
+      { kind: 'repair_task.withdraw' }
+    >,
+    actor: ControlPlaneActor,
+  ) {
+    const bug = this.bugRow(command.bugId);
+    this.requireSubmissionActive(String(bug.submission_id));
+    this.requireSubmissionAccess(String(bug.submission_id), actor);
+    if (bug.status !== 'REPAIRING')
+      throw this.invalidTransition(
+        '只有修复中且尚未启动 Codex 的 Bug 可以撤回',
+      );
+    const running = this.database
+      .query<Row, [string]>(
+        `SELECT id FROM submission_repair_task WHERE bug_id=? AND state='RUNNING'`,
+      )
+      .get(command.bugId);
+    if (running) throw this.invalidTransition('Codex 已经启动，不能撤回');
+    const now = this.iso();
+    const result = this.database
+      .query(
+        `DELETE FROM submission_repair_task WHERE bug_id=? AND state='QUEUED'`,
+      )
+      .run(command.bugId);
+    if (!result.changes) throw this.invalidTransition('Bug 当前不在修复队列');
+    this.database
+      .query(
+        `UPDATE submission_bug SET status='WAITING_FOR_REPAIR',updated_at=? WHERE id=?`,
+      )
+      .run(now, command.bugId);
     this.event(
       String(bug.submission_id),
       command.bugId,
-      'bug.triaged',
-      developer,
+      'bug.repair_withdrawn',
+      this.actorId(actor),
       now,
     );
     return this.bugDetail(command.bugId, actor);
   }
 
   private moveBug(
-    command: Extract<CollaborativeCommand, { kind: 'bug.move' }>,
+    command: Extract<ParsedCollaborativeCommand, { kind: 'bug.move' }>,
     actor: ControlPlaneActor,
   ) {
     const bug = this.bugRow(command.bugId);
     this.requireSubmissionActive(String(bug.submission_id));
-    const source = String(bug.status);
-    const target = command.targetStatus;
-    if (target === source) return this.bugDetail(command.bugId, actor);
-    if (target === 'REPAIRING') {
-      this.requireSubmissionAccess(String(bug.submission_id), actor);
-      if (!bug.submission_item_id)
-        throw this.invalidTransition('暂不确定工程的 Bug 必须先完成分诊');
-      if (
-        !['WAITING_FOR_REPAIR', 'WAITING_FOR_VERIFICATION', 'DONE'].includes(
-          source,
-        )
-      )
-        throw this.invalidTransition('当前状态不能进入修复中');
-      if (source !== 'WAITING_FOR_REPAIR' && !command.feedback)
-        throw this.validation('验证失败或重新打开必须填写反馈');
-      this.enqueueRepair(
-        command.bugId,
-        String(bug.submission_item_id),
-        command.insertAtFront || source !== 'WAITING_FOR_REPAIR',
-        command.feedback ?? null,
-        actor,
-      );
-    } else if (target === 'WAITING_FOR_REPAIR') {
-      this.requireSubmissionAccess(String(bug.submission_id), actor);
-      if (source === 'REPAIRING') {
-        const running = this.database
-          .query<Row, [string]>(
-            `SELECT id FROM submission_repair_task WHERE bug_id=? AND state='RUNNING'`,
-          )
-          .get(command.bugId);
-        if (running) throw this.invalidTransition('正在修复的 Bug 不能撤回');
-        this.database
-          .query(
-            `UPDATE submission_repair_task SET state='WITHDRAWN',completed_at=? WHERE bug_id=? AND state='QUEUED'`,
-          )
-          .run(this.iso(), command.bugId);
-      } else if (['WAITING_FOR_VERIFICATION', 'DONE'].includes(source)) {
-        this.requireTesterForSubmission(String(bug.submission_id), actor);
-        if (!command.feedback)
-          throw this.validation('验证失败或重新打开必须填写反馈');
-      } else throw this.invalidTransition('当前状态不能回到待修复');
-      const now = this.iso();
-      this.database
-        .query(
-          `UPDATE submission_bug SET status='WAITING_FOR_REPAIR',latest_feedback=?,candidate_commit=NULL,updated_at=? WHERE id=?`,
-        )
-        .run(command.feedback ?? bug.latest_feedback, now, command.bugId);
-      this.event(
-        String(bug.submission_id),
-        command.bugId,
-        'bug.returned_to_waiting',
-        this.actorId(actor),
-        now,
-      );
-    } else if (target === 'DONE') {
-      this.requireTesterForSubmission(String(bug.submission_id), actor);
-      if (source !== 'WAITING_FOR_VERIFICATION')
-        throw this.invalidTransition('只有待验证 Bug 可以直接完成');
-      const now = this.iso();
-      this.database
-        .query(
-          `UPDATE submission_bug SET status='DONE',updated_at=? WHERE id=?`,
-        )
-        .run(now, command.bugId);
-      this.event(
-        String(bug.submission_id),
-        command.bugId,
-        'bug.verified',
-        this.actorId(actor),
-        now,
-      );
-    } else {
-      throw this.invalidTransition('该状态只能由 Runner 或更新批次推进');
-    }
+    if (command.targetStatus !== 'DONE')
+      throw this.invalidTransition('修复排队请使用修复任务命令');
+    this.requireTesterForSubmission(String(bug.submission_id), actor);
+    if (bug.status !== 'WAITING_FOR_VERIFICATION')
+      throw this.invalidTransition('只有待验证 Bug 可以直接完成');
+    const now = this.iso();
+    this.database
+      .query("UPDATE submission_bug SET status='DONE',updated_at=? WHERE id=?")
+      .run(now, command.bugId);
+    this.event(
+      String(bug.submission_id),
+      command.bugId,
+      'bug.verified',
+      this.actorId(actor),
+      now,
+    );
     return this.bugDetail(command.bugId, actor);
   }
 
   private reorderQueue(
-    command: Extract<CollaborativeCommand, { kind: 'repair_queue.reorder' }>,
+    command: Extract<
+      ParsedCollaborativeCommand,
+      { kind: 'repair_queue.reorder' }
+    >,
     actor: ControlPlaneActor,
   ) {
     const item = this.itemRow(command.submissionItemId);
@@ -730,11 +860,11 @@ export class CollaborativeSubmissionStore {
           .run(index + (running ? 1 : 0), bugId),
       );
     })();
-    return tasks.length ? this.repairTask(String(tasks[0]!.id)) : null;
+    return tasks.length ? this.repairTask(String(tasks[0]!.id), actor) : null;
   }
 
   private claimRepairTask(
-    command: Extract<CollaborativeCommand, { kind: 'repair_task.claim' }>,
+    command: Extract<ParsedCollaborativeCommand, { kind: 'repair_task.claim' }>,
     actor: ControlPlaneActor,
   ) {
     this.requireRunnerActor(actor);
@@ -746,7 +876,8 @@ export class CollaborativeSubmissionStore {
     const expired = this.database
       .query<Row, [string, string]>(
         `SELECT * FROM submission_repair_task
-         WHERE runner_id=? AND state='RUNNING' AND lease_expires_at<=?
+         WHERE runner_id=? AND state IN ('QUEUED','RUNNING')
+           AND lease_token IS NOT NULL AND lease_expires_at<=?
          ORDER BY started_at,created_at,id LIMIT 1`,
       )
       .get(command.runnerId, now);
@@ -756,7 +887,7 @@ export class CollaborativeSubmissionStore {
         .query(
           `UPDATE submission_repair_task
            SET lease_token=?,lease_expires_at=?
-           WHERE id=? AND state='RUNNING' AND lease_expires_at<=?`,
+           WHERE id=? AND state IN ('QUEUED','RUNNING') AND lease_expires_at<=?`,
         )
         .run(token, expires, expired.id, now);
       return this.repairTask(String(expired.id));
@@ -797,25 +928,18 @@ export class CollaborativeSubmissionStore {
       .get(command.runnerId, now);
     if (!task) return null;
     const token = randomUUID();
-    this.database.transaction(() => {
-      this.database
-        .query(
-          `UPDATE submission_repair_task
-           SET state='RUNNING',lease_token=?,lease_expires_at=?,started_at=COALESCE(started_at,?)
-           WHERE id=? AND state='QUEUED'`,
-        )
-        .run(token, expires, now, task.id);
-      this.database
-        .query(
-          `UPDATE submission_bug SET status='REPAIRING',updated_at=? WHERE id=?`,
-        )
-        .run(now, task.bug_id);
-    })();
+    this.database
+      .query(
+        `UPDATE submission_repair_task
+         SET lease_token=?,lease_expires_at=?
+         WHERE id=? AND state='QUEUED' AND lease_token IS NULL`,
+      )
+      .run(token, expires, task.id);
     return this.repairTask(String(task.id));
   }
 
-  private renewRepairTask(
-    command: Extract<CollaborativeCommand, { kind: 'repair_task.renew' }>,
+  private startRepairTask(
+    command: Extract<ParsedCollaborativeCommand, { kind: 'repair_task.start' }>,
     actor: ControlPlaneActor,
   ) {
     this.requireRunnerActor(actor);
@@ -824,9 +948,74 @@ export class CollaborativeSubmissionStore {
       task.runner_id !== command.runnerId ||
       task.lease_token !== command.leaseToken
     )
-      throw this.permission('修复任务租约不匹配');
-    if (task.state !== 'RUNNING')
-      throw this.invalidTransition('修复任务不在运行中');
+      throw this.leaseLost('修复任务租约不匹配');
+    if (task.state === 'RUNNING') return this.repairTask(command.taskId);
+    if (task.state !== 'QUEUED')
+      throw this.taskTransitionInvalid('修复任务当前不能开始');
+    const now = this.iso();
+    const result = this.database
+      .query(
+        `UPDATE submission_repair_task SET state='RUNNING',started_at=? WHERE id=? AND state='QUEUED' AND lease_token=?`,
+      )
+      .run(now, command.taskId, command.leaseToken);
+    if (!result.changes) throw this.leaseLost('修复任务租约已经失效');
+    this.event(
+      String(this.bugRow(String(task.bug_id)).submission_id),
+      String(task.bug_id),
+      'bug.repair_started',
+      null,
+      now,
+    );
+    return this.repairTask(command.taskId);
+  }
+
+  private failRepairStart(
+    command: Extract<
+      ParsedCollaborativeCommand,
+      { kind: 'repair_task.fail_start' }
+    >,
+    actor: ControlPlaneActor,
+  ) {
+    this.requireRunnerActor(actor);
+    const task = this.taskRow(command.taskId);
+    if (
+      task.runner_id !== command.runnerId ||
+      task.lease_token !== command.leaseToken
+    )
+      throw this.leaseLost('修复任务租约不匹配');
+    if (task.state !== 'QUEUED')
+      throw this.taskTransitionInvalid(
+        '只有尚未启动 Codex 的任务可以记录启动失败',
+      );
+    const now = this.iso();
+    this.database.transaction(() => {
+      this.database
+        .query(
+          `UPDATE submission_repair_task SET state='FAILED',failure_phase='STARTUP',failure_summary=?,lease_token=NULL,lease_expires_at=NULL,completed_at=? WHERE id=?`,
+        )
+        .run(command.summary, now, command.taskId);
+      this.database
+        .query(
+          `UPDATE submission_bug SET status='WAITING_FOR_REPAIR',latest_feedback=NULL,updated_at=? WHERE id=?`,
+        )
+        .run(now, task.bug_id);
+    })();
+    return this.bugDetail(String(task.bug_id), actor);
+  }
+
+  private renewRepairTask(
+    command: Extract<ParsedCollaborativeCommand, { kind: 'repair_task.renew' }>,
+    actor: ControlPlaneActor,
+  ) {
+    this.requireRunnerActor(actor);
+    const task = this.taskRow(command.taskId);
+    if (
+      task.runner_id !== command.runnerId ||
+      task.lease_token !== command.leaseToken
+    )
+      throw this.leaseLost('修复任务租约不匹配');
+    if (!['QUEUED', 'RUNNING'].includes(String(task.state)))
+      throw this.taskTransitionInvalid('修复任务不在有效租约状态');
     const expires = new Date(
       this.options.now().getTime() + command.leaseDurationMs,
     ).toISOString();
@@ -837,34 +1026,23 @@ export class CollaborativeSubmissionStore {
   }
 
   private finishRepairTask(
-    command: Extract<CollaborativeCommand, { kind: 'repair_task.finish' }>,
+    command: Extract<
+      ParsedCollaborativeCommand,
+      { kind: 'repair_task.finish' }
+    >,
     actor: ControlPlaneActor,
   ) {
     this.requireRunnerActor(actor);
     const task = this.taskRow(command.taskId);
-    if (task.runner_id !== command.runnerId)
-      throw this.permission('修复任务不属于当前 Runner');
     if (task.state === 'COMPLETED' || task.state === 'FAILED')
       return this.bugDetail(String(task.bug_id), actor);
     if (
-      task.state === 'QUEUED' &&
-      this.count(
-        `SELECT COUNT(*) count FROM submission_repair_attempt
-         WHERE task_id=? AND outcome=? AND summary=?
-           AND COALESCE(session_id,'')=COALESCE(?,'')
-           AND COALESCE(candidate_commit,'')=COALESCE(?,'')`,
-        command.taskId,
-        command.outcome,
-        command.summary,
-        command.sessionId,
-        command.candidateCommit,
-      ) > 0
+      task.runner_id !== command.runnerId ||
+      task.lease_token !== command.leaseToken
     )
-      return this.bugDetail(String(task.bug_id), actor);
-    if (task.lease_token !== command.leaseToken)
-      throw this.permission('修复任务租约不匹配');
+      throw this.leaseLost('修复任务租约不匹配');
     if (task.state !== 'RUNNING')
-      throw this.invalidTransition('修复任务不在运行中');
+      throw this.taskTransitionInvalid('Codex 尚未开始执行');
     const now = this.iso();
     this.database.transaction(() => {
       this.database
@@ -881,64 +1059,37 @@ export class CollaborativeSubmissionStore {
           command.candidateCommit,
           now,
         );
-      if (
-        command.outcome === 'INFRASTRUCTURE_ERROR' &&
-        Number(task.retry_count) < this.#repairInfrastructureRetries
-      ) {
-        this.database
-          .query(
-            `UPDATE submission_repair_task
-             SET state='QUEUED',lease_token=NULL,lease_expires_at=NULL,
-                 resume_session_id=?,retry_count=retry_count+1,position=0
-             WHERE id=?`,
-          )
-          .run(command.sessionId, command.taskId);
-        this.database
-          .query(
-            `UPDATE submission_bug
-             SET status='REPAIRING',repair_session_id=?,latest_feedback=?,updated_at=?
-             WHERE id=?`,
-          )
-          .run(command.sessionId, command.summary, now, task.bug_id);
-      } else if (command.outcome === 'READY') {
+      if (command.outcome === 'READY') {
         if (!command.candidateCommit)
           throw this.validation('修复成功必须返回候选提交');
         this.database
           .query(
-            `UPDATE submission_repair_task
-             SET state='COMPLETED',resume_session_id=?,completed_at=?,
-                 lease_token=NULL,lease_expires_at=NULL WHERE id=?`,
+            `UPDATE submission_repair_task SET state='COMPLETED',resume_session_id=?,completed_at=?,lease_token=NULL,lease_expires_at=NULL WHERE id=?`,
           )
           .run(command.sessionId, now, command.taskId);
         this.database
           .query(
-            `UPDATE submission_bug
-             SET status='WAITING_FOR_UPDATE',candidate_commit=?,repair_session_id=?,
-                 latest_feedback=NULL,updated_at=? WHERE id=?`,
+            `UPDATE submission_bug SET status='WAITING_FOR_UPDATE',candidate_commit=?,repair_session_id=?,latest_feedback=NULL,updated_at=? WHERE id=?`,
           )
           .run(command.candidateCommit, command.sessionId, now, task.bug_id);
       } else {
         this.database
           .query(
-            `UPDATE submission_repair_task
-             SET state='FAILED',resume_session_id=?,completed_at=?,
-                 lease_token=NULL,lease_expires_at=NULL WHERE id=?`,
+            `UPDATE submission_repair_task SET state='FAILED',failure_phase='EXECUTION',failure_summary=?,resume_session_id=?,completed_at=?,lease_token=NULL,lease_expires_at=NULL WHERE id=?`,
           )
-          .run(command.sessionId, now, command.taskId);
+          .run(command.summary, command.sessionId, now, command.taskId);
         this.database
           .query(
-            `UPDATE submission_bug
-             SET status='WAITING_FOR_REPAIR',repair_session_id=?,latest_feedback=?,updated_at=?
-             WHERE id=?`,
+            `UPDATE submission_bug SET status='WAITING_FOR_REPAIR',repair_session_id=?,latest_feedback=NULL,updated_at=? WHERE id=?`,
           )
-          .run(command.sessionId, command.summary, now, task.bug_id);
+          .run(command.sessionId, now, task.bug_id);
       }
     })();
     return this.bugDetail(String(task.bug_id), actor);
   }
 
   private triggerUpdate(
-    command: Extract<CollaborativeCommand, { kind: 'update.trigger' }>,
+    command: Extract<ParsedCollaborativeCommand, { kind: 'update.trigger' }>,
     actor: ControlPlaneActor,
   ) {
     this.requireResponsibleDeveloper(command.submissionItemId, actor);
@@ -949,7 +1100,7 @@ export class CollaborativeSubmissionStore {
   }
 
   private continueUpdate(
-    command: Extract<CollaborativeCommand, { kind: 'update.continue' }>,
+    command: Extract<ParsedCollaborativeCommand, { kind: 'update.continue' }>,
     actor: ControlPlaneActor,
   ) {
     const batch = this.updateBatchRow(command.batchId);
@@ -968,7 +1119,7 @@ export class CollaborativeSubmissionStore {
   }
 
   private openInteraction(
-    command: Extract<CollaborativeCommand, { kind: 'interaction.open' }>,
+    command: Extract<ParsedCollaborativeCommand, { kind: 'interaction.open' }>,
     actor: ControlPlaneActor,
   ) {
     this.requireRunnerActor(actor);
@@ -1012,7 +1163,10 @@ export class CollaborativeSubmissionStore {
   }
 
   private resolveInteraction(
-    command: Extract<CollaborativeCommand, { kind: 'interaction.resolve' }>,
+    command: Extract<
+      ParsedCollaborativeCommand,
+      { kind: 'interaction.resolve' }
+    >,
     actor: ControlPlaneActor,
   ) {
     const interaction = this.interaction(command.interactionId);
@@ -1038,7 +1192,10 @@ export class CollaborativeSubmissionStore {
   }
 
   private invalidateInteraction(
-    command: Extract<CollaborativeCommand, { kind: 'interaction.invalidate' }>,
+    command: Extract<
+      ParsedCollaborativeCommand,
+      { kind: 'interaction.invalidate' }
+    >,
     actor: ControlPlaneActor,
   ) {
     this.requireRunnerActor(actor);
@@ -1060,7 +1217,7 @@ export class CollaborativeSubmissionStore {
   }
 
   private claimUpdateTask(
-    command: Extract<CollaborativeCommand, { kind: 'update_task.claim' }>,
+    command: Extract<ParsedCollaborativeCommand, { kind: 'update_task.claim' }>,
     actor: ControlPlaneActor,
   ) {
     this.requireRunnerActor(actor);
@@ -1123,7 +1280,7 @@ export class CollaborativeSubmissionStore {
   }
 
   private renewUpdateTask(
-    command: Extract<CollaborativeCommand, { kind: 'update_task.renew' }>,
+    command: Extract<ParsedCollaborativeCommand, { kind: 'update_task.renew' }>,
     actor: ControlPlaneActor,
   ) {
     this.requireRunnerActor(actor);
@@ -1132,9 +1289,9 @@ export class CollaborativeSubmissionStore {
       batch.runner_id !== command.runnerId ||
       batch.lease_token !== command.leaseToken
     )
-      throw this.permission('更新任务租约不匹配');
+      throw this.leaseLost('更新任务租约不匹配');
     if (batch.state !== 'RUNNING')
-      throw this.invalidTransition('更新任务不在运行中');
+      throw this.taskTransitionInvalid('更新任务不在运行中');
     const now = this.iso();
     const expires = new Date(
       this.options.now().getTime() + command.leaseDurationMs,
@@ -1148,13 +1305,16 @@ export class CollaborativeSubmissionStore {
   }
 
   private finishUpdateTask(
-    command: Extract<CollaborativeCommand, { kind: 'update_task.finish' }>,
+    command: Extract<
+      ParsedCollaborativeCommand,
+      { kind: 'update_task.finish' }
+    >,
     actor: ControlPlaneActor,
   ) {
     this.requireRunnerActor(actor);
     const batch = this.updateBatchRow(command.batchId);
     if (batch.runner_id !== command.runnerId)
-      throw this.permission('更新任务不属于当前 Runner');
+      throw this.leaseLost('更新任务不属于当前 Runner');
     if (batch.state === 'COMPLETED' || batch.state === 'WAITING_EXTERNAL')
       return this.updateBatch(command.batchId, actor);
     if (
@@ -1164,9 +1324,9 @@ export class CollaborativeSubmissionStore {
     )
       return this.updateBatch(command.batchId, actor);
     if (batch.lease_token !== command.leaseToken)
-      throw this.permission('更新任务租约不匹配');
+      throw this.leaseLost('更新任务租约不匹配');
     if (batch.state !== 'RUNNING')
-      throw this.invalidTransition('更新任务不在运行中');
+      throw this.taskTransitionInvalid('更新任务不在运行中');
     const now = this.iso();
     if (command.outcome === 'FAILED') {
       this.database
@@ -1194,7 +1354,10 @@ export class CollaborativeSubmissionStore {
   }
 
   private reportExternalFailure(
-    command: Extract<CollaborativeCommand, { kind: 'update.external_failure' }>,
+    command: Extract<
+      ParsedCollaborativeCommand,
+      { kind: 'update.external_failure' }
+    >,
     actor: ControlPlaneActor,
   ) {
     const batch = this.updateBatchRow(command.batchId);
@@ -1236,7 +1399,10 @@ export class CollaborativeSubmissionStore {
   }
 
   private confirmExternalUpdate(
-    command: Extract<CollaborativeCommand, { kind: 'update.external_confirm' }>,
+    command: Extract<
+      ParsedCollaborativeCommand,
+      { kind: 'update.external_confirm' }
+    >,
     actor: ControlPlaneActor,
   ) {
     const batch = this.updateBatchRow(command.batchId);
@@ -1254,7 +1420,7 @@ export class CollaborativeSubmissionStore {
   }
 
   private closeSubmission(
-    command: Extract<CollaborativeCommand, { kind: 'submission.close' }>,
+    command: Extract<ParsedCollaborativeCommand, { kind: 'submission.close' }>,
     actor: ControlPlaneActor,
   ) {
     this.requireTesterForSubmission(command.submissionId, actor);
@@ -1323,7 +1489,10 @@ export class CollaborativeSubmissionStore {
   }
 
   private claimCleanupTask(
-    command: Extract<CollaborativeCommand, { kind: 'cleanup_task.claim' }>,
+    command: Extract<
+      ParsedCollaborativeCommand,
+      { kind: 'cleanup_task.claim' }
+    >,
     actor: ControlPlaneActor,
   ) {
     this.requireRunnerActor(actor);
@@ -1370,7 +1539,10 @@ export class CollaborativeSubmissionStore {
   }
 
   private renewCleanupTask(
-    command: Extract<CollaborativeCommand, { kind: 'cleanup_task.renew' }>,
+    command: Extract<
+      ParsedCollaborativeCommand,
+      { kind: 'cleanup_task.renew' }
+    >,
     actor: ControlPlaneActor,
   ) {
     this.requireRunnerActor(actor);
@@ -1379,9 +1551,9 @@ export class CollaborativeSubmissionStore {
       row.runner_id !== command.runnerId ||
       row.lease_token !== command.leaseToken
     )
-      throw this.permission('清理任务租约不匹配');
+      throw this.leaseLost('清理任务租约不匹配');
     if (row.state !== 'RUNNING')
-      throw this.invalidTransition('清理任务不在运行中');
+      throw this.taskTransitionInvalid('清理任务不在运行中');
     const now = this.iso();
     const expires = new Date(
       this.options.now().getTime() + command.leaseDurationMs,
@@ -1395,19 +1567,22 @@ export class CollaborativeSubmissionStore {
   }
 
   private finishCleanupTask(
-    command: Extract<CollaborativeCommand, { kind: 'cleanup_task.finish' }>,
+    command: Extract<
+      ParsedCollaborativeCommand,
+      { kind: 'cleanup_task.finish' }
+    >,
     actor: ControlPlaneActor,
   ) {
     this.requireRunnerActor(actor);
     const row = this.cleanupRow(command.taskId);
     if (row.runner_id !== command.runnerId)
-      throw this.permission('清理任务不属于当前 Runner');
+      throw this.leaseLost('清理任务不属于当前 Runner');
     if (row.state === 'COMPLETED' && command.success)
       return this.cleanupTask(command.taskId);
     if (row.lease_token !== command.leaseToken)
-      throw this.permission('清理任务租约不匹配');
+      throw this.leaseLost('清理任务租约不匹配');
     if (row.state !== 'RUNNING')
-      throw this.invalidTransition('清理任务不在运行中');
+      throw this.taskTransitionInvalid('清理任务不在运行中');
     this.database
       .query(
         `UPDATE submission_cleanup_task
@@ -1458,7 +1633,7 @@ export class CollaborativeSubmissionStore {
     this.database.transaction(() => {
       this.database
         .query(
-          `INSERT INTO submission_repair_task(id,bug_id,submission_item_id,binding_id,runner_id,state,position,lease_token,lease_expires_at,resume_session_id,retry_count,created_at,started_at,completed_at) VALUES(?,?,?,?,?,'QUEUED',?,NULL,NULL,?,0,?,NULL,NULL)`,
+          `INSERT INTO submission_repair_task(id,bug_id,submission_item_id,binding_id,runner_id,responsible_developer_user_id,state,position,lease_token,lease_expires_at,resume_session_id,failure_phase,failure_summary,created_at,started_at,completed_at) VALUES(?,?,?,?,?,?,'QUEUED',?,NULL,NULL,?,NULL,NULL,?,NULL,NULL)`,
         )
         .run(
           randomUUID(),
@@ -1466,6 +1641,7 @@ export class CollaborativeSubmissionStore {
           itemId,
           item.binding_id,
           item.runner_id,
+          item.responsible_developer_user_id,
           position,
           bug.submission_item_id === itemId ? bug.repair_session_id : null,
           now,
@@ -1635,6 +1811,10 @@ export class CollaborativeSubmissionStore {
   }
 
   private submissionSummary(row: Row): TestSubmissionSummary {
+    const project = this.database
+      .query<Row, [string]>('SELECT title,slug FROM project WHERE id=?')
+      .get(String(row.project_id));
+    if (!project) throw this.notFound('项目不存在');
     const counts = Object.fromEntries(
       this.database
         .query<Row, [string]>(
@@ -1646,6 +1826,7 @@ export class CollaborativeSubmissionStore {
     return TestSubmissionSummarySchema.parse({
       id: row.id,
       projectId: row.project_id,
+      projectTitle: String(project.title ?? project.slug),
       title: row.title,
       requirementDescription: row.requirement_description,
       tester: this.user(String(row.tester_user_id)),
@@ -1680,6 +1861,13 @@ export class CollaborativeSubmissionStore {
       responsibleDeveloper: this.user(
         String(row.responsible_developer_user_id),
       ),
+      testTarget: {
+        targetBranch: row.target_branch,
+        environment: {
+          slug: row.environment_slug,
+          displayName: row.environment_display_name,
+        },
+      },
       technical: canSeeTechnical
         ? {
             repositoryUrl: row.repository_url,
@@ -1718,20 +1906,39 @@ export class CollaborativeSubmissionStore {
   }
 
   private bugFromRow(row: Row, actor: ControlPlaneActor): SubmissionBug {
-    const attempts = this.database
-      .query<Row, [string]>(
-        `SELECT * FROM submission_repair_attempt WHERE bug_id=? ORDER BY created_at,id`,
+    const repairRecords = this.database
+      .query<Row, [string, string]>(
+        `SELECT a.id,a.bug_id,a.task_id,'EXECUTION' phase,a.session_id,a.outcome,
+                a.summary,a.candidate_commit,a.created_at,t.responsible_developer_user_id,
+                t.rowid task_order,1 record_order
+         FROM submission_repair_attempt a
+         JOIN submission_repair_task t ON t.id=a.task_id
+         WHERE a.bug_id=?
+         UNION ALL
+         SELECT t.id,t.bug_id,t.id task_id,'STARTUP' phase,NULL session_id,'FAILED' outcome,
+                t.failure_summary summary,NULL candidate_commit,t.completed_at created_at,
+                t.responsible_developer_user_id,t.rowid task_order,0 record_order
+         FROM submission_repair_task t
+         WHERE t.bug_id=? AND t.failure_phase='STARTUP'
+         ORDER BY task_order,record_order`,
       )
-      .all(String(row.id))
-      .map((attempt) => ({
-        id: attempt.id,
-        bugId: attempt.bug_id,
-        taskId: attempt.task_id,
-        sessionId: attempt.session_id,
-        outcome: attempt.outcome,
-        summary: attempt.summary,
-        candidateCommit: attempt.candidate_commit,
-        createdAt: attempt.created_at,
+      .all(String(row.id), String(row.id))
+      .filter(
+        (record) =>
+          actor.kind === 'system' ||
+          (actor.kind === 'user' &&
+            record.responsible_developer_user_id === actor.userId),
+      )
+      .map((record) => ({
+        id: record.id,
+        bugId: record.bug_id,
+        taskId: record.task_id,
+        phase: record.phase,
+        sessionId: record.session_id,
+        outcome: record.outcome,
+        summary: record.summary,
+        candidateCommit: record.candidate_commit,
+        createdAt: record.created_at,
       }));
     const attachments = this.database
       .query<Row, [string]>(
@@ -1749,46 +1956,79 @@ export class CollaborativeSubmissionStore {
     const item = row.submission_item_id
       ? this.itemRow(String(row.submission_item_id))
       : null;
+    const latestTask = this.database
+      .query<Row, [string]>(
+        `SELECT t.*,
+                EXISTS(
+                  SELECT 1 FROM codex_interaction_request interaction
+                  WHERE interaction.execution_kind='REPAIR'
+                    AND interaction.execution_id=t.id
+                    AND interaction.state='PENDING'
+                ) awaiting_interaction
+         FROM submission_repair_task t
+         WHERE t.bug_id=?
+         ORDER BY t.created_at DESC,t.id DESC LIMIT 1`,
+      )
+      .get(String(row.id));
+    const repairActivity =
+      row.status !== 'REPAIRING' || !latestTask
+        ? null
+        : latestTask.state === 'QUEUED'
+          ? latestTask.lease_token
+            ? 'PREPARING'
+            : 'QUEUED'
+          : latestTask.state === 'RUNNING'
+            ? latestTask.awaiting_interaction
+              ? 'WAITING_INTERACTION'
+              : 'RUNNING'
+            : null;
+    const canViewCurrentTechnical =
+      actor.kind === 'system' ||
+      (actor.kind === 'user' &&
+        item?.responsible_developer_user_id === actor.userId);
     return SubmissionBugSchema.parse({
       id: row.id,
       shortId: `BUG-${String(row.sequence).padStart(4, '0')}`,
       submissionId: row.submission_id,
       submissionItemId: row.submission_item_id,
+      engineeringType: row.engineering_type,
       engineeringDisplayName: item?.engineering_display_name ?? null,
       status: row.status,
       title: row.title,
-      operationPath: row.operation_path,
-      actualResult: row.actual_result,
-      expectedResult: row.expected_result,
-      supplementalDescription: row.supplemental_description,
+      ...compactBugDescription({
+        operationPath: row.operation_path as string | null,
+        actualResult: row.actual_result as string | null,
+        expectedResult: row.expected_result as string | null,
+        supplementalDescription: row.supplemental_description as string | null,
+      }),
       latestFeedback: row.latest_feedback,
       attachments,
-      attempts,
-      candidateCommit:
-        actor.kind === 'user' && actor.accountType === 'TESTER'
-          ? null
-          : row.candidate_commit,
-      repairSessionId:
-        actor.kind === 'user' && actor.accountType === 'TESTER'
-          ? null
-          : row.repair_session_id,
+      repairActivity,
+      latestRepairFailed: latestTask?.state === 'FAILED',
+      repairRecords,
+      candidateCommit: canViewCurrentTechnical ? row.candidate_commit : null,
+      repairSessionId: canViewCurrentTechnical ? row.repair_session_id : null,
       createdByUserId: row.created_by_user_id,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     });
   }
 
-  private repairQueue(itemId: string) {
+  private repairQueue(itemId: string, actor: ControlPlaneActor) {
     return this.database
       .query<Row, [string]>(
         `SELECT id FROM submission_repair_task WHERE submission_item_id=? AND state IN ('QUEUED','RUNNING') ORDER BY position,created_at,id`,
       )
       .all(itemId)
-      .map((row) => this.repairTask(String(row.id)));
+      .map((row) => this.repairTask(String(row.id), actor));
   }
 
-  private repairTask(id: string): SubmissionRepairTask {
+  private repairTask(
+    id: string,
+    actor?: ControlPlaneActor,
+  ): SubmissionRepairTask {
     const row = this.taskRow(id);
+    const canViewTechnical = !actor || actor.kind === 'system';
     return SubmissionRepairTaskSchema.parse({
       id: row.id,
       bugId: row.bug_id,
@@ -1797,10 +2037,11 @@ export class CollaborativeSubmissionStore {
       runnerId: row.runner_id,
       state: row.state,
       position: Number(row.position),
-      leaseToken: row.lease_token,
-      leaseExpiresAt: row.lease_expires_at,
-      resumeSessionId: row.resume_session_id,
-      retryCount: Number(row.retry_count),
+      leaseToken: canViewTechnical ? row.lease_token : null,
+      leaseExpiresAt: canViewTechnical ? row.lease_expires_at : null,
+      resumeSessionId: canViewTechnical ? row.resume_session_id : null,
+      failurePhase: canViewTechnical ? row.failure_phase : null,
+      failureSummary: canViewTechnical ? row.failure_summary : null,
       createdAt: row.created_at,
       startedAt: row.started_at,
       completedAt: row.completed_at,
@@ -1987,6 +2228,11 @@ export class CollaborativeSubmissionStore {
     actor: ControlPlaneActor,
   ) {
     this.requireItemDeveloper(itemId, actor, false);
+  }
+
+  private requireInteractionAccess(itemId: string, actor: ControlPlaneActor) {
+    if (actor.kind === 'system') return;
+    this.requireResponsibleDeveloper(itemId, actor);
   }
 
   private requireTesterForSubmission(
@@ -2210,6 +2456,22 @@ export class CollaborativeSubmissionStore {
     return createAppError({
       code: ERROR_CODES.configInvalid,
       category: 'validation',
+      message,
+      retryable: false,
+    });
+  }
+  private leaseLost(message: string) {
+    return createAppError({
+      code: ERROR_CODES.jobLeaseLost,
+      category: 'conflict',
+      message,
+      retryable: false,
+    });
+  }
+  private taskTransitionInvalid(message: string) {
+    return createAppError({
+      code: ERROR_CODES.taskTransitionInvalid,
+      category: 'conflict',
       message,
       retryable: false,
     });

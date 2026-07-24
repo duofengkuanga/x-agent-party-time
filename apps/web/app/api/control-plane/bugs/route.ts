@@ -37,7 +37,7 @@ export async function POST(request: Request) {
       operationPath: text(form, 'operationPath'),
       actualResult: text(form, 'actualResult'),
       expectedResult: text(form, 'expectedResult'),
-      supplementalDescription: text(form, 'supplementalDescription') || null,
+      supplementalDescription: text(form, 'supplementalDescription'),
       attachments,
     });
     const idempotencyKey =

@@ -1,11 +1,13 @@
 import { z } from 'zod';
 import { CONTROL_PLANE_PROTOCOL_VERSION } from '../config/index.ts';
 import { AppErrorSchema } from '../schemas/error.ts';
+import { BugDescriptionSchema } from './bug-description.ts';
 import {
   CollaborativeCommandResultSchema,
   CollaborativeQueryResultSchema,
 } from './collaborative-submission.ts';
 
+export * from './bug-description.ts';
 export * from './collaborative-submission.ts';
 
 export {
@@ -288,7 +290,7 @@ export const EngineeringSummarySchema = z.object({
 export type EngineeringSummary = z.infer<typeof EngineeringSummarySchema>;
 
 export const EngineeringDetailSchema = EngineeringSummarySchema.extend({
-  repositoryUrl: RepositoryUrlSchema,
+  repositoryUrl: RepositoryUrlSchema.nullable(),
   members: z.array(EngineeringMemberSummarySchema),
   environments: z.array(EngineeringEnvironmentSummarySchema).min(1),
 });
@@ -299,7 +301,7 @@ const EngineeringConfigurationSchema = z
     slug: EngineeringSlugSchema,
     displayName: z.string().trim().min(1).max(120),
     type: EngineeringTypeSchema,
-    repositoryUrl: RepositoryUrlSchema,
+    repositoryUrl: RepositoryUrlSchema.nullable().optional(),
     ownerUserId: UserIdSchema,
     memberUserIds: z.array(UserIdSchema).max(50).default([]),
     environments: z.array(EngineeringEnvironmentInputSchema).min(1).max(20),
@@ -411,6 +413,7 @@ export const ClaimEngineeringBindingCommandSchema = z.object({
   runnerId: RunnerIdSchema,
   runnerName: z.string().trim().min(1).max(80),
   repositoryName: z.string().trim().min(1).max(255).optional(),
+  repositoryUrl: RepositoryUrlSchema.optional(),
 });
 export type ClaimEngineeringBindingCommand = z.infer<
   typeof ClaimEngineeringBindingCommandSchema
@@ -596,10 +599,7 @@ export type RepairAttemptSummary = z.infer<typeof RepairAttemptSummarySchema>;
 
 export const BugDetailSchema = BugSummarySchema.extend({
   canReopenRepair: z.boolean(),
-  operationPath: z.string().trim().min(1).max(4_000),
-  actualResult: z.string().trim().min(1).max(8_000),
-  expectedResult: z.string().trim().min(1).max(8_000),
-  supplementalDescription: z.string().trim().max(8_000).nullable(),
+  ...BugDescriptionSchema.shape,
   attachments: z.array(BugAttachmentMetadataSchema),
   events: z.array(BugEventSchema),
   repairAttempt: RepairAttemptSummarySchema.nullable(),
@@ -780,13 +780,11 @@ export type BugAttachmentUpload = z.infer<typeof BugAttachmentUploadSchema>;
 export const CreateBugCommandSchema = z.object({
   projectId: ProjectIdSchema,
   title: z.string().trim().min(1).max(160),
-  operationPath: z.string().trim().min(1).max(4_000),
-  actualResult: z.string().trim().min(1).max(8_000),
-  expectedResult: z.string().trim().min(1).max(8_000),
-  supplementalDescription: z.string().trim().max(8_000).nullable().optional(),
+  ...BugDescriptionSchema.shape,
   attachments: z.array(BugAttachmentUploadSchema).max(5).default([]),
 });
-export type CreateBugCommand = z.infer<typeof CreateBugCommandSchema>;
+export type CreateBugCommand = z.input<typeof CreateBugCommandSchema>;
+export type ParsedCreateBugCommand = z.output<typeof CreateBugCommandSchema>;
 export const CreateBugResultSchema = z.object({ bug: BugDetailSchema });
 
 export const ListBugsQuerySchema = z.object({ projectId: ProjectIdSchema });
@@ -954,10 +952,7 @@ export const RepairWorkItemSchema = z.object({
     id: BugIdSchema,
     shortId: z.string().regex(/^BUG-\d{4,}$/),
     title: z.string().trim().min(1).max(160),
-    operationPath: z.string().trim().min(1).max(4_000),
-    actualResult: z.string().trim().min(1).max(8_000),
-    expectedResult: z.string().trim().min(1).max(8_000),
-    supplementalDescription: z.string().trim().max(8_000).nullable(),
+    ...BugDescriptionSchema.shape,
     attachments: z.array(BugAttachmentMetadataSchema),
   }),
   prompt: RepairPromptSchema,

@@ -20,10 +20,8 @@ import type { CurrentUser } from '@/lib/auth/core';
 
 interface Draft {
   id: string | null;
-  slug: string;
   displayName: string;
   type: 'FRONTEND' | 'BACKEND';
-  repositoryUrl: string;
   ownerUserId: string;
   memberUserIds: string[];
   environments: EngineeringEnvironmentInput[];
@@ -163,13 +161,15 @@ export function EngineeringCatalogDialog({
         });
         const result = (await response.json()) as ApiResult<{
           binding?: EngineeringBindingSummary;
+          engineering?: EngineeringDetail;
         }>;
-        if (!response.ok || !result.binding)
+        if (!response.ok || !result.binding || !result.engineering)
           throw new Error(apiMessage(result, 'Agent 绑定失败'));
         setBindings((current) => [
           ...current.filter((item) => item.id !== result.binding!.id),
           result.binding!,
         ]);
+        setDetail(result.engineering);
         setRepositoryPath('');
         setError(null);
       } catch (requestError) {
@@ -182,10 +182,8 @@ export function EngineeringCatalogDialog({
     setDetail(null);
     setDraft({
       id: null,
-      slug: '',
       displayName: '',
       type: 'FRONTEND',
-      repositoryUrl: '',
       ownerUserId: currentUser.id,
       memberUserIds: [],
       environments: [{ ...EMPTY_ENVIRONMENT }],
@@ -195,10 +193,8 @@ export function EngineeringCatalogDialog({
   function editDraft(engineering: EngineeringDetail) {
     setDraft({
       id: engineering.id,
-      slug: engineering.slug,
       displayName: engineering.displayName,
       type: engineering.type,
-      repositoryUrl: engineering.repositoryUrl,
       ownerUserId:
         engineering.members.find((member) => member.role === 'OWNER')?.user
           .id ?? currentUser.id,
@@ -223,10 +219,8 @@ export function EngineeringCatalogDialog({
       try {
         const body = {
           ...(draft.id ? { action: 'update' as const } : {}),
-          slug: draft.slug,
           displayName: draft.displayName,
           type: draft.type,
-          repositoryUrl: draft.repositoryUrl,
           ownerUserId: draft.ownerUserId,
           memberUserIds: draft.memberUserIds.filter(
             (userId) => userId !== draft.ownerUserId,
@@ -359,10 +353,6 @@ export function EngineeringCatalogDialog({
             developers={developers}
             draft={draft}
             pending={pending}
-            referenced={Boolean(
-              draft.id &&
-              items.find((item) => item.id === draft.id)?.firstReferencedAt,
-            )}
             setDraft={setDraft}
             submit={submit}
           />
@@ -394,7 +384,7 @@ export function EngineeringCatalogDialog({
           <div className="engineering-catalog">
             <div className="engineering-catalog__intro">
               <p>按代码仓库维护工程、成员与测试环境。</p>
-              {project.memberRole === 'OWNER' ? (
+              {project.memberRole ? (
                 <button
                   className="repair-primary"
                   onClick={createDraft}
@@ -420,7 +410,6 @@ export function EngineeringCatalogDialog({
                         onClick={() => void openDetail(item)}
                         type="button"
                       >
-                        <span>{item.slug}</span>
                         <strong>{item.displayName}</strong>
                         <small>
                           {item.archivedAt
@@ -451,14 +440,12 @@ export function EngineeringCatalogDialog({
 function EngineeringEditor({
   draft,
   developers,
-  referenced,
   pending,
   setDraft,
   submit,
 }: {
   draft: Draft;
   developers: ProjectMemberSummary[];
-  referenced: boolean;
   pending: boolean;
   setDraft: (draft: Draft | null) => void;
   submit: (event: FormEvent<HTMLFormElement>) => void;
@@ -481,7 +468,7 @@ function EngineeringEditor({
       <div className="engineering-editor__heading">
         <div>
           <strong>{draft.id ? '编辑工程' : '新建工程'}</strong>
-          <small>配置仓库、成员与测试环境</small>
+          <small>配置成员与测试环境，仓库在绑定 Agent 时自动识别</small>
         </div>
       </div>
       <div className="engineering-editor__grid">
@@ -495,18 +482,6 @@ function EngineeringEditor({
           />
         </label>
         <label>
-          <span>稳定标识</span>
-          <input
-            disabled={referenced}
-            maxLength={64}
-            onChange={(event) => patch({ slug: event.target.value })}
-            pattern="[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?"
-            required
-            value={draft.slug}
-          />
-          {referenced ? <small>已被提测引用，不能修改</small> : null}
-        </label>
-        <label>
           <span>工程类型</span>
           <select
             onChange={(event) =>
@@ -517,15 +492,6 @@ function EngineeringEditor({
             <option value="FRONTEND">前端工程</option>
             <option value="BACKEND">后端工程</option>
           </select>
-        </label>
-        <label className="field-wide">
-          <span>非敏感 Git 仓库地址</span>
-          <input
-            onChange={(event) => patch({ repositoryUrl: event.target.value })}
-            placeholder="git@example.com:team/repository.git"
-            required
-            value={draft.repositoryUrl}
-          />
         </label>
         <label>
           <span>工程负责人</span>
@@ -708,14 +674,13 @@ function EngineeringDetailView({
         <div>
           <span>{detail.type === 'FRONTEND' ? '前端工程' : '后端工程'}</span>
           <h3>{detail.displayName}</h3>
-          <small>/{detail.slug}</small>
         </div>
         {detail.archivedAt ? <em>已归档</em> : <em>使用中</em>}
       </div>
       <dl>
         <div>
           <dt>仓库地址</dt>
-          <dd>{detail.repositoryUrl}</dd>
+          <dd>{detail.repositoryUrl ?? '绑定本机 Agent 后自动识别'}</dd>
         </div>
         <div>
           <dt>工程成员</dt>
@@ -779,22 +744,31 @@ function EngineeringDetailView({
           </p>
         ) : canBind && !detail.archivedAt ? (
           <div className="engineering-binding-form">
-            <label>
-              <span>本机工程目录</span>
-              <input
-                onChange={(event) => setRepositoryPath(event.target.value)}
-                placeholder="/absolute/path/to/project"
-                value={repositoryPath}
-              />
-              <small>路径仅保存在本机 Agent，不会上传到协作中心。</small>
-            </label>
-            <button
-              disabled={pending || !repositoryPath.trim()}
-              onClick={onBind}
-              type="button"
-            >
-              {pending ? '绑定中…' : '绑定 Agent'}
-            </button>
+            <div className="engineering-binding-form__field">
+              <label htmlFor="engineering-binding-repository-path">
+                本机工程目录
+              </label>
+              <div className="engineering-binding-form__controls">
+                <input
+                  aria-describedby="engineering-binding-repository-hint"
+                  id="engineering-binding-repository-path"
+                  onChange={(event) => setRepositoryPath(event.target.value)}
+                  placeholder="/absolute/path/to/project"
+                  value={repositoryPath}
+                />
+                <button
+                  disabled={pending || !repositoryPath.trim()}
+                  onClick={onBind}
+                  type="button"
+                >
+                  {pending ? '绑定中…' : '绑定 Agent'}
+                </button>
+              </div>
+              <small id="engineering-binding-repository-hint">
+                路径只保存在本机；系统会读取 Git remote.origin.url
+                作为仓库地址。
+              </small>
+            </div>
           </div>
         ) : null}
       </section>

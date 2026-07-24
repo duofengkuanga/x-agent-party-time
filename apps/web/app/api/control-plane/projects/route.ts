@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
 import {
-  CreateProjectCommandSchema,
+  CreateProjectInvitationCommandSchema,
   RenameProjectCommandSchema,
 } from '@agent-party-time/shared/control-plane';
 import { currentUser } from '@/lib/auth/server';
+import {
+  prepareProjectCreation,
+  projectInvitationIdempotencyKey,
+} from '@/lib/control-plane/project-create';
 import {
   controlPlaneFailure,
   controlPlaneForUser,
@@ -27,15 +31,27 @@ export async function POST(request: Request) {
   try {
     const user = await currentUser();
     if (!user) return unauthenticated();
-    const input = CreateProjectCommandSchema.parse(await request.json());
     const idempotencyKey =
       request.headers.get('idempotency-key') ??
       `web-project:${crypto.randomUUID()}`;
-    const project = await controlPlaneForUser(user).createProject(
-      input,
+    const { command, inviteeUserIds } = await prepareProjectCreation(
+      await request.json(),
       idempotencyKey,
     );
-    return NextResponse.json({ project }, { status: 201 });
+    const client = controlPlaneForUser(user);
+    const project = await client.createProject(command, idempotencyKey);
+    const invitations = await Promise.all(
+      inviteeUserIds.map(async (inviteeUserId) =>
+        client.createProjectInvitation(
+          CreateProjectInvitationCommandSchema.parse({
+            projectId: project.id,
+            inviteeUserId,
+          }),
+          await projectInvitationIdempotencyKey(idempotencyKey, inviteeUserId),
+        ),
+      ),
+    );
+    return NextResponse.json({ project, invitations }, { status: 201 });
   } catch (error) {
     return controlPlaneFailure(error, '无法创建项目');
   }

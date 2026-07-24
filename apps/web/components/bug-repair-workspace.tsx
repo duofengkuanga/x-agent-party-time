@@ -1018,8 +1018,7 @@ function EmptyProject({ onCreated }: { onCreated: () => Promise<void> }) {
           'idempotency-key': `web-project:${crypto.randomUUID()}`,
         },
         body: JSON.stringify({
-          slug: String(form.get('slug') ?? ''),
-          title: String(form.get('title') ?? '') || null,
+          title: String(form.get('title') ?? ''),
         }),
       });
       const result = (await response.json()) as { error?: string };
@@ -1042,12 +1041,8 @@ function EmptyProject({ onCreated }: { onCreated: () => Promise<void> }) {
       </div>
       <form onSubmit={submit}>
         <label>
-          <span>项目标识</span>
-          <input name="slug" placeholder="settlement-platform" required />
-        </label>
-        <label>
-          <span>标题 / 选填</span>
-          <input name="title" placeholder="结算服务" />
+          <span>项目名称</span>
+          <input name="title" placeholder="结算服务" required />
         </label>
         <button className="repair-primary" disabled={pending} type="submit">
           {pending ? '创建中…' : '创建项目'}
@@ -1124,19 +1119,27 @@ function BugCreateDialog({
         <form onSubmit={submit}>
           <label className="field-wide">
             <span>标题</span>
-            <input maxLength={160} name="title" required />
+            <input
+              maxLength={160}
+              name="title"
+              onInput={(event) => event.currentTarget.setCustomValidity('')}
+              onInvalid={(event) =>
+                event.currentTarget.setCustomValidity('请填写缺陷标题')
+              }
+              required
+            />
           </label>
           <label>
-            <span>操作 / 复现路径</span>
-            <textarea name="operationPath" required rows={3} />
+            <span>操作 / 复现路径（选填）</span>
+            <textarea name="operationPath" rows={3} />
           </label>
           <label>
-            <span>实际结果</span>
-            <textarea name="actualResult" required rows={3} />
+            <span>实际结果（选填）</span>
+            <textarea name="actualResult" rows={3} />
           </label>
           <label>
-            <span>预期结果</span>
-            <textarea name="expectedResult" required rows={3} />
+            <span>预期结果（选填）</span>
+            <textarea name="expectedResult" rows={3} />
           </label>
           <label className="field-wide">
             <span>补充描述 / 选填</span>
@@ -1495,9 +1498,15 @@ function BugDrawer({
               verificationFiles={verificationFiles}
             />
 
-            <DetailBlock label="操作 / 复现路径" value={bug.operationPath} />
-            <DetailBlock label="实际结果" value={bug.actualResult} />
-            <DetailBlock label="预期结果" value={bug.expectedResult} />
+            {bug.operationPath ? (
+              <DetailBlock label="操作 / 复现路径" value={bug.operationPath} />
+            ) : null}
+            {bug.actualResult ? (
+              <DetailBlock label="实际结果" value={bug.actualResult} />
+            ) : null}
+            {bug.expectedResult ? (
+              <DetailBlock label="预期结果" value={bug.expectedResult} />
+            ) : null}
             {bug.supplementalDescription ? (
               <DetailBlock
                 label="补充描述"
