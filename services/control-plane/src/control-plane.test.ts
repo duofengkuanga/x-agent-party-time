@@ -409,6 +409,21 @@ describe('control plane HTTP interface', () => {
       }),
       'engineering-catalog:reused-slug',
     );
+    await expect(
+      member.createEngineering(
+        engineeringInput(otherProject.id, {
+          slug: 'member-outside-project',
+          displayName: '非项目成员创建',
+          type: 'BACKEND',
+          ownerUserId: 'user-xujiequan',
+          memberUserIds: [],
+          deploymentType: 'CI_CD',
+        }),
+        'engineering-catalog:outside-member-create',
+      ),
+    ).rejects.toMatchObject({
+      appError: { code: 'project.access_denied' },
+    });
 
     expect(
       (await owner.listEngineerings(project.id)).map((item) => item.type),
@@ -465,6 +480,22 @@ describe('control plane HTTP interface', () => {
         )
       ).displayName,
     ).toBe('成员已更新服务');
+    const createdByMember = await member.createEngineering(
+      engineeringInput(project.id, {
+        slug: 'member-created-service',
+        displayName: '成员新建服务',
+        type: 'BACKEND',
+        ownerUserId: 'user-zhoumingbo',
+        memberUserIds: [],
+        deploymentType: 'CI_CD',
+      }),
+      'engineering-catalog:member-create',
+    );
+    expect(createdByMember).toMatchObject({
+      displayName: '成员新建服务',
+      memberRole: 'OWNER',
+      canManage: true,
+    });
     await expect(
       owner.removeProjectMember(
         { projectId: project.id, userId: 'user-zhoumingbo' },
@@ -847,7 +878,6 @@ describe('control plane HTTP interface', () => {
         operationPath: '购物车 → 提交订单 → 支付',
         actualResult: '支付成功，但订单状态未更新',
         expectedResult: '订单应显示已付款',
-        supplementalDescription: null,
         attachments: [
           {
             fileName: 'response.json',
@@ -877,6 +907,30 @@ describe('control plane HTTP interface', () => {
     expect((await client.getBug(created.id)).events[0]?.type).toBe(
       'bug.created',
     );
+  });
+
+  test('creates and persists a bug with only a title', async () => {
+    home = await mkdtemp(join(tmpdir(), 'apt-control-plane-'));
+    handle = await startControlPlane({ homeDirectory: home, port: 0 });
+    const client = new HttpControlPlaneAdapter({ baseUrl: handle.address() });
+    const project = await client.createProject(
+      { slug: 'title-only-bug', title: '仅标题缺陷' },
+      'project:title-only-bug',
+    );
+
+    const created = await client.createBug(
+      { projectId: project.id, title: '只有标题也可以登记' },
+      'bug:title-only',
+    );
+    const persisted = await client.getBug(created.id);
+    for (const bug of [created, persisted])
+      for (const field of [
+        'operationPath',
+        'actualResult',
+        'expectedResult',
+        'supplementalDescription',
+      ] as const)
+        expect(bug).not.toHaveProperty(field);
   });
 
   test('rejects an invalid attachment without creating a bug', async () => {

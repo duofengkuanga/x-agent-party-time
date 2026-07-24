@@ -12,10 +12,7 @@ import {
 import type { ProjectSummary } from '@agent-party-time/shared/control-plane';
 import { CookingAccountMenu } from '@/components/cooking-account-menu';
 import { EngineeringCatalogDialog } from '@/components/engineering-catalog-dialog';
-import {
-  ProjectCollaborationDialog,
-  ProjectInvitationInbox,
-} from '@/components/project-collaboration-dialog';
+import { ProjectCollaborationDialog } from '@/components/project-collaboration-dialog';
 import type { CurrentUser } from '@/lib/auth/core';
 
 interface ProjectsResponse {
@@ -33,13 +30,12 @@ export function ProjectSetup({
   initialProjectId?: string;
 }) {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
-  const [slug, setSlug] = useState('');
   const [title, setTitle] = useState('');
+  const [inviteeUserIds, setInviteeUserIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [theme, setTheme] = useState<'paper' | 'night'>('paper');
-  const [showInvitations, setShowInvitations] = useState(false);
   const [collaborationProject, setCollaborationProject] =
     useState<ProjectSummary | null>(null);
   const [engineeringProject, setEngineeringProject] =
@@ -89,9 +85,8 @@ export function ProjectSetup({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const nextSlug = slug.trim();
     const nextTitle = title.trim();
-    if (!nextSlug) return;
+    if (!nextTitle) return;
     startCreating(async () => {
       try {
         const response = await fetch('/api/control-plane/projects', {
@@ -101,8 +96,8 @@ export function ProjectSetup({
             'idempotency-key': `web-project:${crypto.randomUUID()}`,
           },
           body: JSON.stringify({
-            slug: nextSlug,
-            title: nextTitle || null,
+            title: nextTitle,
+            inviteeUserIds,
           }),
         });
         const result = (await response.json()) as {
@@ -111,12 +106,13 @@ export function ProjectSetup({
         };
         if (!response.ok || !result.project)
           throw new Error(result.error ?? '项目创建失败');
-        setSlug('');
         setTitle('');
+        setInviteeUserIds([]);
         setShowCreate(false);
         setError(null);
         await refresh(true);
-        setEngineeringProject(result.project);
+        if (inviteeUserIds.length > 0) setCollaborationProject(result.project);
+        else setEngineeringProject(result.project);
       } catch (requestError) {
         setError(
           requestError instanceof Error ? requestError.message : '项目创建失败',
@@ -156,6 +152,9 @@ export function ProjectSetup({
           <CookingAccountMenu
             currentArea="projects"
             currentUser={currentUser}
+            onProjectInvitationsChanged={() =>
+              refresh(true).then(() => undefined)
+            }
           />
         </div>
       </header>
@@ -169,21 +168,16 @@ export function ProjectSetup({
             </p>
           </div>
           <div className="project-settings__toolbar-actions">
-            <button
-              className="project-settings__quiet-action"
-              onClick={() => setShowInvitations(true)}
-              type="button"
-            >
-              项目邀请
-            </button>
-            <button
-              aria-expanded={showCreate}
-              className="project-settings__primary-action"
-              onClick={() => setShowCreate((current) => !current)}
-              type="button"
-            >
-              {showCreate ? '取消' : '新建项目'}
-            </button>
+            {projects.length > 0 || showCreate ? (
+              <button
+                aria-expanded={showCreate}
+                className="project-settings__primary-action"
+                onClick={() => setShowCreate((current) => !current)}
+                type="button"
+              >
+                {showCreate ? '取消' : '新建项目'}
+              </button>
+            ) : null}
           </div>
         </header>
 
@@ -192,7 +186,7 @@ export function ProjectSetup({
             <form className="project-settings__create" onSubmit={submit}>
               <div>
                 <span>新建项目</span>
-                <p>先建立协作边界，随后添加工程并完成本机绑定。</p>
+                <p>填写项目名称，并可同时邀请开发人员加入协作。</p>
               </div>
               <label>
                 <span>项目名称</span>
@@ -201,22 +195,43 @@ export function ProjectSetup({
                   maxLength={120}
                   onChange={(event) => setTitle(event.target.value)}
                   placeholder="例如：商城重构"
+                  required
                   value={title}
                 />
               </label>
-              <label>
-                <span>项目标识</span>
-                <input
-                  autoComplete="off"
-                  onChange={(event) => setSlug(event.target.value)}
-                  pattern="[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?"
-                  placeholder="storefront-rebuild"
-                  required
-                  value={slug}
-                />
-              </label>
+              <fieldset className="project-settings__invitees">
+                <legend>邀请开发人员 / 选填</legend>
+                <p>对方接受邀请后，才能被选为工程负责人或工程成员。</p>
+                <div>
+                  {registeredDevelopers
+                    .filter((developer) => developer.id !== currentUser.id)
+                    .map((developer) => (
+                      <label key={developer.id}>
+                        <input
+                          checked={inviteeUserIds.includes(developer.id)}
+                          onChange={(event) =>
+                            setInviteeUserIds((current) =>
+                              event.target.checked
+                                ? [...current, developer.id]
+                                : current.filter((id) => id !== developer.id),
+                            )
+                          }
+                          type="checkbox"
+                        />
+                        <span>
+                          <strong>{developer.displayName}</strong>
+                          <small>@{developer.username}</small>
+                        </span>
+                      </label>
+                    ))}
+                </div>
+              </fieldset>
               <button disabled={isCreating} type="submit">
-                {isCreating ? '创建中…' : '创建并配置工程'}
+                {isCreating
+                  ? '创建中…'
+                  : inviteeUserIds.length > 0
+                    ? '创建项目并发送邀请'
+                    : '创建并配置工程'}
               </button>
             </form>
           ) : null}
@@ -233,14 +248,18 @@ export function ProjectSetup({
               <p>正在读取项目…</p>
             </div>
           ) : projects.length === 0 ? (
-            <div className="project-settings__empty">
-              <span>暂无项目</span>
-              <h2>从一个项目开始。</h2>
-              <p>项目创建后，可继续添加工程、配置测试环境并绑定本机 Agent。</p>
-              <button onClick={() => setShowCreate(true)} type="button">
-                新建项目
-              </button>
-            </div>
+            showCreate ? null : (
+              <div className="project-settings__empty">
+                <span>暂无项目</span>
+                <h2>从一个项目开始。</h2>
+                <p>
+                  项目创建后，可继续添加工程、配置测试环境并绑定本机 Agent。
+                </p>
+                <button onClick={() => setShowCreate(true)} type="button">
+                  新建项目
+                </button>
+              </div>
+            )
           ) : (
             <ol className="project-settings__list">
               {projects.map((project) => (
@@ -252,14 +271,13 @@ export function ProjectSetup({
                         : '项目成员'}
                     </span>
                     <h2>{project.title ?? project.slug}</h2>
-                    <p>/{project.slug}</p>
                   </div>
                   <div className="project-settings__row-actions">
                     <button
                       onClick={() => setCollaborationProject(project)}
                       type="button"
                     >
-                      成员
+                      成员与邀请
                     </button>
                     <button
                       className="project-settings__row-primary"
@@ -292,13 +310,6 @@ export function ProjectSetup({
           currentUser={currentUser}
           onClose={() => setEngineeringProject(null)}
           project={engineeringProject}
-        />
-      ) : null}
-
-      {showInvitations ? (
-        <ProjectInvitationInbox
-          onChanged={() => refresh(true).then(() => undefined)}
-          onClose={() => setShowInvitations(false)}
         />
       ) : null}
     </main>

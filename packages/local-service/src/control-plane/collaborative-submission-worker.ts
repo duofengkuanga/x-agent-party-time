@@ -2,7 +2,9 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import {
   BUG_REPAIR_OUTPUT_JSON_SCHEMA,
+  ERROR_CODES,
   RepairResultSchema,
+  normalizeError,
   type CodexInteractionRequest,
   type CollaborativeCommand,
   type RepairPrompt,
@@ -66,7 +68,11 @@ type TestSubmissionItem = TestSubmissionDetail['items'][number];
 type CollaborativeFinishCommand = Extract<
   CollaborativeCommand,
   {
-    kind: 'repair_task.finish' | 'update_task.finish' | 'cleanup_task.finish';
+    kind:
+      | 'repair_task.fail_start'
+      | 'repair_task.finish'
+      | 'update_task.finish'
+      | 'cleanup_task.finish';
   }
 >;
 
@@ -167,10 +173,25 @@ export class CollaborativeSubmissionWorker {
     if (this.submittingOutcomeIds.has(pending.id)) return;
     this.submittingOutcomeIds.add(pending.id);
     try {
-      await this.options.controlPlane.collaborativeCommand(
-        pending.command,
-        pending.id,
-      );
+      try {
+        await this.options.controlPlane.collaborativeCommand(
+          pending.command,
+          pending.id,
+        );
+      } catch (error) {
+        const appError = normalizeError(error);
+        if (!isTerminalPendingOutcomeError(appError.code)) throw error;
+        this.options.logger.warn(
+          'collaborative_submission.outcome_discarded',
+          '协作提测结果对应的任务租约或状态已经失效，停止重放',
+          {
+            pendingId: pending.id,
+            kind: pending.command.kind,
+            code: appError.code,
+            error: appError.message,
+          },
+        );
+      }
       await this.options.stateStore.removeCollaborativePendingOutcome(
         pending.id,
       );
@@ -252,98 +273,137 @@ export class CollaborativeSubmissionWorker {
       signal,
       task.id,
     );
-    let command: CollaborativeFinishCommand;
+    let command: CollaborativeFinishCommand | null = null;
     try {
-      const context = await this.loadRepairContext(task);
-      const artifactsDirectory = join(
-        this.options.artifactsDirectory,
-        'repair',
-        task.id,
-      );
-      const attachmentPaths = await this.writeBugAttachments(
-        context.bug,
-        artifactsDirectory,
-      );
-      const continuationContextPath = await this.writeContinuationContext(
-        join(this.options.artifactsDirectory, 'repair', task.bugId),
-        {
-          schemaVersion: 1,
-          executionKind: 'REPAIR',
-          taskId: task.id,
-          bug: {
-            id: context.bug.id,
-            shortId: context.bug.shortId,
-            title: context.bug.title,
-            operationPath: context.bug.operationPath,
-            actualResult: context.bug.actualResult,
-            expectedResult: context.bug.expectedResult,
-            supplementalDescription: context.bug.supplementalDescription,
-            latestFeedback: context.bug.latestFeedback,
-            attempts: context.bug.attempts,
-          },
-          attachmentPaths,
-          updatedAt: context.bug.updatedAt,
-        },
-      );
-      const prompt = repairPrompt(
-        context,
-        attachmentPaths,
-        continuationContextPath,
-      );
-      const execution = await this.options.executor.executeStructured(
-        {
-          executionId: task.id,
-          repositoryPath: context.repositoryPath,
-          prompt,
-          outputSchema:
-            BUG_REPAIR_OUTPUT_JSON_SCHEMA as unknown as RepairPrompt['outputSchema'],
-          resultSchema: RepairResultSchema,
+      let prepared:
+        | {
+            context: Awaited<
+              ReturnType<CollaborativeSubmissionWorker['loadRepairContext']>
+            >;
+            artifactsDirectory: string;
+            prompt: string;
+            resumeSessionId: string | null;
+          }
+        | undefined;
+      try {
+        const context = await this.loadRepairContext(task);
+        const artifactsDirectory = join(
+          this.options.artifactsDirectory,
+          'repair',
+          task.id,
+        );
+        const attachmentPaths = await this.writeBugAttachments(
+          context.bug,
           artifactsDirectory,
-          resumeSessionId: await this.options.stateStore.resumableSession(
-            task.resumeSessionId,
-          ),
-          onInteraction: (interaction) =>
-            slot.waitFor(
-              this.resolveInteraction(
-                'REPAIR',
-                task.id,
-                task.submissionItemId,
-                task.bindingId,
-                interaction,
-                signal,
-              ),
-            ),
-        },
-        signal,
-      );
-      command = {
-        kind: 'repair_task.finish',
-        taskId: task.id,
-        runnerId: this.options.runner.runnerId,
-        leaseToken: requireLease(task.leaseToken),
-        sessionId: execution.sessionId,
-        outcome: repairOutcome(execution.result.status),
-        summary: summarizeRepair(execution.result),
-        candidateCommit:
-          execution.result.status === 'ready'
-            ? execution.result.candidateCommit
-            : null,
-      };
-    } catch (error) {
-      await this.invalidateInteraction('REPAIR', task.id);
-      command = {
-        kind: 'repair_task.finish',
-        taskId: task.id,
-        runnerId: this.options.runner.runnerId,
-        leaseToken: requireLease(task.leaseToken),
-        sessionId: sessionIdOf(error),
-        outcome: 'INFRASTRUCTURE_ERROR',
-        summary: truncate(`Runner/Codex 执行失败：${messageOf(error)}`, 12_000),
-        candidateCommit: null,
-      };
+        );
+        const continuationContextPath = await this.writeContinuationContext(
+          join(this.options.artifactsDirectory, 'repair', task.bugId),
+          {
+            schemaVersion: 1,
+            executionKind: 'REPAIR',
+            taskId: task.id,
+            bug: {
+              id: context.bug.id,
+              shortId: context.bug.shortId,
+              title: context.bug.title,
+              operationPath: context.bug.operationPath,
+              actualResult: context.bug.actualResult,
+              expectedResult: context.bug.expectedResult,
+              supplementalDescription: context.bug.supplementalDescription,
+              latestFeedback: context.bug.latestFeedback,
+              repairRecords: context.bug.repairRecords,
+            },
+            attachmentPaths,
+            updatedAt: context.bug.updatedAt,
+          },
+        );
+        const prompt = repairPrompt(
+          context,
+          attachmentPaths,
+          continuationContextPath,
+        );
+        const resumeSessionId = await this.options.stateStore.resumableSession(
+          task.resumeSessionId,
+        );
+        await this.options.controlPlane.collaborativeCommand({
+          kind: 'repair_task.start',
+          taskId: task.id,
+          runnerId: this.options.runner.runnerId,
+          leaseToken: requireLease(task.leaseToken),
+        });
+        prepared = {
+          context,
+          artifactsDirectory,
+          prompt,
+          resumeSessionId,
+        };
+      } catch (error) {
+        command = {
+          kind: 'repair_task.fail_start',
+          taskId: task.id,
+          runnerId: this.options.runner.runnerId,
+          leaseToken: requireLease(task.leaseToken),
+          summary: truncate(`修复任务启动失败：${messageOf(error)}`, 12_000),
+        };
+      }
+
+      if (prepared) {
+        try {
+          const execution = await this.options.executor.executeStructured(
+            {
+              executionId: task.id,
+              repositoryPath: prepared.context.repositoryPath,
+              prompt: prepared.prompt,
+              outputSchema:
+                BUG_REPAIR_OUTPUT_JSON_SCHEMA as unknown as RepairPrompt['outputSchema'],
+              resultSchema: RepairResultSchema,
+              artifactsDirectory: prepared.artifactsDirectory,
+              resumeSessionId: prepared.resumeSessionId,
+              onInteraction: (interaction) =>
+                slot.waitFor(
+                  this.resolveInteraction(
+                    'REPAIR',
+                    task.id,
+                    task.submissionItemId,
+                    task.bindingId,
+                    interaction,
+                    signal,
+                  ),
+                ),
+            },
+            signal,
+          );
+          command = {
+            kind: 'repair_task.finish',
+            taskId: task.id,
+            runnerId: this.options.runner.runnerId,
+            leaseToken: requireLease(task.leaseToken),
+            sessionId: execution.sessionId,
+            outcome: repairOutcome(execution.result.status),
+            summary: summarizeRepair(execution.result),
+            candidateCommit:
+              execution.result.status === 'ready'
+                ? execution.result.candidateCommit
+                : null,
+          };
+        } catch (error) {
+          await this.invalidateInteraction('REPAIR', task.id);
+          command = {
+            kind: 'repair_task.finish',
+            taskId: task.id,
+            runnerId: this.options.runner.runnerId,
+            leaseToken: requireLease(task.leaseToken),
+            sessionId: sessionIdOf(error),
+            outcome: 'INFRASTRUCTURE_ERROR',
+            summary: truncate(`Codex 执行失败：${messageOf(error)}`, 12_000),
+            candidateCommit: null,
+          };
+        }
+      }
     } finally {
       stopRenewal();
     }
+    if (!command) throw new Error('修复任务未生成完成结果');
     await this.persistAndSubmit(command);
   }
 
@@ -777,7 +837,7 @@ function repairPrompt(
       expectedResult: bug.expectedResult,
       supplementalDescription: bug.supplementalDescription,
       latestFeedback: bug.latestFeedback,
-      attempts: bug.attempts,
+      repairRecords: bug.repairRecords,
     },
     null,
     2,
@@ -882,6 +942,16 @@ function submissionItem(
     submission.items.find((item) => item.id === submissionItemId),
     `提测单缺少工程提测项 ${submissionItemId}`,
   );
+}
+
+const TERMINAL_PENDING_OUTCOME_ERROR_CODES = new Set<string>([
+  ERROR_CODES.jobLeaseLost,
+  ERROR_CODES.taskTransitionInvalid,
+  ERROR_CODES.entityNotFound,
+]);
+
+function isTerminalPendingOutcomeError(code: string) {
+  return TERMINAL_PENDING_OUTCOME_ERROR_CODES.has(code);
 }
 
 function repairOutcome(status: z.infer<typeof RepairResultSchema>['status']) {

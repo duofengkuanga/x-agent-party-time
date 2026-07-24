@@ -66,10 +66,13 @@ export async function PATCH(
         ),
       });
     }
+    const existing = await client.getEngineering(engineeringId);
     const engineering = await client.updateEngineering(
       UpdateEngineeringCommandSchema.parse({
         ...(body as Record<string, unknown>),
         engineeringId,
+        slug: existing.slug,
+        repositoryUrl: existing.repositoryUrl,
       }),
       idempotencyKey,
     );

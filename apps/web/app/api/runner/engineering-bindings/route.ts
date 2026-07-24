@@ -49,7 +49,8 @@ export async function POST(request: Request) {
       await controlPlane.listEngineeringBindings(input.engineeringId)
     ).find((item) => item.id === result.binding.bindingId);
     if (!binding) throw new Error('中心未返回刚建立的绑定');
-    return NextResponse.json({ binding });
+    const engineering = await controlPlane.getEngineering(input.engineeringId);
+    return NextResponse.json({ binding, engineering });
   } catch (error) {
     if (error instanceof ZodError)
       return NextResponse.json(

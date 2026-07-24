@@ -13,6 +13,7 @@ import {
   RenameProjectCommandSchema,
   RepairResultSchema,
   createAppError,
+  compactBugDescription,
   getPromptTemplate,
   type BugAttachmentMetadata,
   type BugDetail,
@@ -20,6 +21,7 @@ import {
   type BugSummary,
   type CleanupTarget,
   type CreateBugCommand,
+  type ParsedCreateBugCommand,
   type CreateProjectCommand,
   type DeploymentBatchSummary,
   type DeploymentBatchState,
@@ -144,9 +146,9 @@ interface BugRow {
   deployment_batch_id: string | null;
   deployment_state: BugSummary['deploymentState'];
   title: string;
-  operation_path: string;
-  actual_result: string;
-  expected_result: string;
+  operation_path: string | null;
+  actual_result: string | null;
+  expected_result: string | null;
   supplemental_description: string | null;
   created_at: string;
   updated_at: string;
@@ -306,7 +308,7 @@ CREATE TABLE IF NOT EXISTS idempotency_record (operation TEXT NOT NULL, key TEXT
 CREATE TABLE IF NOT EXISTS bug (
  sequence INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, project_id TEXT NOT NULL REFERENCES project(id),
  status TEXT NOT NULL, repair_state TEXT, repair_dispatch_id TEXT, deployment_batch_id TEXT, deployment_state TEXT,
- title TEXT NOT NULL, environment TEXT NOT NULL, operation_path TEXT NOT NULL, actual_result TEXT NOT NULL, expected_result TEXT NOT NULL,
+ title TEXT NOT NULL, environment TEXT NOT NULL, operation_path TEXT, actual_result TEXT, expected_result TEXT,
  supplemental_description TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS bug_attachment (
  id TEXT PRIMARY KEY, bug_id TEXT NOT NULL REFERENCES bug(id) ON DELETE CASCADE, verification_feedback_id TEXT,
@@ -414,7 +416,6 @@ export class ControlPlaneStore {
     this.collaborative = new CollaborativeSubmissionStore(database, {
       now: this.now,
       runnerOfflineAfterMs: this.runnerOfflineAfterMs,
-      repairInfrastructureRetries: this.repairInfrastructureRetries,
       automaticUpdateDelayMs: options.collaborativeAutomaticUpdateDelayMs,
     });
   }
@@ -832,7 +833,7 @@ export class ControlPlaneStore {
     actor: Contract.ControlPlaneActor,
   ) {
     const input = Contract.CreateEngineeringCommandSchema.parse(raw);
-    this.requireProjectOwner(input.projectId, actor);
+    this.requireProjectMember(input.projectId, actor);
     this.requireEngineeringMembersAreProjectDevelopers(
       input.projectId,
       input.ownerUserId,
@@ -856,7 +857,7 @@ export class ControlPlaneStore {
             input.slug,
             input.displayName,
             input.type,
-            input.repositoryUrl,
+            input.repositoryUrl ?? '',
             now,
             now,
           );
@@ -906,7 +907,7 @@ export class ControlPlaneStore {
       throw this.engineeringPermission('你不是该工程成员，不能查看技术配置');
     return {
       ...this.engineeringSummary(row, userId, projectOwner),
-      repositoryUrl: row.repository_url,
+      repositoryUrl: row.repository_url || null,
       members: this.engineeringMembers(engineeringId),
       environments: this.engineeringEnvironments(engineeringId),
     };
@@ -933,6 +934,7 @@ export class ControlPlaneStore {
       throw this.engineeringReferenced(
         '工程已经被提测引用，稳定标识不能再修改',
       );
+    const repositoryUrl = input.repositoryUrl ?? row.repository_url;
     const request = JSON.stringify(input);
     const existing = this.idempotencyRecord('engineering.update', key, request);
     if (existing) return this.getEngineering(existing.entity_id, actor);
@@ -947,7 +949,7 @@ export class ControlPlaneStore {
             input.slug,
             input.displayName,
             input.type,
-            input.repositoryUrl,
+            repositoryUrl,
             now,
             input.engineeringId,
           );
@@ -1054,6 +1056,10 @@ export class ControlPlaneStore {
       (item) => item.id === environmentId,
     );
     if (!environment) throw this.notFound('测试环境不存在');
+    if (!row.repository_url)
+      throw this.engineeringBindingInvalid(
+        '工程尚未通过本机 Agent 识别 Git 仓库，不能加入提测单',
+      );
     const capturedAt = this.iso();
     this.database
       .query(
@@ -1135,6 +1141,20 @@ export class ControlPlaneStore {
       throw this.engineeringBindingInvalid('归档工程不能创建新绑定');
     if (!this.engineeringRole(engineering.id, ticket.developer_user_id))
       throw this.engineeringBindingInvalid('开发人员已经不再属于该工程');
+    if (!engineering.repository_url && !input.repositoryUrl)
+      throw this.engineeringBindingInvalid(
+        '本机仓库没有可识别的 Git remote.origin.url',
+      );
+    if (
+      engineering.repository_url &&
+      input.repositoryUrl &&
+      repositoryIdentity(engineering.repository_url) !==
+        repositoryIdentity(input.repositoryUrl)
+    )
+      throw this.engineeringBindingConflict(
+        '本机仓库的 Git remote 与当前工程不一致',
+      );
+    const repositoryUrl = engineering.repository_url || input.repositoryUrl!;
 
     const existingBinding = this.database
       .query<{ id: string }, [string, string]>(
@@ -1157,8 +1177,14 @@ export class ControlPlaneStore {
       throw this.engineeringBindingConflict('该 Agent 已经属于另一名开发人员');
     const bindingId = randomUUID();
     const repositoryName =
-      input.repositoryName ?? repositoryNameFromUrl(engineering.repository_url);
+      input.repositoryName ?? repositoryNameFromUrl(repositoryUrl);
     this.database.transaction(() => {
+      if (!engineering.repository_url)
+        this.database
+          .query(
+            'UPDATE engineering SET repository_url=?,updated_at=? WHERE id=?',
+          )
+          .run(repositoryUrl, now, engineering.id);
       this.database
         .query(
           `INSERT INTO runner(id,name,last_seen_at,created_at,updated_at,owner_user_id) VALUES(?,?,?,?,?,?)
@@ -1281,9 +1307,9 @@ export class ControlPlaneStore {
             input.projectId,
             input.title,
             '',
-            input.operationPath,
-            input.actualResult,
-            input.expectedResult,
+            input.operationPath ?? null,
+            input.actualResult ?? null,
+            input.expectedResult ?? null,
             input.supplementalDescription ?? null,
             now,
             now,
@@ -1374,10 +1400,12 @@ export class ControlPlaneStore {
       ...this.bugSummary(row),
       canReopenRepair:
         row.status === 'done' && this.hasSuccessfulCleanup('bug', bugId),
-      operationPath: row.operation_path,
-      actualResult: row.actual_result,
-      expectedResult: row.expected_result,
-      supplementalDescription: row.supplemental_description,
+      ...compactBugDescription({
+        operationPath: row.operation_path,
+        actualResult: row.actual_result,
+        expectedResult: row.expected_result,
+        supplementalDescription: row.supplemental_description,
+      }),
       attachments,
       events,
       repairAttempt: attempts.at(-1) ?? null,
@@ -2359,7 +2387,7 @@ export class ControlPlaneStore {
     input: {
       bugId: string;
       feedback: string;
-      attachments: CreateBugCommand['attachments'];
+      attachments: ParsedCreateBugCommand['attachments'];
     },
     key: string,
   ) {
@@ -2696,10 +2724,7 @@ export class ControlPlaneStore {
         id: bug.id,
         shortId: bug.shortId,
         title: bug.title,
-        operationPath: bug.operationPath,
-        actualResult: bug.actualResult,
-        expectedResult: bug.expectedResult,
-        supplementalDescription: bug.supplementalDescription,
+        ...compactBugDescription(bug),
         attachments: [
           ...bug.attachments,
           ...bug.verificationFeedbacks.flatMap((f) => f.attachments),
@@ -3856,6 +3881,20 @@ function repositoryNameFromUrl(repositoryUrl: string) {
     .at(-1)
     ?.replace(/\.git$/, '');
   return name || 'repository';
+}
+function repositoryIdentity(repositoryUrl: string) {
+  const scp = /^(?:[^@]+@)?([^:]+):(.+)$/.exec(repositoryUrl);
+  if (scp?.[1] && scp[2] && !repositoryUrl.includes('://'))
+    return `${scp[1].toLowerCase()}/${repositoryPathIdentity(scp[2])}`;
+  try {
+    const parsed = new URL(repositoryUrl);
+    return `${parsed.host.toLowerCase()}/${repositoryPathIdentity(parsed.pathname)}`;
+  } catch {
+    return repositoryUrl.toLowerCase();
+  }
+}
+function repositoryPathIdentity(path: string) {
+  return path.replace(/^\/+|\/+$/g, '').replace(/\.git$/i, '');
 }
 function migrateRepairDispatchMemberContext(database: Database) {
   database.exec(

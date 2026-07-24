@@ -1,7 +1,16 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import type {
   CollaborativeCommand,
   TestSubmissionSummary,
@@ -9,14 +18,36 @@ import type {
 import type { CurrentUser } from '@/lib/auth/core';
 import { CookingAccountMenu } from '@/components/cooking-account-menu';
 import { collaborativeCommand, collaborativeQuery, messageOf } from './client';
-import {
-  BugBoard,
-  DeveloperOperations,
-  SubmissionHeader,
-  SubmissionRail,
-} from './board';
-import { BugComposer, SubmissionComposer } from './dialogs';
+import { BugBoard, SubmissionRail } from './board';
+import { SubmissionComposer } from './dialogs';
 import type { Theme, WorkspaceSnapshot } from './model';
+
+const SIDEBAR_STORAGE_KEY = 'agent-party-time:collab-sidebar-width';
+const SIDEBAR_DEFAULT_WIDTH = 320;
+const SIDEBAR_MIN_WIDTH = 240;
+const SIDEBAR_MAX_WIDTH = 560;
+const STAGE_MIN_WIDTH = 480;
+
+type CollabLayoutStyle = CSSProperties & {
+  '--collab-rail-expanded-width': string;
+};
+
+function clampSidebarWidth(width: number) {
+  if (typeof window === 'undefined') {
+    return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, width));
+  }
+  const viewportMaximum = Math.max(
+    SIDEBAR_MIN_WIDTH,
+    window.innerWidth - STAGE_MIN_WIDTH,
+  );
+  return Math.round(
+    Math.min(
+      SIDEBAR_MAX_WIDTH,
+      viewportMaximum,
+      Math.max(SIDEBAR_MIN_WIDTH, width),
+    ),
+  );
+}
 
 export function CollaborativeSubmissionWorkspace({
   currentUser,
@@ -32,12 +63,20 @@ export function CollaborativeSubmissionWorkspace({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showCreateSubmission, setShowCreateSubmission] = useState(false);
-  const [showCreateBug, setShowCreateBug] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
+  const [sidebarResizing, setSidebarResizing] = useState(false);
   const [includeClosed, setIncludeClosed] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const refreshInFlight = useRef(false);
+  const sidebarDrag = useRef<{
+    currentWidth: number;
+    startWidth: number;
+    startX: number;
+  } | null>(null);
   const isDeveloper = currentUser.accountType === 'DEVELOPER';
 
   const loadSubmissions = useCallback(
@@ -81,17 +120,19 @@ export function CollaborativeSubmissionWorkspace({
                 kind: 'update_batches.list',
                 submissionItemId: item.id,
               }),
-              collaborativeQuery({
-                kind: 'interactions.list',
-                submissionItemId: item.id,
-                pendingOnly: true,
-              }),
+              isDeveloper && currentUser.id === item.responsibleDeveloper.id
+                ? collaborativeQuery({
+                    kind: 'interactions.list',
+                    submissionItemId: item.id,
+                    pendingOnly: true,
+                  })
+                : Promise.resolve(null),
             ]);
           return {
             itemId: item.id,
             repairTasks: repairResult?.repairTasks ?? [],
             updateBatches: updateResult.updateBatches ?? [],
-            interactions: interactionResult.interactions ?? [],
+            interactions: interactionResult?.interactions ?? [],
           };
         }),
       );
@@ -134,6 +175,22 @@ export function CollaborativeSubmissionWorkspace({
   );
 
   useEffect(() => {
+    const storedWidth = Number(
+      window.localStorage.getItem(SIDEBAR_STORAGE_KEY),
+    );
+    if (Number.isFinite(storedWidth) && storedWidth > 0) {
+      setSidebarWidth(clampSidebarWidth(storedWidth));
+    }
+
+    function fitSidebarToViewport() {
+      setSidebarWidth((current) => clampSidebarWidth(current));
+    }
+
+    window.addEventListener('resize', fitSidebarToViewport);
+    return () => window.removeEventListener('resize', fitSidebarToViewport);
+  }, []);
+
+  useEffect(() => {
     void refresh();
   }, [includeClosed]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -152,7 +209,7 @@ export function CollaborativeSubmissionWorkspace({
   }, [refresh, selectedId]);
 
   const mutate = useCallback(
-    (command: CollaborativeCommand, successMessage: string) =>
+    (command: CollaborativeCommand, successMessage: string | null) =>
       new Promise<boolean>((resolve) => {
         startTransition(async () => {
           try {
@@ -173,6 +230,80 @@ export function CollaborativeSubmissionWorkspace({
   );
 
   const selectedSummary = submissions.find((item) => item.id === selectedId);
+
+  function saveSidebarWidth(width: number) {
+    window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(width));
+  }
+
+  function beginSidebarResize(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0 || window.matchMedia('(max-width: 760px)').matches)
+      return;
+    sidebarDrag.current = {
+      currentWidth: sidebarWidth,
+      startWidth: sidebarWidth,
+      startX: event.clientX,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setSidebarResizing(true);
+  }
+
+  function resizeSidebar(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!sidebarDrag.current) return;
+    const nextWidth = clampSidebarWidth(
+      sidebarDrag.current.startWidth +
+        event.clientX -
+        sidebarDrag.current.startX,
+    );
+    sidebarDrag.current.currentWidth = nextWidth;
+    setSidebarWidth(nextWidth);
+  }
+
+  function finishSidebarResize(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!sidebarDrag.current) return;
+    const finalWidth = sidebarDrag.current.currentWidth;
+    sidebarDrag.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setSidebarWidth(finalWidth);
+    setSidebarResizing(false);
+    saveSidebarWidth(finalWidth);
+  }
+
+  function cancelSidebarResize(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!sidebarDrag.current) return;
+    const originalWidth = sidebarDrag.current.startWidth;
+    sidebarDrag.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setSidebarWidth(originalWidth);
+    setSidebarResizing(false);
+  }
+
+  function resizeSidebarWithKeyboard(
+    event: ReactKeyboardEvent<HTMLDivElement>,
+  ) {
+    const step = event.shiftKey ? 32 : 16;
+    const nextWidth =
+      event.key === 'Home'
+        ? SIDEBAR_MIN_WIDTH
+        : event.key === 'End'
+          ? clampSidebarWidth(SIDEBAR_MAX_WIDTH)
+          : event.key === 'ArrowLeft'
+            ? clampSidebarWidth(sidebarWidth - step)
+            : event.key === 'ArrowRight'
+              ? clampSidebarWidth(sidebarWidth + step)
+              : null;
+    if (nextWidth === null) return;
+    event.preventDefault();
+    setSidebarWidth(nextWidth);
+    saveSidebarWidth(nextWidth);
+  }
+
+  const layoutStyle: CollabLayoutStyle = {
+    '--collab-rail-expanded-width': sidebarWidth + 'px',
+  };
 
   return (
     <main className="collab-shell" data-theme={theme}>
@@ -209,18 +340,64 @@ export function CollaborativeSubmissionWorkspace({
         </div>
       </header>
 
-      <div className="collab-layout">
+      <div
+        className="collab-layout"
+        data-sidebar-collapsed={sidebarCollapsed ? 'true' : undefined}
+        data-sidebar-mode={showDetails ? 'detail' : 'list'}
+        data-sidebar-resizing={sidebarResizing ? 'true' : undefined}
+        style={layoutStyle}
+      >
         <SubmissionRail
+          collapsed={sidebarCollapsed}
           currentUser={currentUser}
+          detailOpen={showDetails}
           includeClosed={includeClosed}
           loading={loading}
+          mutate={mutate}
+          onBackToList={() => setShowDetails(false)}
+          onCloseSubmission={() => {
+            if (!snapshot) return;
+            void mutate(
+              {
+                kind: 'submission.close',
+                submissionId: snapshot.submission.id,
+              },
+              '提测单已关闭，环境锁已释放，清理任务已排队。',
+            );
+          }}
           onCreate={() => setShowCreateSubmission(true)}
           onIncludeClosedChange={setIncludeClosed}
+          onOpenDetails={(id) => {
+            setSelectedId(id);
+            setShowDetails(true);
+            setSidebarCollapsed(false);
+          }}
           onRefresh={() => void refresh(selectedId)}
           onSelect={setSelectedId}
+          onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
+          pending={pending}
           refreshing={refreshing}
           selectedId={selectedId}
+          snapshot={snapshot}
           submissions={submissions}
+        />
+
+        <div
+          aria-controls="collab-submission-rail"
+          aria-label="调整提测单侧边栏宽度"
+          aria-orientation="vertical"
+          aria-valuemax={clampSidebarWidth(SIDEBAR_MAX_WIDTH)}
+          aria-valuemin={SIDEBAR_MIN_WIDTH}
+          aria-valuenow={sidebarWidth}
+          className="collab-rail-resizer"
+          onKeyDown={resizeSidebarWithKeyboard}
+          onLostPointerCapture={finishSidebarResize}
+          onPointerCancel={cancelSidebarResize}
+          onPointerDown={beginSidebarResize}
+          onPointerMove={resizeSidebar}
+          onPointerUp={finishSidebarResize}
+          role="separator"
+          tabIndex={sidebarCollapsed ? -1 : 0}
         />
 
         <section className="collab-stage">
@@ -242,37 +419,18 @@ export function CollaborativeSubmissionWorkspace({
           ) : null}
 
           {snapshot ? (
-            <>
-              <SubmissionHeader
-                currentUser={currentUser}
-                onClose={() =>
-                  mutate(
-                    {
-                      kind: 'submission.close',
-                      submissionId: snapshot.submission.id,
-                    },
-                    '提测单已关闭，环境锁已释放，清理任务已排队。',
-                  )
-                }
-                onCreateBug={() => setShowCreateBug(true)}
-                pending={pending}
-                snapshot={snapshot}
-              />
-              {isDeveloper ? (
-                <DeveloperOperations
-                  currentUser={currentUser}
-                  mutate={mutate}
-                  pending={pending}
-                  snapshot={snapshot}
-                />
-              ) : null}
+            <div className="collab-stage__content">
               <BugBoard
                 currentUser={currentUser}
                 mutate={mutate}
+                onBugSaved={async (_bugId, message) => {
+                  setNotice(message);
+                  await refresh(snapshot.submission.id);
+                }}
                 pending={pending}
                 snapshot={snapshot}
               />
-            </>
+            </div>
           ) : (
             <EmptyStage
               canCreate={isDeveloper}
@@ -295,19 +453,6 @@ export function CollaborativeSubmissionWorkspace({
             await refresh(submissionId);
           }}
           registeredUsers={registeredUsers}
-        />
-      ) : null}
-
-      {showCreateBug && snapshot ? (
-        <BugComposer
-          items={snapshot.submission.items}
-          onClose={() => setShowCreateBug(false)}
-          onCreated={async () => {
-            setShowCreateBug(false);
-            setNotice('缺陷已登记，技术配置已锁定。');
-            await refresh(snapshot.submission.id);
-          }}
-          submissionId={snapshot.submission.id}
         />
       ) : null}
     </main>

@@ -18,6 +18,8 @@ import {
   HeartbeatRunnerCommandSchema,
   HeartbeatRunnerResultSchema,
   createAppError,
+  compactBugDescription,
+  compactBugDescriptionFields,
   ERROR_CODES,
   ListBugsQuerySchema,
   ListBugsResultSchema,
@@ -53,6 +55,7 @@ import {
   type AppError,
   type ControlPlaneOperation,
   type CreateBugCommand,
+  type ParsedCreateBugCommand,
   type CreateProjectCommand,
   type ProjectSummary,
   type RegisterRunnerCommand,
@@ -259,7 +262,7 @@ export interface ControlPlanePort {
     input: {
       bugId: string;
       feedback: string;
-      attachments: CreateBugCommand['attachments'];
+      attachments: ParsedCreateBugCommand['attachments'];
     },
     idempotencyKey: string,
   ): Promise<{ bug: BugSummary; dispatch: RepairDispatchSummary }>;
@@ -556,10 +559,11 @@ export class HttpControlPlaneAdapter implements ControlPlanePort {
   }
 
   async createBug(input: CreateBugCommand, idempotencyKey: string) {
+    const parsed = CreateBugCommandSchema.parse(input);
     return CreateBugResultSchema.parse(
       await this.request(
         'bug.create',
-        CreateBugCommandSchema.parse(input),
+        compactBugDescriptionFields(parsed),
         idempotencyKey,
       ),
     ).bug;
@@ -853,7 +857,7 @@ export class HttpControlPlaneAdapter implements ControlPlanePort {
     input: {
       bugId: string;
       feedback: string;
-      attachments: CreateBugCommand['attachments'];
+      attachments: ParsedCreateBugCommand['attachments'];
     },
     idempotencyKey: string,
   ) {
@@ -921,12 +925,13 @@ export class HttpControlPlaneAdapter implements ControlPlanePort {
     input: Contract.CollaborativeCommand,
     idempotencyKey = randomUUID(),
   ) {
+    const command = Contract.CollaborativeCommandSchema.parse(input);
+    const payload =
+      command.kind === 'bug.create'
+        ? compactBugDescriptionFields(command)
+        : command;
     return Contract.CollaborativeCommandResultSchema.parse(
-      await this.request(
-        'collaborative.command',
-        Contract.CollaborativeCommandSchema.parse(input),
-        idempotencyKey,
-      ),
+      await this.request('collaborative.command', payload, idempotencyKey),
     );
   }
 
@@ -1248,10 +1253,7 @@ export class InMemoryControlPlaneAdapter implements ControlPlanePort {
       deploymentState: null,
       canReopenRepair: false,
       title: parsed.title,
-      operationPath: parsed.operationPath,
-      actualResult: parsed.actualResult,
-      expectedResult: parsed.expectedResult,
-      supplementalDescription: parsed.supplementalDescription ?? null,
+      ...compactBugDescription(parsed),
       attachments: parsed.attachments.map((attachment) => ({
         id: randomUUID(),
         bugId: id,
@@ -1577,7 +1579,7 @@ export class InMemoryControlPlaneAdapter implements ControlPlanePort {
     _input: {
       bugId: string;
       feedback: string;
-      attachments: CreateBugCommand['attachments'];
+      attachments: ParsedCreateBugCommand['attachments'];
     },
     _idempotencyKey: string,
   ): Promise<{ bug: BugSummary; dispatch: RepairDispatchSummary }> {

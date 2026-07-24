@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { BugDescriptionSchema } from './bug-description.ts';
 
 const IsoUtcDateTimeSchema = z
   .string()
@@ -21,7 +22,6 @@ export const SubmissionRepairTaskStateSchema = z.enum([
   'RUNNING',
   'COMPLETED',
   'FAILED',
-  'WITHDRAWN',
 ]);
 export const SubmissionUpdateBatchStateSchema = z.enum([
   'QUEUED',
@@ -67,6 +67,14 @@ export const SubmissionItemTechnicalSchema = z.object({
   environment: SubmissionEnvironmentSnapshotSchema,
 });
 
+export const SubmissionTestTargetSchema = z.object({
+  targetBranch: z.string().trim().min(1).max(240),
+  environment: z.object({
+    slug: z.string().trim().min(1).max(64),
+    displayName: z.string().trim().min(1).max(120),
+  }),
+});
+
 export const TestSubmissionItemSchema = z.object({
   id: IdSchema,
   submissionId: IdSchema,
@@ -75,6 +83,7 @@ export const TestSubmissionItemSchema = z.object({
   engineeringDisplayName: z.string().trim().min(1).max(120),
   engineeringType: z.enum(['FRONTEND', 'BACKEND']),
   responsibleDeveloper: SubmissionUserSchema,
+  testTarget: SubmissionTestTargetSchema,
   technical: SubmissionItemTechnicalSchema.nullable(),
   lockedAt: IsoUtcDateTimeSchema.nullable(),
   createdAt: IsoUtcDateTimeSchema,
@@ -84,6 +93,7 @@ export const TestSubmissionItemSchema = z.object({
 export const TestSubmissionSummarySchema = z.object({
   id: IdSchema,
   projectId: IdSchema,
+  projectTitle: z.string().trim().min(1).max(120),
   title: z.string().trim().min(1).max(160),
   requirementDescription: z.string().trim().min(1).max(12_000),
   tester: SubmissionUserSchema,
@@ -134,10 +144,18 @@ export const SubmissionUpdateFeedbackAttachmentSchema = z.object({
   createdAt: IsoUtcDateTimeSchema,
 });
 
-export const SubmissionRepairAttemptSchema = z.object({
+export const SubmissionRepairActivitySchema = z.enum([
+  'QUEUED',
+  'PREPARING',
+  'RUNNING',
+  'WAITING_INTERACTION',
+]);
+
+export const SubmissionRepairRecordSchema = z.object({
   id: IdSchema,
   bugId: IdSchema,
   taskId: IdSchema,
+  phase: z.enum(['STARTUP', 'EXECUTION']),
   sessionId: z.string().trim().min(1).max(240).nullable(),
   outcome: z.enum([
     'READY',
@@ -156,16 +174,16 @@ export const SubmissionBugSchema = z.object({
   shortId: z.string().regex(/^BUG-\d{4,}$/),
   submissionId: IdSchema,
   submissionItemId: NullableIdSchema,
+  engineeringType: z.enum(['FRONTEND', 'BACKEND']).nullable(),
   engineeringDisplayName: z.string().trim().min(1).max(120).nullable(),
   status: SubmissionBugStatusSchema,
   title: z.string().trim().min(1).max(160),
-  operationPath: z.string().trim().min(1).max(4_000),
-  actualResult: z.string().trim().min(1).max(8_000),
-  expectedResult: z.string().trim().min(1).max(8_000),
-  supplementalDescription: z.string().trim().max(8_000).nullable(),
+  ...BugDescriptionSchema.shape,
   latestFeedback: z.string().trim().min(1).max(8_000).nullable(),
   attachments: z.array(SubmissionBugAttachmentSchema),
-  attempts: z.array(SubmissionRepairAttemptSchema),
+  repairActivity: SubmissionRepairActivitySchema.nullable(),
+  latestRepairFailed: z.boolean(),
+  repairRecords: z.array(SubmissionRepairRecordSchema),
   candidateCommit: z.string().trim().min(1).max(200).nullable(),
   repairSessionId: z.string().trim().min(1).max(240).nullable(),
   createdByUserId: UserIdSchema,
@@ -186,7 +204,8 @@ export const SubmissionRepairTaskSchema = z.object({
   leaseToken: z.string().trim().min(1).max(240).nullable(),
   leaseExpiresAt: IsoUtcDateTimeSchema.nullable(),
   resumeSessionId: z.string().trim().min(1).max(240).nullable(),
-  retryCount: z.number().int().nonnegative(),
+  failurePhase: z.enum(['STARTUP', 'EXECUTION']).nullable(),
+  failureSummary: z.string().trim().min(1).max(12_000).nullable(),
   createdAt: IsoUtcDateTimeSchema,
   startedAt: IsoUtcDateTimeSchema.nullable(),
   completedAt: IsoUtcDateTimeSchema.nullable(),
@@ -306,24 +325,41 @@ export const CollaborativeCommandSchema = z.discriminatedUnion('kind', [
     kind: z.literal('bug.create'),
     submissionId: IdSchema,
     submissionItemId: NullableIdSchema,
+    engineeringType: z.enum(['FRONTEND', 'BACKEND']).nullable().optional(),
     title: z.string().trim().min(1).max(160),
-    operationPath: z.string().trim().min(1).max(4_000),
-    actualResult: z.string().trim().min(1).max(8_000),
-    expectedResult: z.string().trim().min(1).max(8_000),
-    supplementalDescription: z.string().trim().max(8_000).nullable().optional(),
+    ...BugDescriptionSchema.shape,
     attachments: z.array(AttachmentUploadSchema).max(5).default([]),
   }),
   z.object({
-    kind: z.literal('bug.triage'),
+    kind: z.literal('bug.update'),
     bugId: IdSchema,
-    submissionItemId: IdSchema,
+    submissionItemId: NullableIdSchema,
+    engineeringType: z.enum(['FRONTEND', 'BACKEND']).nullable(),
+    title: z.string().trim().min(1).max(160),
+    ...BugDescriptionSchema.shape,
+    existingAttachmentIds: z.array(IdSchema).max(5),
+    attachments: z.array(AttachmentUploadSchema).max(5),
+  }),
+  z.object({
+    kind: z.literal('bug.assign'),
+    bugId: IdSchema,
+    submissionItemId: NullableIdSchema,
+    engineeringType: z.enum(['FRONTEND', 'BACKEND']).nullable(),
   }),
   z.object({
     kind: z.literal('bug.move'),
     bugId: IdSchema,
-    targetStatus: SubmissionBugStatusSchema,
+    targetStatus: z.literal('DONE'),
+  }),
+  z.object({
+    kind: z.literal('repair_task.enqueue'),
+    bugId: IdSchema,
     feedback: z.string().trim().min(1).max(8_000).nullable().optional(),
     insertAtFront: z.boolean().default(false),
+  }),
+  z.object({
+    kind: z.literal('repair_task.withdraw'),
+    bugId: IdSchema,
   }),
   z.object({
     kind: z.literal('repair_queue.reorder'),
@@ -341,6 +377,12 @@ export const CollaborativeCommandSchema = z.discriminatedUnion('kind', [
       .default(60_000),
   }),
   z.object({
+    kind: z.literal('repair_task.start'),
+    taskId: IdSchema,
+    runnerId: IdSchema,
+    leaseToken: z.string().trim().min(1).max(240),
+  }),
+  z.object({
     kind: z.literal('repair_task.renew'),
     taskId: IdSchema,
     runnerId: IdSchema,
@@ -351,6 +393,13 @@ export const CollaborativeCommandSchema = z.discriminatedUnion('kind', [
       .positive()
       .max(10 * 60_000)
       .default(60_000),
+  }),
+  z.object({
+    kind: z.literal('repair_task.fail_start'),
+    taskId: IdSchema,
+    runnerId: IdSchema,
+    leaseToken: z.string().trim().min(1).max(240),
+    summary: z.string().trim().min(1).max(12_000),
   }),
   z.object({
     kind: z.literal('repair_task.finish'),
@@ -477,7 +526,10 @@ export const CollaborativeCommandSchema = z.discriminatedUnion('kind', [
     summary: z.string().trim().min(1).max(8_000),
   }),
 ]);
-export type CollaborativeCommand = z.infer<typeof CollaborativeCommandSchema>;
+export type CollaborativeCommand = z.input<typeof CollaborativeCommandSchema>;
+export type ParsedCollaborativeCommand = z.output<
+  typeof CollaborativeCommandSchema
+>;
 
 export const CollaborativeQuerySchema = z.discriminatedUnion('kind', [
   z.object({

@@ -3,9 +3,6 @@ import type { CurrentUser } from '@/lib/auth/core';
 export function AccountBadge({ user }: { user: CurrentUser }) {
   return (
     <div className="account-badge">
-      <span aria-hidden="true" className="account-badge__initial">
-        {user.displayName.slice(0, 1)}
-      </span>
       <span className="account-badge__copy">
         <strong>{user.displayName}</strong>
         <small>

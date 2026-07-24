@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ControlPlanePort } from '@agent-party-time/control-plane-client';
+import { ERROR_CODES, createAppError } from '@agent-party-time/shared';
 import type {
   CollaborativeCommand,
   CollaborativeCommandResult,
@@ -38,6 +39,75 @@ describe('CollaborativeSubmissionWorker', () => {
     directories.clear();
   });
 
+  test('labels preparation failures without blaming Runner or Codex', async () => {
+    const fixture = await createFixture('LOCAL_SCRIPT');
+    directories.add(fixture.directory);
+    fixture.controlPlane.bugQueryError = new Error('Bug 协议解析失败');
+    fixture.controlPlane.repairQueue.push(repairTask(fixture));
+    const executor = new ScriptedExecutor(() => {
+      throw new Error('不应启动 Codex');
+    });
+    const worker = fixture.worker(executor, 1);
+
+    worker.start();
+    await waitFor(() => fixture.controlPlane.successfulFinishes.length === 1);
+    await worker.stop();
+
+    expect(executor.inputs).toHaveLength(0);
+    expect(fixture.controlPlane.successfulFinishes[0]).toMatchObject({
+      kind: 'repair_task.fail_start',
+      summary: '修复任务启动失败：Bug 协议解析失败',
+    });
+  });
+
+  test('drops a stale finish outbox after the task lease is lost', async () => {
+    const fixture = await createFixture('LOCAL_SCRIPT');
+    directories.add(fixture.directory);
+    const pending = await fixture.stateStore.saveCollaborativePendingOutcome({
+      command: {
+        kind: 'repair_task.finish',
+        taskId: randomUUID(),
+        runnerId: fixture.runner.runnerId,
+        leaseToken: `lease-${randomUUID()}`,
+        sessionId: null,
+        outcome: 'INFRASTRUCTURE_ERROR',
+        summary: '旧租约下产生的结果',
+        candidateCommit: null,
+      },
+    });
+    fixture.controlPlane.finishError = Object.assign(
+      new Error('修复任务租约不匹配'),
+      {
+        appError: createAppError({
+          code: ERROR_CODES.jobLeaseLost,
+          category: 'conflict',
+          message: '修复任务租约不匹配',
+          retryable: false,
+        }),
+      },
+    );
+    const worker = fixture.worker(
+      new ScriptedExecutor(() => {
+        throw new Error('不应启动 Codex');
+      }),
+      1,
+    );
+
+    worker.start();
+    await waitFor(() =>
+      fixture.stateStore
+        .listCollaborativePendingOutcomes()
+        .then((items) => items.length === 0),
+    );
+    await worker.stop();
+
+    const finishCalls = fixture.controlPlane.commands.filter(({ input }) =>
+      input.kind.endsWith('.finish'),
+    );
+    expect(finishCalls).toHaveLength(1);
+    expect(finishCalls[0]!.idempotencyKey).toBe(pending.id);
+  });
+
   test('resumes the original repair thread and replays the finish outbox', async () => {
     const fixture = await createFixture('LOCAL_SCRIPT');
     directories.add(fixture.directory);
@@ -51,10 +121,11 @@ describe('CollaborativeSubmissionWorker', () => {
       createdAt: now(),
     });
     fixture.bug.latestFeedback = '验证失败：保存后页面仍为空';
-    fixture.bug.attempts.push({
+    fixture.bug.repairRecords.push({
       id: randomUUID(),
       bugId: fixture.bug.id,
       taskId: randomUUID(),
+      phase: 'EXECUTION',
       sessionId: 'session-previous',
       outcome: 'FAILED',
       summary: '第一次尝试未复现',
@@ -117,7 +188,9 @@ describe('CollaborativeSubmissionWorker', () => {
         bug: {
           id: fixture.bug.id,
           latestFeedback: '验证失败：保存后页面仍为空',
-          attempts: [expect.objectContaining({ summary: '第一次尝试未复现' })],
+          repairRecords: [
+            expect.objectContaining({ summary: '第一次尝试未复现' }),
+          ],
         },
         attachmentPaths: [attachmentPath],
       },
@@ -503,6 +576,8 @@ class FakeControlPlane {
   readonly attachmentContents = new Map<string, string>();
   readonly interactions = new Map<string, CodexInteractionRequest>();
   finishFailuresRemaining = 0;
+  finishError: Error | null = null;
+  bugQueryError: Error | null = null;
 
   async collaborativeCommand(
     input: CollaborativeCommand,
@@ -569,7 +644,11 @@ class FakeControlPlane {
       }
       return { kind: input.kind, interaction: interaction ?? null };
     }
-    if (input.kind.endsWith('.finish')) {
+    if (
+      input.kind === 'repair_task.fail_start' ||
+      input.kind.endsWith('.finish')
+    ) {
+      if (this.finishError) throw this.finishError;
       if (this.finishFailuresRemaining > 0) {
         this.finishFailuresRemaining -= 1;
         throw new Error('temporary control-plane failure');
@@ -592,8 +671,10 @@ class FakeControlPlane {
         kind: input.kind,
         submission: this.submissions.get(input.submissionId),
       };
-    if (input.kind === 'bug.get')
+    if (input.kind === 'bug.get') {
+      if (this.bugQueryError) throw this.bugQueryError;
       return { kind: input.kind, bug: this.bugs.get(input.bugId) };
+    }
     if (input.kind === 'interaction.get')
       return {
         kind: input.kind,
@@ -722,6 +803,7 @@ function submissionFixture(
   return {
     id: submissionId,
     projectId: randomUUID(),
+    projectTitle: '协作项目',
     title: '协作提测',
     requirementDescription: '支持多工程修复和统一更新',
     tester: user('tester-1', 'TESTER'),
@@ -748,6 +830,10 @@ function submissionItemFixture(
     engineeringDisplayName: '订单前端',
     engineeringType: 'FRONTEND',
     responsibleDeveloper: user('developer-1', 'DEVELOPER'),
+    testTarget: {
+      targetBranch: 'develop',
+      environment: { slug: 'test', displayName: '测试环境' },
+    },
     technical: {
       repositoryUrl: 'https://example.test/order.git',
       bindingId: randomUUID(),
@@ -778,6 +864,7 @@ function bugFixture(
     shortId: `BUG-${Math.floor(1000 + Math.random() * 9000)}`,
     submissionId: submission.id,
     submissionItemId,
+    engineeringType: 'FRONTEND',
     engineeringDisplayName: '订单前端',
     status: 'REPAIRING',
     title: '保存后内容为空',
@@ -787,7 +874,9 @@ function bugFixture(
     supplementalDescription: '仅在测试环境复现',
     latestFeedback: null,
     attachments: [],
-    attempts: [],
+    repairActivity: 'RUNNING',
+    latestRepairFailed: false,
+    repairRecords: [],
     candidateCommit: 'deadbeef',
     repairSessionId: null,
     createdByUserId: 'tester-1',
@@ -811,7 +900,8 @@ function repairTask(
     leaseToken: `lease-${randomUUID()}`,
     leaseExpiresAt: now(),
     resumeSessionId: null,
-    retryCount: 0,
+    failurePhase: null,
+    failureSummary: null,
     createdAt: now(),
     startedAt: now(),
     completedAt: null,
