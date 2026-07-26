@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { PlatformError } from '@/platform/errors';
 
-export const SERVER_SCHEMA_VERSION = 1;
+export const SERVER_SCHEMA_VERSION = 2;
 
 const SCHEMA = `
 CREATE TABLE platform_user (
@@ -31,6 +31,66 @@ CREATE TABLE platform_file (
   created_at TEXT NOT NULL
 ) STRICT;
 CREATE INDEX platform_file_uploader ON platform_file(uploaded_by_user_id, created_at);
+
+CREATE TABLE cooking_project (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  version INTEGER NOT NULL CHECK (version > 0),
+  created_by_user_id TEXT NOT NULL REFERENCES platform_user(id),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX cooking_project_creator ON cooking_project(created_by_user_id, created_at);
+
+CREATE TABLE cooking_project_membership (
+  project_id TEXT NOT NULL REFERENCES cooking_project(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES platform_user(id) ON DELETE RESTRICT,
+  role TEXT NOT NULL CHECK (role IN ('OWNER', 'MEMBER')),
+  version INTEGER NOT NULL CHECK (version > 0),
+  created_at TEXT NOT NULL,
+  PRIMARY KEY(project_id, user_id)
+) STRICT;
+CREATE INDEX cooking_project_membership_user
+  ON cooking_project_membership(user_id, created_at);
+
+CREATE TABLE cooking_project_invitation (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES cooking_project(id) ON DELETE CASCADE,
+  invited_user_id TEXT NOT NULL REFERENCES platform_user(id) ON DELETE RESTRICT,
+  invited_by_user_id TEXT NOT NULL REFERENCES platform_user(id) ON DELETE RESTRICT,
+  status TEXT NOT NULL CHECK (status IN ('PENDING', 'ACCEPTED', 'REJECTED', 'REVOKED')),
+  version INTEGER NOT NULL CHECK (version > 0),
+  created_at TEXT NOT NULL,
+  responded_at TEXT
+) STRICT;
+CREATE UNIQUE INDEX cooking_project_invitation_pending
+  ON cooking_project_invitation(project_id, invited_user_id)
+  WHERE status = 'PENDING';
+CREATE INDEX cooking_project_invitation_recipient
+  ON cooking_project_invitation(invited_user_id, status, created_at);
+
+CREATE TABLE cooking_mutation (
+  id TEXT PRIMARY KEY,
+  actor_user_id TEXT NOT NULL REFERENCES platform_user(id) ON DELETE RESTRICT,
+  operation TEXT NOT NULL,
+  resource_type TEXT NOT NULL,
+  resource_id TEXT NOT NULL,
+  result_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX cooking_mutation_actor ON cooking_mutation(actor_user_id, created_at);
+
+CREATE TABLE cooking_audit_event (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES cooking_project(id) ON DELETE CASCADE,
+  actor_user_id TEXT NOT NULL REFERENCES platform_user(id) ON DELETE RESTRICT,
+  action TEXT NOT NULL,
+  target_type TEXT NOT NULL,
+  target_id TEXT NOT NULL,
+  details_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX cooking_audit_project ON cooking_audit_event(project_id, created_at, id);
 `;
 
 export function initializeSchema(database: Database): void {
