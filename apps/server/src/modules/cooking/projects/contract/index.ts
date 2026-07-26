@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { UserIdSchema, UserSchema } from '@/platform/auth/contract';
+import { CookingMutationIdSchema } from '@/modules/cooking/shared/contract';
 
 export const ProjectIdSchema = z.uuid();
 export const ProjectNameSchema = z.string().trim().min(1).max(120);
-export const MutationIdSchema = z.uuid();
+export const MutationIdSchema = CookingMutationIdSchema;
 export const ProjectRoleSchema = z.enum(['OWNER', 'MEMBER']);
 export const ProjectInvitationDecisionSchema = z.enum(['ACCEPT', 'REJECT']);
 export const ProjectInvitationStatusSchema = z.enum([

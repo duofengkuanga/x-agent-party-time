@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import Link from 'next/link';
 import { logoutAction } from '@/app/logout/action';
 import { requireCurrentUser } from '@/platform/auth/server';
-import { projectService } from '@/modules/cooking/projects/application/server';
+import { projectService } from '@/modules/cooking/application/server';
 import {
   createProjectAction,
   respondProjectInvitationAction,

@@ -3,7 +3,9 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireCurrentUser } from '@/platform/auth/server';
 import { PlatformError } from '@/platform/errors';
-import { projectService } from '@/modules/cooking/projects/application/server';
+import { engineeringService } from '@/modules/cooking/application/server';
+import { createEngineeringAction } from '@/modules/cooking/engineering/presentation/actions';
+import { projectService } from '@/modules/cooking/application/server';
 import {
   inviteProjectUserAction,
   removeProjectMemberAction,
@@ -20,21 +22,23 @@ export default async function ProjectPage({
 }) {
   const user = await requireCurrentUser();
   const { projectId } = await params;
-  const service = projectService();
+  const projects = projectService();
   let summary;
   let members;
+  let engineering;
   try {
-    summary = service.getProject(user.id, projectId);
-    members = service.listMembers(user.id, projectId);
+    summary = projects.getProject(user.id, projectId);
+    members = projects.listMembers(user.id, projectId);
+    engineering = engineeringService().listEngineering(user.id, projectId);
   } catch (error) {
     if (error instanceof PlatformError && error.code === 'NOT_FOUND')
       notFound();
     throw error;
   }
-  const invitations =
-    summary.membership.role === 'OWNER'
-      ? service.listProjectInvitations(user.id, projectId)
-      : [];
+  const isOwner = summary.membership.role === 'OWNER';
+  const invitations = isOwner
+    ? projects.listProjectInvitations(user.id, projectId)
+    : [];
   const message = await searchParams;
 
   return (
@@ -44,11 +48,9 @@ export default async function ProjectPage({
           <Link className="back-link" href="/cooking">
             返回项目工作台
           </Link>
-          <span className="eyebrow">
-            {summary.membership.role === 'OWNER' ? '项目所有者' : '项目成员'}
-          </span>
+          <span className="eyebrow">{isOwner ? '项目所有者' : '项目成员'}</span>
           <h1>{summary.project.name}</h1>
-          <p>成员和邀请只对项目内用户可见。</p>
+          <p>成员、工程和邀请只对项目内用户可见。</p>
         </div>
       </header>
 
@@ -58,6 +60,62 @@ export default async function ProjectPage({
       {message.success ? (
         <p className="notice notice-success">{message.success}</p>
       ) : null}
+
+      <section className="panel">
+        <div className="section-heading">
+          <div>
+            <span className="eyebrow">工程目录</span>
+            <h2>代码工程</h2>
+          </div>
+          <span className="count-badge">{engineering.length}</span>
+        </div>
+        {engineering.length ? (
+          <ul className="card-list">
+            {engineering.map((item) => (
+              <li className="list-card" key={item.id}>
+                <div>
+                  <h3>{item.name}</h3>
+                  <p>
+                    {item.archivedAt ? '已归档' : '可用'} · {item.repositoryUrl}
+                  </p>
+                </div>
+                <Link
+                  className="button-link"
+                  href={`/cooking/engineering/${item.id}`}
+                >
+                  查看工程
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="empty-state">当前项目还没有配置工程。</p>
+        )}
+        {isOwner ? (
+          <form
+            action={createEngineeringAction}
+            className="stack-form separated-form"
+          >
+            <input name="mutationId" type="hidden" value={randomUUID()} />
+            <input name="projectId" type="hidden" value={projectId} />
+            <label>
+              工程名称
+              <input maxLength={120} name="name" required />
+            </label>
+            <label>
+              远程仓库地址
+              <input
+                autoComplete="off"
+                maxLength={500}
+                name="repositoryUrl"
+                placeholder="https://example.com/team/project.git"
+                required
+              />
+            </label>
+            <button type="submit">创建工程</button>
+          </form>
+        ) : null}
+      </section>
 
       <div className="workspace-grid">
         <section className="panel">
@@ -78,7 +136,7 @@ export default async function ProjectPage({
                     {membership.role === 'OWNER' ? '项目所有者' : '项目成员'}
                   </p>
                 </div>
-                {summary.membership.role === 'OWNER' ? (
+                {isOwner ? (
                   <form action={removeProjectMemberAction}>
                     <input
                       name="mutationId"
@@ -102,7 +160,7 @@ export default async function ProjectPage({
           </ul>
         </section>
 
-        {summary.membership.role === 'OWNER' ? (
+        {isOwner ? (
           <aside className="panel compact-panel">
             <span className="eyebrow">所有者操作</span>
             <h2>项目设置</h2>
@@ -139,7 +197,7 @@ export default async function ProjectPage({
         ) : null}
       </div>
 
-      {summary.membership.role === 'OWNER' ? (
+      {isOwner ? (
         <section className="panel">
           <div className="section-heading">
             <div>
