@@ -11,9 +11,13 @@
   ],
   "scripts": {
     "dev": "bun scripts/dev-all.ts",
+    "dev:server": "bun --cwd apps/server dev",
     "status": "bun scripts/dev-processes.ts status",
     "stop": "bun scripts/dev-processes.ts stop",
     "dev:web": "bun --cwd apps/web dev",
+    "build:server": "bun --cwd apps/server build",
+    "start:server": "bun --cwd apps/server start",
+    "seed:server": "bun --cwd apps/server seed",
     "dev:runner": "bun packages/cli/src/index.ts start",
     "cli": "bun packages/cli/src/index.ts",
     "dev:control-plane": "bun --cwd services/control-plane dev",
@@ -23,14 +27,15 @@
     "format:check": "prettier --check .prettierrc.json package.json tsconfig.base.json 'packages/**/package.json' 'packages/**/tsconfig.json' 'packages/**/src/**/*.ts' 'services/**/package.json' 'services/**/tsconfig.json' 'services/**/src/**/*.ts' 'apps/**/package.json' 'apps/**/tsconfig.json' 'apps/**/*.js' 'apps/**/*.mjs'",
     "test": "bun test",
     "check:deps": "bun install --frozen-lockfile",
-    "typecheck": "bun run typecheck:shared && bun run typecheck:control-plane-client && bun run typecheck:control-plane && bun run typecheck:local-service && bun run typecheck:cli && bun run typecheck:web && bun run typecheck:worker",
+    "typecheck": "bun run typecheck:server && bun run typecheck:shared && bun run typecheck:control-plane-client && bun run typecheck:control-plane && bun run typecheck:local-service && bun run typecheck:cli && bun run typecheck:web && bun run typecheck:worker",
     "typecheck:shared": "bunx tsc --noEmit -p packages/shared/tsconfig.json",
     "typecheck:control-plane-client": "bunx tsc --noEmit -p packages/control-plane-client/tsconfig.json",
     "typecheck:control-plane": "bunx tsc --noEmit -p services/control-plane/tsconfig.json",
     "typecheck:local-service": "bunx tsc --noEmit -p packages/local-service/tsconfig.json",
     "typecheck:cli": "bunx tsc --noEmit -p packages/cli/tsconfig.json",
     "typecheck:web": "bunx tsc --noEmit -p apps/web/tsconfig.json",
-    "typecheck:worker": "bunx tsc --noEmit -p services/realtime-worker/tsconfig.json"
+    "typecheck:worker": "bunx tsc --noEmit -p services/realtime-worker/tsconfig.json",
+    "typecheck:server": "bunx tsc --noEmit -p apps/server/tsconfig.json"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
