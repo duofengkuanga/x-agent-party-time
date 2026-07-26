@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { PlatformError } from '@/platform/errors';
 
-export const SERVER_SCHEMA_VERSION = 2;
+export const SERVER_SCHEMA_VERSION = 3;
 
 const SCHEMA = `
 CREATE TABLE platform_user (
@@ -91,6 +91,45 @@ CREATE TABLE cooking_audit_event (
   created_at TEXT NOT NULL
 ) STRICT;
 CREATE INDEX cooking_audit_project ON cooking_audit_event(project_id, created_at, id);
+
+CREATE TABLE cooking_engineering (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES cooking_project(id) ON DELETE CASCADE,
+  name TEXT NOT NULL COLLATE NOCASE,
+  repository_url TEXT NOT NULL,
+  version INTEGER NOT NULL CHECK (version > 0),
+  archived_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+) STRICT;
+CREATE UNIQUE INDEX cooking_engineering_active_name
+  ON cooking_engineering(project_id, name)
+  WHERE archived_at IS NULL;
+CREATE INDEX cooking_engineering_project
+  ON cooking_engineering(project_id, archived_at, created_at);
+
+CREATE TABLE cooking_engineering_membership (
+  engineering_id TEXT NOT NULL REFERENCES cooking_engineering(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES platform_user(id) ON DELETE RESTRICT,
+  version INTEGER NOT NULL CHECK (version > 0),
+  created_at TEXT NOT NULL,
+  PRIMARY KEY(engineering_id, user_id)
+) STRICT;
+CREATE INDEX cooking_engineering_membership_user
+  ON cooking_engineering_membership(user_id, created_at);
+
+CREATE TABLE cooking_environment (
+  id TEXT PRIMARY KEY,
+  engineering_id TEXT NOT NULL REFERENCES cooking_engineering(id) ON DELETE CASCADE,
+  name TEXT NOT NULL COLLATE NOCASE,
+  deployment_json TEXT NOT NULL,
+  version INTEGER NOT NULL CHECK (version > 0),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(engineering_id, name)
+) STRICT;
+CREATE INDEX cooking_environment_engineering
+  ON cooking_environment(engineering_id, created_at);
 `;
 
 export function initializeSchema(database: Database): void {

@@ -4,9 +4,9 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireCurrentUser } from '@/platform/auth/server';
 import { publicError } from '@/platform/errors';
-import { projectService } from '../application/server';
+import { projectService } from '@/modules/cooking/application/server';
 import { ProjectInvitationDecisionSchema } from '../contract';
-import { messageRedirectPath } from './redirect-url';
+import { messageRedirectPath } from '@/modules/cooking/shared/presentation/redirect-url';
 
 export async function createProjectAction(formData: FormData): Promise<never> {
   const user = await requireCurrentUser();

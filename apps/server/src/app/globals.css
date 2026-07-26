@@ -65,7 +65,7 @@ input:focus-visible {
 }
 
 button:disabled {
-  cursor: wait;
+  cursor: not-allowed;
   opacity: 0.5;
 }
 
@@ -378,5 +378,68 @@ button:disabled {
 
   .notice-success {
     color: #a7ddb8;
+  }
+}
+
+.separated-form {
+  padding-top: 1.25rem;
+  margin-top: 1.25rem;
+  border-top: 1px solid color-mix(in srgb, var(--line) 30%, transparent);
+}
+
+.stack-form select,
+.stack-form textarea {
+  min-height: 2.8rem;
+  padding: 0.65rem 0.75rem;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--paper) 75%, white);
+  border: 1px solid var(--line);
+  border-radius: 0.2rem;
+}
+
+.environment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+.environment-card {
+  display: grid;
+  gap: 1.25rem;
+  align-content: start;
+  min-width: 0;
+  padding: 1rem;
+  background: color-mix(in srgb, var(--paper) 76%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+}
+
+.environment-card h3 {
+  margin: 0.35rem 0;
+}
+
+.environment-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.environment-actions {
+  display: grid;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid color-mix(in srgb, var(--line) 30%, transparent);
+}
+
+.code-summary {
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .stack-form select,
+  .stack-form textarea {
+    background: #100f0e;
   }
 }
