@@ -1,4 +1,5 @@
 import { RunnerClient } from './client';
+import { RunnerWorker } from './worker';
 import { RunnerStateStore } from './state';
 
 type Output = Pick<Console, 'log'>;
@@ -46,6 +47,31 @@ export async function runRunnerCli(
       for (const binding of bindings) output.log(binding.bindingId);
       return;
     }
+    case 'start': {
+      const concurrencyValue = optional(rest, '--concurrency') ?? '1';
+      const concurrency = Number(concurrencyValue);
+      if (
+        !Number.isSafeInteger(concurrency) ||
+        concurrency < 1 ||
+        concurrency > 32
+      )
+        throw new Error('--concurrency 必须是 1 到 32 的整数');
+      const worker = new RunnerWorker(
+        client,
+        state,
+        undefined,
+        undefined,
+        undefined,
+        concurrency,
+        {
+          log: (line) => output.log(line),
+          error: (line) => output.log(line),
+        },
+      );
+      output.log(`Runner 已启动，并发数：${concurrency}`);
+      await worker.run();
+      return;
+    }
     default:
       output.log(
         [
@@ -54,9 +80,15 @@ export async function runRunnerCli(
           '  heartbeat',
           '  bind <bindingId> <本机绝对路径>',
           '  bindings',
+          '  start [--concurrency <1-32>]',
         ].join('\n'),
       );
   }
+}
+
+function optional(args: string[], name: string): string | undefined {
+  const index = args.indexOf(name);
+  return index >= 0 ? args[index + 1] : undefined;
 }
 
 function option(args: string[], name: string): string {

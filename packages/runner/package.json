@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@agent-party-time/execution-contract": "workspace:*",
     "@agent-party-time/runner-contract": "workspace:*",
     "zod": "^4.4.3"
   },

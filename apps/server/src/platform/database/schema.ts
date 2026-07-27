@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { PlatformError } from '@/platform/errors';
 
-export const SERVER_SCHEMA_VERSION = 6;
+export const SERVER_SCHEMA_VERSION = 7;
 
 const SCHEMA = `
 CREATE TABLE platform_user (
@@ -27,6 +27,7 @@ CREATE TABLE platform_file (
   original_name TEXT NOT NULL,
   media_type TEXT NOT NULL,
   size_bytes INTEGER NOT NULL CHECK (size_bytes > 0),
+  sha256 TEXT NOT NULL CHECK (length(sha256) = 64),
   uploaded_by_user_id TEXT NOT NULL REFERENCES platform_user(id),
   created_at TEXT NOT NULL
 ) STRICT;
@@ -57,6 +58,89 @@ CREATE TABLE platform_runner_pairing_code (
 ) STRICT;
 CREATE INDEX platform_runner_pairing_expiry
   ON platform_runner_pairing_code(expires_at, used_at);
+
+CREATE TABLE platform_execution (
+  id TEXT PRIMARY KEY,
+  owner_namespace TEXT NOT NULL,
+  owner_kind TEXT NOT NULL,
+  owner_id TEXT NOT NULL,
+  attempt INTEGER NOT NULL CHECK (attempt > 0),
+  previous_execution_id TEXT REFERENCES platform_execution(id) ON DELETE RESTRICT,
+  runner_id TEXT NOT NULL REFERENCES platform_runner(id) ON DELETE RESTRICT,
+  binding_id TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN (
+    'QUEUED',
+    'CLAIMED',
+    'RUNNING',
+    'WAITING_FOR_INTERACTION',
+    'CANCEL_REQUESTED',
+    'SUCCEEDED',
+    'FAILED',
+    'CANCELLED'
+  )),
+  prompt_kind TEXT NOT NULL,
+  prompt_version INTEGER NOT NULL CHECK (prompt_version > 0),
+  rendered_prompt TEXT NOT NULL,
+  rendered_prompt_hash TEXT NOT NULL CHECK (length(rendered_prompt_hash) = 64),
+  output_json_schema TEXT NOT NULL,
+  resume_session_id TEXT,
+  session_id TEXT,
+  lease_token_hash TEXT,
+  lease_expires_at TEXT,
+  outcome_json TEXT,
+  cancellation_requested INTEGER NOT NULL DEFAULT 0
+    CHECK (cancellation_requested IN (0, 1)),
+  created_at TEXT NOT NULL,
+  claimed_at TEXT,
+  started_at TEXT,
+  finished_at TEXT
+) STRICT;
+CREATE UNIQUE INDEX platform_execution_binding_reservation
+  ON platform_execution(binding_id)
+  WHERE state IN (
+    'QUEUED',
+    'CLAIMED',
+    'RUNNING',
+    'WAITING_FOR_INTERACTION',
+    'CANCEL_REQUESTED'
+  );
+CREATE INDEX platform_execution_runner_claim
+  ON platform_execution(runner_id, state, created_at, id);
+CREATE INDEX platform_execution_lease_expiry
+  ON platform_execution(state, lease_expires_at);
+CREATE INDEX platform_execution_owner
+  ON platform_execution(owner_namespace, owner_kind, owner_id, attempt);
+
+CREATE TABLE platform_execution_attachment (
+  execution_id TEXT NOT NULL REFERENCES platform_execution(id) ON DELETE CASCADE,
+  file_id TEXT NOT NULL REFERENCES platform_file(id) ON DELETE RESTRICT,
+  original_name TEXT NOT NULL,
+  media_type TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL CHECK (size_bytes > 0),
+  sha256 TEXT NOT NULL CHECK (length(sha256) = 64),
+  position INTEGER NOT NULL CHECK (position >= 0),
+  PRIMARY KEY(execution_id, file_id),
+  UNIQUE(execution_id, position)
+) STRICT;
+CREATE INDEX platform_execution_attachment_file
+  ON platform_execution_attachment(file_id, execution_id);
+
+CREATE TABLE platform_execution_interaction (
+  id TEXT PRIMARY KEY,
+  execution_id TEXT NOT NULL REFERENCES platform_execution(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('APPROVAL', 'USER_INPUT')),
+  method TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('PENDING', 'RESOLVED', 'INVALIDATED')),
+  resolution_json TEXT,
+  created_at TEXT NOT NULL,
+  resolved_at TEXT
+) STRICT;
+CREATE UNIQUE INDEX platform_execution_interaction_pending
+  ON platform_execution_interaction(execution_id)
+  WHERE state = 'PENDING';
+CREATE INDEX platform_execution_interaction_execution
+  ON platform_execution_interaction(execution_id, created_at, id);
 
 CREATE TABLE cooking_project (
   id TEXT PRIMARY KEY,

@@ -902,7 +902,8 @@ export class BugService {
     const rows = this.db
       .prepare(
         `SELECT file.id, file.storage_key, file.original_name, file.media_type,
-                file.size_bytes, file.uploaded_by_user_id, file.created_at
+                file.size_bytes, file.sha256, file.uploaded_by_user_id,
+                file.created_at
          FROM cooking_bug_attachment attachment
          JOIN platform_file file ON file.id = attachment.file_id
          WHERE attachment.bug_id = ?
@@ -918,6 +919,7 @@ export class BugService {
       original_name: string;
       media_type: string;
       size_bytes: number;
+      sha256: string;
       uploaded_by_user_id: string;
       created_at: string;
     }>;
@@ -928,6 +930,7 @@ export class BugService {
         originalName: row.original_name,
         mediaType: row.media_type,
         sizeBytes: row.size_bytes,
+        sha256: row.sha256,
         uploadedByUserId: row.uploaded_by_user_id,
         createdAt: row.created_at,
       });

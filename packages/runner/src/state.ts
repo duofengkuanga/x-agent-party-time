@@ -40,6 +40,8 @@ export type RunnerLocalPaths = {
   root: string;
   config: string;
   bindings: string;
+  executions: string;
+  outbox: string;
 };
 
 export function runnerLocalPaths(
@@ -53,6 +55,8 @@ export function runnerLocalPaths(
     root,
     config: join(root, 'config.json'),
     bindings: join(root, 'bindings.json'),
+    executions: join(root, 'executions'),
+    outbox: join(root, 'outbox'),
   };
 }
 
