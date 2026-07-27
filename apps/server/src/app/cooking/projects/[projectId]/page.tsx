@@ -45,7 +45,7 @@ export default async function ProjectPage({
     <main className="workspace-page">
       <header className="workspace-header">
         <div>
-          <Link className="back-link" href="/cooking">
+          <Link className="back-link" href="/cooking/projects">
             返回项目工作台
           </Link>
           <span className="eyebrow">{isOwner ? '项目所有者' : '项目成员'}</span>
