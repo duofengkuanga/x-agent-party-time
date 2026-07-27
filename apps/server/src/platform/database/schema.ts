@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { PlatformError } from '@/platform/errors';
 
-export const SERVER_SCHEMA_VERSION = 9;
+export const SERVER_SCHEMA_VERSION = 11;
 
 const SCHEMA = `
 CREATE TABLE platform_user (
@@ -447,10 +447,37 @@ CREATE TABLE cooking_update_batch_entry (
 CREATE INDEX cooking_update_batch_entry_bug
   ON cooking_update_batch_entry(bug_id, batch_id);
 
+CREATE TABLE cooking_external_deployment_report (
+  id TEXT PRIMARY KEY,
+  batch_id TEXT NOT NULL REFERENCES cooking_update_batch(id) ON DELETE CASCADE,
+  round INTEGER NOT NULL CHECK (round > 0),
+  outcome TEXT NOT NULL CHECK (outcome IN ('SUCCEEDED', 'FAILED')),
+  summary TEXT,
+  reported_by_user_id TEXT NOT NULL REFERENCES platform_user(id) ON DELETE RESTRICT,
+  created_at TEXT NOT NULL,
+  UNIQUE(batch_id, round),
+  CHECK (
+    (outcome = 'SUCCEEDED') OR
+    (outcome = 'FAILED' AND summary IS NOT NULL AND length(trim(summary)) > 0)
+  )
+) STRICT;
+CREATE INDEX cooking_external_deployment_report_batch
+  ON cooking_external_deployment_report(batch_id, round, created_at);
+
+CREATE TABLE cooking_external_deployment_report_attachment (
+  file_id TEXT PRIMARY KEY REFERENCES platform_file(id) ON DELETE RESTRICT,
+  report_id TEXT NOT NULL REFERENCES cooking_external_deployment_report(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL CHECK (position >= 0),
+  UNIQUE(report_id, position)
+) STRICT;
+CREATE INDEX cooking_external_deployment_report_attachment_report
+  ON cooking_external_deployment_report_attachment(report_id, position);
+
 CREATE TABLE cooking_update_attempt (
   id TEXT PRIMARY KEY,
   batch_id TEXT NOT NULL REFERENCES cooking_update_batch(id) ON DELETE CASCADE,
   execution_id TEXT NOT NULL UNIQUE REFERENCES platform_execution(id) ON DELETE RESTRICT,
+  continuation_report_id TEXT UNIQUE REFERENCES cooking_external_deployment_report(id) ON DELETE RESTRICT,
   attempt INTEGER NOT NULL CHECK (attempt > 0),
   outcome_json TEXT,
   created_at TEXT NOT NULL,
@@ -459,6 +486,57 @@ CREATE TABLE cooking_update_attempt (
 ) STRICT;
 CREATE INDEX cooking_update_attempt_batch
   ON cooking_update_attempt(batch_id, attempt, created_at);
+
+CREATE TABLE cooking_verification_record (
+  id TEXT PRIMARY KEY,
+  bug_id TEXT NOT NULL REFERENCES cooking_bug(id) ON DELETE CASCADE,
+  round INTEGER NOT NULL CHECK (round > 0),
+  result TEXT NOT NULL CHECK (result IN ('PASSED', 'FAILED')),
+  comment TEXT,
+  feedback_id TEXT REFERENCES cooking_bug_feedback(id) ON DELETE RESTRICT,
+  verified_by_user_id TEXT NOT NULL REFERENCES platform_user(id) ON DELETE RESTRICT,
+  created_at TEXT NOT NULL,
+  UNIQUE(bug_id, round),
+  CHECK (
+    (result = 'PASSED' AND feedback_id IS NULL) OR
+    (result = 'FAILED' AND feedback_id IS NOT NULL AND comment IS NOT NULL)
+  )
+) STRICT;
+CREATE INDEX cooking_verification_record_bug
+  ON cooking_verification_record(bug_id, round, created_at);
+
+CREATE TABLE cooking_cleanup (
+  id TEXT PRIMARY KEY,
+  submission_id TEXT NOT NULL REFERENCES cooking_test_submission(id) ON DELETE CASCADE,
+  submission_item_id TEXT NOT NULL REFERENCES cooking_submission_item(id) ON DELETE RESTRICT,
+  reason TEXT NOT NULL CHECK (reason IN ('BUG_CANCELLED', 'SUBMISSION_CLOSED')),
+  subject_id TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('READY', 'RUNNING', 'FAILED', 'COMPLETED')),
+  version INTEGER NOT NULL CHECK (version > 0),
+  active_execution_id TEXT REFERENCES platform_execution(id) ON DELETE RESTRICT,
+  session_id TEXT,
+  scope_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(reason, subject_id, submission_item_id)
+) STRICT;
+CREATE INDEX cooking_cleanup_submission
+  ON cooking_cleanup(submission_id, created_at, id);
+CREATE INDEX cooking_cleanup_item_state
+  ON cooking_cleanup(submission_item_id, state, created_at);
+
+CREATE TABLE cooking_cleanup_attempt (
+  id TEXT PRIMARY KEY,
+  cleanup_id TEXT NOT NULL REFERENCES cooking_cleanup(id) ON DELETE CASCADE,
+  execution_id TEXT NOT NULL UNIQUE REFERENCES platform_execution(id) ON DELETE RESTRICT,
+  attempt INTEGER NOT NULL CHECK (attempt > 0),
+  outcome_json TEXT,
+  created_at TEXT NOT NULL,
+  finished_at TEXT,
+  UNIQUE(cleanup_id, attempt)
+) STRICT;
+CREATE INDEX cooking_cleanup_attempt_cleanup
+  ON cooking_cleanup_attempt(cleanup_id, attempt, created_at);
 `;
 
 export function initializeSchema(database: Database): void {

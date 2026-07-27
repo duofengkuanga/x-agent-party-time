@@ -10,6 +10,14 @@ import {
 } from 'react';
 import type { JsonValue } from '@agent-party-time/execution-contract';
 import type { CookingWorkspaceSnapshot } from '@/modules/cooking/workspace/contract';
+import {
+  cancelBugAction,
+  reopenBugAction,
+  retryCleanupAction,
+  verifyBugAction,
+  type BugLifecycleActionResult,
+  type CleanupActionResult,
+} from '@/modules/cooking/lifecycle/presentation/actions';
 import type {
   BugRepairView,
   RepairInteractionView,
@@ -28,6 +36,7 @@ import {
   cancelUpdateBatchAction,
   continueUpdateAction,
   freezeUpdateNowAction,
+  reportExternalDeploymentAction,
   resolveUpdateInteractionAction,
   stopUpdateExecutionAction,
   type UpdateActionResult,
@@ -56,7 +65,11 @@ const STATUS_COLUMNS = [
 type MainStage = (typeof STATUS_COLUMNS)[number]['status'];
 type Drawer = { mode: 'create' } | { mode: 'view' | 'edit'; bugId: string };
 type WorkspaceActionResult =
-  BugActionResult | RepairActionResult | UpdateActionResult;
+  | BugActionResult
+  | RepairActionResult
+  | UpdateActionResult
+  | BugLifecycleActionResult
+  | CleanupActionResult;
 
 export function BugBoard({
   onChanged,
@@ -69,15 +82,23 @@ export function BugBoard({
 }) {
   const [drawer, setDrawer] = useState<Drawer | null>(null);
   const [queueOpen, setQueueOpen] = useState(false);
+  const [showTrash, setShowTrash] = useState(false);
   const [draggingBugId, setDraggingBugId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<MainStage | null>(null);
+  const [trashDropActive, setTrashDropActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const activeBugs = snapshot.bugs.filter(({ stage }) => stage !== 'CANCELLED');
-  const cancelledCount = snapshot.bugs.length - activeBugs.length;
+  const cancelledBugs = snapshot.bugs.filter(
+    ({ stage }) => stage === 'CANCELLED',
+  );
   const draggingBug = snapshot.bugs.find(({ id }) => id === draggingBugId);
 
-  function run(command: () => Promise<BugActionResult>, message: string): void {
+  function run(
+    command: () => Promise<WorkspaceActionResult>,
+    message: string,
+    onSuccess?: () => void,
+  ): void {
     startTransition(async () => {
       try {
         const result = await command();
@@ -86,6 +107,7 @@ export function BugBoard({
           return;
         }
         setError(null);
+        onSuccess?.();
         onChanged(result.result.revision, message);
       } catch (actionError) {
         setError(messageOf(actionError, '操作失败，请稍后重试。'));
@@ -104,7 +126,28 @@ export function BugBoard({
     event.preventDefault();
     setDraggingBugId(null);
     setDropTarget(null);
+    setTrashDropActive(false);
     run(transition.command, transition.message);
+  }
+
+  function dropIntoTrash(event: ReactDragEvent<HTMLElement>) {
+    const bugId =
+      event.dataTransfer.getData('application/x-cooking-bug-id') ||
+      draggingBugId;
+    const bug = snapshot.bugs.find(({ id }) => id === bugId);
+    if (!bug?.availableActions.includes('CANCEL')) return;
+    event.preventDefault();
+    setDraggingBugId(null);
+    setDropTarget(null);
+    setTrashDropActive(false);
+    run(
+      () =>
+        cancelBugAction(bug.id, {
+          mutationId: crypto.randomUUID(),
+          expectedVersion: bug.version,
+        }),
+      `${bugLabel(bug)} 已移入垃圾桶。`,
+    );
   }
 
   return (
@@ -120,8 +163,25 @@ export function BugBoard({
           >
             队列 {snapshot.repairQueue.entries.length}
           </button>
-          <button aria-label="查看已取消 Bug" type="button">
-            🗑 {cancelledCount}
+          <button
+            aria-label="查看已取消 Bug"
+            className="collab-trash-button"
+            data-drop-target={trashDropActive ? 'true' : undefined}
+            onClick={() => setShowTrash(true)}
+            onDragEnter={() => {
+              if (draggingBug?.availableActions.includes('CANCEL'))
+                setTrashDropActive(true);
+            }}
+            onDragLeave={() => setTrashDropActive(false)}
+            onDragOver={(event) => {
+              if (!draggingBug?.availableActions.includes('CANCEL')) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = 'move';
+            }}
+            onDrop={dropIntoTrash}
+            type="button"
+          >
+            🗑 {cancelledBugs.length}
           </button>
           {snapshot.availableActions.includes('CREATE_BUG') ? (
             <button
@@ -184,7 +244,8 @@ export function BugBoard({
                 {bugs.map((bug) => {
                   const draggable = Boolean(
                     dragTransition(bug, 'WAITING_FOR_REPAIR') ||
-                    dragTransition(bug, 'REPAIRING'),
+                    dragTransition(bug, 'REPAIRING') ||
+                    bug.availableActions.includes('CANCEL'),
                   );
                   return (
                     <BugCard
@@ -195,6 +256,7 @@ export function BugBoard({
                       onDragEnd={() => {
                         setDraggingBugId(null);
                         setDropTarget(null);
+                        setTrashDropActive(false);
                       }}
                       onDragStart={(event) => {
                         setDraggingBugId(bug.id);
@@ -217,6 +279,60 @@ export function BugBoard({
         })}
       </div>
 
+      {showTrash ? (
+        <div
+          className="collab-dialog-backdrop collab-drawer-scrim"
+          role="presentation"
+        >
+          <section
+            aria-label="已取消 Bug"
+            aria-modal="true"
+            className="collab-dialog collab-bug-drawer"
+            role="dialog"
+          >
+            <header>
+              <div>
+                <small>垃圾桶</small>
+                <h2>已取消 Bug</h2>
+              </div>
+              <button
+                aria-label="关闭已取消 Bug 列表"
+                onClick={() => setShowTrash(false)}
+                type="button"
+              >
+                ×
+              </button>
+            </header>
+            <div className="collab-dialog__body collab-bug-drawer__body">
+              {cancelledBugs.length ? (
+                <ul className="collab-trash-list">
+                  {cancelledBugs.map((bug) => (
+                    <li key={bug.id}>
+                      <button
+                        onClick={() => {
+                          setShowTrash(false);
+                          setDrawer({ mode: 'view', bugId: bug.id });
+                        }}
+                        type="button"
+                      >
+                        <strong>
+                          {bugLabel(bug)} · {bug.report.title}
+                        </strong>
+                        <small>
+                          {bug.presentation.assignmentLabel} · 已取消
+                        </small>
+                        <small>{formatDateTime(bug.updatedAt)}</small>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="collab-bug-detail-empty">垃圾桶为空</p>
+              )}
+            </div>
+          </section>
+        </div>
+      ) : null}
       {drawer ? (
         <BugDrawer
           drawer={drawer}
@@ -573,10 +689,20 @@ function BugDetail({
   const [feedback, setFeedback] = useState('');
   const [continueContent, setContinueContent] = useState('');
   const [updateContinueContent, setUpdateContinueContent] = useState('');
+  const [externalOutcome, setExternalOutcome] = useState<
+    'SUCCEEDED' | 'FAILED'
+  >('SUCCEEDED');
+  const [externalSummary, setExternalSummary] = useState('');
+  const [externalFiles, setExternalFiles] = useState<File[]>([]);
+  const [verificationComment, setVerificationComment] = useState('');
+  const [verificationFeedback, setVerificationFeedback] = useState('');
+  const [verificationFiles, setVerificationFiles] = useState<File[]>([]);
   const [feedbackFiles, setFeedbackFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const feedbackFileInput = useRef<HTMLInputElement>(null);
+  const externalFileInput = useRef<HTMLInputElement>(null);
+  const verificationFileInput = useRef<HTMLInputElement>(null);
   const repair = snapshot.repairByBug[bug.id] ?? null;
   const interaction = snapshot.pendingInteractions.find(
     (candidate) => candidate.bugId === bug.id,
@@ -597,6 +723,11 @@ function BugDetail({
         (candidate) => candidate.batchId === updateBatch.id,
       )
     : undefined;
+  const verifications = snapshot.verificationsByBug[bug.id] ?? [];
+  const cleanup = snapshot.cleanups.find(
+    (candidate) =>
+      candidate.reason === 'BUG_CANCELLED' && candidate.subjectId === bug.id,
+  );
 
   function run(
     command: () => Promise<WorkspaceActionResult>,
@@ -712,6 +843,37 @@ function BugDetail({
                 {entry.attachments.length ? (
                   <ul className="collab-attachments collab-bug-attachments">
                     {entry.attachments.map((attachment) => (
+                      <li key={attachment.id}>
+                        <AttachmentLink attachment={attachment} />
+                        <small>{formatBytes(attachment.sizeBytes)}</small>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
+      {verifications.length ? (
+        <section className="collab-bug-detail-section">
+          <h3>验证记录</h3>
+          <ol className="collab-repair-records">
+            {[...verifications].reverse().map((verification) => (
+              <li key={verification.id}>
+                <header>
+                  <strong>
+                    第 {verification.round} 轮 ·{' '}
+                    {verification.result === 'PASSED'
+                      ? '验证通过'
+                      : '验证失败并返修'}
+                  </strong>
+                  <time>{formatDateTime(verification.createdAt)}</time>
+                </header>
+                {verification.comment ? <p>{verification.comment}</p> : null}
+                {verification.attachments.length ? (
+                  <ul className="collab-attachments collab-bug-attachments">
+                    {verification.attachments.map((attachment) => (
                       <li key={attachment.id}>
                         <AttachmentLink attachment={attachment} />
                         <small>{formatBytes(attachment.sizeBytes)}</small>
@@ -900,6 +1062,78 @@ function BugDetail({
               </button>
             </div>
           ) : null}
+          {updateBatch?.availableActions.includes('REPORT_EXTERNAL') ? (
+            <div className="collab-form collab-bug-verification">
+              <label>
+                <span>外部更新结果</span>
+                <select
+                  onChange={(event) =>
+                    setExternalOutcome(
+                      event.target.value as 'SUCCEEDED' | 'FAILED',
+                    )
+                  }
+                  value={externalOutcome}
+                >
+                  <option value="SUCCEEDED">外部更新成功</option>
+                  <option value="FAILED">外部更新失败</option>
+                </select>
+              </label>
+              <textarea
+                maxLength={8_000}
+                onChange={(event) => setExternalSummary(event.target.value)}
+                placeholder={
+                  externalOutcome === 'FAILED'
+                    ? '说明持续集成或部署失败原因'
+                    : '可补充外部更新结果'
+                }
+                rows={3}
+                value={externalSummary}
+              />
+              <input
+                accept="image/png,image/jpeg,image/webp,text/plain,application/json"
+                multiple
+                onChange={(event) =>
+                  setExternalFiles(
+                    Array.from(event.target.files ?? []).slice(0, 5),
+                  )
+                }
+                ref={externalFileInput}
+                type="file"
+              />
+              <button
+                disabled={
+                  pending ||
+                  (externalOutcome === 'FAILED' && !externalSummary.trim())
+                }
+                onClick={() => {
+                  const formData = new FormData();
+                  formData.set('mutationId', crypto.randomUUID());
+                  formData.set('expectedVersion', String(updateBatch.version));
+                  formData.set('outcome', externalOutcome);
+                  formData.set('summary', externalSummary);
+                  externalFiles.forEach((file) =>
+                    formData.append('attachments', file),
+                  );
+                  run(
+                    () =>
+                      reportExternalDeploymentAction(updateBatch.id, formData),
+                    externalOutcome === 'SUCCEEDED'
+                      ? '外部更新已确认成功，缺陷进入待验证。'
+                      : '外部更新失败记录已追加，可在原批次继续。',
+                    () => {
+                      setExternalSummary('');
+                      setExternalFiles([]);
+                      if (externalFileInput.current)
+                        externalFileInput.current.value = '';
+                    },
+                  );
+                }}
+                type="button"
+              >
+                提交外部结果
+              </button>
+            </div>
+          ) : null}
         </section>
       ) : null}
       {bug.availableActions.includes('ADD_FEEDBACK') ? (
@@ -950,6 +1184,212 @@ function BugDetail({
               追加反馈
             </button>
           </div>
+        </section>
+      ) : null}
+      {bug.availableActions.some((action) =>
+        ['VERIFY_PASS', 'VERIFY_FAIL'].includes(action),
+      ) ? (
+        <section className="collab-bug-detail-section">
+          <h3>验证结果</h3>
+          <div className="collab-form collab-bug-verification">
+            {bug.availableActions.includes('VERIFY_PASS') ? (
+              <>
+                <textarea
+                  maxLength={8_000}
+                  onChange={(event) =>
+                    setVerificationComment(event.target.value)
+                  }
+                  placeholder="可补充验证通过说明"
+                  rows={2}
+                  value={verificationComment}
+                />
+                <button
+                  disabled={pending}
+                  onClick={() => {
+                    const formData = new FormData();
+                    formData.set('mutationId', crypto.randomUUID());
+                    formData.set('expectedVersion', String(bug.version));
+                    formData.set('result', 'PASSED');
+                    formData.set('comment', verificationComment);
+                    run(
+                      () => verifyBugAction(bug.id, formData),
+                      '缺陷已验证完成。',
+                      () => setVerificationComment(''),
+                    );
+                  }}
+                  type="button"
+                >
+                  验证通过
+                </button>
+              </>
+            ) : null}
+            {bug.availableActions.includes('VERIFY_FAIL') ? (
+              <>
+                <textarea
+                  maxLength={8_000}
+                  onChange={(event) =>
+                    setVerificationFeedback(event.target.value)
+                  }
+                  placeholder="描述仍然存在的问题与复现结果"
+                  rows={3}
+                  value={verificationFeedback}
+                />
+                <input
+                  accept="image/png,image/jpeg,image/webp,text/plain,application/json"
+                  multiple
+                  onChange={(event) =>
+                    setVerificationFiles(
+                      Array.from(event.target.files ?? []).slice(0, 5),
+                    )
+                  }
+                  ref={verificationFileInput}
+                  type="file"
+                />
+                <button
+                  disabled={pending || !verificationFeedback.trim()}
+                  onClick={() => {
+                    const formData = new FormData();
+                    formData.set('mutationId', crypto.randomUUID());
+                    formData.set('expectedVersion', String(bug.version));
+                    formData.set('result', 'FAILED');
+                    formData.set('feedback', verificationFeedback);
+                    verificationFiles.forEach((file) =>
+                      formData.append('attachments', file),
+                    );
+                    run(
+                      () => verifyBugAction(bug.id, formData),
+                      '缺陷已带反馈重新进入修复。',
+                      () => {
+                        setVerificationFeedback('');
+                        setVerificationFiles([]);
+                        if (verificationFileInput.current)
+                          verificationFileInput.current.value = '';
+                      },
+                    );
+                  }}
+                  type="button"
+                >
+                  验证失败并返修
+                </button>
+              </>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+      {bug.availableActions.includes('REOPEN') ? (
+        <section className="collab-bug-detail-section">
+          <h3>重新打开</h3>
+          <div className="collab-form collab-bug-verification">
+            <textarea
+              maxLength={8_000}
+              onChange={(event) => setVerificationFeedback(event.target.value)}
+              placeholder="描述重新出现的问题"
+              rows={3}
+              value={verificationFeedback}
+            />
+            <input
+              accept="image/png,image/jpeg,image/webp,text/plain,application/json"
+              multiple
+              onChange={(event) =>
+                setVerificationFiles(
+                  Array.from(event.target.files ?? []).slice(0, 5),
+                )
+              }
+              ref={verificationFileInput}
+              type="file"
+            />
+            <button
+              disabled={pending || !verificationFeedback.trim()}
+              onClick={() => {
+                const formData = new FormData();
+                formData.set('mutationId', crypto.randomUUID());
+                formData.set('expectedVersion', String(bug.version));
+                formData.set('feedback', verificationFeedback);
+                verificationFiles.forEach((file) =>
+                  formData.append('attachments', file),
+                );
+                run(
+                  () => reopenBugAction(bug.id, formData),
+                  '缺陷已重新打开并进入修复。',
+                  () => {
+                    setVerificationFeedback('');
+                    setVerificationFiles([]);
+                    if (verificationFileInput.current)
+                      verificationFileInput.current.value = '';
+                  },
+                );
+              }}
+              type="button"
+            >
+              重新打开
+            </button>
+          </div>
+        </section>
+      ) : null}
+      {bug.availableActions.includes('CANCEL') ? (
+        <section className="collab-bug-detail-section">
+          <h3>缺陷操作</h3>
+          <button
+            disabled={pending}
+            onClick={() =>
+              run(
+                () =>
+                  cancelBugAction(bug.id, {
+                    mutationId: crypto.randomUUID(),
+                    expectedVersion: bug.version,
+                  }),
+                '缺陷已移入垃圾桶。',
+              )
+            }
+            type="button"
+          >
+            取消缺陷
+          </button>
+        </section>
+      ) : null}
+      {cleanup ? (
+        <section className="collab-bug-detail-section">
+          <h3>取消与清理</h3>
+          <dl className="collab-bug-detail-list">
+            <Detail label="本地资源">{cleanup.presentation.statusLabel}</Detail>
+          </dl>
+          {cleanup.attempts.length ? (
+            <ol className="collab-repair-records">
+              {[...cleanup.attempts].reverse().map((attempt) => (
+                <li key={attempt.id}>
+                  <header>
+                    <strong>第 {attempt.attempt} 次清理</strong>
+                    <time>{formatDateTime(attempt.createdAt)}</time>
+                  </header>
+                  <p>
+                    {attempt.summary ??
+                      repairStateLabel(attempt.executionState)}
+                  </p>
+                  {attempt.technicalFailure ? (
+                    <code>{attempt.technicalFailure}</code>
+                  ) : null}
+                </li>
+              ))}
+            </ol>
+          ) : null}
+          {cleanup.availableActions.includes('RETRY_CLEANUP') ? (
+            <button
+              disabled={pending}
+              onClick={() =>
+                run(
+                  () =>
+                    retryCleanupAction(cleanup.id, {
+                      mutationId: crypto.randomUUID(),
+                      expectedVersion: cleanup.version,
+                    }),
+                  '本地资源清理已重新排队。',
+                )
+              }
+              type="button"
+            >
+              重试清理
+            </button>
+          ) : null}
         </section>
       ) : null}
       {error ? (
@@ -1045,6 +1485,37 @@ function UpdateBatchDetails({ batch }: { batch: UpdateBatchView }) {
                 </p>
                 {attempt.technicalFailure ? (
                   <code>{attempt.technicalFailure}</code>
+                ) : null}
+              </li>
+            ))}
+          </ol>
+        </>
+      ) : null}
+      {batch.externalReports.length ? (
+        <>
+          <h3>外部更新记录</h3>
+          <ol className="collab-repair-records">
+            {[...batch.externalReports].reverse().map((report) => (
+              <li key={report.id}>
+                <header>
+                  <strong>
+                    第 {report.round} 次 ·{' '}
+                    {report.outcome === 'SUCCEEDED'
+                      ? '外部更新成功'
+                      : '外部更新失败'}
+                  </strong>
+                  <time>{formatDateTime(report.createdAt)}</time>
+                </header>
+                {report.summary ? <p>{report.summary}</p> : null}
+                {report.attachments.length ? (
+                  <ul className="collab-attachments collab-bug-attachments">
+                    {report.attachments.map((attachment) => (
+                      <li key={attachment.id}>
+                        <AttachmentLink attachment={attachment} />
+                        <small>{formatBytes(attachment.sizeBytes)}</small>
+                      </li>
+                    ))}
+                  </ul>
                 ) : null}
               </li>
             ))}

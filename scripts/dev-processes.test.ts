@@ -22,37 +22,33 @@ describe('parseProcessTable', () => {
   test('保留命令中的空格', () => {
     expect(
       parseProcessTable(
-        '  101   10  01:02 bun run dev:control-plane\n  102  101  00:59 bun --watch src/main.ts\n',
+        '  101   10  01:02 bun run dev:server\n  102  101  00:59 next dev\n',
       ),
     ).toEqual([
-      row(101, 10, 'bun run dev:control-plane', '01:02'),
-      row(102, 101, 'bun --watch src/main.ts', '00:59'),
+      row(101, 10, 'bun run dev:server', '01:02'),
+      row(102, 101, 'next dev', '00:59'),
     ]);
   });
 });
 
 describe('discoverServiceProcesses', () => {
-  test('只匹配当前仓库中的三个开发服务', () => {
+  test('只匹配当前仓库中的 Server 与 Runner', () => {
     const rows = [
-      row(101, 10, 'bun run dev:control-plane'),
-      row(102, 101, 'bun --cwd services/control-plane dev'),
-      row(103, 102, 'bun --watch src/main.ts'),
+      row(101, 10, 'bun run dev:server'),
+      row(102, 101, 'bun --cwd apps/server dev'),
+      row(103, 102, 'next dev'),
       row(201, 20, 'bun run dev:runner'),
-      row(202, 201, 'bun packages/cli/src/index.ts start'),
-      row(301, 30, 'bun run dev:web'),
-      row(302, 301, 'next dev'),
-      row(401, 40, 'bun run dev:web'),
+      row(202, 201, 'bun packages/runner/src/index.ts start'),
+      row(301, 30, 'bun run dev:server'),
       row(501, 50, 'bun test'),
     ];
     const cwdByPid = new Map([
       [101, projectRoot],
-      [102, `${projectRoot}/services/control-plane`],
-      [103, `${projectRoot}/services/control-plane`],
+      [102, `${projectRoot}/apps/server`],
+      [103, `${projectRoot}/apps/server`],
       [201, projectRoot],
       [202, projectRoot],
-      [301, projectRoot],
-      [302, `${projectRoot}/apps/web`],
-      [401, '/workspace/another-project'],
+      [301, '/workspace/another-project'],
       [501, projectRoot],
     ]);
 
@@ -63,25 +59,21 @@ describe('discoverServiceProcesses', () => {
     );
 
     expect(matches.map(({ pid, service }) => [pid, service])).toEqual([
-      [101, 'control-plane'],
-      [102, 'control-plane'],
-      [103, 'control-plane'],
+      [101, 'server'],
+      [102, 'server'],
+      [103, 'server'],
       [201, 'runner'],
       [202, 'runner'],
-      [301, 'web'],
-      [302, 'web'],
     ]);
-    expect(findServiceRoots(matches).map(({ pid }) => pid)).toEqual([
-      101, 201, 301,
-    ]);
+    expect(findServiceRoots(matches).map(({ pid }) => pid)).toEqual([101, 201]);
   });
 });
 
 describe('collectDescendantPids', () => {
-  test('包含服务派生出的非 Bun 子进程', () => {
+  test('包含 Runner 派生出的 Codex 子进程', () => {
     const rows = [
       row(101, 10, 'bun run dev:runner'),
-      row(102, 101, 'bun packages/cli/src/index.ts start'),
+      row(102, 101, 'bun packages/runner/src/index.ts start'),
       row(103, 102, 'codex app-server'),
       row(104, 103, 'worker child'),
       row(201, 20, 'unrelated process'),

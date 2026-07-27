@@ -7,6 +7,7 @@ import type { JsonValue } from '@agent-party-time/execution-contract';
 import { AuthService } from '@/platform/auth/service';
 import type { AppDatabase } from '@/platform/database';
 import { openDatabase } from '@/platform/database';
+import { LocalFileStore } from '@/platform/files/local-file-store';
 import {
   handleExecutionClaim,
   handleExecutionComplete,
@@ -41,7 +42,11 @@ const directories: string[] = [];
 const databases: AppDatabase[] = [];
 
 async function setup(
-  options: { updateCreateId?: () => string; secondItem?: boolean } = {},
+  options: {
+    updateCreateId?: () => string;
+    secondItem?: boolean;
+    deploymentKind?: 'LOCAL_SCRIPT' | 'CI_CD';
+  } = {},
 ) {
   const directory = await mkdtemp(join(tmpdir(), 'agent-party-update-'));
   directories.push(directory);
@@ -82,7 +87,10 @@ async function setup(
   const environment = engineering.createEnvironment(users.owner.id, source.id, {
     mutationId: randomUUID(),
     name: '支付测试环境',
-    deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' },
+    deployment:
+      options.deploymentKind === 'CI_CD'
+        ? { kind: 'CI_CD' as const }
+        : { kind: 'LOCAL_SCRIPT' as const, command: 'bun run deploy:test' },
   });
   const runners = new RunnerService(database);
   const pairedRunner = runners.pair(
@@ -541,6 +549,166 @@ describe('UpdateService', () => {
     );
     expect(pendingCommits(fixture.database, first.id)).toEqual([]);
     expect(pendingCommits(fixture.database, second.id)).toEqual([]);
+  });
+
+  test('CI/CD Push 后等待外部结果，失败报告携带附件在原 Batch 与 Session 继续', async () => {
+    const fixture = await setup({ deploymentKind: 'CI_CD' });
+    const bug = fixture.createBug('流水线部署失败');
+    await completeNextRepair(fixture, 'repair-ci', ['c1c1c1c']);
+    const frozen = fixture.updates.freezeNow(
+      fixture.users.developer.id,
+      fixture.item.id,
+      { mutationId: randomUUID() },
+    );
+    const first = await startExecution(
+      fixture,
+      frozen.executionId!,
+      'update-ci-session',
+    );
+    fixture.executions.complete(fixture.runner.id, first.executionId, {
+      leaseToken: first.leaseToken,
+      sessionId: first.sessionId,
+      outcome: {
+        kind: 'SUCCEEDED',
+        result: { outcome: 'PUSHED', summary: '代码已普通 Push' },
+      },
+    });
+    const waiting = latestBatch(fixture.database, fixture.item.id);
+    expect(waiting.state).toBe('WAITING_EXTERNAL');
+    expect(currentBug(fixture.database, bug.id).stage).toBe('UPDATING');
+    expect(
+      fixture.updates.batchView(fixture.users.tester.id, waiting.id),
+    ).toMatchObject({
+      attempts: [],
+      availableActions: [],
+      presentation: { statusLabel: '等待外部部署结果' },
+    });
+    expect(
+      fixture.updates.batchView(fixture.users.developer.id, waiting.id)
+        .availableActions,
+    ).toContain('REPORT_EXTERNAL');
+
+    const files = new LocalFileStore(
+      fixture.database,
+      join(fixture.directory, 'files'),
+      fixture.clock.now,
+    );
+    const evidence = await files.put({
+      bytes: new TextEncoder().encode('pipeline failed'),
+      originalName: 'pipeline.txt',
+      mediaType: 'text/plain',
+      uploadedByUserId: fixture.users.developer.id,
+    });
+    expect(() =>
+      fixture.updates.reportExternalDeployment(
+        fixture.users.tester.id,
+        waiting.id,
+        {
+          mutationId: randomUUID(),
+          expectedVersion: waiting.version,
+          outcome: 'FAILED',
+          summary: '流水线测试失败',
+          attachmentIds: [],
+        },
+      ),
+    ).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
+    const reportMutationId = randomUUID();
+    const failed = fixture.updates.reportExternalDeployment(
+      fixture.users.developer.id,
+      waiting.id,
+      {
+        mutationId: reportMutationId,
+        expectedVersion: waiting.version,
+        outcome: 'FAILED',
+        summary: '流水线测试失败',
+        attachmentIds: [evidence.id],
+      },
+    );
+    expect(
+      fixture.updates.reportExternalDeployment(
+        fixture.users.developer.id,
+        waiting.id,
+        {
+          mutationId: reportMutationId,
+          expectedVersion: waiting.version,
+          outcome: 'FAILED',
+          summary: '流水线测试失败',
+          attachmentIds: [evidence.id],
+        },
+      ),
+    ).toEqual(failed);
+    expect(latestBatch(fixture.database, fixture.item.id).state).toBe('FAILED');
+    const responsibleView = fixture.updates.batchView(
+      fixture.users.developer.id,
+      waiting.id,
+    );
+    expect(responsibleView.externalReports[0]).toMatchObject({
+      round: 1,
+      outcome: 'FAILED',
+      summary: '流水线测试失败',
+      attachments: [{ id: evidence.id, originalName: 'pipeline.txt' }],
+    });
+    expect(
+      fixture.updates.batchView(fixture.users.tester.id, waiting.id)
+        .externalReports[0],
+    ).toMatchObject({ summary: null, attachments: [] });
+
+    const continued = fixture.updates.continueUpdate(
+      fixture.users.developer.id,
+      waiting.id,
+      {
+        mutationId: randomUUID(),
+        expectedVersion: failed.batchVersion,
+      },
+    );
+    const continuationExecution = fixture.executions.get(
+      continued.executionId!,
+    );
+    expect(continuationExecution.resumeSessionId).toBe('update-ci-session');
+    expect(continuationExecution.renderedPrompt).toContain('流水线测试失败');
+    expect(continuationExecution.renderedPrompt).not.toContain('仓库逻辑地址');
+    expect(
+      fixture.database
+        .prepare(
+          `SELECT file_id FROM platform_execution_attachment
+           WHERE execution_id = ?`,
+        )
+        .all(continued.executionId!),
+    ).toEqual([{ file_id: evidence.id }]);
+    const second = await startExecution(
+      fixture,
+      continued.executionId!,
+      'update-ci-session',
+    );
+    fixture.executions.complete(fixture.runner.id, second.executionId, {
+      leaseToken: second.leaseToken,
+      sessionId: second.sessionId,
+      outcome: {
+        kind: 'SUCCEEDED',
+        result: { outcome: 'PUSHED', summary: '修复后已重新 Push' },
+      },
+    });
+    const waitingAgain = latestBatch(fixture.database, fixture.item.id);
+    expect(waitingAgain.id).toBe(waiting.id);
+    expect(waitingAgain.state).toBe('WAITING_EXTERNAL');
+    fixture.updates.reportExternalDeployment(
+      fixture.users.developer.id,
+      waiting.id,
+      {
+        mutationId: randomUUID(),
+        expectedVersion: waitingAgain.version,
+        outcome: 'SUCCEEDED',
+        summary: '流水线与部署均成功',
+        attachmentIds: [],
+      },
+    );
+    expect(latestBatch(fixture.database, fixture.item.id).state).toBe(
+      'COMPLETED',
+    );
+    expect(currentBug(fixture.database, bug.id).stage).toBe(
+      'WAITING_FOR_VERIFICATION',
+    );
+    expect(pendingCommits(fixture.database, bug.id)).toEqual([]);
   });
 
   test('活动失败 Batch 隔离后续候选，完成后下一轮独立冻结', async () => {

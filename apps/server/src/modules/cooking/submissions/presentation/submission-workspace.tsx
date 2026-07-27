@@ -14,12 +14,19 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import type { User } from '@/platform/auth/contract';
+import type { JsonValue } from '@agent-party-time/execution-contract';
 import { logoutAction } from '@/app/logout/action';
 import {
   CookingWorkspaceSnapshotSchema,
   type CookingWorkspaceSnapshot,
 } from '@/modules/cooking/workspace/contract';
 import { BugBoard } from '@/modules/cooking/bugs/presentation/bug-board';
+import {
+  closeSubmissionAction,
+  resolveCleanupInteractionAction,
+  retryCleanupAction,
+} from '@/modules/cooking/lifecycle/presentation/actions';
+import type { CleanupInteractionView } from '@/modules/cooking/lifecycle/contract';
 import {
   WorkspaceInvalidationSchema,
   type SubmissionCreationCatalog,
@@ -331,6 +338,31 @@ export function SubmissionWorkspace({
           detailOpen={showDetails}
           includeClosed={includeClosed}
           onBackToList={() => setShowDetails(false)}
+          onCloseSubmission={() => {
+            if (!snapshot) return;
+            startTransition(async () => {
+              try {
+                const result = await closeSubmissionAction(
+                  snapshot.submission.submission.id,
+                  {
+                    mutationId: crypto.randomUUID(),
+                    expectedVersion: snapshot.submission.submission.version,
+                  },
+                );
+                if (!result.ok) {
+                  setError(result.error.message);
+                  return;
+                }
+                setError(null);
+                setNotice('提测单已关闭，环境已释放，清理任务已排队。');
+                await refreshSnapshot(result.result.revision);
+              } catch (actionError) {
+                setError(
+                  messageOf(actionError, '关闭提测单失败，请稍后重试。'),
+                );
+              }
+            });
+          }}
           onCreate={openSubmissionComposer}
           onIncludeClosedChange={setIncludeClosed}
           onOpenDetails={(id) => {
@@ -339,6 +371,54 @@ export function SubmissionWorkspace({
             setSidebarCollapsed(false);
           }}
           onRefresh={() => void refreshSnapshot()}
+          onResolveCleanupInteraction={(
+            interactionId,
+            expectedVersion,
+            resolution,
+          ) => {
+            startTransition(async () => {
+              try {
+                const result = await resolveCleanupInteractionAction(
+                  interactionId,
+                  {
+                    mutationId: crypto.randomUUID(),
+                    expectedVersion,
+                    resolution,
+                  },
+                );
+                if (!result.ok) {
+                  setError(result.error.message);
+                  return;
+                }
+                setError(null);
+                setNotice('清理交互已提交给 Codex。');
+                await refreshSnapshot(result.result.revision);
+              } catch (actionError) {
+                setError(
+                  messageOf(actionError, '提交清理交互失败，请稍后重试。'),
+                );
+              }
+            });
+          }}
+          onRetryCleanup={(cleanupId, expectedVersion) => {
+            startTransition(async () => {
+              try {
+                const result = await retryCleanupAction(cleanupId, {
+                  mutationId: crypto.randomUUID(),
+                  expectedVersion,
+                });
+                if (!result.ok) {
+                  setError(result.error.message);
+                  return;
+                }
+                setError(null);
+                setNotice('本地资源清理已重新排队。');
+                await refreshSnapshot(result.result.revision);
+              } catch (actionError) {
+                setError(messageOf(actionError, '重试清理失败，请稍后重试。'));
+              }
+            });
+          }}
           onSelect={selectSubmission}
           onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
           selectedId={selectedId}
@@ -498,10 +578,13 @@ function SubmissionRail({
   detailOpen,
   includeClosed,
   onBackToList,
+  onCloseSubmission,
   onCreate,
   onIncludeClosedChange,
   onOpenDetails,
   onRefresh,
+  onResolveCleanupInteraction,
+  onRetryCleanup,
   onSelect,
   onToggleCollapsed,
   selectedId,
@@ -515,10 +598,17 @@ function SubmissionRail({
   detailOpen: boolean;
   includeClosed: boolean;
   onBackToList: () => void;
+  onCloseSubmission: () => void;
   onCreate: () => void;
   onIncludeClosedChange: (value: boolean) => void;
   onOpenDetails: (id: string) => void;
   onRefresh: () => void;
+  onResolveCleanupInteraction: (
+    interactionId: string,
+    expectedVersion: number,
+    resolution: JsonValue,
+  ) => void;
+  onRetryCleanup: (cleanupId: string, expectedVersion: number) => void;
   onSelect: (id: string) => void;
   onToggleCollapsed: () => void;
   selectedId: string | null;
@@ -581,7 +671,9 @@ function SubmissionRail({
               {snapshot ? (
                 <SubmissionDetails
                   key={`${snapshot.submission.submission.id}:${snapshot.revision}`}
+                  onResolveCleanupInteraction={onResolveCleanupInteraction}
                   snapshot={snapshot}
+                  onRetryCleanup={onRetryCleanup}
                   updateDetails={updateDetails}
                   updating={updating}
                 />
@@ -591,6 +683,29 @@ function SubmissionRail({
                 </p>
               )}
             </div>
+            {snapshot?.submission.submission.status === 'ACTIVE' &&
+            snapshot.submission.submission.testerUserId ===
+              snapshot.currentUser.id ? (
+              <div className="collab-rail__detail-footer">
+                <button
+                  disabled={
+                    updating ||
+                    !snapshot.bugs.every(({ stage }) =>
+                      ['DONE', 'CANCELLED'].includes(stage),
+                    )
+                  }
+                  onClick={onCloseSubmission}
+                  type="button"
+                >
+                  关闭提测单
+                </button>
+                {!snapshot.bugs.every(({ stage }) =>
+                  ['DONE', 'CANCELLED'].includes(stage),
+                ) ? (
+                  <small>所有缺陷完成或取消后可关闭</small>
+                ) : null}
+              </div>
+            ) : null}
           </>
         ) : (
           <>
@@ -680,10 +795,18 @@ function SubmissionRail({
 }
 
 function SubmissionDetails({
+  onResolveCleanupInteraction,
+  onRetryCleanup,
   snapshot,
   updateDetails,
   updating,
 }: {
+  onResolveCleanupInteraction: (
+    interactionId: string,
+    expectedVersion: number,
+    resolution: JsonValue,
+  ) => void;
+  onRetryCleanup: (cleanupId: string, expectedVersion: number) => void;
   snapshot: CookingWorkspaceSnapshot;
   updateDetails: (title: string, requirementDescription: string) => void;
   updating: boolean;
@@ -730,23 +853,59 @@ function SubmissionDetails({
             </tr>
           </thead>
           <tbody>
-            {view.items.map((item) => (
-              <tr key={item.id}>
-                <td>{item.engineering.name}</td>
-                <td>{item.responsibleUser.displayName}</td>
-                <td>{item.technical?.targetBranch ?? '仅负责人可见'}</td>
-                <td>
-                  {item.environment.name}
-                  {item.technical
-                    ? ` / ${
-                        item.technical.deployment.kind === 'LOCAL_SCRIPT'
-                          ? '本地脚本'
-                          : '持续集成与部署'
-                      }`
-                    : ''}
-                </td>
-              </tr>
-            ))}
+            {view.items.map((item) => {
+              const cleanup = snapshot.cleanups.find(
+                (candidate) =>
+                  candidate.reason === 'SUBMISSION_CLOSED' &&
+                  candidate.submissionItemId === item.id,
+              );
+              const cleanupInteraction = cleanup
+                ? snapshot.cleanupInteractions.find(
+                    (candidate) => candidate.cleanupId === cleanup.id,
+                  )
+                : undefined;
+              return (
+                <tr key={item.id}>
+                  <td>{item.engineering.name}</td>
+                  <td>{item.responsibleUser.displayName}</td>
+                  <td>{item.technical?.targetBranch ?? '仅负责人可见'}</td>
+                  <td>
+                    <span>
+                      {item.environment.name}
+                      {item.technical
+                        ? ` / ${
+                            item.technical.deployment.kind === 'LOCAL_SCRIPT'
+                              ? '本地脚本'
+                              : '持续集成与部署'
+                          }`
+                        : ''}
+                    </span>
+                    {cleanup ? (
+                      <small>清理：{cleanup.presentation.statusLabel}</small>
+                    ) : null}
+                    {cleanup && cleanupInteraction ? (
+                      <CleanupInteractionPanel
+                        cleanupVersion={cleanup.version}
+                        interaction={cleanupInteraction}
+                        onResolve={onResolveCleanupInteraction}
+                        pending={updating}
+                      />
+                    ) : null}
+                    {cleanup?.availableActions.includes('RETRY_CLEANUP') ? (
+                      <button
+                        disabled={updating}
+                        onClick={() =>
+                          onRetryCleanup(cleanup.id, cleanup.version)
+                        }
+                        type="button"
+                      >
+                        重试清理
+                      </button>
+                    ) : null}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -785,6 +944,117 @@ function SubmissionDetails({
         </form>
       ) : null}
     </header>
+  );
+}
+
+function CleanupInteractionPanel({
+  cleanupVersion,
+  interaction,
+  onResolve,
+  pending,
+}: {
+  cleanupVersion: number;
+  interaction: CleanupInteractionView;
+  onResolve: (
+    interactionId: string,
+    expectedVersion: number,
+    resolution: JsonValue,
+  ) => void;
+  pending: boolean;
+}) {
+  const questions = cleanupInteractionQuestions(interaction);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  if (!interaction.canResolve || !interaction.payload)
+    return (
+      <small className="collab-interaction-waiting">
+        清理正在等待对应工程负责人处理。
+      </small>
+    );
+  return (
+    <div className="collab-interaction-card">
+      <header>
+        <span>待处理清理交互</span>
+      </header>
+      <h3>{cleanupInteractionTitle(interaction)}</h3>
+      {interaction.kind === 'APPROVAL' ? (
+        <>
+          <dl>
+            {cleanupInteractionDetails(interaction).map(([label, value]) => (
+              <div key={label}>
+                <dt>{label}</dt>
+                <dd>{value}</dd>
+              </div>
+            ))}
+          </dl>
+          <div className="collab-interaction-actions">
+            <button
+              disabled={pending}
+              onClick={() =>
+                onResolve(
+                  interaction.id,
+                  cleanupVersion,
+                  declineCleanupResolution(interaction),
+                )
+              }
+              type="button"
+            >
+              拒绝
+            </button>
+            <button
+              disabled={pending}
+              onClick={() =>
+                onResolve(
+                  interaction.id,
+                  cleanupVersion,
+                  acceptCleanupResolution(interaction),
+                )
+              }
+              type="button"
+            >
+              本次会话允许
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="collab-form">
+          {questions.map((question) => (
+            <label key={question.id}>
+              <span>{question.header || question.question}</span>
+              <small>{question.question}</small>
+              <input
+                onChange={(event) =>
+                  setAnswers((current) => ({
+                    ...current,
+                    [question.id]: event.target.value,
+                  }))
+                }
+                value={answers[question.id] ?? ''}
+              />
+            </label>
+          ))}
+          <button
+            disabled={
+              pending ||
+              questions.length === 0 ||
+              questions.some((question) => !answers[question.id]?.trim())
+            }
+            onClick={() =>
+              onResolve(interaction.id, cleanupVersion, {
+                answers: Object.fromEntries(
+                  Object.entries(answers).map(([id, answer]) => [
+                    id,
+                    { answers: [answer.trim()] },
+                  ]),
+                ),
+              })
+            }
+            type="button"
+          >
+            提交回答
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -943,4 +1213,75 @@ function parseInvalidation(value: string) {
 
 function messageOf(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
+}
+
+function cleanupInteractionTitle(interaction: CleanupInteractionView): string {
+  if (interaction.kind === 'USER_INPUT') return 'Codex 正在等待你的回答';
+  return (
+    {
+      'item/commandExecution/requestApproval': 'Codex 请求执行清理命令',
+      'item/fileChange/requestApproval': 'Codex 请求扩展文件写入范围',
+      'item/permissions/requestApproval': 'Codex 请求权限',
+    }[interaction.method ?? ''] ?? 'Codex 请求清理操作许可'
+  );
+}
+
+function cleanupInteractionDetails(
+  interaction: CleanupInteractionView,
+): Array<[string, string]> {
+  const payload = interactionRecord(interaction.payload);
+  const values: Array<[string, unknown]> = [
+    ['原因', payload.reason],
+    ['命令', payload.command],
+    ['权限', payload.permissions],
+  ];
+  return values.flatMap(([label, value]) =>
+    value === null || value === undefined || value === ''
+      ? []
+      : [[label, typeof value === 'string' ? value : JSON.stringify(value)]],
+  );
+}
+
+function cleanupInteractionQuestions(interaction: CleanupInteractionView) {
+  const questions = interactionRecord(interaction.payload).questions;
+  if (!Array.isArray(questions)) return [];
+  return questions.flatMap((question) => {
+    const value = interactionRecord(question);
+    if (typeof value.id !== 'string' || typeof value.question !== 'string')
+      return [];
+    return [
+      {
+        id: value.id,
+        question: value.question,
+        header: typeof value.header === 'string' ? value.header : '',
+      },
+    ];
+  });
+}
+
+function acceptCleanupResolution(
+  interaction: CleanupInteractionView,
+): JsonValue {
+  if (interaction.method === 'item/permissions/requestApproval')
+    return {
+      permissions:
+        (interactionRecord(interaction.payload).permissions as
+          JsonValue | undefined) ?? {},
+      scope: 'session',
+    };
+  return { decision: 'acceptForSession' };
+}
+
+function declineCleanupResolution(
+  interaction: CleanupInteractionView,
+): JsonValue {
+  return interaction.method === 'item/permissions/requestApproval'
+    ? { permissions: {}, scope: 'turn' }
+    : { decision: 'decline' };
+}
+
+function interactionRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }

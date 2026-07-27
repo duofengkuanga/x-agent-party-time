@@ -64,4 +64,20 @@ describe('Repair prompt contract', () => {
       }).success,
     ).toBe(false);
   });
+
+  test('Codex 输出 Schema 使用根对象且失败结果可用空 Commit 数组传输', () => {
+    expect(RepairOutputJsonSchema).toMatchObject({
+      type: 'object',
+      additionalProperties: false,
+      required: ['outcome', 'summary', 'commits'],
+    });
+    expect(JSON.stringify(RepairOutputJsonSchema)).not.toContain('"oneOf"');
+    expect(
+      RepairExecutionResultSchema.safeParse({
+        outcome: 'FAILED',
+        summary: '无法安全完成',
+        commits: [],
+      }).success,
+    ).toBe(true);
+  });
 });

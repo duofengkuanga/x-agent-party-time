@@ -123,6 +123,10 @@ export const BugActionSchema = z.enum([
   'REQUEST_REPAIR',
   'WITHDRAW_REPAIR',
   'ADD_FEEDBACK',
+  'VERIFY_PASS',
+  'VERIFY_FAIL',
+  'REOPEN',
+  'CANCEL',
 ]);
 
 export const BugViewSchema = BugSchema.omit({

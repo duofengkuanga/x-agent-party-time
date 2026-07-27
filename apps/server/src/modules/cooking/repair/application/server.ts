@@ -2,6 +2,7 @@ import { database } from '@/platform/database';
 import { ExecutionService } from '@/platform/execution/service';
 import { workspaceEvents } from '@/modules/cooking/submissions/application/workspace-events';
 import { UpdateService } from '@/modules/cooking/update/application/update-service';
+import { LifecycleService } from '@/modules/cooking/lifecycle/application/lifecycle-service';
 import { RepairService } from './repair-service';
 
 function publish(submissionId: string, revision: number): void {
@@ -48,6 +49,17 @@ export function cookingExecutionService(): ExecutionService {
         updates.recalculatePendingDeliveryForBug(bugId),
     },
   );
+  const lifecycle = new LifecycleService(
+    appDatabase,
+    repair,
+    new ExecutionService(appDatabase),
+    undefined,
+    undefined,
+    publish,
+    {
+      bugCancelled: (bugId) => updates.recalculatePendingDeliveryForBug(bugId),
+    },
+  );
   return new ExecutionService(
     appDatabase,
     undefined,
@@ -58,26 +70,35 @@ export function cookingExecutionService(): ExecutionService {
       applyStarted: (execution) => {
         repair.applyStartedExecution(execution);
         updates.applyStartedExecution(execution);
+        lifecycle.applyStartedExecution(execution);
       },
       afterStarted: (execution) => {
         repair.afterStartedExecution(execution);
         updates.afterStartedExecution(execution);
+        lifecycle.afterStartedExecution(execution);
       },
       applyTerminal: (execution) => {
         repair.applyTerminalExecution(execution);
         updates.applyTerminalExecution(execution);
+        lifecycle.applyTerminalExecution(execution);
       },
       afterTerminal: (execution) => {
         repair.afterTerminalExecution(execution);
         updates.afterTerminalExecution(execution);
+        lifecycle.afterTerminalExecution(execution);
       },
       applyInteractionOpened: (interaction) => {
         repair.applyInteractionOpened(interaction.executionId, interaction.id);
         updates.applyInteractionOpened(interaction.executionId, interaction.id);
+        lifecycle.applyInteractionOpened(
+          interaction.executionId,
+          interaction.id,
+        );
       },
       afterInteractionOpened: (interaction) => {
         repair.afterInteractionOpened(interaction.executionId);
         updates.afterInteractionOpened(interaction.executionId);
+        lifecycle.afterInteractionOpened(interaction.executionId);
       },
     },
   );
