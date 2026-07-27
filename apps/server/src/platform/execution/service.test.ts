@@ -63,19 +63,18 @@ afterEach(async () => {
 });
 
 describe('Execution lifecycle', () => {
-  test('Binding Reservation 阻止同 Binding 并发并允许不同 Binding 并行', async () => {
+  test('同 Binding 可排队但只串行 Claim，不同 Binding 可并行', async () => {
     const { executions, runnerId } = await setup();
     const first = executions.enqueue(input(runnerId, bindingId(1), 'first'));
-    expect(() =>
-      executions.enqueue(input(runnerId, bindingId(1), 'second')),
-    ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
+    const second = executions.enqueue(input(runnerId, bindingId(1), 'second'));
     const other = executions.enqueue(input(runnerId, bindingId(2), 'other'));
 
-    const claimed = await executions.claim(runnerId, 2, 0);
+    const claimed = await executions.claim(runnerId, 3, 0);
     expect(claimed.map(({ id }) => id).sort()).toEqual(
       [first.id, other.id].sort(),
     );
     expect(new Set(claimed.map(({ lease }) => lease.token)).size).toBe(2);
+    expect(executions.get(second.id).state).toBe('QUEUED');
   });
 
   test('Start、Renew、Interaction 和不可变 Outcome 形成完整状态机', async () => {

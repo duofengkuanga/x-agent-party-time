@@ -66,6 +66,21 @@ describe('Server SQLite schema', () => {
         'platform_session',
         'platform_user',
       ]);
+      expect(
+        database
+          .query<{ name: string }, []>(
+            `SELECT name FROM sqlite_master
+             WHERE type = 'table' AND name LIKE 'cooking_%repair%'
+             ORDER BY name`,
+          )
+          .all()
+          .map(({ name }) => name),
+      ).toEqual([
+        'cooking_bug_repair_context',
+        'cooking_repair_attempt',
+        'cooking_repair_queue',
+        'cooking_repair_queue_entry',
+      ]);
     } finally {
       database.close();
     }

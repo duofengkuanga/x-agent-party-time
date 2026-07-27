@@ -1,5 +1,5 @@
 import { handleExecutionComplete } from '@/platform/execution/http';
-import { executionService } from '@/platform/execution/server';
+import { cookingExecutionService } from '@/modules/cooking/repair/application/server';
 import { runnerService } from '@/platform/runner/server';
 
 export async function POST(
@@ -10,6 +10,6 @@ export async function POST(
     request,
     (await context.params).executionId,
     runnerService(),
-    executionService(),
+    cookingExecutionService(),
   );
 }

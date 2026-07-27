@@ -165,6 +165,8 @@ function workspace(revision: number) {
       availableActions: [],
     },
     bugs: [],
+    repairByBug: {},
+    pendingInteractions: [],
     submissions: [
       {
         submission: submission(revision, now),

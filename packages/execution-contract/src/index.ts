@@ -82,6 +82,7 @@ export const ExecutionSchema = z.object({
   previousExecutionId: ExecutionIdSchema.nullable(),
   runnerId: RunnerIdSchema,
   bindingId: BindingIdSchema,
+  priority: z.number().int(),
   state: ExecutionStateSchema,
   promptKind: z.string().trim().min(1).max(120),
   promptVersion: z.number().int().positive(),
@@ -107,6 +108,7 @@ export const EnqueueExecutionInputSchema = z.object({
   previousExecutionId: ExecutionIdSchema.nullable().default(null),
   runnerId: RunnerIdSchema,
   bindingId: BindingIdSchema,
+  priority: z.number().int().default(0),
   promptKind: z.string().trim().min(1).max(120),
   promptVersion: z.number().int().positive(),
   renderedPrompt: z.string().min(1).max(200_000),
@@ -239,3 +241,54 @@ export type CompleteExecutionRequest = z.infer<
   typeof CompleteExecutionRequestSchema
 >;
 export type RunnerActivity = z.infer<typeof RunnerActivitySchema>;
+
+export function sanitizeExecutionInteractionPayload(
+  method: string,
+  value: unknown,
+): JsonValue {
+  const payload = jsonRecord(value);
+  const keys =
+    method === 'item/commandExecution/requestApproval'
+      ? ['command', 'reason']
+      : method === 'item/fileChange/requestApproval'
+        ? ['reason']
+        : method === 'item/permissions/requestApproval'
+          ? ['permissions', 'reason']
+          : method === 'item/tool/requestUserInput'
+            ? ['questions']
+            : [];
+  return Object.fromEntries(
+    keys.flatMap((key) =>
+      payload[key] === undefined
+        ? []
+        : [[key, sanitizeInteractionValue(payload[key], key)]],
+    ),
+  );
+}
+
+function sanitizeInteractionValue(value: unknown, key = ''): JsonValue {
+  if (/cwd|directory|path|root/iu.test(key)) return '本机路径已隐藏';
+  if (typeof value === 'string') return redactAbsolutePaths(value);
+  if (Array.isArray(value))
+    return value.map((item) => sanitizeInteractionValue(item));
+  if (value && typeof value === 'object')
+    return Object.fromEntries(
+      Object.entries(value).map(([childKey, childValue]) => [
+        childKey,
+        sanitizeInteractionValue(childValue, childKey),
+      ]),
+    );
+  return JsonValueSchema.parse(value ?? null);
+}
+
+function redactAbsolutePaths(value: string): string {
+  return value
+    .replace(/(^|[\s"'=(])\/(?!\/)[^\s"'`,;)]+/gu, '$1本机路径已隐藏')
+    .replace(/(^|[\s"'=(])[a-z]:\\[^\s"'`,;)]+/giu, '$1本机路径已隐藏');
+}
+
+function jsonRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}

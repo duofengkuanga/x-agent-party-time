@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { PlatformError } from '@/platform/errors';
 
-export const SERVER_SCHEMA_VERSION = 7;
+export const SERVER_SCHEMA_VERSION = 8;
 
 const SCHEMA = `
 CREATE TABLE platform_user (
@@ -68,6 +68,7 @@ CREATE TABLE platform_execution (
   previous_execution_id TEXT REFERENCES platform_execution(id) ON DELETE RESTRICT,
   runner_id TEXT NOT NULL REFERENCES platform_runner(id) ON DELETE RESTRICT,
   binding_id TEXT NOT NULL,
+  priority INTEGER NOT NULL DEFAULT 0,
   state TEXT NOT NULL CHECK (state IN (
     'QUEUED',
     'CLAIMED',
@@ -88,6 +89,7 @@ CREATE TABLE platform_execution (
   lease_token_hash TEXT,
   lease_expires_at TEXT,
   outcome_json TEXT,
+  reported_outcome_json TEXT,
   cancellation_requested INTEGER NOT NULL DEFAULT 0
     CHECK (cancellation_requested IN (0, 1)),
   created_at TEXT NOT NULL,
@@ -98,14 +100,13 @@ CREATE TABLE platform_execution (
 CREATE UNIQUE INDEX platform_execution_binding_reservation
   ON platform_execution(binding_id)
   WHERE state IN (
-    'QUEUED',
     'CLAIMED',
     'RUNNING',
     'WAITING_FOR_INTERACTION',
     'CANCEL_REQUESTED'
   );
 CREATE INDEX platform_execution_runner_claim
-  ON platform_execution(runner_id, state, created_at, id);
+  ON platform_execution(runner_id, state, priority, created_at, id);
 CREATE INDEX platform_execution_lease_expiry
   ON platform_execution(state, lease_expires_at);
 CREATE INDEX platform_execution_owner
@@ -381,6 +382,29 @@ CREATE INDEX cooking_repair_queue_entry_order
   ON cooking_repair_queue_entry(submission_id, position, queued_at, bug_id);
 CREATE INDEX cooking_repair_queue_entry_binding
   ON cooking_repair_queue_entry(binding_id, position, queued_at, bug_id);
+
+CREATE TABLE cooking_bug_repair_context (
+  bug_id TEXT PRIMARY KEY REFERENCES cooking_bug(id) ON DELETE CASCADE,
+  workspace_key TEXT NOT NULL UNIQUE,
+  session_id TEXT,
+  pending_commits_json TEXT NOT NULL,
+  version INTEGER NOT NULL CHECK (version > 0),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+) STRICT;
+
+CREATE TABLE cooking_repair_attempt (
+  id TEXT PRIMARY KEY,
+  bug_id TEXT NOT NULL REFERENCES cooking_bug(id) ON DELETE CASCADE,
+  execution_id TEXT NOT NULL UNIQUE REFERENCES platform_execution(id) ON DELETE RESTRICT,
+  attempt INTEGER NOT NULL CHECK (attempt > 0),
+  outcome_json TEXT,
+  created_at TEXT NOT NULL,
+  finished_at TEXT,
+  UNIQUE(bug_id, attempt)
+) STRICT;
+CREATE INDEX cooking_repair_attempt_bug
+  ON cooking_repair_attempt(bug_id, attempt, created_at);
 `;
 
 export function initializeSchema(database: Database): void {
