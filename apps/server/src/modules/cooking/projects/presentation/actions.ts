@@ -18,7 +18,7 @@ export async function createProjectAction(formData: FormData): Promise<never> {
       mutationId: field(formData, 'mutationId'),
       name: field(formData, 'name'),
     });
-    revalidatePath('/cooking');
+    revalidatePath('/cooking/projects');
     redirect(
       messageRedirectPath(
         `/cooking/projects/${result.project.id}`,
@@ -28,7 +28,7 @@ export async function createProjectAction(formData: FormData): Promise<never> {
     );
   } catch (error) {
     rethrowRedirectError(error);
-    redirectWithError('/cooking', error);
+    redirectWithError('/cooking/projects', error);
   }
 }
 
@@ -74,11 +74,11 @@ export async function respondProjectInvitationAction(
           field(formData, 'decision') === 'ACCEPT' ? 'ACCEPT' : 'REJECT',
       },
     );
-    revalidatePath('/cooking');
-    redirect(messageRedirectPath('/cooking', 'success', '邀请已处理'));
+    revalidatePath('/cooking/projects');
+    redirect(messageRedirectPath('/cooking/projects', 'success', '邀请已处理'));
   } catch (error) {
     rethrowRedirectError(error);
-    redirectWithError('/cooking', error);
+    redirectWithError('/cooking/projects', error);
   }
 }
 
@@ -172,7 +172,7 @@ export async function removeProjectMemberAction(
 }
 
 function refreshProject(projectId: string): void {
-  revalidatePath('/cooking');
+  revalidatePath('/cooking/projects');
   revalidatePath(`/cooking/projects/${projectId}`);
 }
 

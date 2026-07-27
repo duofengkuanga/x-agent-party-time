@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { PlatformError } from '@/platform/errors';
 
-export const SERVER_SCHEMA_VERSION = 4;
+export const SERVER_SCHEMA_VERSION = 5;
 
 const SCHEMA = `
 CREATE TABLE platform_user (
@@ -169,6 +169,59 @@ CREATE INDEX cooking_engineering_binding_runner
   ON cooking_engineering_binding(runner_id, created_at);
 CREATE INDEX cooking_engineering_binding_engineering
   ON cooking_engineering_binding(engineering_id, created_at);
+
+CREATE TABLE cooking_test_submission (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES cooking_project(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  requirement_description TEXT NOT NULL,
+  tester_user_id TEXT NOT NULL REFERENCES platform_user(id) ON DELETE RESTRICT,
+  status TEXT NOT NULL CHECK (status IN ('ACTIVE', 'CLOSED')),
+  version INTEGER NOT NULL CHECK (version > 0),
+  workspace_revision INTEGER NOT NULL CHECK (workspace_revision > 0),
+  created_by_user_id TEXT NOT NULL REFERENCES platform_user(id) ON DELETE RESTRICT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  closed_at TEXT
+) STRICT;
+CREATE INDEX cooking_test_submission_project
+  ON cooking_test_submission(project_id, status, updated_at, id);
+CREATE INDEX cooking_test_submission_participants
+  ON cooking_test_submission(tester_user_id, status, updated_at);
+
+CREATE TABLE cooking_submission_item (
+  id TEXT PRIMARY KEY,
+  submission_id TEXT NOT NULL REFERENCES cooking_test_submission(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL CHECK (position >= 0),
+  engineering_id TEXT NOT NULL,
+  engineering_name TEXT NOT NULL,
+  repository_url TEXT NOT NULL,
+  responsible_user_id TEXT NOT NULL,
+  responsible_username TEXT NOT NULL,
+  responsible_display_name TEXT NOT NULL,
+  responsible_user_created_at TEXT NOT NULL,
+  binding_id TEXT NOT NULL,
+  target_branch TEXT NOT NULL,
+  environment_id TEXT NOT NULL,
+  environment_name TEXT NOT NULL,
+  deployment_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE(submission_id, engineering_id)
+) STRICT;
+CREATE INDEX cooking_submission_item_responsible
+  ON cooking_submission_item(responsible_user_id, submission_id);
+CREATE INDEX cooking_submission_item_binding
+  ON cooking_submission_item(binding_id, submission_id);
+
+CREATE TABLE cooking_submission_environment_lock (
+  environment_id TEXT PRIMARY KEY REFERENCES cooking_environment(id) ON DELETE RESTRICT,
+  engineering_id TEXT NOT NULL REFERENCES cooking_engineering(id) ON DELETE RESTRICT,
+  submission_id TEXT NOT NULL REFERENCES cooking_test_submission(id) ON DELETE CASCADE,
+  submission_item_id TEXT NOT NULL UNIQUE REFERENCES cooking_submission_item(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX cooking_submission_environment_lock_submission
+  ON cooking_submission_environment_lock(submission_id, submission_item_id);
 `;
 
 export function initializeSchema(database: Database): void {
