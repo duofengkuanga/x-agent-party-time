@@ -43,15 +43,11 @@ coverage/
 .gitnexus/
 
 # Local collaboration documents and drafts
-docs/
 .scratch/
 .claude/
 .codex/
-.agents/
-AGENTS.md
 CLAUDE.md
 GEMINI.md
-CONTEXT.md
 
 # OS/editor/log files
 .DS_Store
