@@ -24,10 +24,12 @@ export async function handleExecutionClaim(
   request: Request,
   runners: RunnerAuthenticator,
   executions: Pick<ExecutionService, 'claim'>,
+  prepare: () => void = () => {},
 ): Promise<Response> {
   try {
     const runner = runners.authenticateCredential(bearerCredential(request));
     const body = ExecutionClaimRequestSchema.parse(await request.json());
+    prepare();
     return jsonResponse(
       ExecutionClaimResponseSchema.parse({
         executions: await executions.claim(

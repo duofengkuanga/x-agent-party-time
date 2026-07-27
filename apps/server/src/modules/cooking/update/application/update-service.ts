@@ -1,0 +1,1320 @@
+import { randomUUID } from 'node:crypto';
+import {
+  sanitizeExecutionInteractionPayload,
+  type Execution,
+} from '@agent-party-time/execution-contract';
+import type { AppDatabase } from '@/platform/database';
+import { PlatformError } from '@/platform/errors';
+import { ExecutionService } from '@/platform/execution/service';
+import { DeploymentMethodSchema } from '@/modules/cooking/engineering/contract';
+import { CookingWriteStore } from '@/modules/cooking/shared/write-store';
+import {
+  ContinueUpdateInputSchema,
+  FreezeUpdateInputSchema,
+  LocalScriptUpdateExecutionResultSchema,
+  ResolveUpdateInteractionInputSchema,
+  UpdateBatchCommandInputSchema,
+  UpdateBatchViewSchema,
+  UpdateInteractionViewSchema,
+  UpdateMutationResultSchema,
+  UpdateWorkspaceProjectionSchema,
+  type ContinueUpdateInput,
+  type ResolveUpdateInteractionInput,
+  type UpdateBatchCommandInput,
+  type UpdateBatchView,
+  type UpdateInteractionView,
+  type UpdateMutationResult,
+  type UpdateWorkspaceProjection,
+} from '../contract';
+import {
+  buildContinuationLocalScriptUpdatePrompt,
+  buildInitialLocalScriptUpdatePrompt,
+} from '../prompt';
+
+const QUIET_WINDOW_MS = 2 * 60 * 1_000;
+const UPDATE_PRIORITY = -2_000_000;
+
+type ItemSourceRow = {
+  submission_id: string;
+  submission_item_id: string;
+  project_id: string;
+  submission_status: 'ACTIVE' | 'CLOSED';
+  submission_title: string;
+  engineering_name: string;
+  repository_url: string;
+  target_branch: string;
+  environment_name: string;
+  deployment_json: string;
+  responsible_user_id: string;
+  binding_id: string;
+  runner_id: string;
+};
+
+type CandidateRow = {
+  bug_id: string;
+  short_id: number;
+  title: string;
+  pending_commits_json: string;
+  last_candidate_at: string;
+};
+
+type BatchRow = {
+  id: string;
+  submission_id: string;
+  submission_item_id: string;
+  state:
+    | 'READY'
+    | 'RUNNING'
+    | 'WAITING_EXTERNAL'
+    | 'FAILED'
+    | 'COMPLETED'
+    | 'CANCELLED';
+  version: number;
+  active_execution_id: string | null;
+  session_id: string | null;
+  deployment_json: string;
+  frozen_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type AttemptRow = {
+  id: string;
+  batch_id: string;
+  execution_id: string;
+  attempt: number;
+  outcome_json: string | null;
+  created_at: string;
+  finished_at: string | null;
+  state: Execution['state'];
+  session_id: string | null;
+};
+
+type FrozenBatch = {
+  batchId: string;
+  executionId: string;
+  revision: number;
+};
+
+export class UpdateService {
+  private readonly writes: CookingWriteStore;
+
+  constructor(
+    private readonly db: AppDatabase,
+    private readonly executions: ExecutionService = new ExecutionService(db),
+    private readonly now: () => Date = () => new Date(),
+    private readonly createId: () => string = randomUUID,
+    private readonly onInvalidated: (
+      submissionId: string,
+      revision: number,
+    ) => void = () => {},
+  ) {
+    this.writes = new CookingWriteStore(db, now, createId);
+  }
+
+  recordCandidateAvailable(bugId: string, candidateAt: string): void {
+    const row = this.db
+      .prepare(
+        `SELECT submission_item_id FROM cooking_bug
+         WHERE id = ? AND stage = 'WAITING_FOR_UPDATE'`,
+      )
+      .get(bugId) as { submission_item_id: string | null } | undefined;
+    if (!row?.submission_item_id) return;
+    const eligibleAt = new Date(
+      Date.parse(candidateAt) + QUIET_WINDOW_MS,
+    ).toISOString();
+    this.db
+      .prepare(
+        `INSERT INTO cooking_pending_delivery(
+           submission_item_id, last_candidate_at, eligible_at
+         ) VALUES (?, ?, ?)
+         ON CONFLICT(submission_item_id) DO UPDATE SET
+           last_candidate_at = excluded.last_candidate_at,
+           eligible_at = excluded.eligible_at`,
+      )
+      .run(row.submission_item_id, candidateAt, eligibleAt);
+  }
+
+  recalculatePendingDeliveryForBug(bugId: string): void {
+    const row = this.db
+      .prepare('SELECT submission_item_id FROM cooking_bug WHERE id = ?')
+      .get(bugId) as { submission_item_id: string | null } | undefined;
+    if (!row?.submission_item_id) return;
+    this.recalculatePendingDelivery(row.submission_item_id);
+  }
+
+  prepareDueExecutions(nowValue: Date = this.now()): string[] {
+    const now = nowValue.toISOString();
+    const due = this.db
+      .prepare(
+        `SELECT pending.submission_item_id
+         FROM cooking_pending_delivery pending
+         JOIN cooking_submission_item item
+           ON item.id = pending.submission_item_id
+         JOIN cooking_test_submission submission
+           ON submission.id = item.submission_id
+         WHERE pending.eligible_at <= ?
+           AND submission.status = 'ACTIVE'
+           AND json_extract(item.deployment_json, '$.kind') = 'LOCAL_SCRIPT'
+         ORDER BY pending.eligible_at, pending.submission_item_id`,
+      )
+      .all(now) as Array<{ submission_item_id: string }>;
+    const prepared: Array<FrozenBatch & { submissionId: string }> = [];
+    for (const { submission_item_id } of due) {
+      const frozen = this.db.transaction(() =>
+        this.freezeItem(submission_item_id, now, true),
+      )();
+      if (frozen)
+        prepared.push({
+          ...frozen,
+          submissionId: this.itemSource(submission_item_id).submission_id,
+        });
+    }
+    for (const item of prepared)
+      this.onInvalidated(item.submissionId, item.revision);
+    return prepared.map(({ executionId }) => executionId);
+  }
+
+  freezeNow(
+    actorUserId: string,
+    submissionItemId: string,
+    inputValue: { mutationId: string },
+  ): UpdateMutationResult {
+    const input = FreezeUpdateInputSchema.parse(inputValue);
+    const replay = this.hasRecordedMutation(input.mutationId);
+    const result = this.writes.run({
+      mutationId: input.mutationId,
+      actorUserId,
+      operation: 'UPDATE_BATCH_FREEZE',
+      resourceType: 'UPDATE_BATCH',
+      resultSchema: UpdateMutationResultSchema,
+      perform: () => {
+        const source = this.requireResponsible(actorUserId, submissionItemId);
+        this.requireLocalScript(source);
+        const now = this.now().toISOString();
+        const frozen = this.freezeItem(submissionItemId, now, false);
+        if (!frozen)
+          throw new PlatformError(
+            'INVALID_TRANSITION',
+            '当前没有可以冻结的待更新缺陷',
+          );
+        return {
+          result: {
+            batchId: frozen.batchId,
+            batchVersion: 1,
+            executionId: frozen.executionId,
+            revision: frozen.revision,
+          },
+          resourceId: frozen.batchId,
+          audits: [
+            {
+              projectId: source.project_id,
+              action: 'UPDATE_BATCH_FROZEN',
+              targetType: 'UPDATE_BATCH',
+              targetId: frozen.batchId,
+              details: { submissionItemId, mode: 'IMMEDIATE' },
+            },
+          ],
+        };
+      },
+    });
+    if (!replay) {
+      const source = this.itemSource(submissionItemId);
+      this.onInvalidated(source.submission_id, result.revision);
+    }
+    return result;
+  }
+
+  continueUpdate(
+    actorUserId: string,
+    batchId: string,
+    inputValue: ContinueUpdateInput,
+  ): UpdateMutationResult {
+    const input = ContinueUpdateInputSchema.parse(inputValue);
+    const replay = this.hasRecordedMutation(input.mutationId);
+    const result = this.writes.run({
+      mutationId: input.mutationId,
+      actorUserId,
+      operation: 'UPDATE_BATCH_CONTINUE',
+      resourceType: 'UPDATE_BATCH',
+      resultSchema: UpdateMutationResultSchema,
+      perform: () => {
+        const batch = this.requireBatchResponsible(actorUserId, batchId);
+        this.requireBatchVersion(batch, input.expectedVersion);
+        if (batch.state !== 'FAILED')
+          throw new PlatformError(
+            'INVALID_TRANSITION',
+            '只有失败的更新批次可以继续',
+          );
+        const latest = this.latestAttempt(batchId);
+        if (!latest || !isTerminal(latest.state))
+          throw new PlatformError('RESOURCE_CONFLICT', '当前更新执行尚未结束');
+        const prompt = buildContinuationLocalScriptUpdatePrompt({
+          content: input.content,
+        });
+        const attemptId = this.createId();
+        const execution = this.executions.enqueue({
+          owner: { namespace: 'cooking', kind: 'UPDATE_BATCH', id: attemptId },
+          attempt: latest.attempt + 1,
+          previousExecutionId: latest.execution_id,
+          runnerId: this.itemSource(batch.submission_item_id).runner_id,
+          bindingId: this.itemSource(batch.submission_item_id).binding_id,
+          priority: UPDATE_PRIORITY,
+          promptKind: prompt.kind,
+          promptVersion: prompt.version,
+          renderedPrompt: prompt.renderedPrompt,
+          renderedPromptHash: prompt.renderedPromptHash,
+          outputJsonSchema: prompt.outputJsonSchema,
+          attachmentIds: [],
+          resumeSessionId: batch.session_id,
+        });
+        const now = this.now().toISOString();
+        this.db
+          .prepare(
+            `INSERT INTO cooking_update_attempt(
+               id, batch_id, execution_id, attempt, outcome_json,
+               created_at, finished_at
+             ) VALUES (?, ?, ?, ?, NULL, ?, NULL)`,
+          )
+          .run(attemptId, batchId, execution.id, latest.attempt + 1, now);
+        const update = this.db
+          .prepare(
+            `UPDATE cooking_update_batch
+             SET state = 'READY', active_execution_id = ?,
+                 version = version + 1, updated_at = ?
+             WHERE id = ? AND version = ? AND state = 'FAILED'`,
+          )
+          .run(execution.id, now, batchId, input.expectedVersion);
+        if (update.changes !== 1) throw staleBatch();
+        const revision = this.bumpRevision(batch.submission_id, now);
+        return {
+          result: {
+            batchId,
+            batchVersion: input.expectedVersion + 1,
+            executionId: execution.id,
+            revision,
+          },
+          resourceId: batchId,
+          audits: [
+            {
+              projectId: this.itemSource(batch.submission_item_id).project_id,
+              action: 'UPDATE_BATCH_CONTINUED',
+              targetType: 'UPDATE_BATCH',
+              targetId: batchId,
+              details: { executionId: execution.id },
+            },
+          ],
+        };
+      },
+    });
+    if (!replay) {
+      const batch = this.batch(batchId);
+      this.onInvalidated(batch.submission_id, result.revision);
+    }
+    return result;
+  }
+
+  cancelBatch(
+    actorUserId: string,
+    batchId: string,
+    inputValue: UpdateBatchCommandInput,
+  ): UpdateMutationResult {
+    const input = UpdateBatchCommandInputSchema.parse(inputValue);
+    const replay = this.hasRecordedMutation(input.mutationId);
+    const result = this.writes.run({
+      mutationId: input.mutationId,
+      actorUserId,
+      operation: 'UPDATE_BATCH_CANCEL',
+      resourceType: 'UPDATE_BATCH',
+      resultSchema: UpdateMutationResultSchema,
+      perform: () => {
+        const batch = this.requireBatchResponsible(actorUserId, batchId);
+        this.requireBatchVersion(batch, input.expectedVersion);
+        if (batch.state !== 'READY' || !batch.active_execution_id)
+          throw new PlatformError(
+            'INVALID_TRANSITION',
+            '只有尚未开始的更新批次可以取消',
+          );
+        const execution = this.executions.cancelQueued(
+          batch.active_execution_id,
+          '更新批次已取消',
+        );
+        const now = this.now().toISOString();
+        const batchUpdate = this.db
+          .prepare(
+            `UPDATE cooking_update_attempt
+             SET outcome_json = ?, finished_at = ? WHERE execution_id = ?`,
+          )
+          .run(
+            JSON.stringify({
+              outcome: 'FAILED',
+              summary: '更新批次在 Runner 领取前取消。',
+              technicalFailure: execution.outcome?.kind,
+            }),
+            now,
+            execution.id,
+          );
+        this.db
+          .prepare(
+            `UPDATE cooking_update_batch
+             SET state = 'CANCELLED', active_execution_id = NULL,
+                 version = version + 1, updated_at = ?
+             WHERE id = ? AND version = ? AND state = 'READY'`,
+          )
+          .run(now, batchId, input.expectedVersion);
+        if (batchUpdate.changes !== 1) throw staleBatch();
+        const entries = this.batchEntries(batchId);
+        const bugUpdate = this.db
+          .prepare(
+            `UPDATE cooking_bug
+             SET stage = 'WAITING_FOR_UPDATE', version = version + 1,
+                 updated_at = ?
+             WHERE id IN (
+               SELECT bug_id FROM cooking_update_batch_entry WHERE batch_id = ?
+             ) AND stage = 'UPDATING'`,
+          )
+          .run(now, batchId);
+        if (bugUpdate.changes !== entries.length)
+          throw new PlatformError('STALE_STATE', '更新批次中的缺陷状态已变化');
+        this.resetPendingDelivery(batch.submission_item_id, now);
+        const revision = this.bumpRevision(batch.submission_id, now);
+        return {
+          result: {
+            batchId,
+            batchVersion: input.expectedVersion + 1,
+            executionId: execution.id,
+            revision,
+          },
+          resourceId: batchId,
+          audits: [
+            {
+              projectId: this.itemSource(batch.submission_item_id).project_id,
+              action: 'UPDATE_BATCH_CANCELLED',
+              targetType: 'UPDATE_BATCH',
+              targetId: batchId,
+            },
+          ],
+        };
+      },
+    });
+    if (!replay) {
+      const batch = this.batch(batchId);
+      this.onInvalidated(batch.submission_id, result.revision);
+    }
+    return result;
+  }
+
+  stopExecution(
+    actorUserId: string,
+    batchId: string,
+    inputValue: UpdateBatchCommandInput,
+  ): UpdateMutationResult {
+    const input = UpdateBatchCommandInputSchema.parse(inputValue);
+    const replay = this.hasRecordedMutation(input.mutationId);
+    const result = this.writes.run({
+      mutationId: input.mutationId,
+      actorUserId,
+      operation: 'UPDATE_BATCH_STOP',
+      resourceType: 'UPDATE_BATCH',
+      resultSchema: UpdateMutationResultSchema,
+      perform: () => {
+        const batch = this.requireBatchResponsible(actorUserId, batchId);
+        this.requireBatchVersion(batch, input.expectedVersion);
+        if (batch.state !== 'RUNNING' || !batch.active_execution_id)
+          throw new PlatformError(
+            'INVALID_TRANSITION',
+            '当前没有可以停止的更新执行',
+          );
+        const execution = this.executions.get(batch.active_execution_id);
+        if (
+          !['CLAIMED', 'RUNNING', 'WAITING_FOR_INTERACTION'].includes(
+            execution.state,
+          )
+        )
+          throw new PlatformError(
+            'INVALID_TRANSITION',
+            '当前没有可以停止的更新执行',
+          );
+        this.executions.requestCancellation(execution.id);
+        const now = this.now().toISOString();
+        const update = this.db
+          .prepare(
+            `UPDATE cooking_update_batch
+             SET version = version + 1, updated_at = ?
+             WHERE id = ? AND version = ? AND state = 'RUNNING'`,
+          )
+          .run(now, batchId, input.expectedVersion);
+        if (update.changes !== 1) throw staleBatch();
+        const revision = this.bumpRevision(batch.submission_id, now);
+        return {
+          result: {
+            batchId,
+            batchVersion: input.expectedVersion + 1,
+            executionId: execution.id,
+            revision,
+          },
+          resourceId: batchId,
+          audits: [
+            {
+              projectId: this.itemSource(batch.submission_item_id).project_id,
+              action: 'UPDATE_EXECUTION_STOP_REQUESTED',
+              targetType: 'UPDATE_BATCH',
+              targetId: batchId,
+              details: { executionId: execution.id },
+            },
+          ],
+        };
+      },
+    });
+    if (!replay) {
+      const batch = this.batch(batchId);
+      this.onInvalidated(batch.submission_id, result.revision);
+    }
+    return result;
+  }
+
+  resolveInteraction(
+    actorUserId: string,
+    interactionId: string,
+    inputValue: ResolveUpdateInteractionInput,
+  ): UpdateMutationResult {
+    const input = ResolveUpdateInteractionInputSchema.parse(inputValue);
+    const source = this.interactionSource(interactionId);
+    const replay = this.hasRecordedMutation(input.mutationId);
+    const result = this.writes.run({
+      mutationId: input.mutationId,
+      actorUserId,
+      operation: 'UPDATE_INTERACTION_RESOLVE',
+      resourceType: 'EXECUTION_INTERACTION',
+      resultSchema: UpdateMutationResultSchema,
+      perform: () => {
+        const batch = this.requireBatchResponsible(
+          actorUserId,
+          source.batch_id,
+        );
+        this.requireBatchVersion(batch, input.expectedVersion);
+        if (batch.state !== 'RUNNING')
+          throw new PlatformError('INVALID_TRANSITION', '更新批次不在运行中');
+        this.executions.resolveInteraction(interactionId, input.resolution);
+        const now = this.now().toISOString();
+        const update = this.db
+          .prepare(
+            `UPDATE cooking_update_batch
+             SET version = version + 1, updated_at = ?
+             WHERE id = ? AND version = ? AND state = 'RUNNING'`,
+          )
+          .run(now, batch.id, input.expectedVersion);
+        if (update.changes !== 1) throw staleBatch();
+        const revision = this.bumpRevision(batch.submission_id, now);
+        return {
+          result: {
+            batchId: batch.id,
+            batchVersion: input.expectedVersion + 1,
+            executionId: source.execution_id,
+            revision,
+          },
+          resourceId: interactionId,
+          audits: [
+            {
+              projectId: this.itemSource(batch.submission_item_id).project_id,
+              action: 'UPDATE_INTERACTION_RESOLVED',
+              targetType: 'EXECUTION_INTERACTION',
+              targetId: interactionId,
+              details: { batchId: batch.id, executionId: source.execution_id },
+            },
+          ],
+        };
+      },
+    });
+    if (!replay) {
+      const batch = this.batch(source.batch_id);
+      this.onInvalidated(batch.submission_id, result.revision);
+    }
+    return result;
+  }
+
+  applyStartedExecution(execution: Execution): void {
+    if (!isUpdateExecution(execution)) return;
+    const attempt = this.attemptForExecution(execution.id);
+    if (!attempt) return;
+    const batch = this.batch(attempt.batch_id);
+    if (batch.state !== 'READY') return;
+    const now = this.now().toISOString();
+    this.db
+      .prepare(
+        `UPDATE cooking_update_batch
+         SET state = 'RUNNING', version = version + 1, updated_at = ?
+         WHERE id = ? AND state = 'READY'`,
+      )
+      .run(now, batch.id);
+    this.auditForBatch(
+      batch,
+      'UPDATE_ATTEMPT_STARTED',
+      { executionId: execution.id, attempt: attempt.attempt },
+      now,
+    );
+    this.bumpRevision(batch.submission_id, now);
+  }
+
+  applyTerminalExecution(execution: Execution): void {
+    if (!isUpdateExecution(execution)) return;
+    const attempt = this.attemptForExecution(execution.id);
+    if (!attempt || attempt.outcome_json) return;
+    const batch = this.batch(attempt.batch_id);
+    const now = this.now().toISOString();
+    const interpreted = this.interpret(execution);
+    if (interpreted.kind === 'COMPLETED') {
+      const batchUpdate = this.db
+        .prepare(
+          `UPDATE cooking_update_batch
+           SET state = 'COMPLETED', active_execution_id = NULL,
+               session_id = COALESCE(?, session_id),
+               version = version + 1, updated_at = ?
+           WHERE id = ? AND state IN ('READY', 'RUNNING')`,
+        )
+        .run(execution.sessionId, now, batch.id);
+      if (batchUpdate.changes !== 1) throw staleBatch();
+      const entries = this.batchEntries(batch.id);
+      const bugUpdate = this.db
+        .prepare(
+          `UPDATE cooking_bug
+           SET stage = 'WAITING_FOR_VERIFICATION', version = version + 1,
+               updated_at = ?
+           WHERE id IN (
+             SELECT bug_id FROM cooking_update_batch_entry WHERE batch_id = ?
+           ) AND stage = 'UPDATING'`,
+        )
+        .run(now, batch.id);
+      if (bugUpdate.changes !== entries.length)
+        throw new PlatformError('STALE_STATE', '更新批次中的缺陷状态已变化');
+      const contextUpdate = this.db
+        .prepare(
+          `UPDATE cooking_bug_repair_context
+           SET pending_commits_json = '[]', last_candidate_at = NULL,
+               version = version + 1, updated_at = ?
+           WHERE bug_id IN (
+             SELECT bug_id FROM cooking_update_batch_entry WHERE batch_id = ?
+           )`,
+        )
+        .run(now, batch.id);
+      if (contextUpdate.changes !== entries.length)
+        throw new PlatformError(
+          'INTERNAL_ERROR',
+          '更新批次候选提交上下文不完整',
+        );
+    } else {
+      const batchUpdate = this.db
+        .prepare(
+          `UPDATE cooking_update_batch
+           SET state = 'FAILED', session_id = COALESCE(?, session_id),
+               version = version + 1, updated_at = ?
+           WHERE id = ? AND state IN ('READY', 'RUNNING')`,
+        )
+        .run(execution.sessionId, now, batch.id);
+      if (batchUpdate.changes !== 1) throw staleBatch();
+    }
+    this.db
+      .prepare(
+        `UPDATE cooking_update_attempt
+         SET outcome_json = ?, finished_at = ? WHERE id = ?`,
+      )
+      .run(JSON.stringify(interpreted.attemptOutcome), now, attempt.id);
+    this.auditForBatch(
+      batch,
+      interpreted.kind === 'COMPLETED'
+        ? 'UPDATE_ATTEMPT_COMPLETED'
+        : 'UPDATE_ATTEMPT_FAILED',
+      {
+        executionId: execution.id,
+        attempt: attempt.attempt,
+        outcome: interpreted.kind,
+      },
+      now,
+    );
+    this.bumpRevision(batch.submission_id, now);
+  }
+
+  applyInteractionOpened(executionId: string, interactionId: string): void {
+    const attempt = this.attemptForExecution(executionId);
+    if (!attempt) return;
+    const batch = this.batch(attempt.batch_id);
+    const now = this.now().toISOString();
+    this.auditForBatch(
+      batch,
+      'UPDATE_INTERACTION_OPENED',
+      { executionId, interactionId, attempt: attempt.attempt },
+      now,
+    );
+    this.bumpRevision(batch.submission_id, now);
+  }
+
+  afterStartedExecution(execution: Execution): void {
+    if (isUpdateExecution(execution)) this.publishExecution(execution.id);
+  }
+
+  afterTerminalExecution(execution: Execution): void {
+    if (isUpdateExecution(execution)) this.publishExecution(execution.id);
+  }
+
+  afterInteractionOpened(executionId: string): void {
+    this.publishExecution(executionId);
+  }
+
+  workspace(userId: string, submissionId: string): UpdateWorkspaceProjection {
+    this.requireSubmissionAccess(userId, submissionId);
+    const pendingDeliveries = (
+      this.db
+        .prepare(
+          `SELECT pending.*, item.responsible_user_id,
+                  json_extract(item.deployment_json, '$.kind') deployment_kind
+           FROM cooking_pending_delivery pending
+           JOIN cooking_submission_item item
+             ON item.id = pending.submission_item_id
+           WHERE item.submission_id = ?
+           ORDER BY item.position`,
+        )
+        .all(submissionId) as Array<{
+        submission_item_id: string;
+        last_candidate_at: string;
+        eligible_at: string;
+        responsible_user_id: string;
+        deployment_kind: string;
+      }>
+    ).map((row) => ({
+      submissionItemId: row.submission_item_id,
+      lastCandidateAt: row.last_candidate_at,
+      eligibleAt: row.eligible_at,
+      availableActions:
+        row.responsible_user_id === userId &&
+        row.deployment_kind === 'LOCAL_SCRIPT'
+          ? (['FREEZE_NOW'] as const)
+          : [],
+    }));
+    const batchIds = (
+      this.db
+        .prepare(
+          `SELECT id FROM cooking_update_batch
+           WHERE submission_id = ? ORDER BY created_at, id`,
+        )
+        .all(submissionId) as Array<{ id: string }>
+    ).map(({ id }) => id);
+    return UpdateWorkspaceProjectionSchema.parse({
+      pendingDeliveries,
+      updateBatches: batchIds.map((id) => this.batchView(userId, id)),
+      updateInteractions: this.interactions(userId, submissionId),
+    });
+  }
+
+  batchView(userId: string, batchId: string): UpdateBatchView {
+    const batch = this.batch(batchId);
+    const source = this.itemSource(batch.submission_item_id);
+    this.requireSubmissionAccess(userId, batch.submission_id);
+    const technical = source.responsible_user_id === userId;
+    const attempts = this.attempts(batchId);
+    const latest = attempts.at(-1);
+    const entries = this.batchEntries(batchId);
+    const active = batch.active_execution_id
+      ? this.executions.get(batch.active_execution_id)
+      : null;
+    return UpdateBatchViewSchema.parse({
+      id: batch.id,
+      submissionId: batch.submission_id,
+      submissionItemId: batch.submission_item_id,
+      state: batch.state,
+      version: batch.version,
+      activeExecutionId: technical ? batch.active_execution_id : null,
+      frozenAt: batch.frozen_at,
+      entries: entries.map((entry) => ({
+        bugId: entry.bug_id,
+        bugShortId: entry.short_id,
+        bugTitle: entry.title,
+        commits: technical ? parseCommits(entry.commits_json) : null,
+      })),
+      attempts: technical
+        ? attempts.map((attempt) => {
+            const outcome = attempt.outcome_json
+              ? (JSON.parse(attempt.outcome_json) as {
+                  outcome?: string;
+                  summary?: string;
+                  technicalFailure?: string;
+                })
+              : null;
+            const failed = outcome?.outcome === 'FAILED';
+            return {
+              id: attempt.id,
+              executionId: attempt.execution_id,
+              attempt: attempt.attempt,
+              executionState: attempt.state,
+              summary: outcome?.summary ?? null,
+              technicalFailure:
+                outcome?.technicalFailure ?? (failed ? outcome?.summary : null),
+              createdAt: attempt.created_at,
+              finishedAt: attempt.finished_at,
+            };
+          })
+        : [],
+      availableActions: technical
+        ? [
+            ...(batch.state === 'FAILED' && latest && isTerminal(latest.state)
+              ? (['CONTINUE_UPDATE'] as const)
+              : []),
+            ...(batch.state === 'READY' && active?.state === 'QUEUED'
+              ? (['CANCEL_BATCH'] as const)
+              : []),
+            ...(batch.state === 'RUNNING' &&
+            active &&
+            ['CLAIMED', 'RUNNING', 'WAITING_FOR_INTERACTION'].includes(
+              active.state,
+            )
+              ? (['STOP_EXECUTION'] as const)
+              : []),
+          ]
+        : [],
+      presentation: { statusLabel: batchStateLabel(batch.state) },
+    });
+  }
+
+  interactions(userId: string, submissionId: string): UpdateInteractionView[] {
+    this.requireSubmissionAccess(userId, submissionId);
+    const rows = this.db
+      .prepare(
+        `SELECT interaction.*, batch.id batch_id, batch.submission_item_id,
+                item.responsible_user_id
+         FROM platform_execution_interaction interaction
+         JOIN cooking_update_attempt attempt
+           ON attempt.execution_id = interaction.execution_id
+         JOIN cooking_update_batch batch ON batch.id = attempt.batch_id
+         JOIN cooking_submission_item item ON item.id = batch.submission_item_id
+         WHERE batch.submission_id = ? AND interaction.state = 'PENDING'
+         ORDER BY interaction.created_at, interaction.id`,
+      )
+      .all(submissionId) as Array<{
+      id: string;
+      execution_id: string;
+      batch_id: string;
+      submission_item_id: string;
+      responsible_user_id: string;
+      kind: 'APPROVAL' | 'USER_INPUT';
+      state: 'PENDING';
+      method: string;
+      payload_json: string;
+      created_at: string;
+    }>;
+    return rows.map((row) => {
+      const responsible = row.responsible_user_id === userId;
+      return UpdateInteractionViewSchema.parse({
+        id: row.id,
+        executionId: row.execution_id,
+        batchId: row.batch_id,
+        submissionItemId: row.submission_item_id,
+        kind: row.kind,
+        state: row.state,
+        method: responsible ? row.method : null,
+        payload: responsible
+          ? sanitizeExecutionInteractionPayload(
+              row.method,
+              JSON.parse(row.payload_json),
+            )
+          : null,
+        canResolve: responsible,
+        createdAt: row.created_at,
+      });
+    });
+  }
+
+  private freezeItem(
+    submissionItemId: string,
+    now: string,
+    requireDue: boolean,
+  ): FrozenBatch | undefined {
+    const source = this.itemSource(submissionItemId);
+    if (source.submission_status !== 'ACTIVE') return undefined;
+    this.requireLocalScript(source);
+    const pending = this.db
+      .prepare(
+        `SELECT last_candidate_at, eligible_at
+         FROM cooking_pending_delivery WHERE submission_item_id = ?`,
+      )
+      .get(submissionItemId) as
+      { last_candidate_at: string; eligible_at: string } | undefined;
+    if (!pending || (requireDue && pending.eligible_at > now)) return undefined;
+    if (this.activeBatch(submissionItemId)) return undefined;
+    const candidates = this.candidates(submissionItemId);
+    if (!candidates.length) {
+      this.db
+        .prepare(
+          'DELETE FROM cooking_pending_delivery WHERE submission_item_id = ?',
+        )
+        .run(submissionItemId);
+      return undefined;
+    }
+    const deployment = this.requireLocalScript(source);
+    const batchId = this.createId();
+    const attemptId = this.createId();
+    const prompt = buildInitialLocalScriptUpdatePrompt({
+      workspaceKey: `update-batch:${batchId}`,
+      submissionTitle: source.submission_title,
+      engineeringName: source.engineering_name,
+      repositoryUrl: source.repository_url,
+      targetBranch: source.target_branch,
+      environmentName: source.environment_name,
+      deploymentCommand: deployment.command,
+      entries: candidates.map((candidate) => ({
+        bugShortId: candidate.short_id,
+        bugTitle: candidate.title,
+        commits: parseCommits(candidate.pending_commits_json),
+      })),
+    });
+    this.db
+      .prepare(
+        `INSERT INTO cooking_update_batch(
+           id, submission_id, submission_item_id, state, version,
+           active_execution_id, session_id, deployment_json, frozen_at,
+           created_at, updated_at
+         ) VALUES (?, ?, ?, 'READY', 1, NULL, NULL, ?, ?, ?, ?)`,
+      )
+      .run(
+        batchId,
+        source.submission_id,
+        submissionItemId,
+        source.deployment_json,
+        now,
+        now,
+        now,
+      );
+    const insertEntry = this.db.prepare(
+      `INSERT INTO cooking_update_batch_entry(
+         batch_id, bug_id, position, commits_json
+       ) VALUES (?, ?, ?, ?)`,
+    );
+    candidates.forEach((candidate, position) =>
+      insertEntry.run(
+        batchId,
+        candidate.bug_id,
+        position,
+        candidate.pending_commits_json,
+      ),
+    );
+    const execution = this.executions.enqueue({
+      owner: { namespace: 'cooking', kind: 'UPDATE_BATCH', id: attemptId },
+      attempt: 1,
+      previousExecutionId: null,
+      runnerId: source.runner_id,
+      bindingId: source.binding_id,
+      priority: UPDATE_PRIORITY,
+      promptKind: prompt.kind,
+      promptVersion: prompt.version,
+      renderedPrompt: prompt.renderedPrompt,
+      renderedPromptHash: prompt.renderedPromptHash,
+      outputJsonSchema: prompt.outputJsonSchema,
+      attachmentIds: [],
+      resumeSessionId: null,
+    });
+    this.db
+      .prepare(
+        `INSERT INTO cooking_update_attempt(
+           id, batch_id, execution_id, attempt, outcome_json,
+           created_at, finished_at
+         ) VALUES (?, ?, ?, 1, NULL, ?, NULL)`,
+      )
+      .run(attemptId, batchId, execution.id, now);
+    this.db
+      .prepare(
+        `UPDATE cooking_update_batch SET active_execution_id = ? WHERE id = ?`,
+      )
+      .run(execution.id, batchId);
+    const bugUpdate = this.db
+      .prepare(
+        `UPDATE cooking_bug
+         SET stage = 'UPDATING', version = version + 1, updated_at = ?
+         WHERE submission_item_id = ? AND stage = 'WAITING_FOR_UPDATE'
+           AND id IN (
+             SELECT bug_id FROM cooking_update_batch_entry WHERE batch_id = ?
+           )`,
+      )
+      .run(now, submissionItemId, batchId);
+    if (bugUpdate.changes !== candidates.length)
+      throw new PlatformError('STALE_STATE', '待更新缺陷集合已变化');
+    this.db
+      .prepare(
+        'DELETE FROM cooking_pending_delivery WHERE submission_item_id = ?',
+      )
+      .run(submissionItemId);
+    const revision = this.bumpRevision(source.submission_id, now);
+    return { batchId, executionId: execution.id, revision };
+  }
+
+  private interpret(
+    execution: Execution,
+  ):
+    | { kind: 'COMPLETED'; attemptOutcome: unknown }
+    | { kind: 'FAILED'; attemptOutcome: unknown } {
+    if (execution.outcome?.kind === 'SUCCEEDED') {
+      const parsed = LocalScriptUpdateExecutionResultSchema.safeParse(
+        execution.outcome.result,
+      );
+      if (parsed.success && parsed.data.outcome === 'COMPLETED')
+        return { kind: 'COMPLETED', attemptOutcome: parsed.data };
+      if (parsed.success)
+        return { kind: 'FAILED', attemptOutcome: parsed.data };
+      this.markExecutionResultInvalid(execution.id);
+      return {
+        kind: 'FAILED',
+        attemptOutcome: {
+          outcome: 'FAILED',
+          summary: '更新结果格式无效',
+          technicalFailure: 'RESULT_SCHEMA_INVALID',
+        },
+      };
+    }
+    const summary =
+      execution.outcome?.kind === 'CANCELLED'
+        ? '更新执行已停止，可由工程负责人继续。'
+        : '统一更新未完成，可由工程负责人补充信息后继续。';
+    return {
+      kind: 'FAILED',
+      attemptOutcome: {
+        outcome: 'FAILED',
+        summary,
+        technicalFailure:
+          execution.outcome?.kind === 'FAILED'
+            ? execution.outcome.failure.code
+            : execution.outcome?.kind,
+      },
+    };
+  }
+
+  private markExecutionResultInvalid(executionId: string): void {
+    this.db
+      .prepare(
+        `UPDATE platform_execution
+         SET state = 'FAILED', outcome_json = ? WHERE id = ?`,
+      )
+      .run(
+        JSON.stringify({
+          kind: 'FAILED',
+          failure: {
+            code: 'CODEX_EXECUTION_FAILED',
+            message: 'Codex 返回的更新结果无效',
+            retryable: true,
+          },
+        }),
+        executionId,
+      );
+  }
+
+  private recalculatePendingDelivery(submissionItemId: string): void {
+    const latest = this.db
+      .prepare(
+        `SELECT MAX(context.last_candidate_at) last_candidate_at
+         FROM cooking_bug bug
+         JOIN cooking_bug_repair_context context ON context.bug_id = bug.id
+         WHERE bug.submission_item_id = ?
+           AND bug.stage = 'WAITING_FOR_UPDATE'
+           AND context.last_candidate_at IS NOT NULL
+           AND context.pending_commits_json <> '[]'`,
+      )
+      .get(submissionItemId) as { last_candidate_at: string | null };
+    if (!latest.last_candidate_at) {
+      this.db
+        .prepare(
+          'DELETE FROM cooking_pending_delivery WHERE submission_item_id = ?',
+        )
+        .run(submissionItemId);
+      return;
+    }
+    this.recordPendingDelivery(submissionItemId, latest.last_candidate_at);
+  }
+
+  private resetPendingDelivery(submissionItemId: string, now: string): void {
+    this.recordPendingDelivery(submissionItemId, now);
+  }
+
+  private recordPendingDelivery(
+    submissionItemId: string,
+    candidateAt: string,
+  ): void {
+    const eligibleAt = new Date(
+      Date.parse(candidateAt) + QUIET_WINDOW_MS,
+    ).toISOString();
+    this.db
+      .prepare(
+        `INSERT INTO cooking_pending_delivery(
+           submission_item_id, last_candidate_at, eligible_at
+         ) VALUES (?, ?, ?)
+         ON CONFLICT(submission_item_id) DO UPDATE SET
+           last_candidate_at = excluded.last_candidate_at,
+           eligible_at = excluded.eligible_at`,
+      )
+      .run(submissionItemId, candidateAt, eligibleAt);
+  }
+
+  private candidates(submissionItemId: string): CandidateRow[] {
+    return this.db
+      .prepare(
+        `SELECT bug.id bug_id, bug.short_id, bug.title,
+                context.pending_commits_json, context.last_candidate_at
+         FROM cooking_bug bug
+         JOIN cooking_bug_repair_context context ON context.bug_id = bug.id
+         WHERE bug.submission_item_id = ?
+           AND bug.stage = 'WAITING_FOR_UPDATE'
+           AND context.last_candidate_at IS NOT NULL
+           AND context.pending_commits_json <> '[]'
+         ORDER BY bug.short_id, bug.id`,
+      )
+      .all(submissionItemId) as CandidateRow[];
+  }
+
+  private batchEntries(batchId: string): Array<{
+    bug_id: string;
+    short_id: number;
+    title: string;
+    commits_json: string;
+  }> {
+    return this.db
+      .prepare(
+        `SELECT entry.bug_id, bug.short_id, bug.title, entry.commits_json
+         FROM cooking_update_batch_entry entry
+         JOIN cooking_bug bug ON bug.id = entry.bug_id
+         WHERE entry.batch_id = ? ORDER BY entry.position`,
+      )
+      .all(batchId) as Array<{
+      bug_id: string;
+      short_id: number;
+      title: string;
+      commits_json: string;
+    }>;
+  }
+
+  private itemSource(submissionItemId: string): ItemSourceRow {
+    const row = this.db
+      .prepare(
+        `SELECT submission.id submission_id, item.id submission_item_id,
+                submission.project_id, submission.status submission_status,
+                submission.title submission_title,
+                item.engineering_name, item.repository_url, item.target_branch,
+                item.environment_name, item.deployment_json,
+                item.responsible_user_id, item.binding_id, binding.runner_id
+         FROM cooking_submission_item item
+         JOIN cooking_test_submission submission ON submission.id = item.submission_id
+         JOIN cooking_engineering_binding binding ON binding.id = item.binding_id
+         WHERE item.id = ?`,
+      )
+      .get(submissionItemId) as ItemSourceRow | undefined;
+    if (!row) throw new PlatformError('NOT_FOUND', 'Submission Item 不存在');
+    return row;
+  }
+
+  private batch(batchId: string): BatchRow {
+    const row = this.db
+      .prepare('SELECT * FROM cooking_update_batch WHERE id = ?')
+      .get(batchId) as BatchRow | undefined;
+    if (!row) throw new PlatformError('NOT_FOUND', 'Update Batch 不存在');
+    return row;
+  }
+
+  private activeBatch(submissionItemId: string): BatchRow | undefined {
+    return this.db
+      .prepare(
+        `SELECT * FROM cooking_update_batch
+         WHERE submission_item_id = ?
+           AND state IN ('READY', 'RUNNING', 'WAITING_EXTERNAL', 'FAILED')`,
+      )
+      .get(submissionItemId) as BatchRow | undefined;
+  }
+
+  private attempts(batchId: string): AttemptRow[] {
+    return this.db
+      .prepare(
+        `SELECT attempt.*, execution.state, execution.session_id
+         FROM cooking_update_attempt attempt
+         JOIN platform_execution execution ON execution.id = attempt.execution_id
+         WHERE attempt.batch_id = ? ORDER BY attempt.attempt`,
+      )
+      .all(batchId) as AttemptRow[];
+  }
+
+  private latestAttempt(batchId: string): AttemptRow | undefined {
+    return this.attempts(batchId).at(-1);
+  }
+
+  private attemptForExecution(executionId: string): AttemptRow | undefined {
+    return this.db
+      .prepare(
+        `SELECT attempt.*, execution.state, execution.session_id
+         FROM cooking_update_attempt attempt
+         JOIN platform_execution execution ON execution.id = attempt.execution_id
+         WHERE attempt.execution_id = ?`,
+      )
+      .get(executionId) as AttemptRow | undefined;
+  }
+
+  private requireResponsible(
+    userId: string,
+    submissionItemId: string,
+  ): ItemSourceRow {
+    const source = this.itemSource(submissionItemId);
+    this.requireSubmissionAccess(userId, source.submission_id);
+    if (source.responsible_user_id !== userId)
+      throw new PlatformError(
+        'PERMISSION_DENIED',
+        '只有该工程负责人可以操作更新批次',
+      );
+    if (source.submission_status !== 'ACTIVE')
+      throw new PlatformError('INVALID_TRANSITION', '已关闭提测单不能更新');
+    return source;
+  }
+
+  private requireBatchResponsible(userId: string, batchId: string): BatchRow {
+    const batch = this.batch(batchId);
+    this.requireResponsible(userId, batch.submission_item_id);
+    return batch;
+  }
+
+  private requireLocalScript(source: ItemSourceRow): {
+    kind: 'LOCAL_SCRIPT';
+    command: string;
+  } {
+    const deployment = DeploymentMethodSchema.parse(
+      JSON.parse(source.deployment_json),
+    );
+    if (deployment.kind !== 'LOCAL_SCRIPT')
+      throw new PlatformError(
+        'INVALID_TRANSITION',
+        '当前环境不是本地脚本部署方式',
+      );
+    return deployment;
+  }
+
+  private requireBatchVersion(batch: BatchRow, expectedVersion: number): void {
+    if (batch.version !== expectedVersion) throw staleBatch();
+  }
+
+  private requireSubmissionAccess(userId: string, submissionId: string): void {
+    const row = this.db
+      .prepare(
+        `SELECT 1 allowed
+         FROM cooking_test_submission submission
+         JOIN cooking_project_membership membership
+           ON membership.project_id = submission.project_id
+         WHERE submission.id = ? AND membership.user_id = ?`,
+      )
+      .get(submissionId, userId) as { allowed: number } | undefined;
+    if (!row) throw new PlatformError('NOT_FOUND', '提测单不存在');
+  }
+
+  private interactionSource(interactionId: string): {
+    batch_id: string;
+    execution_id: string;
+  } {
+    const row = this.db
+      .prepare(
+        `SELECT attempt.batch_id, interaction.execution_id
+         FROM platform_execution_interaction interaction
+         JOIN cooking_update_attempt attempt
+           ON attempt.execution_id = interaction.execution_id
+         WHERE interaction.id = ?`,
+      )
+      .get(interactionId) as
+      { batch_id: string; execution_id: string } | undefined;
+    if (!row) throw new PlatformError('NOT_FOUND', 'Update Interaction 不存在');
+    return row;
+  }
+
+  private auditForBatch(
+    batch: BatchRow,
+    action: string,
+    details: unknown,
+    createdAt: string,
+  ): void {
+    const source = this.itemSource(batch.submission_item_id);
+    this.db
+      .prepare(
+        `INSERT INTO cooking_audit_event(
+           id, project_id, actor_user_id, action, target_type, target_id,
+           details_json, created_at
+         ) VALUES (?, ?, ?, ?, 'UPDATE_BATCH', ?, ?, ?)`,
+      )
+      .run(
+        this.createId(),
+        source.project_id,
+        source.responsible_user_id,
+        action,
+        batch.id,
+        JSON.stringify({ source: 'EXECUTION', ...asDetails(details) }),
+        createdAt,
+      );
+  }
+
+  private publishExecution(executionId: string): void {
+    const row = this.db
+      .prepare(
+        `SELECT batch.submission_id, submission.workspace_revision
+         FROM cooking_update_attempt attempt
+         JOIN cooking_update_batch batch ON batch.id = attempt.batch_id
+         JOIN cooking_test_submission submission ON submission.id = batch.submission_id
+         WHERE attempt.execution_id = ?`,
+      )
+      .get(executionId) as
+      { submission_id: string; workspace_revision: number } | undefined;
+    if (row) this.onInvalidated(row.submission_id, row.workspace_revision);
+  }
+
+  private hasRecordedMutation(mutationId: string): boolean {
+    return Boolean(
+      this.db
+        .prepare('SELECT 1 recorded FROM cooking_mutation WHERE id = ?')
+        .get(mutationId),
+    );
+  }
+
+  private bumpRevision(submissionId: string, now: string): number {
+    const row = this.db
+      .prepare(
+        `UPDATE cooking_test_submission
+         SET workspace_revision = workspace_revision + 1, updated_at = ?
+         WHERE id = ? RETURNING workspace_revision`,
+      )
+      .get(now, submissionId) as { workspace_revision: number };
+    return row.workspace_revision;
+  }
+}
+
+function parseCommits(value: string): string[] {
+  const parsed = JSON.parse(value);
+  if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== 'string'))
+    throw new PlatformError('INTERNAL_ERROR', 'Pending Commit Chain 无效');
+  return parsed;
+}
+
+function isUpdateExecution(execution: Execution): boolean {
+  return (
+    execution.owner.namespace === 'cooking' &&
+    execution.owner.kind === 'UPDATE_BATCH'
+  );
+}
+
+function isTerminal(state: Execution['state']): boolean {
+  return state === 'SUCCEEDED' || state === 'FAILED' || state === 'CANCELLED';
+}
+
+function batchStateLabel(state: BatchRow['state']): string {
+  return {
+    READY: '等待 Runner',
+    RUNNING: '正在统一更新',
+    WAITING_EXTERNAL: '等待外部部署结果',
+    FAILED: '统一更新未完成',
+    COMPLETED: '统一更新已完成',
+    CANCELLED: '更新批次已取消',
+  }[state];
+}
+
+function staleBatch(): PlatformError {
+  return new PlatformError('STALE_STATE', '更新批次已变化，请刷新后重试');
+}
+
+function asDetails(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}

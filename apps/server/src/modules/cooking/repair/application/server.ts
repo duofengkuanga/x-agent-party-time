@@ -1,28 +1,52 @@
 import { database } from '@/platform/database';
 import { ExecutionService } from '@/platform/execution/service';
 import { workspaceEvents } from '@/modules/cooking/submissions/application/workspace-events';
+import { UpdateService } from '@/modules/cooking/update/application/update-service';
 import { RepairService } from './repair-service';
 
+function publish(submissionId: string, revision: number): void {
+  workspaceEvents().publish({ submissionId, revision });
+}
+
 export function repairService(): RepairService {
+  const appDatabase = database();
+  const updates = new UpdateService(appDatabase);
   return new RepairService(
-    database(),
+    appDatabase,
     undefined,
     undefined,
     undefined,
-    (submissionId, revision) =>
-      workspaceEvents().publish({ submissionId, revision }),
+    publish,
+    {
+      candidateAvailable: (bugId, candidateAt) =>
+        updates.recordCandidateAvailable(bugId, candidateAt),
+      candidateReconsidered: (bugId) =>
+        updates.recalculatePendingDeliveryForBug(bugId),
+    },
   );
 }
 
 export function cookingExecutionService(): ExecutionService {
   const appDatabase = database();
+  const updates = new UpdateService(
+    appDatabase,
+    new ExecutionService(appDatabase),
+    undefined,
+    undefined,
+    publish,
+  );
   const repair = new RepairService(
     appDatabase,
     new ExecutionService(appDatabase),
     undefined,
     undefined,
-    (submissionId, revision) =>
-      workspaceEvents().publish({ submissionId, revision }),
+    publish,
+    {
+      candidateAvailable: (bugId, candidateAt) =>
+        updates.recordCandidateAvailable(bugId, candidateAt),
+      candidateReconsidered: (bugId) =>
+        updates.recalculatePendingDeliveryForBug(bugId),
+    },
   );
   return new ExecutionService(
     appDatabase,
@@ -31,14 +55,30 @@ export function cookingExecutionService(): ExecutionService {
     undefined,
     undefined,
     {
-      applyStarted: (execution) => repair.applyStartedExecution(execution),
-      afterStarted: (execution) => repair.afterStartedExecution(execution),
-      applyTerminal: (execution) => repair.applyTerminalExecution(execution),
-      afterTerminal: (execution) => repair.afterTerminalExecution(execution),
-      applyInteractionOpened: (interaction) =>
-        repair.applyInteractionOpened(interaction.executionId, interaction.id),
-      afterInteractionOpened: (interaction) =>
-        repair.afterInteractionOpened(interaction.executionId),
+      applyStarted: (execution) => {
+        repair.applyStartedExecution(execution);
+        updates.applyStartedExecution(execution);
+      },
+      afterStarted: (execution) => {
+        repair.afterStartedExecution(execution);
+        updates.afterStartedExecution(execution);
+      },
+      applyTerminal: (execution) => {
+        repair.applyTerminalExecution(execution);
+        updates.applyTerminalExecution(execution);
+      },
+      afterTerminal: (execution) => {
+        repair.afterTerminalExecution(execution);
+        updates.afterTerminalExecution(execution);
+      },
+      applyInteractionOpened: (interaction) => {
+        repair.applyInteractionOpened(interaction.executionId, interaction.id);
+        updates.applyInteractionOpened(interaction.executionId, interaction.id);
+      },
+      afterInteractionOpened: (interaction) => {
+        repair.afterInteractionOpened(interaction.executionId);
+        updates.afterInteractionOpened(interaction.executionId);
+      },
     },
   );
 }
