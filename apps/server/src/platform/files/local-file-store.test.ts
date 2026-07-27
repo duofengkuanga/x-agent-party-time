@@ -49,7 +49,8 @@ describe('LocalFileStore', () => {
 
     expect(stored.originalName).toBe('../不会成为路径.txt');
     expect(await store.read(stored.id)).toEqual({ file: stored, bytes });
-    expect(await store.deleteUnbound(stored.id)).toBe(true);
+    expect(await store.deleteUnbound(stored.id, 'other-user')).toBe(false);
+    expect(await store.deleteUnbound(stored.id, user.id)).toBe(true);
     expect(store.get(stored.id)).toBeNull();
     expect(
       database

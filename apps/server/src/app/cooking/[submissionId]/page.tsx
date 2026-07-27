@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { requireCurrentUser } from '@/platform/auth/server';
 import { PlatformError } from '@/platform/errors';
-import { submissionService } from '@/modules/cooking/application/server';
+import { workspaceService } from '@/modules/cooking/application/server';
 import { SubmissionIdSchema } from '@/modules/cooking/submissions/contract';
 import { SubmissionWorkspace } from '@/modules/cooking/submissions/presentation/submission-workspace';
 
@@ -14,7 +14,7 @@ export default async function SubmissionWorkspacePage({
   const parsedId = SubmissionIdSchema.safeParse((await params).submissionId);
   if (!parsedId.success) notFound();
   try {
-    const snapshot = submissionService().getWorkspace(user.id, parsedId.data);
+    const snapshot = workspaceService().getWorkspace(user.id, parsedId.data);
     return (
       <SubmissionWorkspace
         currentUser={user}

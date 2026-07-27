@@ -157,6 +157,14 @@ function workspace(revision: number) {
   return {
     revision,
     currentUser,
+    availableActions: [],
+    repairQueue: {
+      submissionId,
+      version: 1,
+      entries: [],
+      availableActions: [],
+    },
+    bugs: [],
     submissions: [
       {
         submission: submission(revision, now),
