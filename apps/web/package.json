@@ -1,0 +1,29 @@
+{
+  "name": "@agent-party-time/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --bun next dev",
+    "build": "bun --bun next build",
+    "start": "bun --bun next start",
+    "seed": "bun scripts/seed.ts",
+    "test": "bun test app features server",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agent-party-time/execution-contract": "workspace:*",
+    "next": "^16.2.10",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "zod": "^4.4.3",
+    "@agent-party-time/runner-contract": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^5.9.3",
+    "@types/bun": "^1.3.14"
+  }
+}

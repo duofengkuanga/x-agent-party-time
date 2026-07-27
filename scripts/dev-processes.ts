@@ -3,7 +3,7 @@ import { readlinkSync, realpathSync } from 'node:fs';
 import { dirname, normalize, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export type ServiceKey = 'server' | 'runner';
+export type ServiceKey = 'app' | 'runner';
 
 export type ProcessRow = {
   pid: number;
@@ -36,22 +36,22 @@ const BUN = String.raw`(?:^|\s)(?:\S*\/)?bun`;
 
 const SERVICE_DEFINITIONS: readonly ServiceDefinition[] = [
   {
-    key: 'server',
-    label: 'Server',
+    key: 'app',
+    label: 'App',
     matchers: [
       {
-        pattern: new RegExp(`${BUN}\\s+run\\s+dev:server(?:\\s|$)`),
+        pattern: new RegExp(`${BUN}\\s+run\\s+dev:app(?:\\s|$)`),
         relativeCwds: ['.'],
       },
       {
         pattern: new RegExp(
-          `${BUN}\\s+--cwd\\s+(?:\\S*\/)?apps/server\\s+dev(?:\\s|$)`,
+          `${BUN}\\s+--cwd\\s+(?:\\S*\/)?apps/web\\s+dev(?:\\s|$)`,
         ),
-        relativeCwds: ['.', 'apps/server'],
+        relativeCwds: ['.', 'apps/web'],
       },
       {
         pattern: /(?:^|\s)(?:\S*\/)?next\s+dev(?:\s|$)|next-server/u,
-        relativeCwds: ['apps/server'],
+        relativeCwds: ['apps/web'],
       },
     ],
   },
@@ -309,7 +309,7 @@ async function stopServices(
     return 1;
   }
 
-  console.log('Server、Runner 开发服务已全部停止。');
+  console.log('App、Runner 开发服务已全部停止。');
   return 0;
 }
 

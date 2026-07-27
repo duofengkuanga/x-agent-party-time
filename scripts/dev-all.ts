@@ -6,7 +6,7 @@ type ServiceCommand = {
 };
 
 const commands: ServiceCommand[] = [
-  { label: 'Server', script: 'dev:server' },
+  { label: 'App', script: 'dev:app' },
   { label: 'Runner', script: 'dev:runner' },
 ];
 
@@ -64,4 +64,4 @@ for (const command of commands) {
 process.once('SIGINT', () => stopAll(0, 'SIGINT'));
 process.once('SIGTERM', () => stopAll(0, 'SIGTERM'));
 
-console.log('[dev] 已启动 Server 与 Runner；按 Ctrl+C 可统一停止。');
+console.log('[dev] 已启动 App 与 Runner；按 Ctrl+C 可统一停止。');
