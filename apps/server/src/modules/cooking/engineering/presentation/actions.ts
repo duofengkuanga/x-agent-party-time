@@ -4,7 +4,10 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireCurrentUser } from '@/platform/auth/server';
 import { publicError } from '@/platform/errors';
-import { messageRedirectPath } from '@/modules/cooking/shared/presentation/redirect-url';
+import {
+  messageRedirectPath,
+  rethrowRedirectError,
+} from '@/platform/http/message-redirect';
 import { engineeringService } from '@/modules/cooking/application/server';
 import { DeploymentMethodSchema, type DeploymentMethod } from '../contract';
 
@@ -32,7 +35,7 @@ export async function createEngineeringAction(
       ),
     );
   } catch (error) {
-    rethrowRedirect(error);
+    rethrowRedirectError(error);
     redirectWithError(projectPath(projectId), error);
   }
 }
@@ -59,7 +62,7 @@ export async function updateEngineeringAction(
       ),
     );
   } catch (error) {
-    rethrowRedirect(error);
+    rethrowRedirectError(error);
     redirectWithError(engineeringPath(engineeringId), error);
   }
 }
@@ -84,7 +87,7 @@ export async function archiveEngineeringAction(
       ),
     );
   } catch (error) {
-    rethrowRedirect(error);
+    rethrowRedirectError(error);
     redirectWithError(engineeringPath(engineeringId), error);
   }
 }
@@ -111,7 +114,7 @@ export async function addEngineeringMemberAction(
       ),
     );
   } catch (error) {
-    rethrowRedirect(error);
+    rethrowRedirectError(error);
     redirectWithError(engineeringPath(engineeringId), error);
   }
 }
@@ -141,7 +144,7 @@ export async function removeEngineeringMemberAction(
       ),
     );
   } catch (error) {
-    rethrowRedirect(error);
+    rethrowRedirectError(error);
     redirectWithError(engineeringPath(engineeringId), error);
   }
 }
@@ -167,7 +170,7 @@ export async function createEnvironmentAction(
       ),
     );
   } catch (error) {
-    rethrowRedirect(error);
+    rethrowRedirectError(error);
     redirectWithError(engineeringPath(engineeringId), error);
   }
 }
@@ -198,7 +201,7 @@ export async function updateEnvironmentAction(
       ),
     );
   } catch (error) {
-    rethrowRedirect(error);
+    rethrowRedirectError(error);
     redirectWithError(engineeringPath(engineeringId), error);
   }
 }
@@ -227,7 +230,7 @@ export async function deleteEnvironmentAction(
       ),
     );
   } catch (error) {
-    rethrowRedirect(error);
+    rethrowRedirectError(error);
     redirectWithError(engineeringPath(engineeringId), error);
   }
 }
@@ -267,14 +270,4 @@ function refreshEngineering(projectId: string, engineeringId: string): void {
 
 function redirectWithError(path: string, error: unknown): never {
   redirect(messageRedirectPath(path, 'error', publicError(error).message));
-}
-
-function rethrowRedirect(error: unknown): void {
-  if (
-    error instanceof Error &&
-    'digest' in error &&
-    typeof error.digest === 'string' &&
-    error.digest.startsWith('NEXT_REDIRECT')
-  )
-    throw error;
 }

@@ -1,4 +1,5 @@
 import { database } from '@/platform/database';
+import { BindingService } from '@/modules/cooking/bindings/application/binding-service';
 import { EngineeringService } from '@/modules/cooking/engineering/application/engineering-service';
 import { projectMemberHasEngineeringResponsibilities } from '@/modules/cooking/engineering/application/responsibilities';
 import { ProjectService } from '@/modules/cooking/projects/application/project-service';
@@ -20,4 +21,8 @@ export function projectService(): ProjectService {
 
 export function engineeringService(): EngineeringService {
   return new EngineeringService(database());
+}
+
+export function bindingService(): BindingService {
+  return new BindingService(database());
 }

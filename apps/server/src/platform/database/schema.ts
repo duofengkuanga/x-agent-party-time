@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { PlatformError } from '@/platform/errors';
 
-export const SERVER_SCHEMA_VERSION = 3;
+export const SERVER_SCHEMA_VERSION = 4;
 
 const SCHEMA = `
 CREATE TABLE platform_user (
@@ -31,6 +31,32 @@ CREATE TABLE platform_file (
   created_at TEXT NOT NULL
 ) STRICT;
 CREATE INDEX platform_file_uploader ON platform_file(uploaded_by_user_id, created_at);
+
+CREATE TABLE platform_runner (
+  id TEXT PRIMARY KEY,
+  owner_user_id TEXT NOT NULL REFERENCES platform_user(id) ON DELETE RESTRICT,
+  name TEXT NOT NULL,
+  credential_hash TEXT NOT NULL UNIQUE,
+  version INTEGER NOT NULL CHECK (version > 0),
+  last_seen_at TEXT,
+  revoked_at TEXT,
+  created_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX platform_runner_owner
+  ON platform_runner(owner_user_id, revoked_at, created_at);
+CREATE INDEX platform_runner_last_seen
+  ON platform_runner(last_seen_at);
+
+CREATE TABLE platform_runner_pairing_code (
+  id TEXT PRIMARY KEY,
+  owner_user_id TEXT NOT NULL REFERENCES platform_user(id) ON DELETE CASCADE,
+  code_hash TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  created_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX platform_runner_pairing_expiry
+  ON platform_runner_pairing_code(expires_at, used_at);
 
 CREATE TABLE cooking_project (
   id TEXT PRIMARY KEY,
@@ -130,6 +156,19 @@ CREATE TABLE cooking_environment (
 ) STRICT;
 CREATE INDEX cooking_environment_engineering
   ON cooking_environment(engineering_id, created_at);
+
+CREATE TABLE cooking_engineering_binding (
+  id TEXT PRIMARY KEY,
+  engineering_id TEXT NOT NULL REFERENCES cooking_engineering(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES platform_user(id) ON DELETE RESTRICT,
+  runner_id TEXT NOT NULL REFERENCES platform_runner(id) ON DELETE RESTRICT,
+  created_at TEXT NOT NULL,
+  UNIQUE(engineering_id, user_id, runner_id)
+) STRICT;
+CREATE INDEX cooking_engineering_binding_runner
+  ON cooking_engineering_binding(runner_id, created_at);
+CREATE INDEX cooking_engineering_binding_engineering
+  ON cooking_engineering_binding(engineering_id, created_at);
 `;
 
 export function initializeSchema(database: Database): void {

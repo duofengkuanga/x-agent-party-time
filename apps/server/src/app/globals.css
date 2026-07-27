@@ -443,3 +443,35 @@ button:disabled {
     background: #100f0e;
   }
 }
+
+.pairing-card,
+.pairing-result {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.pairing-result {
+  padding: 1rem;
+  border: 1px solid var(--line);
+}
+
+.pairing-result strong {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: clamp(1.5rem, 5vw, 2.4rem);
+  letter-spacing: 0.15em;
+  overflow-wrap: anywhere;
+}
+
+.pairing-result p,
+.privacy-note {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.logical-id {
+  display: block;
+  margin-top: 0.4rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow-wrap: anywhere;
+}

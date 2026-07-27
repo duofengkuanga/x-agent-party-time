@@ -56,7 +56,13 @@ describe('Server SQLite schema', () => {
           )
           .all()
           .map(({ name }) => name),
-      ).toEqual(['platform_file', 'platform_session', 'platform_user']);
+      ).toEqual([
+        'platform_file',
+        'platform_runner',
+        'platform_runner_pairing_code',
+        'platform_session',
+        'platform_user',
+      ]);
     } finally {
       database.close();
     }
