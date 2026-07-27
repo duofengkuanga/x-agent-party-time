@@ -1,5 +1,5 @@
 import { currentUser } from '@/platform/auth/server';
-import { submissionService } from '@/modules/cooking/application/server';
+import { workspaceService } from '@/modules/cooking/application/server';
 import { handleWorkspaceSnapshot } from '@/modules/cooking/submissions/presentation/http';
 
 export async function GET(
@@ -13,5 +13,5 @@ export async function GET(
       { status: 401 },
     );
   const { submissionId } = await context.params;
-  return handleWorkspaceSnapshot(submissionId, user.id, submissionService());
+  return handleWorkspaceSnapshot(submissionId, user.id, workspaceService());
 }

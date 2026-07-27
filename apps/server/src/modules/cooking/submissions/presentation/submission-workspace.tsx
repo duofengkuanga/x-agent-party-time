@@ -17,8 +17,11 @@ import type { User } from '@/platform/auth/contract';
 import { logoutAction } from '@/app/logout/action';
 import {
   CookingWorkspaceSnapshotSchema,
-  WorkspaceInvalidationSchema,
   type CookingWorkspaceSnapshot,
+} from '@/modules/cooking/workspace/contract';
+import { BugBoard } from '@/modules/cooking/bugs/presentation/bug-board';
+import {
+  WorkspaceInvalidationSchema,
   type SubmissionCreationCatalog,
   type SubmissionSummary,
 } from '../contract';
@@ -33,15 +36,6 @@ const SIDEBAR_DEFAULT_WIDTH = 320;
 const SIDEBAR_MIN_WIDTH = 240;
 const SIDEBAR_MAX_WIDTH = 560;
 const STAGE_MIN_WIDTH = 480;
-
-const STATUS_COLUMNS = [
-  { status: 'WAITING_FOR_REPAIR', label: '待修复', note: '录入' },
-  { status: 'REPAIRING', label: '修复中', note: '修复' },
-  { status: 'WAITING_FOR_UPDATE', label: '待更新', note: '批次' },
-  { status: 'UPDATING', label: '更新中', note: '交付' },
-  { status: 'WAITING_FOR_VERIFICATION', label: '待验证', note: '测试' },
-  { status: 'DONE', label: '已完成', note: '完成' },
-] as const;
 
 type Theme = 'paper' | 'night';
 type SyncState = 'connected' | 'reconnecting' | 'syncing';
@@ -430,7 +424,20 @@ export function SubmissionWorkspace({
           ) : null}
           {snapshot ? (
             <div className="collab-stage__content">
-              <EmptyBugBoard snapshot={snapshot} syncState={syncState} />
+              <BugBoard
+                onChanged={(revision, message) => {
+                  setNotice(message);
+                  void refreshSnapshot(revision);
+                }}
+                snapshot={snapshot}
+                syncLabel={
+                  syncState === 'connected'
+                    ? '实时同步已连接'
+                    : syncState === 'syncing'
+                      ? '正在同步最新状态'
+                      : '连接中断，正在重连'
+                }
+              />
             </div>
           ) : (
             <EmptyStage
@@ -778,52 +785,6 @@ function SubmissionDetails({
         </form>
       ) : null}
     </header>
-  );
-}
-
-function EmptyBugBoard({
-  snapshot,
-  syncState,
-}: {
-  snapshot: CookingWorkspaceSnapshot;
-  syncState: SyncState;
-}) {
-  return (
-    <section className="collab-board-section">
-      <div className="collab-section-label collab-board-heading">
-        <span>{snapshot.submission.submission.title} · 缺陷看板</span>
-        <div className="collab-board-heading__actions">
-          <small>
-            {syncState === 'connected'
-              ? '实时同步已连接'
-              : syncState === 'syncing'
-                ? '正在同步最新状态'
-                : '连接中断，正在重连'}
-          </small>
-          <button
-            aria-label="查看已取消 Bug"
-            title="查看已取消 Bug"
-            type="button"
-          >
-            🗑 0
-          </button>
-        </div>
-      </div>
-      <div className="collab-board">
-        {STATUS_COLUMNS.map((column) => (
-          <section className="collab-column" key={column.status}>
-            <header>
-              <span>{column.note}</span>
-              <h2>{column.label}</h2>
-              <b>00</b>
-            </header>
-            <div className="collab-column__cards">
-              <p className="collab-column__empty">暂无卡片</p>
-            </div>
-          </section>
-        ))}
-      </div>
-    </section>
   );
 }
 

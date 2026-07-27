@@ -1,13 +1,13 @@
 import { ZodError } from 'zod';
 import { PlatformError, publicError } from '@/platform/errors';
 import { logger } from '@/platform/logging';
+import type { CookingWorkspaceService } from '@/modules/cooking/workspace/application/workspace-service';
+import { CookingWorkspaceSnapshotSchema } from '@/modules/cooking/workspace/contract';
 import {
-  CookingWorkspaceSnapshotSchema,
   SubmissionIdSchema,
   WorkspaceInvalidationSchema,
   type WorkspaceInvalidation,
 } from '../contract';
-import type { SubmissionService } from '../application/submission-service';
 import type { WorkspaceEventBus } from '../application/workspace-events';
 
 const encoder = new TextEncoder();
@@ -15,7 +15,7 @@ const encoder = new TextEncoder();
 export function handleWorkspaceSnapshot(
   submissionIdInput: string,
   userId: string,
-  submissions: Pick<SubmissionService, 'getWorkspace'>,
+  submissions: Pick<CookingWorkspaceService, 'getWorkspace'>,
 ): Response {
   try {
     const submissionId = SubmissionIdSchema.parse(submissionIdInput);
@@ -33,7 +33,10 @@ export function handleWorkspaceSnapshot(
 export function handleWorkspaceEvents(
   request: Request,
   userId: string,
-  submissions: Pick<SubmissionService, 'canAccessSubmission' | 'getWorkspace'>,
+  submissions: Pick<
+    CookingWorkspaceService,
+    'canAccessSubmission' | 'getWorkspace'
+  >,
   events: WorkspaceEventBus,
   keepaliveMs = 15_000,
 ): Response {
@@ -56,7 +59,7 @@ export function handleWorkspaceEvents(
       if (deliver) deliver(event);
       else pending.push(event);
     });
-    let current: ReturnType<SubmissionService['getWorkspace']>;
+    let current: ReturnType<CookingWorkspaceService['getWorkspace']>;
     try {
       current = submissions.getWorkspace(userId, submissionId);
     } catch (error) {

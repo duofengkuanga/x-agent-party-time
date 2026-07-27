@@ -1,5 +1,8 @@
 import { database } from '@/platform/database';
+import { serverPaths } from '@/platform/config';
+import { LocalFileStore } from '@/platform/files/local-file-store';
 import { BindingService } from '@/modules/cooking/bindings/application/binding-service';
+import { BugService } from '@/modules/cooking/bugs/application/bug-service';
 import { EngineeringService } from '@/modules/cooking/engineering/application/engineering-service';
 import { projectMemberHasEngineeringResponsibilities } from '@/modules/cooking/engineering/application/responsibilities';
 import { ProjectService } from '@/modules/cooking/projects/application/project-service';
@@ -15,6 +18,7 @@ import {
   SubmissionCreationCatalogSchema,
   type SubmissionCreationCatalog,
 } from '@/modules/cooking/submissions/contract';
+import { CookingWorkspaceService } from '@/modules/cooking/workspace/application/workspace-service';
 
 export function projectService(): ProjectService {
   const appDatabase = database();
@@ -64,6 +68,24 @@ export function submissionService(): SubmissionService {
     (submissionId, revision) =>
       workspaceEvents().publish({ submissionId, revision }),
   );
+}
+
+export function bugService(): BugService {
+  return new BugService(
+    database(),
+    undefined,
+    undefined,
+    (submissionId, revision) =>
+      workspaceEvents().publish({ submissionId, revision }),
+  );
+}
+
+export function workspaceService(): CookingWorkspaceService {
+  return new CookingWorkspaceService(submissionService(), bugService());
+}
+
+export function cookingFileStore(): LocalFileStore {
+  return new LocalFileStore(database(), serverPaths().files);
 }
 
 export function submissionCreationCatalog(

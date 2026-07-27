@@ -1,0 +1,938 @@
+'use client';
+
+import {
+  useRef,
+  useState,
+  useTransition,
+  type DragEvent as ReactDragEvent,
+  type FormEvent,
+  type ReactNode,
+} from 'react';
+import type { CookingWorkspaceSnapshot } from '@/modules/cooking/workspace/contract';
+import type { BugView } from '../contract';
+import {
+  addBugFeedbackAction,
+  assignBugAction,
+  createBugAction,
+  reorderRepairQueueAction,
+  requestRepairAction,
+  updateBugReportAction,
+  withdrawRepairAction,
+  type BugActionResult,
+} from './actions';
+
+const STATUS_COLUMNS = [
+  { status: 'WAITING_FOR_REPAIR', label: '待修复', note: '录入' },
+  { status: 'REPAIRING', label: '修复中', note: '修复' },
+  { status: 'WAITING_FOR_UPDATE', label: '待更新', note: '批次' },
+  { status: 'UPDATING', label: '更新中', note: '交付' },
+  { status: 'WAITING_FOR_VERIFICATION', label: '待验证', note: '测试' },
+  { status: 'DONE', label: '已完成', note: '完成' },
+] as const;
+
+type MainStage = (typeof STATUS_COLUMNS)[number]['status'];
+type Drawer = { mode: 'create' } | { mode: 'view' | 'edit'; bugId: string };
+
+export function BugBoard({
+  onChanged,
+  snapshot,
+  syncLabel,
+}: {
+  onChanged: (revision: number, message: string) => void;
+  snapshot: CookingWorkspaceSnapshot;
+  syncLabel: string;
+}) {
+  const [drawer, setDrawer] = useState<Drawer | null>(null);
+  const [queueOpen, setQueueOpen] = useState(false);
+  const [draggingBugId, setDraggingBugId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<MainStage | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const activeBugs = snapshot.bugs.filter(({ stage }) => stage !== 'CANCELLED');
+  const cancelledCount = snapshot.bugs.length - activeBugs.length;
+  const draggingBug = snapshot.bugs.find(({ id }) => id === draggingBugId);
+
+  function run(command: () => Promise<BugActionResult>, message: string): void {
+    startTransition(async () => {
+      try {
+        const result = await command();
+        if (!result.ok) {
+          setError(result.error.message);
+          return;
+        }
+        setError(null);
+        onChanged(result.result.revision, message);
+      } catch (actionError) {
+        setError(messageOf(actionError, '操作失败，请稍后重试。'));
+      }
+    });
+  }
+
+  function dropBug(event: ReactDragEvent<HTMLElement>, stage: MainStage) {
+    const bugId =
+      event.dataTransfer.getData('application/x-cooking-bug-id') ||
+      draggingBugId;
+    const bug = snapshot.bugs.find(({ id }) => id === bugId);
+    if (!bug) return;
+    const transition = dragTransition(bug, stage);
+    if (!transition) return;
+    event.preventDefault();
+    setDraggingBugId(null);
+    setDropTarget(null);
+    run(transition.command, transition.message);
+  }
+
+  return (
+    <section className="collab-board-section">
+      <div className="collab-section-label collab-board-heading">
+        <span>{snapshot.submission.submission.title} · 缺陷看板</span>
+        <div className="collab-board-heading__actions">
+          <small>{syncLabel}</small>
+          <button
+            aria-label="查看全局修复队列"
+            onClick={() => setQueueOpen(true)}
+            type="button"
+          >
+            队列 {snapshot.repairQueue.entries.length}
+          </button>
+          <button aria-label="查看已取消 Bug" type="button">
+            🗑 {cancelledCount}
+          </button>
+          {snapshot.availableActions.includes('CREATE_BUG') ? (
+            <button
+              disabled={pending}
+              onClick={() => setDrawer({ mode: 'create' })}
+              type="button"
+            >
+              ＋ 登记缺陷
+            </button>
+          ) : null}
+        </div>
+      </div>
+      {error ? (
+        <div className="collab-banner collab-banner--error" role="alert">
+          <span>{error}</span>
+          <button onClick={() => setError(null)} type="button">
+            ×
+          </button>
+        </div>
+      ) : null}
+      <div className="collab-board">
+        {STATUS_COLUMNS.map((column) => {
+          const bugs = activeBugs.filter(
+            ({ stage }) => stage === column.status,
+          );
+          const acceptsDrop = Boolean(
+            draggingBug && dragTransition(draggingBug, column.status),
+          );
+          return (
+            <section
+              className="collab-column"
+              data-drop-target={
+                acceptsDrop && dropTarget === column.status ? 'true' : undefined
+              }
+              key={column.status}
+              onDragEnter={() => {
+                if (acceptsDrop) setDropTarget(column.status);
+              }}
+              onDragLeave={(event) => {
+                if (
+                  event.relatedTarget instanceof Node &&
+                  event.currentTarget.contains(event.relatedTarget)
+                )
+                  return;
+                if (dropTarget === column.status) setDropTarget(null);
+              }}
+              onDragOver={(event) => {
+                if (!acceptsDrop) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'move';
+              }}
+              onDrop={(event) => dropBug(event, column.status)}
+            >
+              <header>
+                <span>{column.note}</span>
+                <h2>{column.label}</h2>
+                <b>{bugs.length.toString().padStart(2, '0')}</b>
+              </header>
+              <div className="collab-column__cards">
+                {bugs.map((bug) => {
+                  const draggable = Boolean(
+                    dragTransition(bug, 'WAITING_FOR_REPAIR') ||
+                    dragTransition(bug, 'REPAIRING'),
+                  );
+                  return (
+                    <BugCard
+                      bug={bug}
+                      draggable={!pending && draggable}
+                      dragging={draggingBugId === bug.id}
+                      key={bug.id}
+                      onDragEnd={() => {
+                        setDraggingBugId(null);
+                        setDropTarget(null);
+                      }}
+                      onDragStart={(event) => {
+                        setDraggingBugId(bug.id);
+                        event.dataTransfer.effectAllowed = 'move';
+                        event.dataTransfer.setData(
+                          'application/x-cooking-bug-id',
+                          bug.id,
+                        );
+                      }}
+                      onOpen={() => setDrawer({ mode: 'view', bugId: bug.id })}
+                    />
+                  );
+                })}
+                {bugs.length === 0 ? (
+                  <p className="collab-column__empty">暂无卡片</p>
+                ) : null}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+
+      {drawer ? (
+        <BugDrawer
+          drawer={drawer}
+          onChanged={(revision, message) => {
+            setDrawer(
+              drawer.mode === 'create'
+                ? null
+                : { mode: 'view', bugId: drawer.bugId },
+            );
+            onChanged(revision, message);
+          }}
+          onClose={() => setDrawer(null)}
+          onEdit={(bugId) => setDrawer({ mode: 'edit', bugId })}
+          snapshot={snapshot}
+        />
+      ) : null}
+      {queueOpen ? (
+        <RepairQueueDrawer
+          onChanged={onChanged}
+          onClose={() => setQueueOpen(false)}
+          snapshot={snapshot}
+        />
+      ) : null}
+    </section>
+  );
+}
+
+function BugCard({
+  bug,
+  draggable,
+  dragging,
+  onDragEnd,
+  onDragStart,
+  onOpen,
+}: {
+  bug: BugView;
+  draggable: boolean;
+  dragging: boolean;
+  onDragEnd: () => void;
+  onDragStart: (event: ReactDragEvent<HTMLElement>) => void;
+  onOpen: () => void;
+}) {
+  return (
+    <article
+      aria-label={`${bugLabel(bug)}，${bug.presentation.stageLabel}`}
+      className={`collab-bug-card${draggable ? ' collab-bug-card--draggable' : ''}`}
+      data-dragging={dragging ? 'true' : undefined}
+      data-visual-state={bug.stage === 'REPAIRING' ? 'queued' : 'default'}
+      draggable={draggable}
+      onClick={onOpen}
+      onDragEnd={onDragEnd}
+      onDragStart={onDragStart}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onOpen();
+        }
+      }}
+      role="button"
+      tabIndex={0}
+    >
+      <span aria-hidden="true" className="collab-bug-card__state" />
+      <small>
+        {bugLabel(bug)} · {bug.presentation.assignmentLabel}
+      </small>
+      <h3>{bug.report.title}</h3>
+    </article>
+  );
+}
+
+function BugDrawer({
+  drawer,
+  onChanged,
+  onClose,
+  onEdit,
+  snapshot,
+}: {
+  drawer: Drawer;
+  onChanged: (revision: number, message: string) => void;
+  onClose: () => void;
+  onEdit: (bugId: string) => void;
+  snapshot: CookingWorkspaceSnapshot;
+}) {
+  const bug =
+    drawer.mode === 'create'
+      ? null
+      : (snapshot.bugs.find(({ id }) => id === drawer.bugId) ?? null);
+  if (drawer.mode !== 'create' && !bug) return null;
+  return (
+    <div
+      className="collab-dialog-backdrop collab-drawer-scrim"
+      role="presentation"
+    >
+      <section
+        aria-label={drawerTitle(drawer.mode, bug)}
+        aria-modal="true"
+        className="collab-dialog collab-bug-drawer"
+        role="dialog"
+      >
+        <header>
+          <div>
+            <small>{bug ? bugLabel(bug) : '新缺陷'}</small>
+            <h2>{drawerTitle(drawer.mode, bug)}</h2>
+          </div>
+          <button aria-label="关闭缺陷抽屉" onClick={onClose} type="button">
+            ×
+          </button>
+        </header>
+        {drawer.mode === 'view' ? (
+          <BugDetail
+            bug={bug!}
+            onChanged={onChanged}
+            onEdit={
+              bug!.availableActions.some((action) =>
+                ['EDIT_REPORT', 'ASSIGN'].includes(action),
+              )
+                ? () => onEdit(bug!.id)
+                : null
+            }
+          />
+        ) : (
+          <BugForm
+            bug={bug}
+            onCancel={onClose}
+            onChanged={onChanged}
+            snapshot={snapshot}
+          />
+        )}
+      </section>
+    </div>
+  );
+}
+
+function BugForm({
+  bug,
+  onCancel,
+  onChanged,
+  snapshot,
+}: {
+  bug: BugView | null;
+  onCancel: () => void;
+  onChanged: (revision: number, message: string) => void;
+  snapshot: CookingWorkspaceSnapshot;
+}) {
+  const canEditReport = !bug || bug.availableActions.includes('EDIT_REPORT');
+  const canAssign = !bug || bug.availableActions.includes('ASSIGN');
+  const [submissionItemId, setSubmissionItemId] = useState(
+    bug?.submissionItemId ?? '',
+  );
+  const [title, setTitle] = useState(bug?.report.title ?? '');
+  const [operationPath, setOperationPath] = useState(
+    bug?.report.operationPath ?? '',
+  );
+  const [actualResult, setActualResult] = useState(
+    bug?.report.actualResult ?? '',
+  );
+  const [expectedResult, setExpectedResult] = useState(
+    bug?.report.expectedResult ?? '',
+  );
+  const [notes, setNotes] = useState(bug?.report.notes ?? '');
+  const [keptAttachmentIds, setKeptAttachmentIds] = useState(
+    bug?.report.attachments.map(({ id }) => id) ?? [],
+  );
+  const [files, setFiles] = useState<File[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, startSaving] = useTransition();
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    startSaving(async () => {
+      try {
+        if (bug && !canEditReport) {
+          const result = await assignBugAction(bug.id, {
+            mutationId: crypto.randomUUID(),
+            expectedVersion: bug.version,
+            submissionItemId: submissionItemId || null,
+          });
+          if (!result.ok) {
+            setError(result.error.message);
+            return;
+          }
+          onChanged(result.result.revision, '问题归属已更新。');
+          return;
+        }
+        const formData = new FormData();
+        formData.set('mutationId', crypto.randomUUID());
+        if (bug) formData.set('expectedVersion', String(bug.version));
+        formData.set('submissionItemId', submissionItemId);
+        formData.set('title', title);
+        formData.set('operationPath', operationPath);
+        formData.set('actualResult', actualResult);
+        formData.set('expectedResult', expectedResult);
+        formData.set('notes', notes);
+        for (const fileId of keptAttachmentIds)
+          formData.append('existingAttachmentIds', fileId);
+        for (const file of files) formData.append('attachments', file);
+        const result = bug
+          ? await updateBugReportAction(bug.id, formData)
+          : await createBugAction(snapshot.submission.submission.id, formData);
+        if (!result.ok) {
+          setError(result.error.message);
+          return;
+        }
+        onChanged(
+          result.result.revision,
+          bug ? '缺陷已保存。' : '缺陷已登记。',
+        );
+      } catch (submitError) {
+        setError(messageOf(submitError, '无法保存缺陷。'));
+      }
+    });
+  }
+
+  return (
+    <form
+      className="collab-dialog__body collab-form collab-bug-drawer__body collab-bug-form"
+      onSubmit={submit}
+    >
+      <fieldset disabled={!canAssign || saving}>
+        <legend>问题归属</legend>
+        <label>
+          <span>具体工程</span>
+          <select
+            onChange={(event) => setSubmissionItemId(event.target.value)}
+            value={submissionItemId}
+          >
+            <option value="">暂不确定</option>
+            {snapshot.submission.items.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.engineering.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </fieldset>
+      <fieldset disabled={!canEditReport || saving}>
+        <legend>缺陷内容</legend>
+        <label>
+          <span>标题</span>
+          <input
+            maxLength={240}
+            onChange={(event) => setTitle(event.target.value)}
+            required
+            value={title}
+          />
+        </label>
+        <label>
+          <span>操作路径</span>
+          <textarea
+            maxLength={8_000}
+            onChange={(event) => setOperationPath(event.target.value)}
+            rows={3}
+            value={operationPath}
+          />
+        </label>
+        <div className="collab-form__grid collab-bug-form__grid">
+          <label>
+            <span>实际结果</span>
+            <textarea
+              maxLength={8_000}
+              onChange={(event) => setActualResult(event.target.value)}
+              rows={4}
+              value={actualResult}
+            />
+          </label>
+          <label>
+            <span>预期结果</span>
+            <textarea
+              maxLength={8_000}
+              onChange={(event) => setExpectedResult(event.target.value)}
+              rows={4}
+              value={expectedResult}
+            />
+          </label>
+        </div>
+        <label>
+          <span>补充说明</span>
+          <textarea
+            maxLength={8_000}
+            onChange={(event) => setNotes(event.target.value)}
+            rows={3}
+            value={notes}
+          />
+        </label>
+        {bug?.report.attachments.length ? (
+          <ul className="collab-attachments collab-bug-attachments">
+            {bug.report.attachments.map((attachment) => {
+              const kept = keptAttachmentIds.includes(attachment.id);
+              return (
+                <li
+                  data-removed={kept ? undefined : 'true'}
+                  key={attachment.id}
+                >
+                  <AttachmentLink attachment={attachment} />
+                  <small>{formatBytes(attachment.sizeBytes)}</small>
+                  <button
+                    onClick={() =>
+                      setKeptAttachmentIds((current) =>
+                        kept
+                          ? current.filter((id) => id !== attachment.id)
+                          : [...current, attachment.id],
+                      )
+                    }
+                    type="button"
+                  >
+                    {kept ? '移除' : '保留'}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        ) : null}
+        <label>
+          <span>添加附件</span>
+          <input
+            accept="image/png,image/jpeg,image/webp,text/plain,application/json"
+            multiple
+            onChange={(event) =>
+              setFiles(Array.from(event.target.files ?? []).slice(0, 5))
+            }
+            type="file"
+          />
+        </label>
+      </fieldset>
+      {error ? (
+        <p className="collab-form__error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      <footer className="collab-dialog__actions collab-bug-drawer__actions">
+        <button onClick={onCancel} type="button">
+          取消
+        </button>
+        <button disabled={saving || (!canEditReport && !canAssign)}>
+          {saving ? '保存中…' : bug ? '保存修改' : '登记缺陷'}
+        </button>
+      </footer>
+    </form>
+  );
+}
+
+function BugDetail({
+  bug,
+  onChanged,
+  onEdit,
+}: {
+  bug: BugView;
+  onChanged: (revision: number, message: string) => void;
+  onEdit: (() => void) | null;
+}) {
+  const [feedback, setFeedback] = useState('');
+  const [feedbackFiles, setFeedbackFiles] = useState<File[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const feedbackFileInput = useRef<HTMLInputElement>(null);
+
+  function run(
+    command: () => Promise<BugActionResult>,
+    message: string,
+    afterSuccess?: () => void,
+  ) {
+    startTransition(async () => {
+      try {
+        const result = await command();
+        if (!result.ok) {
+          setError(result.error.message);
+          return;
+        }
+        setError(null);
+        afterSuccess?.();
+        onChanged(result.result.revision, message);
+      } catch (actionError) {
+        setError(messageOf(actionError, '操作失败，请稍后重试。'));
+      }
+    });
+  }
+
+  return (
+    <div className="collab-dialog__body collab-bug-drawer__body">
+      <section className="collab-bug-detail-section">
+        <header>
+          <h3>缺陷信息</h3>
+          {onEdit ? (
+            <button onClick={onEdit} type="button">
+              {bug.availableActions.includes('EDIT_REPORT')
+                ? '编辑缺陷'
+                : '修改问题归属'}
+            </button>
+          ) : null}
+        </header>
+        <dl className="collab-bug-detail-list">
+          <Detail label="问题归属">{bug.presentation.assignmentLabel}</Detail>
+          <Detail label="当前状态">{bug.presentation.stageLabel}</Detail>
+          <Detail label="标题">{bug.report.title}</Detail>
+          {bug.report.operationPath ? (
+            <Detail label="操作路径">{bug.report.operationPath}</Detail>
+          ) : null}
+          {bug.report.actualResult ? (
+            <Detail label="实际结果">{bug.report.actualResult}</Detail>
+          ) : null}
+          {bug.report.expectedResult ? (
+            <Detail label="预期结果">{bug.report.expectedResult}</Detail>
+          ) : null}
+          {bug.report.notes ? (
+            <Detail label="补充说明">{bug.report.notes}</Detail>
+          ) : null}
+        </dl>
+      </section>
+      <section className="collab-bug-detail-section">
+        <h3>附件</h3>
+        {bug.report.attachments.length ? (
+          <ul className="collab-attachments collab-bug-attachments">
+            {bug.report.attachments.map((attachment) => (
+              <li key={attachment.id}>
+                <AttachmentLink attachment={attachment} />
+                <small>{formatBytes(attachment.sizeBytes)}</small>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="collab-bug-detail-empty">没有附件</p>
+        )}
+      </section>
+      {bug.feedback.length ? (
+        <section className="collab-bug-detail-section">
+          <h3>反馈记录</h3>
+          <ol className="collab-repair-records">
+            {[...bug.feedback].reverse().map((entry) => (
+              <li key={entry.id}>
+                <header>
+                  <strong>
+                    {entry.kind === 'TESTER_FEEDBACK'
+                      ? '测试反馈'
+                      : entry.kind === 'DEVELOPER_NOTE'
+                        ? '开发补充'
+                        : '执行失败'}
+                  </strong>
+                  <time>{formatDateTime(entry.createdAt)}</time>
+                </header>
+                <p>{entry.content}</p>
+                {entry.attachments.length ? (
+                  <ul className="collab-attachments collab-bug-attachments">
+                    {entry.attachments.map((attachment) => (
+                      <li key={attachment.id}>
+                        <AttachmentLink attachment={attachment} />
+                        <small>{formatBytes(attachment.sizeBytes)}</small>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
+      {bug.availableActions.some((action) =>
+        ['REQUEST_REPAIR', 'WITHDRAW_REPAIR'].includes(action),
+      ) ? (
+        <section className="collab-bug-detail-section">
+          <h3>修复操作</h3>
+          {bug.availableActions.includes('REQUEST_REPAIR') ? (
+            <button
+              disabled={pending}
+              onClick={() =>
+                run(
+                  () =>
+                    requestRepairAction(bug.id, {
+                      mutationId: crypto.randomUUID(),
+                      expectedVersion: bug.version,
+                    }),
+                  '缺陷已加入全局修复队列。',
+                )
+              }
+              type="button"
+            >
+              加入修复队列
+            </button>
+          ) : null}
+          {bug.availableActions.includes('WITHDRAW_REPAIR') ? (
+            <button
+              disabled={pending}
+              onClick={() =>
+                run(
+                  () =>
+                    withdrawRepairAction(bug.id, {
+                      mutationId: crypto.randomUUID(),
+                      expectedVersion: bug.version,
+                    }),
+                  '缺陷已撤回待修复。',
+                )
+              }
+              type="button"
+            >
+              撤回修复
+            </button>
+          ) : null}
+        </section>
+      ) : null}
+      {bug.availableActions.includes('ADD_FEEDBACK') ? (
+        <section className="collab-bug-detail-section">
+          <h3>补充反馈</h3>
+          <div className="collab-form collab-bug-verification">
+            <textarea
+              maxLength={8_000}
+              onChange={(event) => setFeedback(event.target.value)}
+              placeholder="补充首次修复后的新信息"
+              rows={3}
+              value={feedback}
+            />
+            <input
+              accept="image/png,image/jpeg,image/webp,text/plain,application/json"
+              multiple
+              onChange={(event) =>
+                setFeedbackFiles(
+                  Array.from(event.target.files ?? []).slice(0, 5),
+                )
+              }
+              ref={feedbackFileInput}
+              type="file"
+            />
+            <button
+              disabled={pending || !feedback.trim()}
+              onClick={() => {
+                const formData = new FormData();
+                formData.set('mutationId', crypto.randomUUID());
+                formData.set('expectedVersion', String(bug.version));
+                formData.set('content', feedback);
+                feedbackFiles.forEach((file) =>
+                  formData.append('attachments', file),
+                );
+                run(
+                  () => addBugFeedbackAction(bug.id, formData),
+                  '反馈已追加。',
+                  () => {
+                    setFeedback('');
+                    setFeedbackFiles([]);
+                    if (feedbackFileInput.current)
+                      feedbackFileInput.current.value = '';
+                  },
+                );
+              }}
+              type="button"
+            >
+              追加反馈
+            </button>
+          </div>
+        </section>
+      ) : null}
+      {error ? (
+        <p className="collab-form__error" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function RepairQueueDrawer({
+  onChanged,
+  onClose,
+  snapshot,
+}: {
+  onChanged: (revision: number, message: string) => void;
+  onClose: () => void;
+  snapshot: CookingWorkspaceSnapshot;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const entries = snapshot.repairQueue.entries;
+  const bugs = new Map(snapshot.bugs.map((bug) => [bug.id, bug]));
+
+  function move(index: number, offset: -1 | 1) {
+    const target = index + offset;
+    if (target < 0 || target >= entries.length) return;
+    const bugIds = entries.map(({ bugId }) => bugId);
+    [bugIds[index], bugIds[target]] = [bugIds[target]!, bugIds[index]!];
+    startTransition(async () => {
+      try {
+        const result = await reorderRepairQueueAction(
+          snapshot.submission.submission.id,
+          {
+            mutationId: crypto.randomUUID(),
+            expectedVersion: snapshot.repairQueue.version,
+            bugIds,
+          },
+        );
+        if (!result.ok) {
+          setError(result.error.message);
+          return;
+        }
+        onChanged(result.result.revision, '全局修复队列已重排。');
+      } catch (actionError) {
+        setError(messageOf(actionError, '无法调整修复队列。'));
+      }
+    });
+  }
+
+  return (
+    <div
+      className="collab-dialog-backdrop collab-drawer-scrim"
+      role="presentation"
+    >
+      <section
+        aria-label="全局修复队列"
+        aria-modal="true"
+        className="collab-dialog collab-bug-drawer"
+        role="dialog"
+      >
+        <header>
+          <div>
+            <small>优先级</small>
+            <h2>全局修复队列</h2>
+          </div>
+          <button aria-label="关闭全局修复队列" onClick={onClose} type="button">
+            ×
+          </button>
+        </header>
+        <div className="collab-dialog__body collab-bug-drawer__body">
+          <div className="collab-repair-queue">
+            {entries.map((entry, index) => (
+              <div className="collab-queue-item" key={entry.bugId}>
+                <b>{String(index + 1).padStart(2, '0')}</b>
+                <span>
+                  {bugs.get(entry.bugId)
+                    ? bugLabel(bugs.get(entry.bugId)!)
+                    : '未知缺陷'}
+                </span>
+                <button
+                  aria-label="上移"
+                  disabled={
+                    pending ||
+                    index === 0 ||
+                    !snapshot.repairQueue.availableActions.includes('REORDER')
+                  }
+                  onClick={() => move(index, -1)}
+                  type="button"
+                >
+                  ↑
+                </button>
+                <button
+                  aria-label="下移"
+                  disabled={
+                    pending ||
+                    index === entries.length - 1 ||
+                    !snapshot.repairQueue.availableActions.includes('REORDER')
+                  }
+                  onClick={() => move(index, 1)}
+                  type="button"
+                >
+                  ↓
+                </button>
+              </div>
+            ))}
+            {entries.length === 0 ? <small>队列为空</small> : null}
+          </div>
+          {error ? (
+            <p className="collab-form__error" role="alert">
+              {error}
+            </p>
+          ) : null}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function Detail({ children, label }: { children: ReactNode; label: string }) {
+  return (
+    <div>
+      <dt>{label}</dt>
+      <dd>{children}</dd>
+    </div>
+  );
+}
+
+function AttachmentLink({
+  attachment,
+}: {
+  attachment: BugView['report']['attachments'][number];
+}) {
+  return (
+    <a href={`/api/cooking/attachments/${attachment.id}`}>
+      {attachment.originalName}
+    </a>
+  );
+}
+
+function dragTransition(bug: BugView, target: MainStage) {
+  if (
+    target === 'REPAIRING' &&
+    bug.stage === 'WAITING_FOR_REPAIR' &&
+    bug.availableActions.includes('REQUEST_REPAIR')
+  )
+    return {
+      command: () =>
+        requestRepairAction(bug.id, {
+          mutationId: crypto.randomUUID(),
+          expectedVersion: bug.version,
+        }),
+      message: `${bugLabel(bug)} 已加入全局修复队列。`,
+    };
+  if (
+    target === 'WAITING_FOR_REPAIR' &&
+    bug.stage === 'REPAIRING' &&
+    bug.availableActions.includes('WITHDRAW_REPAIR')
+  )
+    return {
+      command: () =>
+        withdrawRepairAction(bug.id, {
+          mutationId: crypto.randomUUID(),
+          expectedVersion: bug.version,
+        }),
+      message: `${bugLabel(bug)} 已撤回待修复。`,
+    };
+  return null;
+}
+
+function drawerTitle(mode: Drawer['mode'], bug: BugView | null): string {
+  if (mode === 'create') return '登记缺陷';
+  if (mode === 'edit') return '编辑缺陷';
+  return bug?.report.title ?? '缺陷详情';
+}
+
+function bugLabel(bug: BugView): string {
+  return `缺陷-${String(bug.shortId).padStart(3, '0')}`;
+}
+
+function formatBytes(value: number): string {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${Math.ceil(value / 1024)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function formatDateTime(value: string): string {
+  return new Intl.DateTimeFormat('zh-CN', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'Asia/Shanghai',
+  }).format(new Date(value));
+}
+
+function messageOf(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}

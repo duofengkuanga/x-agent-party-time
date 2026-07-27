@@ -36,7 +36,7 @@ type StoredFileRow = {
   created_at: string;
 };
 
-const MAX_FILE_BYTES = 10 * 1024 * 1024;
+export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
 export class LocalFileStore {
   private readonly root: string;
@@ -121,10 +121,19 @@ export class LocalFileStore {
     return { file, bytes: await readFile(this.contentPath(file.storageKey)) };
   }
 
-  async deleteUnbound(fileId: string): Promise<boolean> {
+  async deleteUnbound(
+    fileId: string,
+    uploadedByUserId: string,
+  ): Promise<boolean> {
     const file = this.get(fileId);
-    if (!file) return false;
-    this.db.prepare('DELETE FROM platform_file WHERE id = ?').run(fileId);
+    if (!file || file.uploadedByUserId !== uploadedByUserId) return false;
+    const deletion = this.db
+      .prepare(
+        `DELETE FROM platform_file
+         WHERE id = ? AND uploaded_by_user_id = ?`,
+      )
+      .run(fileId, uploadedByUserId);
+    if (deletion.changes !== 1) return false;
     await rm(this.contentPath(file.storageKey), { force: true });
     return true;
   }

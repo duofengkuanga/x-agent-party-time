@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { PlatformError } from '@/platform/errors';
 
-export const SERVER_SCHEMA_VERSION = 5;
+export const SERVER_SCHEMA_VERSION = 6;
 
 const SCHEMA = `
 CREATE TABLE platform_user (
@@ -222,6 +222,81 @@ CREATE TABLE cooking_submission_environment_lock (
 ) STRICT;
 CREATE INDEX cooking_submission_environment_lock_submission
   ON cooking_submission_environment_lock(submission_id, submission_item_id);
+
+CREATE TABLE cooking_bug (
+  id TEXT PRIMARY KEY,
+  short_id INTEGER NOT NULL CHECK (short_id > 0),
+  submission_id TEXT NOT NULL REFERENCES cooking_test_submission(id) ON DELETE CASCADE,
+  submission_item_id TEXT REFERENCES cooking_submission_item(id) ON DELETE RESTRICT,
+  stage TEXT NOT NULL CHECK (stage IN (
+    'WAITING_FOR_REPAIR',
+    'REPAIRING',
+    'WAITING_FOR_UPDATE',
+    'UPDATING',
+    'WAITING_FOR_VERIFICATION',
+    'DONE',
+    'CANCELLED'
+  )),
+  title TEXT NOT NULL,
+  operation_path TEXT,
+  actual_result TEXT,
+  expected_result TEXT,
+  notes TEXT,
+  report_locked_at TEXT,
+  version INTEGER NOT NULL CHECK (version > 0),
+  created_by_user_id TEXT NOT NULL REFERENCES platform_user(id) ON DELETE RESTRICT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(submission_id, short_id)
+) STRICT;
+CREATE INDEX cooking_bug_submission_stage
+  ON cooking_bug(submission_id, stage, short_id);
+CREATE INDEX cooking_bug_item_stage
+  ON cooking_bug(submission_item_id, stage, short_id);
+
+CREATE TABLE cooking_bug_feedback (
+  id TEXT PRIMARY KEY,
+  bug_id TEXT NOT NULL REFERENCES cooking_bug(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN (
+    'TESTER_FEEDBACK',
+    'DEVELOPER_NOTE',
+    'EXECUTION_FAILURE'
+  )),
+  author_user_id TEXT REFERENCES platform_user(id) ON DELETE RESTRICT,
+  content TEXT NOT NULL,
+  created_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX cooking_bug_feedback_bug
+  ON cooking_bug_feedback(bug_id, created_at, id);
+
+CREATE TABLE cooking_bug_attachment (
+  file_id TEXT PRIMARY KEY REFERENCES platform_file(id) ON DELETE RESTRICT,
+  bug_id TEXT NOT NULL REFERENCES cooking_bug(id) ON DELETE CASCADE,
+  feedback_id TEXT REFERENCES cooking_bug_feedback(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL CHECK (position >= 0),
+  created_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX cooking_bug_attachment_bug
+  ON cooking_bug_attachment(bug_id, feedback_id, position);
+
+CREATE TABLE cooking_repair_queue (
+  submission_id TEXT PRIMARY KEY REFERENCES cooking_test_submission(id) ON DELETE CASCADE,
+  version INTEGER NOT NULL CHECK (version > 0),
+  updated_at TEXT NOT NULL
+) STRICT;
+
+CREATE TABLE cooking_repair_queue_entry (
+  bug_id TEXT PRIMARY KEY REFERENCES cooking_bug(id) ON DELETE CASCADE,
+  submission_id TEXT NOT NULL REFERENCES cooking_repair_queue(submission_id) ON DELETE CASCADE,
+  submission_item_id TEXT NOT NULL REFERENCES cooking_submission_item(id) ON DELETE RESTRICT,
+  binding_id TEXT NOT NULL,
+  position INTEGER NOT NULL CHECK (position >= 0),
+  queued_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX cooking_repair_queue_entry_order
+  ON cooking_repair_queue_entry(submission_id, position, queued_at, bug_id);
+CREATE INDEX cooking_repair_queue_entry_binding
+  ON cooking_repair_queue_entry(binding_id, position, queued_at, bug_id);
 `;
 
 export function initializeSchema(database: Database): void {

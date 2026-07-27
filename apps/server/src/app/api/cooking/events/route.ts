@@ -1,5 +1,5 @@
 import { currentUser } from '@/platform/auth/server';
-import { submissionService } from '@/modules/cooking/application/server';
+import { workspaceService } from '@/modules/cooking/application/server';
 import { workspaceEvents } from '@/modules/cooking/submissions/application/workspace-events';
 import { handleWorkspaceEvents } from '@/modules/cooking/submissions/presentation/http';
 
@@ -13,7 +13,7 @@ export async function GET(request: Request): Promise<Response> {
   return handleWorkspaceEvents(
     request,
     user.id,
-    submissionService(),
+    workspaceService(),
     workspaceEvents(),
   );
 }
