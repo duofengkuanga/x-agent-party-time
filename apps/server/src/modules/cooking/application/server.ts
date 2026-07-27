@@ -20,6 +20,7 @@ import {
 } from '@/modules/cooking/submissions/contract';
 import { CookingWorkspaceService } from '@/modules/cooking/workspace/application/workspace-service';
 import { repairService } from '@/modules/cooking/repair/application/server';
+import { updateService } from '@/modules/cooking/update/application/server';
 
 export function projectService(): ProjectService {
   const appDatabase = database();
@@ -94,6 +95,7 @@ export function workspaceService(): CookingWorkspaceService {
     submissionService(),
     bugService(),
     repairService(),
+    updateService(),
   );
 }
 

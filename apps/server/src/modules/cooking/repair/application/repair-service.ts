@@ -77,7 +77,18 @@ type ContextRow = {
   workspace_key: string;
   session_id: string | null;
   pending_commits_json: string;
+  last_candidate_at: string | null;
   version: number;
+};
+
+export type RepairDeliveryHooks = {
+  candidateAvailable: (bugId: string, candidateAt: string) => void;
+  candidateReconsidered: (bugId: string) => void;
+};
+
+const NOOP_DELIVERY_HOOKS: RepairDeliveryHooks = {
+  candidateAvailable: () => {},
+  candidateReconsidered: () => {},
 };
 
 export class RepairService {
@@ -92,6 +103,7 @@ export class RepairService {
       submissionId: string,
       revision: number,
     ) => void = () => {},
+    private readonly deliveryHooks: RepairDeliveryHooks = NOOP_DELIVERY_HOOKS,
   ) {
     this.writes = new CookingWriteStore(db, now, createId);
   }
@@ -113,8 +125,8 @@ export class RepairService {
         .prepare(
           `INSERT INTO cooking_bug_repair_context(
              bug_id, workspace_key, session_id, pending_commits_json,
-             version, created_at, updated_at
-           ) VALUES (?, ?, NULL, '[]', 1, ?, ?)`,
+             last_candidate_at, version, created_at, updated_at
+           ) VALUES (?, ?, NULL, '[]', NULL, 1, ?, ?)`,
         )
         .run(bugId, workspaceKey, now, now);
     const attempt = (latest?.attempt ?? 0) + 1;
@@ -279,12 +291,13 @@ export class RepairService {
         .prepare(
           `UPDATE cooking_bug_repair_context
            SET session_id = ?, pending_commits_json = ?,
-               version = version + 1, updated_at = ?
+               last_candidate_at = ?, version = version + 1, updated_at = ?
            WHERE bug_id = ?`,
         )
         .run(
           execution.sessionId,
           JSON.stringify(interpreted.pendingCommits),
+          now,
           now,
           attempt.bug_id,
         );
@@ -295,6 +308,7 @@ export class RepairService {
            WHERE id = ? AND stage = 'REPAIRING'`,
         )
         .run(now, attempt.bug_id);
+      this.deliveryHooks.candidateAvailable(attempt.bug_id, now);
     } else {
       this.db
         .prepare(
@@ -432,6 +446,7 @@ export class RepairService {
           )
           .run(now, bugId, input.expectedVersion);
         if (update.changes !== 1) throw staleRepair();
+        this.deliveryHooks.candidateReconsidered(bugId);
         const revision = this.bumpRevision(bugId, now);
         return {
           result: {

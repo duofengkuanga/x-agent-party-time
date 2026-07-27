@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { PlatformError } from '@/platform/errors';
 
-export const SERVER_SCHEMA_VERSION = 8;
+export const SERVER_SCHEMA_VERSION = 9;
 
 const SCHEMA = `
 CREATE TABLE platform_user (
@@ -388,6 +388,7 @@ CREATE TABLE cooking_bug_repair_context (
   workspace_key TEXT NOT NULL UNIQUE,
   session_id TEXT,
   pending_commits_json TEXT NOT NULL,
+  last_candidate_at TEXT,
   version INTEGER NOT NULL CHECK (version > 0),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -405,6 +406,59 @@ CREATE TABLE cooking_repair_attempt (
 ) STRICT;
 CREATE INDEX cooking_repair_attempt_bug
   ON cooking_repair_attempt(bug_id, attempt, created_at);
+
+CREATE TABLE cooking_pending_delivery (
+  submission_item_id TEXT PRIMARY KEY REFERENCES cooking_submission_item(id) ON DELETE CASCADE,
+  last_candidate_at TEXT NOT NULL,
+  eligible_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX cooking_pending_delivery_due
+  ON cooking_pending_delivery(eligible_at, submission_item_id);
+
+CREATE TABLE cooking_update_batch (
+  id TEXT PRIMARY KEY,
+  submission_id TEXT NOT NULL REFERENCES cooking_test_submission(id) ON DELETE CASCADE,
+  submission_item_id TEXT NOT NULL REFERENCES cooking_submission_item(id) ON DELETE RESTRICT,
+  state TEXT NOT NULL CHECK (state IN (
+    'READY', 'RUNNING', 'WAITING_EXTERNAL', 'FAILED', 'COMPLETED', 'CANCELLED'
+  )),
+  version INTEGER NOT NULL CHECK (version > 0),
+  active_execution_id TEXT REFERENCES platform_execution(id) ON DELETE RESTRICT,
+  session_id TEXT,
+  deployment_json TEXT NOT NULL,
+  frozen_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+) STRICT;
+CREATE UNIQUE INDEX cooking_update_batch_active_item
+  ON cooking_update_batch(submission_item_id)
+  WHERE state IN ('READY', 'RUNNING', 'WAITING_EXTERNAL', 'FAILED');
+CREATE INDEX cooking_update_batch_submission
+  ON cooking_update_batch(submission_id, created_at, id);
+
+CREATE TABLE cooking_update_batch_entry (
+  batch_id TEXT NOT NULL REFERENCES cooking_update_batch(id) ON DELETE CASCADE,
+  bug_id TEXT NOT NULL REFERENCES cooking_bug(id) ON DELETE RESTRICT,
+  position INTEGER NOT NULL CHECK (position >= 0),
+  commits_json TEXT NOT NULL,
+  PRIMARY KEY(batch_id, bug_id),
+  UNIQUE(batch_id, position)
+) STRICT;
+CREATE INDEX cooking_update_batch_entry_bug
+  ON cooking_update_batch_entry(bug_id, batch_id);
+
+CREATE TABLE cooking_update_attempt (
+  id TEXT PRIMARY KEY,
+  batch_id TEXT NOT NULL REFERENCES cooking_update_batch(id) ON DELETE CASCADE,
+  execution_id TEXT NOT NULL UNIQUE REFERENCES platform_execution(id) ON DELETE RESTRICT,
+  attempt INTEGER NOT NULL CHECK (attempt > 0),
+  outcome_json TEXT,
+  created_at TEXT NOT NULL,
+  finished_at TEXT,
+  UNIQUE(batch_id, attempt)
+) STRICT;
+CREATE INDEX cooking_update_attempt_batch
+  ON cooking_update_attempt(batch_id, attempt, created_at);
 `;
 
 export function initializeSchema(database: Database): void {

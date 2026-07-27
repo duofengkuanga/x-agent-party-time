@@ -81,6 +81,20 @@ describe('Server SQLite schema', () => {
         'cooking_repair_queue',
         'cooking_repair_queue_entry',
       ]);
+      expect(
+        database
+          .query<{ name: string }, []>(
+            `SELECT name FROM sqlite_master
+             WHERE type = 'table' AND name LIKE 'cooking_%update%'
+             ORDER BY name`,
+          )
+          .all()
+          .map(({ name }) => name),
+      ).toEqual([
+        'cooking_update_attempt',
+        'cooking_update_batch',
+        'cooking_update_batch_entry',
+      ]);
     } finally {
       database.close();
     }

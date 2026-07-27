@@ -20,6 +20,18 @@ import {
   stopRepairExecutionAction,
   type RepairActionResult,
 } from '@/modules/cooking/repair/presentation/actions';
+import type {
+  UpdateBatchView,
+  UpdateInteractionView,
+} from '@/modules/cooking/update/contract';
+import {
+  cancelUpdateBatchAction,
+  continueUpdateAction,
+  freezeUpdateNowAction,
+  resolveUpdateInteractionAction,
+  stopUpdateExecutionAction,
+  type UpdateActionResult,
+} from '@/modules/cooking/update/presentation/actions';
 import type { BugView } from '../contract';
 import {
   addBugFeedbackAction,
@@ -43,6 +55,8 @@ const STATUS_COLUMNS = [
 
 type MainStage = (typeof STATUS_COLUMNS)[number]['status'];
 type Drawer = { mode: 'create' } | { mode: 'view' | 'edit'; bugId: string };
+type WorkspaceActionResult =
+  BugActionResult | RepairActionResult | UpdateActionResult;
 
 export function BugBoard({
   onChanged,
@@ -558,6 +572,7 @@ function BugDetail({
 }) {
   const [feedback, setFeedback] = useState('');
   const [continueContent, setContinueContent] = useState('');
+  const [updateContinueContent, setUpdateContinueContent] = useState('');
   const [feedbackFiles, setFeedbackFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -566,9 +581,25 @@ function BugDetail({
   const interaction = snapshot.pendingInteractions.find(
     (candidate) => candidate.bugId === bug.id,
   );
+  const submissionItemId = bug.assignment?.submissionItemId ?? null;
+  const pendingDelivery = submissionItemId
+    ? snapshot.pendingDeliveries.find(
+        (candidate) => candidate.submissionItemId === submissionItemId,
+      )
+    : undefined;
+  const updateBatch = [...snapshot.updateBatches]
+    .reverse()
+    .find((candidate) =>
+      candidate.entries.some((entry) => entry.bugId === bug.id),
+    );
+  const updateInteraction = updateBatch
+    ? snapshot.updateInteractions.find(
+        (candidate) => candidate.batchId === updateBatch.id,
+      )
+    : undefined;
 
   function run(
-    command: () => Promise<BugActionResult | RepairActionResult>,
+    command: () => Promise<WorkspaceActionResult>,
     message: string,
     afterSuccess?: () => void,
   ) {
@@ -594,6 +625,14 @@ function BugDetail({
         <RepairInteractionPanel
           bug={bug}
           interaction={interaction}
+          pending={pending}
+          run={run}
+        />
+      ) : null}
+      {updateBatch && updateInteraction ? (
+        <UpdateInteractionPanel
+          batch={updateBatch}
+          interaction={updateInteraction}
           pending={pending}
           run={run}
         />
@@ -643,6 +682,16 @@ function BugDetail({
         )}
       </section>
       {repair ? <RepairAttemptDetails repair={repair} /> : null}
+      {pendingDelivery ? (
+        <section className="collab-bug-detail-section">
+          <h3>待统一更新</h3>
+          <p>
+            最新候选已记录；静默截止时间：
+            {formatDateTime(pendingDelivery.eligibleAt)}
+          </p>
+        </section>
+      ) : null}
+      {updateBatch ? <UpdateBatchDetails batch={updateBatch} /> : null}
       {bug.feedback.length ? (
         <section className="collab-bug-detail-section">
           <h3>反馈记录</h3>
@@ -679,9 +728,11 @@ function BugDetail({
         ['REQUEST_REPAIR', 'WITHDRAW_REPAIR'].includes(action),
       ) ||
       repair?.availableActions.includes('STOP_EXECUTION') ||
-      repair?.availableActions.includes('CONTINUE_REPAIR') ? (
+      repair?.availableActions.includes('CONTINUE_REPAIR') ||
+      pendingDelivery?.availableActions.includes('FREEZE_NOW') ||
+      updateBatch?.availableActions.length ? (
         <section className="collab-bug-detail-section">
-          <h3>修复操作</h3>
+          <h3>修复与更新操作</h3>
           {bug.availableActions.includes('REQUEST_REPAIR') ? (
             <button
               disabled={pending}
@@ -762,6 +813,90 @@ function BugDetail({
                 type="button"
               >
                 继续修复
+              </button>
+            </div>
+          ) : null}
+          {pendingDelivery?.availableActions.includes('FREEZE_NOW') ? (
+            <button
+              disabled={pending || !submissionItemId}
+              onClick={() =>
+                run(
+                  () =>
+                    freezeUpdateNowAction(submissionItemId!, {
+                      mutationId: crypto.randomUUID(),
+                    }),
+                  '当前待更新缺陷已冻结为统一更新批次。',
+                )
+              }
+              type="button"
+            >
+              立即统一更新
+            </button>
+          ) : null}
+          {updateBatch?.availableActions.includes('CANCEL_BATCH') ? (
+            <button
+              disabled={pending}
+              onClick={() =>
+                run(
+                  () =>
+                    cancelUpdateBatchAction(updateBatch.id, {
+                      mutationId: crypto.randomUUID(),
+                      expectedVersion: updateBatch.version,
+                    }),
+                  '更新批次已取消，候选提交回到待更新。',
+                )
+              }
+              type="button"
+            >
+              取消更新批次
+            </button>
+          ) : null}
+          {updateBatch?.availableActions.includes('STOP_EXECUTION') ? (
+            <button
+              disabled={pending}
+              onClick={() =>
+                run(
+                  () =>
+                    stopUpdateExecutionAction(updateBatch.id, {
+                      mutationId: crypto.randomUUID(),
+                      expectedVersion: updateBatch.version,
+                    }),
+                  '已请求停止当前统一更新。',
+                )
+              }
+              type="button"
+            >
+              停止统一更新
+            </button>
+          ) : null}
+          {updateBatch?.availableActions.includes('CONTINUE_UPDATE') ? (
+            <div className="collab-form collab-bug-verification">
+              <textarea
+                maxLength={8_000}
+                onChange={(event) =>
+                  setUpdateContinueContent(event.target.value)
+                }
+                placeholder="补充信息并继续原更新批次"
+                rows={3}
+                value={updateContinueContent}
+              />
+              <button
+                disabled={pending || !updateContinueContent.trim()}
+                onClick={() =>
+                  run(
+                    () =>
+                      continueUpdateAction(updateBatch.id, {
+                        mutationId: crypto.randomUUID(),
+                        expectedVersion: updateBatch.version,
+                        content: updateContinueContent,
+                      }),
+                    '补充信息已提交，正在原更新会话中继续。',
+                    () => setUpdateContinueContent(''),
+                  )
+                }
+                type="button"
+              >
+                继续统一更新
               </button>
             </div>
           ) : null}
@@ -867,6 +1002,59 @@ function RepairAttemptDetails({ repair }: { repair: BugRepairView }) {
   );
 }
 
+function UpdateBatchDetails({ batch }: { batch: UpdateBatchView }) {
+  return (
+    <section className="collab-bug-detail-section">
+      <h3>统一更新批次</h3>
+      <p>{batch.presentation.statusLabel}</p>
+      <dl className="collab-bug-detail-list">
+        <Detail label="冻结时间">{formatDateTime(batch.frozenAt)}</Detail>
+        <Detail label="冻结缺陷数">{batch.entries.length}</Detail>
+      </dl>
+      <ol className="collab-repair-records">
+        {batch.entries.map((entry) => (
+          <li key={entry.bugId}>
+            <strong>
+              缺陷-{String(entry.bugShortId).padStart(3, '0')} ·{' '}
+              {entry.bugTitle}
+            </strong>
+            {entry.commits?.length ? (
+              <ol className="collab-repair-records">
+                {entry.commits.map((commit) => (
+                  <li key={commit}>
+                    <code>{commit}</code>
+                  </li>
+                ))}
+              </ol>
+            ) : null}
+          </li>
+        ))}
+      </ol>
+      {batch.attempts.length ? (
+        <>
+          <h3>更新运行记录</h3>
+          <ol className="collab-repair-records">
+            {[...batch.attempts].reverse().map((attempt) => (
+              <li key={attempt.id}>
+                <header>
+                  <strong>第 {attempt.attempt} 次统一更新</strong>
+                  <time>{formatDateTime(attempt.createdAt)}</time>
+                </header>
+                <p>
+                  {attempt.summary ?? repairStateLabel(attempt.executionState)}
+                </p>
+                {attempt.technicalFailure ? (
+                  <code>{attempt.technicalFailure}</code>
+                ) : null}
+              </li>
+            ))}
+          </ol>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
 function RepairInteractionPanel({
   bug,
   interaction,
@@ -877,7 +1065,7 @@ function RepairInteractionPanel({
   interaction: RepairInteractionView;
   pending: boolean;
   run: (
-    command: () => Promise<BugActionResult | RepairActionResult>,
+    command: () => Promise<WorkspaceActionResult>,
     message: string,
     afterSuccess?: () => void,
   ) => void;
@@ -970,6 +1158,132 @@ function RepairInteractionPanel({
                   resolveRepairInteractionAction(interaction.id, {
                     mutationId: crypto.randomUUID(),
                     expectedVersion: bug.version,
+                    resolution: {
+                      answers: Object.fromEntries(
+                        Object.entries(answers).map(([id, answer]) => [
+                          id,
+                          { answers: [answer.trim()] },
+                        ]),
+                      ),
+                    },
+                  }),
+                '回答已提交给 Codex。',
+                () => setAnswers({}),
+              )
+            }
+            type="button"
+          >
+            提交回答
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function UpdateInteractionPanel({
+  batch,
+  interaction,
+  pending,
+  run,
+}: {
+  batch: UpdateBatchView;
+  interaction: UpdateInteractionView;
+  pending: boolean;
+  run: (
+    command: () => Promise<WorkspaceActionResult>,
+    message: string,
+    afterSuccess?: () => void,
+  ) => void;
+}) {
+  const questions = repairInteractionQuestions(interaction);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  if (!interaction.canResolve || !interaction.payload)
+    return (
+      <section className="collab-bug-detail-section">
+        <h3>统一更新等待处理</h3>
+        <p>Codex 正在等待对应工程负责人处理。</p>
+      </section>
+    );
+  return (
+    <section className="collab-bug-detail-section">
+      <h3>待处理统一更新交互</h3>
+      <p>{repairInteractionTitle(interaction)}</p>
+      {interaction.kind === 'APPROVAL' ? (
+        <>
+          <dl className="collab-bug-detail-list">
+            {repairInteractionDetails(interaction).map(([label, value]) => (
+              <Detail key={label} label={label}>
+                {value}
+              </Detail>
+            ))}
+          </dl>
+          <div className="collab-bug-drawer__actions">
+            <button
+              disabled={pending}
+              onClick={() =>
+                run(
+                  () =>
+                    resolveUpdateInteractionAction(interaction.id, {
+                      mutationId: crypto.randomUUID(),
+                      expectedVersion: batch.version,
+                      resolution: declineResolution(interaction),
+                    }),
+                  '已拒绝统一更新请求。',
+                )
+              }
+              type="button"
+            >
+              拒绝
+            </button>
+            <button
+              disabled={pending}
+              onClick={() =>
+                run(
+                  () =>
+                    resolveUpdateInteractionAction(interaction.id, {
+                      mutationId: crypto.randomUUID(),
+                      expectedVersion: batch.version,
+                      resolution: acceptResolution(interaction),
+                    }),
+                  '已允许本次统一更新会话。',
+                )
+              }
+              type="button"
+            >
+              本次会话允许
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="collab-form collab-bug-verification">
+          {questions.map((question) => (
+            <label key={question.id}>
+              <span>{question.header || question.question}</span>
+              <small>{question.question}</small>
+              <input
+                onChange={(event) =>
+                  setAnswers((current) => ({
+                    ...current,
+                    [question.id]: event.target.value,
+                  }))
+                }
+                value={answers[question.id] ?? ''}
+              />
+            </label>
+          ))}
+          <button
+            disabled={
+              pending ||
+              questions.length === 0 ||
+              questions.some((question) => !answers[question.id]?.trim())
+            }
+            onClick={() =>
+              run(
+                () =>
+                  resolveUpdateInteractionAction(interaction.id, {
+                    mutationId: crypto.randomUUID(),
+                    expectedVersion: batch.version,
                     resolution: {
                       answers: Object.fromEntries(
                         Object.entries(answers).map(([id, answer]) => [
@@ -1192,7 +1506,9 @@ function repairStateLabel(
   }[state];
 }
 
-function repairInteractionTitle(interaction: RepairInteractionView): string {
+type CookingInteractionView = RepairInteractionView | UpdateInteractionView;
+
+function repairInteractionTitle(interaction: CookingInteractionView): string {
   if (interaction.kind === 'USER_INPUT') return 'Codex 正在等待你的回答';
   return (
     {
@@ -1204,7 +1520,7 @@ function repairInteractionTitle(interaction: RepairInteractionView): string {
 }
 
 function repairInteractionDetails(
-  interaction: RepairInteractionView,
+  interaction: CookingInteractionView,
 ): Array<[string, string]> {
   const payload = asRecord(interaction.payload);
   const values: Array<[string, unknown]> = [
@@ -1219,7 +1535,7 @@ function repairInteractionDetails(
   );
 }
 
-function repairInteractionQuestions(interaction: RepairInteractionView) {
+function repairInteractionQuestions(interaction: CookingInteractionView) {
   const questions = asRecord(interaction.payload).questions;
   if (!Array.isArray(questions)) return [];
   return questions.flatMap((question) => {
@@ -1236,7 +1552,7 @@ function repairInteractionQuestions(interaction: RepairInteractionView) {
   });
 }
 
-function acceptResolution(interaction: RepairInteractionView): JsonValue {
+function acceptResolution(interaction: CookingInteractionView): JsonValue {
   if (interaction.method === 'item/permissions/requestApproval')
     return {
       permissions:
@@ -1247,7 +1563,7 @@ function acceptResolution(interaction: RepairInteractionView): JsonValue {
   return { decision: 'acceptForSession' };
 }
 
-function declineResolution(interaction: RepairInteractionView): JsonValue {
+function declineResolution(interaction: CookingInteractionView): JsonValue {
   return interaction.method === 'item/permissions/requestApproval'
     ? { permissions: {}, scope: 'turn' }
     : { decision: 'decline' };
