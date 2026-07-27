@@ -10,8 +10,8 @@
         "typescript": "^5.9.3",
       },
     },
-    "apps/server": {
-      "name": "@agent-party-time/server",
+    "apps/web": {
+      "name": "@agent-party-time/web",
       "version": "0.1.0",
       "dependencies": {
         "@agent-party-time/execution-contract": "workspace:*",
@@ -74,7 +74,7 @@
 
     "@agent-party-time/runner-contract": ["@agent-party-time/runner-contract@workspace:packages/runner-contract"],
 
-    "@agent-party-time/server": ["@agent-party-time/server@workspace:apps/server"],
+    "@agent-party-time/web": ["@agent-party-time/web@workspace:apps/web"],
 
     "@babel/code-frame": ["@babel/code-frame@7.29.7", "https://registry.npmmirror.com/@babel/code-frame/-/code-frame-7.29.7.tgz", { "dependencies": { "@babel/helper-validator-identifier": "^7.29.7", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw=="],
 

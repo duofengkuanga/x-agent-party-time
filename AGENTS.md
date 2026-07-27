@@ -68,6 +68,13 @@ This project is indexed by GitNexus as **x-agent-party-time** (2039 symbols, 674
 - 内部代码标识、接口字段、协议枚举和用户自行输入的内容不受此规则限制，但不得直接把内部英文枚举原样展示给用户。
 - 新增或修改界面时，必须检查标题、按钮、状态、空状态、提示、表单标签和错误信息中是否残留非必要英文。
 
+## Cooking 页面框架一致性
+
+- `app/cooking/layout.tsx` 必须统一挂载 `features/cooking/presentation/cooking-shell.tsx`；`/cooking`、`/cooking/projects`、`/cooking/runners` 及后续新增的 Cooking 页面天然继承同一品牌区、品牌标语、主题切换、账号菜单、尺寸、间距和响应式行为。
+- 禁止具体页面或业务组件再次引用 `CookingShell` 或复制 `.collab-topbar`；头部需求只能修改共享 `CookingShell`，页面只能在 layout 提供的共享头部下渲染自身内容。
+- 修改 Cooking 页面框架或头部后，必须同时在桌面和小视口下对照验证 `/cooking`、`/cooking/projects` 与 `/cooking/runners`，不得仅凭类型检查、测试或构建成功判定界面一致。
+- `features/cooking/presentation/cooking-shell.test.ts` 是该约束的架构回归测试，不得删除或绕过；新增顶层 Cooking 页面时必须加入共享框架消费者断言。
+
 ## 按钮交互规范
 
 - 所有面向用户的按钮，以及视觉上作为按钮使用的链接，必须遵守统一的默认态和悬停态，不得在局部组件中另设相互冲突的配色。

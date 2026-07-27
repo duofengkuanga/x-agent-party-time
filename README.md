@@ -1,6 +1,6 @@
 # Agent Party Time
 
-Agent Party Time 将产品测试人员、工程负责人和开发者本机的 Codex 执行连接成一条可恢复的缺陷修复与提测闭环。仓库当前只保留新的 Cooking 系统：一个全栈 Next Server、一个通用 Runner，以及它们共享的通用协议包。
+Agent Party Time 将产品测试人员、工程负责人和开发者本机的 Codex 执行连接成一条可恢复的缺陷修复与提测闭环。仓库当前只保留新的 Cooking 系统：一个 Next 全栈 App、一个通用 Runner，以及它们共享的通用协议包。
 
 ## 产品能力
 
@@ -49,13 +49,13 @@ Seed 默认创建三名本地开发用户：
 
 ```bash
 bun install --frozen-lockfile
-bun run seed:server
+bun run seed:app
 bun run dev
 ```
 
 `bun run dev` 前台管理两个进程：
 
-- Server：Next.js 全栈应用，默认 `http://localhost:3000`
+- App：Next.js 全栈应用，默认 `http://localhost:3000`
 - Runner：通用本机执行进程；尚未配对时保持等待，不会启动旧服务
 
 浏览器打开 `http://localhost:3000`，登录后会进入 `/cooking`。
@@ -70,7 +70,7 @@ bun run stop
 单独调试：
 
 ```bash
-bun run dev:server
+bun run dev:app
 bun run dev:runner
 ```
 
@@ -114,7 +114,7 @@ Runner 私有状态默认位于 `~/.agent-party-time/runner/`，文件权限为�
 ```bash
 bun run stop
 rm -rf ~/.agent-party-time/server
-bun run seed:server
+bun run seed:app
 ```
 
 不要删除 `runner/`，除非确实需要清除本机配对、Binding 和未发送 Outcome。
@@ -126,34 +126,34 @@ bun run check:deps
 bun run test
 bun run typecheck
 bun run format:check
-bun run build:server
+bun run build:app
 ```
 
 常用分项：
 
 ```bash
-bun test apps/server/src
+bun test apps/web
 bun test packages/runner/src
-bun run typecheck:server
+bun run typecheck:app
 bun run typecheck:runner
 ```
 
 ## 代码结构
 
 ```text
-apps/server/                 Next Server、SSR、Server Actions、Route Handlers
+apps/web/                    Next App、SSR、Server Actions、Route Handlers
 packages/execution-contract/ 通用 Execution / Lease / Interaction / Outcome 协议
 packages/runner-contract/    Runner 配对、心跳与 Binding 引用协议
 packages/runner/             通用本机 Runner 与 Codex App Server 适配
-scripts/                     Server + Runner 开发进程管理
+scripts/                     App + Runner 开发进程管理
 ```
 
 依赖方向：
 
 ```text
-app → cooking modules → platform
-app → platform
-platform ✕→ cooking modules
+app routes → features/cooking → server
+app routes → server
+server ✕→ features/cooking
 runner → execution-contract + runner-contract
 runner ✕→ cooking
 ```

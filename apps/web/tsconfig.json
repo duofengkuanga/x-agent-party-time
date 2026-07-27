@@ -1,0 +1,36 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./*"]
+    },
+    "types": ["node", "bun"]
+  },
+  "include": [
+    "next-env.d.ts",
+    "app/**/*.ts",
+    "app/**/*.tsx",
+    "features/**/*.ts",
+    "features/**/*.tsx",
+    "server/**/*.ts",
+    "server/**/*.tsx",
+    "scripts/**/*.ts",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "app/**/*.test.ts",
+    "app/**/*.test.tsx",
+    "features/**/*.test.ts",
+    "features/**/*.test.tsx",
+    "server/**/*.test.ts",
+    "server/**/*.test.tsx"
+  ]
+}
