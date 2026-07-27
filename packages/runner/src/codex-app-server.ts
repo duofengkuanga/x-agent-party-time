@@ -2,9 +2,10 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createWriteStream, type WriteStream } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import type {
-  JsonObject,
-  JsonValue,
+import {
+  sanitizeExecutionInteractionPayload,
+  type JsonObject,
+  type JsonValue,
 } from '@agent-party-time/execution-contract';
 import type { MaterializedAttachment } from './attachments';
 
@@ -112,9 +113,7 @@ export class CodexAppServerExecutor implements CodexExecutor {
           input: [
             {
               type: 'text',
-              text: input.resumeSessionId
-                ? '继续执行当前任务并返回约定的结构化结果。'
-                : promptWithAttachments(input.prompt, input.attachments),
+              text: promptWithAttachments(input.prompt, input.attachments),
               text_elements: [],
             },
           ],
@@ -340,9 +339,16 @@ export class CodexAppServerExecutor implements CodexExecutor {
     try {
       const result = await active.input.onInteraction({
         method: request.method,
-        payload: asRecord(request.params),
+        payload: publicInteractionPayload(request.method, request.params),
       });
-      this.respond(request.id, result);
+      this.respond(
+        request.id,
+        restorePrivateInteractionResolution(
+          request.method,
+          result,
+          request.params,
+        ),
+      );
     } catch {
       this.respond(request.id, defaultDecline(request.method));
     }
@@ -415,6 +421,50 @@ function defaultDecline(method: string): JsonValue {
   if (method === 'item/permissions/requestApproval')
     return { permissions: {}, scope: 'turn' };
   return { decision: 'decline' };
+}
+
+export function publicInteractionPayload(
+  method: string,
+  value: unknown,
+): JsonValue {
+  return sanitizeExecutionInteractionPayload(method, value);
+}
+
+export function restorePrivateInteractionResolution(
+  method: string,
+  resolution: JsonValue,
+  privatePayload: unknown,
+): JsonValue {
+  if (method !== 'item/permissions/requestApproval') return resolution;
+  const response = asRecord(resolution);
+  if (
+    response.scope !== 'session' ||
+    Object.keys(asRecord(response.permissions)).length === 0
+  )
+    return resolution;
+  return {
+    ...response,
+    permissions: sanitizeJsonValue(asRecord(privatePayload).permissions),
+  };
+}
+
+function sanitizeJsonValue(value: unknown): JsonValue {
+  if (
+    value === null ||
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  )
+    return value;
+  if (Array.isArray(value)) return value.map(sanitizeJsonValue);
+  if (value && typeof value === 'object')
+    return Object.fromEntries(
+      Object.entries(value).map(([key, child]) => [
+        key,
+        sanitizeJsonValue(child),
+      ]),
+    );
+  return null;
 }
 
 function turnKey(threadId: string, turnId: string): string {

@@ -19,6 +19,7 @@ import {
   type SubmissionCreationCatalog,
 } from '@/modules/cooking/submissions/contract';
 import { CookingWorkspaceService } from '@/modules/cooking/workspace/application/workspace-service';
+import { repairService } from '@/modules/cooking/repair/application/server';
 
 export function projectService(): ProjectService {
   const appDatabase = database();
@@ -71,17 +72,29 @@ export function submissionService(): SubmissionService {
 }
 
 export function bugService(): BugService {
+  const repairs = repairService();
   return new BugService(
     database(),
     undefined,
     undefined,
     (submissionId, revision) =>
       workspaceEvents().publish({ submissionId, revision }),
+    {
+      requested: (bugId, priority) =>
+        repairs.createInitialExecution(bugId, priority),
+      withdrawn: (bugId) => repairs.withdrawQueuedExecution(bugId),
+      reordered: (submissionId) =>
+        repairs.synchronizeQueuePriorities(submissionId),
+    },
   );
 }
 
 export function workspaceService(): CookingWorkspaceService {
-  return new CookingWorkspaceService(submissionService(), bugService());
+  return new CookingWorkspaceService(
+    submissionService(),
+    bugService(),
+    repairService(),
+  );
 }
 
 export function cookingFileStore(): LocalFileStore {

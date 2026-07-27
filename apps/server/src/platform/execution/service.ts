@@ -28,6 +28,7 @@ type ExecutionRow = {
   previous_execution_id: string | null;
   runner_id: string;
   binding_id: string;
+  priority: number;
   state: Execution['state'];
   prompt_kind: string;
   prompt_version: number;
@@ -39,6 +40,7 @@ type ExecutionRow = {
   lease_token_hash: string | null;
   lease_expires_at: string | null;
   outcome_json: string | null;
+  reported_outcome_json: string | null;
   cancellation_requested: number;
   created_at: string;
   claimed_at: string | null;
@@ -86,6 +88,24 @@ const LEASED_STATES = [
 const DEFAULT_LEASE_DURATION_MS = 15_000;
 const POLL_INTERVAL_MS = 50;
 
+export type ExecutionLifecycleHooks = {
+  applyStarted: (execution: Execution) => void;
+  afterStarted: (execution: Execution) => void;
+  applyTerminal: (execution: Execution) => void;
+  afterTerminal: (execution: Execution) => void;
+  applyInteractionOpened: (interaction: ExecutionInteraction) => void;
+  afterInteractionOpened: (interaction: ExecutionInteraction) => void;
+};
+
+const NOOP_HOOKS: ExecutionLifecycleHooks = {
+  applyStarted: () => {},
+  afterStarted: () => {},
+  applyTerminal: () => {},
+  afterTerminal: () => {},
+  applyInteractionOpened: () => {},
+  afterInteractionOpened: () => {},
+};
+
 export class ExecutionService {
   constructor(
     private readonly db: AppDatabase,
@@ -94,6 +114,7 @@ export class ExecutionService {
     private readonly createLeaseToken: () => string = () =>
       randomBytes(32).toString('base64url'),
     private readonly leaseDurationMs: number = DEFAULT_LEASE_DURATION_MS,
+    private readonly hooks: ExecutionLifecycleHooks = NOOP_HOOKS,
   ) {}
 
   enqueue(inputValue: EnqueueExecutionInput): Execution {
@@ -117,15 +138,15 @@ export class ExecutionService {
           .prepare(
             `INSERT INTO platform_execution(
                id, owner_namespace, owner_kind, owner_id, attempt,
-               previous_execution_id, runner_id, binding_id, state,
+               previous_execution_id, runner_id, binding_id, priority, state,
                prompt_kind, prompt_version, rendered_prompt,
                rendered_prompt_hash, output_json_schema, resume_session_id,
                session_id, lease_token_hash, lease_expires_at, outcome_json,
-               cancellation_requested, created_at, claimed_at, started_at,
-               finished_at
+               reported_outcome_json, cancellation_requested, created_at,
+               claimed_at, started_at, finished_at
              ) VALUES (
-               ?, ?, ?, ?, ?, ?, ?, ?, 'QUEUED', ?, ?, ?, ?, ?, ?,
-               NULL, NULL, NULL, NULL, 0, ?, NULL, NULL, NULL
+               ?, ?, ?, ?, ?, ?, ?, ?, ?, 'QUEUED', ?, ?, ?, ?, ?, ?,
+               NULL, NULL, NULL, NULL, NULL, 0, ?, NULL, NULL, NULL
              )`,
           )
           .run(
@@ -137,6 +158,7 @@ export class ExecutionService {
             input.previousExecutionId,
             input.runnerId,
             input.bindingId,
+            input.priority,
             input.promptKind,
             input.promptVersion,
             input.renderedPrompt,
@@ -197,7 +219,7 @@ export class ExecutionService {
     executionId: string,
     request: ExecutionStartRequest,
   ): Execution {
-    return this.db.transaction(() => {
+    const result = this.db.transaction(() => {
       const row = this.requireLeasedExecution(
         runnerId,
         executionId,
@@ -218,6 +240,7 @@ export class ExecutionService {
              WHERE id = ?`,
           )
           .run(JSON.stringify(outcome), now, executionId);
+        this.invalidatePendingInteractions(executionId, now);
       } else {
         this.db
           .prepare(
@@ -231,8 +254,14 @@ export class ExecutionService {
           )
           .run(request.sessionId, now, executionId);
       }
-      return this.mapExecution({ ...row, id: executionId });
+      const execution = this.mapExecution({ ...row, id: executionId });
+      if (request.kind === 'START_FAILED') this.hooks.applyTerminal(execution);
+      else this.hooks.applyStarted(execution);
+      return this.get(executionId);
     })();
+    if (request.kind === 'START_FAILED') this.hooks.afterTerminal(result);
+    else this.hooks.afterStarted(result);
+    return result;
   }
 
   renew(
@@ -265,7 +294,8 @@ export class ExecutionService {
     executionId: string,
     request: OpenInteractionRequest,
   ): ExecutionInteraction {
-    return this.db.transaction(() => {
+    let opened = false;
+    const result = this.db.transaction(() => {
       this.requireLeasedExecution(runnerId, executionId, request.leaseToken, [
         'RUNNING',
         'CANCEL_REQUESTED',
@@ -307,8 +337,13 @@ export class ExecutionService {
            WHERE id = ?`,
         )
         .run(executionId);
-      return this.getInteraction(id);
+      const interaction = this.getInteraction(id);
+      this.hooks.applyInteractionOpened(interaction);
+      opened = true;
+      return interaction;
     })();
+    if (opened) this.hooks.afterInteractionOpened(result);
+    return result;
   }
 
   async waitInteraction(
@@ -389,7 +424,8 @@ export class ExecutionService {
     executionId: string,
     request: CompleteExecutionRequest,
   ): Execution {
-    return this.db.transaction(() => {
+    let newlyTerminal = false;
+    const result = this.db.transaction(() => {
       const row = this.getRow(executionId);
       if (row.runner_id !== runnerId)
         throw new PlatformError('NOT_FOUND', 'Execution 不存在');
@@ -398,7 +434,7 @@ export class ExecutionService {
         if (
           row.lease_token_hash === tokenHash &&
           row.session_id === request.sessionId &&
-          row.outcome_json === JSON.stringify(request.outcome)
+          row.reported_outcome_json === JSON.stringify(request.outcome)
         )
           return this.mapExecution(row);
         throw new PlatformError(
@@ -416,18 +452,62 @@ export class ExecutionService {
       this.db
         .prepare(
           `UPDATE platform_execution
-           SET state = ?, outcome_json = ?, finished_at = ?,
-               lease_expires_at = NULL
+           SET state = ?, outcome_json = ?, reported_outcome_json = ?,
+               finished_at = ?, lease_expires_at = NULL
            WHERE id = ?`,
         )
         .run(
           request.outcome.kind,
           JSON.stringify(request.outcome),
+          JSON.stringify(request.outcome),
           finishedAt,
           executionId,
         );
+      this.invalidatePendingInteractions(executionId, finishedAt);
+      const execution = this.get(executionId);
+      this.hooks.applyTerminal(execution);
+      newlyTerminal = true;
       return this.get(executionId);
     })();
+    if (newlyTerminal) this.hooks.afterTerminal(result);
+    return result;
+  }
+
+  setQueuedPriority(executionId: string, priority: number): Execution {
+    const update = this.db
+      .prepare(
+        `UPDATE platform_execution SET priority = ?
+         WHERE id = ? AND state = 'QUEUED'`,
+      )
+      .run(priority, executionId);
+    if (update.changes !== 1)
+      throw new PlatformError(
+        'INVALID_TRANSITION',
+        '只有排队中的 Execution 可以调整优先级',
+      );
+    return this.get(executionId);
+  }
+
+  cancelQueued(executionId: string, reason: string): Execution {
+    const finishedAt = this.now().toISOString();
+    const outcome: ExecutionOutcome = { kind: 'CANCELLED', reason };
+    const update = this.db
+      .prepare(
+        `UPDATE platform_execution
+         SET state = 'CANCELLED', outcome_json = ?, finished_at = ?
+         WHERE id = ? AND state = 'QUEUED'`,
+      )
+      .run(JSON.stringify(outcome), finishedAt, executionId);
+    if (update.changes !== 1)
+      throw new PlatformError(
+        'INVALID_TRANSITION',
+        '只有尚未领取的 Execution 可以取消',
+      );
+    const execution = this.get(executionId);
+    this.invalidatePendingInteractions(executionId, finishedAt);
+    this.hooks.applyTerminal(execution);
+    this.hooks.afterTerminal(execution);
+    return execution;
   }
 
   requestCancellation(executionId: string): Execution {
@@ -516,9 +596,35 @@ export class ExecutionService {
       this.expireLeases();
       const rows = this.db
         .prepare(
-          `SELECT * FROM platform_execution
-           WHERE runner_id = ? AND state = 'QUEUED'
-           ORDER BY created_at, id
+          `SELECT candidate.* FROM platform_execution candidate
+           WHERE candidate.runner_id = ?
+             AND candidate.state = 'QUEUED'
+             AND NOT EXISTS (
+               SELECT 1 FROM platform_execution active
+               WHERE active.binding_id = candidate.binding_id
+                 AND active.state IN (
+                   'CLAIMED', 'RUNNING', 'WAITING_FOR_INTERACTION',
+                   'CANCEL_REQUESTED'
+                 )
+             )
+             AND NOT EXISTS (
+               SELECT 1 FROM platform_execution earlier
+               WHERE earlier.binding_id = candidate.binding_id
+                 AND earlier.state = 'QUEUED'
+                 AND (
+                   earlier.priority < candidate.priority
+                   OR (
+                     earlier.priority = candidate.priority
+                     AND earlier.created_at < candidate.created_at
+                   )
+                   OR (
+                     earlier.priority = candidate.priority
+                     AND earlier.created_at = candidate.created_at
+                     AND earlier.rowid < candidate.rowid
+                   )
+                 )
+             )
+           ORDER BY candidate.priority, candidate.created_at, candidate.rowid
            LIMIT ?`,
         )
         .all(runnerId, availableSlots) as ExecutionRow[];
@@ -639,6 +745,7 @@ export class ExecutionService {
       previousExecutionId: current.previous_execution_id,
       runnerId: current.runner_id,
       bindingId: current.binding_id,
+      priority: current.priority,
       state: current.state,
       promptKind: current.prompt_kind,
       promptVersion: current.prompt_version,
@@ -691,6 +798,19 @@ export class ExecutionService {
 
   private getInteraction(interactionId: string): ExecutionInteraction {
     return mapInteraction(this.getInteractionRow(interactionId));
+  }
+
+  private invalidatePendingInteractions(
+    executionId: string,
+    resolvedAt: string,
+  ): void {
+    this.db
+      .prepare(
+        `UPDATE platform_execution_interaction
+         SET state = 'INVALIDATED', resolved_at = ?
+         WHERE execution_id = ? AND state = 'PENDING'`,
+      )
+      .run(resolvedAt, executionId);
   }
 
   private newLeaseExpiry(): string {

@@ -87,6 +87,18 @@ const STAGE_LABELS: Record<Bug['stage'], string> = {
   CANCELLED: '已取消',
 };
 
+export type BugRepairHooks = {
+  requested: (bugId: string, priority: number) => void;
+  withdrawn: (bugId: string) => void;
+  reordered: (submissionId: string) => void;
+};
+
+const NOOP_REPAIR_HOOKS: BugRepairHooks = {
+  requested: () => {},
+  withdrawn: () => {},
+  reordered: () => {},
+};
+
 export class BugService {
   private readonly writes: CookingWriteStore;
 
@@ -98,6 +110,7 @@ export class BugService {
       submissionId: string,
       revision: number,
     ) => void = () => {},
+    private readonly repairHooks: BugRepairHooks = NOOP_REPAIR_HOOKS,
   ) {
     this.writes = new CookingWriteStore(db, now, createId);
   }
@@ -343,6 +356,7 @@ export class BugService {
           )
           .run(now, now, bug.id, parsed.expectedVersion);
         if (update.changes !== 1) throw staleBug();
+        this.repairHooks.requested(bug.id, 0);
         return {
           action: 'BUG_REPAIR_REQUESTED',
           details: { submissionItemId: bug.submissionItemId, position: 0 },
@@ -386,6 +400,7 @@ export class BugService {
             'INVALID_TRANSITION',
             '修复已开始，不能直接撤回',
           );
+        this.repairHooks.withdrawn(bug.id);
         this.db
           .prepare('DELETE FROM cooking_repair_queue_entry WHERE bug_id = ?')
           .run(bug.id);
@@ -486,6 +501,7 @@ export class BugService {
              SET version = version + 1, updated_at = ? WHERE submission_id = ?`,
           )
           .run(now, submissionId);
+        this.repairHooks.reordered(submissionId);
         const revision = this.bumpRevision(submissionId, now);
         return {
           result: {
