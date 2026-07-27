@@ -9,3 +9,13 @@ export function messageRedirectPath(
   url.searchParams.set(kind, message);
   return `${url.pathname}${url.search}${url.hash}`;
 }
+
+export function rethrowRedirectError(error: unknown): void {
+  if (
+    error instanceof Error &&
+    'digest' in error &&
+    typeof error.digest === 'string' &&
+    error.digest.startsWith('NEXT_REDIRECT')
+  )
+    throw error;
+}

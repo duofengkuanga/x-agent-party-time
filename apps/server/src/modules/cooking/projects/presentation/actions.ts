@@ -6,7 +6,10 @@ import { requireCurrentUser } from '@/platform/auth/server';
 import { publicError } from '@/platform/errors';
 import { projectService } from '@/modules/cooking/application/server';
 import { ProjectInvitationDecisionSchema } from '../contract';
-import { messageRedirectPath } from '@/modules/cooking/shared/presentation/redirect-url';
+import {
+  messageRedirectPath,
+  rethrowRedirectError,
+} from '@/platform/http/message-redirect';
 
 export async function createProjectAction(formData: FormData): Promise<never> {
   const user = await requireCurrentUser();
@@ -24,7 +27,7 @@ export async function createProjectAction(formData: FormData): Promise<never> {
       ),
     );
   } catch (error) {
-    rethrowRedirect(error);
+    rethrowRedirectError(error);
     redirectWithError('/cooking', error);
   }
 }
@@ -48,7 +51,7 @@ export async function inviteProjectUserAction(
       ),
     );
   } catch (error) {
-    rethrowRedirect(error);
+    rethrowRedirectError(error);
     redirectWithError(
       `/cooking/projects/${encodeURIComponent(projectId)}`,
       error,
@@ -74,7 +77,7 @@ export async function respondProjectInvitationAction(
     revalidatePath('/cooking');
     redirect(messageRedirectPath('/cooking', 'success', '邀请已处理'));
   } catch (error) {
-    rethrowRedirect(error);
+    rethrowRedirectError(error);
     redirectWithError('/cooking', error);
   }
 }
@@ -102,7 +105,7 @@ export async function revokeProjectInvitationAction(
       ),
     );
   } catch (error) {
-    rethrowRedirect(error);
+    rethrowRedirectError(error);
     redirectWithError(
       `/cooking/projects/${encodeURIComponent(projectId)}`,
       error,
@@ -128,7 +131,7 @@ export async function updateProjectAction(formData: FormData): Promise<never> {
       ),
     );
   } catch (error) {
-    rethrowRedirect(error);
+    rethrowRedirectError(error);
     redirectWithError(
       `/cooking/projects/${encodeURIComponent(projectId)}`,
       error,
@@ -160,7 +163,7 @@ export async function removeProjectMemberAction(
       ),
     );
   } catch (error) {
-    rethrowRedirect(error);
+    rethrowRedirectError(error);
     redirectWithError(
       `/cooking/projects/${encodeURIComponent(projectId)}`,
       error,
@@ -183,14 +186,4 @@ function numberField(formData: FormData, name: string): number {
 
 function redirectWithError(path: string, error: unknown): never {
   redirect(messageRedirectPath(path, 'error', publicError(error).message));
-}
-
-function rethrowRedirect(error: unknown): void {
-  if (
-    error instanceof Error &&
-    'digest' in error &&
-    typeof error.digest === 'string' &&
-    error.digest.startsWith('NEXT_REDIRECT')
-  )
-    throw error;
 }

@@ -29,9 +29,14 @@ export default async function CookingHomePage({
           <h1>项目工作台</h1>
           <p>你好，{user.displayName}。这里只显示你已经加入的私密项目。</p>
         </div>
-        <form action={logoutAction}>
-          <button type="submit">退出登录</button>
-        </form>
+        <div className="button-row">
+          <Link className="button-link" href="/cooking/runners">
+            Runner 管理
+          </Link>
+          <form action={logoutAction}>
+            <button type="submit">退出登录</button>
+          </form>
+        </div>
       </header>
 
       {message.error ? (

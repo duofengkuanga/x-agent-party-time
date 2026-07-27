@@ -2,8 +2,13 @@ import { randomUUID } from 'node:crypto';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireCurrentUser } from '@/platform/auth/server';
+import { runnerService } from '@/platform/runner/server';
 import { PlatformError } from '@/platform/errors';
-import { engineeringService } from '@/modules/cooking/application/server';
+import {
+  bindingService,
+  engineeringService,
+  projectService,
+} from '@/modules/cooking/application/server';
 import {
   addEngineeringMemberAction,
   archiveEngineeringAction,
@@ -15,7 +20,7 @@ import {
 } from '@/modules/cooking/engineering/presentation/actions';
 import type { TestEnvironment } from '@/modules/cooking/engineering/contract';
 import { DeploymentFields } from '@/modules/cooking/engineering/presentation/deployment-fields';
-import { projectService } from '@/modules/cooking/application/server';
+import { createEngineeringBindingAction } from '@/modules/cooking/bindings/presentation/actions';
 
 export default async function EngineeringPage({
   params,
@@ -30,6 +35,8 @@ export default async function EngineeringPage({
   let workspace;
   let project;
   let projectMembers;
+  let bindings;
+  let runnerStatuses;
   try {
     workspace = engineeringModule.getWorkspace(user.id, engineeringId);
     const projects = projectService();
@@ -38,6 +45,8 @@ export default async function EngineeringPage({
       user.id,
       workspace.engineering.projectId,
     );
+    bindings = bindingService().listBindings(user.id, engineeringId);
+    runnerStatuses = runnerService().listRunners(user.id);
   } catch (error) {
     if (error instanceof PlatformError && error.code === 'NOT_FOUND')
       notFound();
@@ -50,6 +59,10 @@ export default async function EngineeringPage({
   );
   const availableMembers = projectMembers.filter(
     ({ user: member }) => !assignedUserIds.has(member.id),
+  );
+  const isEngineeringMember = assignedUserIds.has(user.id);
+  const availableRunners = runnerStatuses.filter(
+    ({ runner }) => !runner.revokedAt,
   );
 
   return (
@@ -204,6 +217,69 @@ export default async function EngineeringPage({
       <section className="panel">
         <div className="section-heading">
           <div>
+            <span className="eyebrow">逻辑绑定</span>
+            <h2>工程绑定</h2>
+          </div>
+          <span className="count-badge">{bindings.length}</span>
+        </div>
+        {bindings.length ? (
+          <ul className="card-list">
+            {bindings.map(({ binding, runner, user: bindingUser }) => (
+              <li className="list-card" key={binding.id}>
+                <div>
+                  <h3>{runner.name}</h3>
+                  <p>
+                    {bindingUser.displayName} ·{' '}
+                    {runner.revokedAt
+                      ? 'Runner 已撤销'
+                      : runner.lastSeenAt
+                        ? `最后心跳 ${formatTime(runner.lastSeenAt)}`
+                        : '尚未发送心跳'}
+                  </p>
+                  <small className="logical-id">绑定 ID：{binding.id}</small>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="empty-state">还没有工程绑定。</p>
+        )}
+        {isEngineeringMember &&
+        !workspace.engineering.archivedAt &&
+        availableRunners.length ? (
+          <form
+            action={createEngineeringBindingAction}
+            className="stack-form separated-form"
+          >
+            <input name="mutationId" type="hidden" value={randomUUID()} />
+            <input name="engineeringId" type="hidden" value={engineeringId} />
+            <label>
+              选择自己的 Runner
+              <select name="runnerId" required>
+                {availableRunners.map(({ runner, online }) => (
+                  <option key={runner.id} value={runner.id}>
+                    {runner.name}（{online ? '在线' : '离线'}）
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="submit">创建工程绑定</button>
+          </form>
+        ) : isEngineeringMember && !workspace.engineering.archivedAt ? (
+          <p className="empty-state separated-form">
+            需要先在 <Link href="/cooking/runners">Runner 管理</Link>{' '}
+            中完成本机配对。
+          </p>
+        ) : null}
+        <p className="privacy-note">
+          服务端只保存逻辑绑定 ID。本机仓库绝对路径必须通过 Runner
+          命令行单独登记，不会上传到服务端。
+        </p>
+      </section>
+
+      <section className="panel">
+        <div className="section-heading">
+          <div>
             <span className="eyebrow">测试环境</span>
             <h2>部署配置</h2>
           </div>
@@ -305,6 +381,13 @@ function EnvironmentCard({
       ) : null}
     </article>
   );
+}
+
+function formatTime(value: string): string {
+  return new Intl.DateTimeFormat('zh-CN', {
+    dateStyle: 'short',
+    timeStyle: 'medium',
+  }).format(new Date(value));
 }
 
 function CommonFields({

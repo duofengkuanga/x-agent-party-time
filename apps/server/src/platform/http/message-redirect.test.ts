@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { messageRedirectPath } from './redirect-url';
+import { messageRedirectPath, rethrowRedirectError } from './message-redirect';
 
 describe('messageRedirectPath', () => {
   test('对 Server Action 响应头中的中文消息和动态路径进行安全编码', () => {
@@ -11,5 +11,15 @@ describe('messageRedirectPath', () => {
     expect(messageRedirectPath('/cooking', 'error', '邀请不存在')).toBe(
       '/cooking?error=%E9%82%80%E8%AF%B7%E4%B8%8D%E5%AD%98%E5%9C%A8',
     );
+  });
+});
+
+describe('rethrowRedirectError', () => {
+  test('只重新抛出 Next Redirect 控制流错误', () => {
+    const redirect = Object.assign(new Error('redirect'), {
+      digest: 'NEXT_REDIRECT;replace;/cooking;307;',
+    });
+    expect(() => rethrowRedirectError(redirect)).toThrow(redirect);
+    expect(() => rethrowRedirectError(new Error('business'))).not.toThrow();
   });
 });
