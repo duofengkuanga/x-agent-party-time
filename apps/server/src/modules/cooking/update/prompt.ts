@@ -1,9 +1,14 @@
 import { createHash } from 'node:crypto';
 import type { JsonObject } from '@agent-party-time/execution-contract';
-import { LocalScriptUpdateOutputJsonSchema } from './contract';
+import {
+  CiCdUpdateOutputJsonSchema,
+  LocalScriptUpdateOutputJsonSchema,
+} from './contract';
 
 export const LOCAL_SCRIPT_UPDATE_PROMPT_KIND = 'cooking.update.local-script';
 export const LOCAL_SCRIPT_UPDATE_PROMPT_VERSION = 1;
+export const CI_CD_UPDATE_PROMPT_KIND = 'cooking.update.ci-cd';
+export const CI_CD_UPDATE_PROMPT_VERSION = 1;
 
 const STABLE_PREFIX = `你是本机仓库中的统一更新执行者。请遵守仓库内 AGENTS.md 等规则，原子集成本批全部候选提交。
 
@@ -12,23 +17,25 @@ const STABLE_PREFIX = `你是本机仓库中的统一更新执行者。请遵守
 - 严格按冻结顺序集成每个候选 Commit，不得遗漏、拆批、squash、amend、rebase 或改写历史。
 - 解决冲突后运行仓库规则要求的测试和构建；任何一项失败都返回 FAILED。
 - 验证通过后只允许普通 push，禁止 force push。
-- 普通 push 成功后执行给定 LOCAL_SCRIPT；脚本失败返回 FAILED。
-- 不得伪造 Commit、测试、Push、脚本或执行结果。
+- 不得伪造 Commit、测试、Push、部署或执行结果。
 - 最终只返回符合输出 Schema 的 JSON。`;
 
-export type LocalScriptUpdatePromptInput = {
+export type UpdatePromptInput = {
   workspaceKey: string;
   submissionTitle: string;
   engineeringName: string;
   repositoryUrl: string;
   targetBranch: string;
   environmentName: string;
-  deploymentCommand: string;
   entries: Array<{
     bugShortId: number;
     bugTitle: string;
     commits: string[];
   }>;
+};
+
+export type LocalScriptUpdatePromptInput = UpdatePromptInput & {
+  deploymentCommand: string;
 };
 
 export type UpdatePromptSnapshot = {
@@ -42,16 +49,87 @@ export type UpdatePromptSnapshot = {
 export function buildInitialLocalScriptUpdatePrompt(
   input: LocalScriptUpdatePromptInput,
 ): UpdatePromptSnapshot {
-  return snapshot(`${STABLE_PREFIX}
+  return snapshot(
+    LOCAL_SCRIPT_UPDATE_PROMPT_KIND,
+    LOCAL_SCRIPT_UPDATE_PROMPT_VERSION,
+    LocalScriptUpdateOutputJsonSchema as JsonObject,
+    `${STABLE_PREFIX}
+- 普通 push 成功后执行给定 LOCAL_SCRIPT；脚本失败返回 FAILED。
 
-本次冻结批次：
+${batchDetails(input)}
+- LOCAL_SCRIPT：${input.deploymentCommand}
+
+完成完整集成、验证、普通 Push 和 LOCAL_SCRIPT 后返回结构化结果。`,
+  );
+}
+
+export function buildInitialCiCdUpdatePrompt(
+  input: UpdatePromptInput,
+): UpdatePromptSnapshot {
+  return snapshot(
+    CI_CD_UPDATE_PROMPT_KIND,
+    CI_CD_UPDATE_PROMPT_VERSION,
+    CiCdUpdateOutputJsonSchema as JsonObject,
+    `${STABLE_PREFIX}
+- 本次部署方式为 CI/CD：只负责完成集成、验证和普通 Push。
+- Push 成功必须返回 PUSHED；PUSHED 不代表 Pipeline 或部署成功。
+- 不得轮询、猜测或伪造外部 Pipeline 结果。
+
+${batchDetails(input)}
+
+完成完整集成、验证和普通 Push 后返回结构化结果；外部结果由工程负责人另行报告。`,
+  );
+}
+
+export function buildContinuationLocalScriptUpdatePrompt(input: {
+  content: string;
+}): UpdatePromptSnapshot {
+  return continuationSnapshot(
+    LOCAL_SCRIPT_UPDATE_PROMPT_KIND,
+    LOCAL_SCRIPT_UPDATE_PROMPT_VERSION,
+    LocalScriptUpdateOutputJsonSchema as JsonObject,
+    input.content,
+    '继续完成原批次的集成、验证、普通 Push 和 LOCAL_SCRIPT',
+  );
+}
+
+export function buildContinuationCiCdUpdatePrompt(input: {
+  reportRound: number;
+  summary: string;
+  attachmentNames: string[];
+}): UpdatePromptSnapshot {
+  const attachmentLine = input.attachmentNames.length
+    ? `\n新增证据附件：${input.attachmentNames.join('、')}`
+    : '';
+  return continuationSnapshot(
+    CI_CD_UPDATE_PROMPT_KIND,
+    CI_CD_UPDATE_PROMPT_VERSION,
+    CiCdUpdateOutputJsonSchema as JsonObject,
+    `第 ${input.reportRound} 轮外部部署失败：${input.summary}${attachmentLine}`,
+    '根据新增外部失败证据修正原批次，并重新完成验证和普通 Push',
+  );
+}
+
+export function buildManualContinuationCiCdUpdatePrompt(input: {
+  content: string;
+}): UpdatePromptSnapshot {
+  return continuationSnapshot(
+    CI_CD_UPDATE_PROMPT_KIND,
+    CI_CD_UPDATE_PROMPT_VERSION,
+    CiCdUpdateOutputJsonSchema as JsonObject,
+    input.content,
+    '继续完成原批次的集成、验证和普通 Push；PUSHED 仍只表示等待外部确认',
+  );
+}
+
+function batchDetails(input: UpdatePromptInput): string {
+  return `本次冻结批次：
 - 逻辑工作区：${input.workspaceKey}
 - 提测单：${input.submissionTitle}
 - 工程：${input.engineeringName}
 - 仓库逻辑地址：${input.repositoryUrl}
 - 目标分支：${input.targetBranch}
 - 环境：${input.environmentName}
-- LOCAL_SCRIPT：${input.deploymentCommand}
 
 冻结候选（顺序不可改变）：
 ${input.entries
@@ -59,30 +137,42 @@ ${input.entries
     (entry, index) =>
       `${index + 1}. 缺陷-${String(entry.bugShortId).padStart(3, '0')} ${entry.bugTitle}\n   Commits: ${entry.commits.join(', ')}`,
   )
-  .join('\n')}
-
-完成完整集成、验证、普通 Push 和 LOCAL_SCRIPT 后返回结构化结果。`);
+  .join('\n')}`;
 }
 
-export function buildContinuationLocalScriptUpdatePrompt(input: {
-  content: string;
-}): UpdatePromptSnapshot {
-  return snapshot(`继续当前 Update Batch Session。冻结的 Bug、Commit、顺序、分支和环境保持不变。
+function continuationSnapshot(
+  kind: string,
+  version: number,
+  outputJsonSchema: JsonObject,
+  content: string,
+  instruction: string,
+): UpdatePromptSnapshot {
+  return snapshot(
+    kind,
+    version,
+    outputJsonSchema,
+    `继续当前 Update Batch Session。冻结的 Bug、Commit、顺序、分支和环境保持不变。
 
 只处理以下增量信息：
-${input.content}
+${content}
 
-继续完成原批次；不得拆批、跳过候选、force push 或改写历史，最终只返回符合既定 Schema 的 JSON。`);
+${instruction}；不得拆批、跳过候选、force push 或改写历史，最终只返回符合既定 Schema 的 JSON。`,
+  );
 }
 
-function snapshot(renderedPrompt: string): UpdatePromptSnapshot {
+function snapshot(
+  kind: string,
+  version: number,
+  outputJsonSchema: JsonObject,
+  renderedPrompt: string,
+): UpdatePromptSnapshot {
   return {
-    kind: LOCAL_SCRIPT_UPDATE_PROMPT_KIND,
-    version: LOCAL_SCRIPT_UPDATE_PROMPT_VERSION,
+    kind,
+    version,
     renderedPrompt,
     renderedPromptHash: createHash('sha256')
       .update(renderedPrompt)
       .digest('hex'),
-    outputJsonSchema: LocalScriptUpdateOutputJsonSchema as JsonObject,
+    outputJsonSchema,
   };
 }

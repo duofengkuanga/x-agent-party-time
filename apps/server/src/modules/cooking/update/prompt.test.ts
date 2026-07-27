@@ -1,12 +1,18 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  CiCdUpdateExecutionResultSchema,
+  CiCdUpdateOutputJsonSchema,
   LocalScriptUpdateExecutionResultSchema,
   LocalScriptUpdateOutputJsonSchema,
 } from './contract';
 import {
+  CI_CD_UPDATE_PROMPT_KIND,
+  CI_CD_UPDATE_PROMPT_VERSION,
   LOCAL_SCRIPT_UPDATE_PROMPT_KIND,
   LOCAL_SCRIPT_UPDATE_PROMPT_VERSION,
+  buildContinuationCiCdUpdatePrompt,
   buildContinuationLocalScriptUpdatePrompt,
+  buildInitialCiCdUpdatePrompt,
   buildInitialLocalScriptUpdatePrompt,
 } from './prompt';
 
@@ -57,6 +63,55 @@ describe('LOCAL_SCRIPT Update Prompt', () => {
       LocalScriptUpdateExecutionResultSchema.safeParse({
         outcome: 'FAILED',
         summary: '',
+      }).success,
+    ).toBe(false);
+  });
+
+  test('LOCAL_SCRIPT 与 CI/CD 输出 Schema 都是无 oneOf 的根对象', () => {
+    for (const schema of [
+      LocalScriptUpdateOutputJsonSchema,
+      CiCdUpdateOutputJsonSchema,
+    ]) {
+      expect(schema).toMatchObject({
+        type: 'object',
+        additionalProperties: false,
+        required: ['outcome', 'summary'],
+      });
+      expect(JSON.stringify(schema)).not.toContain('"oneOf"');
+    }
+  });
+
+  test('CI/CD Prompt 只把普通 Push 解释为 PUSHED，并以失败报告增量继续', () => {
+    const initial = buildInitialCiCdUpdatePrompt({
+      workspaceKey: 'update-batch:ci',
+      submissionTitle: '支付提测',
+      engineeringName: '支付工程',
+      repositoryUrl: 'https://example.com/payment.git',
+      targetBranch: 'main',
+      environmentName: 'CI 测试环境',
+      entries: [
+        { bugShortId: 3, bugTitle: '流水线失败', commits: ['ccccccc'] },
+      ],
+    });
+    expect(initial).toMatchObject({
+      kind: CI_CD_UPDATE_PROMPT_KIND,
+      version: CI_CD_UPDATE_PROMPT_VERSION,
+      outputJsonSchema: CiCdUpdateOutputJsonSchema,
+    });
+    expect(initial.renderedPrompt).toContain('PUSHED 不代表 Pipeline');
+    expect(initial.renderedPrompt).not.toContain('LOCAL_SCRIPT：');
+    const continuation = buildContinuationCiCdUpdatePrompt({
+      reportRound: 2,
+      summary: '部署健康检查失败',
+      attachmentNames: ['pipeline.txt'],
+    });
+    expect(continuation.renderedPrompt).toContain('第 2 轮外部部署失败');
+    expect(continuation.renderedPrompt).toContain('pipeline.txt');
+    expect(continuation.renderedPrompt).not.toContain('仓库逻辑地址');
+    expect(
+      CiCdUpdateExecutionResultSchema.safeParse({
+        outcome: 'COMPLETED',
+        summary: '不能伪装部署完成',
       }).success,
     ).toBe(false);
   });

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   ExecutionInteractionSchema,
   ExecutionStateSchema,
+  type JsonObject,
 } from '@agent-party-time/execution-contract';
 import { BugIdSchema } from '@/modules/cooking/bugs/contract';
 import { CookingMutationIdSchema } from '@/modules/cooking/shared/contract';
@@ -12,7 +13,7 @@ export const CommitShaSchema = z
   .toLowerCase()
   .regex(/^[a-f0-9]{7,64}$/u);
 
-export const RepairExecutionResultSchema = z.discriminatedUnion('outcome', [
+const RepairExecutionResultValueSchema = z.discriminatedUnion('outcome', [
   z
     .object({
       outcome: z.literal('COMPLETED'),
@@ -28,9 +29,39 @@ export const RepairExecutionResultSchema = z.discriminatedUnion('outcome', [
     .strict(),
 ]);
 
-export const RepairOutputJsonSchema = z.toJSONSchema(
-  RepairExecutionResultSchema,
-);
+export const RepairExecutionResultSchema = z.preprocess((value) => {
+  if (
+    value &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Reflect.get(value, 'outcome') === 'FAILED' &&
+    Array.isArray(Reflect.get(value, 'commits')) &&
+    Reflect.get(value, 'commits').length === 0
+  ) {
+    const { commits: _commits, ...normalized } = value as Record<
+      string,
+      unknown
+    >;
+    return normalized;
+  }
+  return value;
+}, RepairExecutionResultValueSchema);
+
+export const RepairOutputJsonSchema: JsonObject = {
+  type: 'object',
+  properties: {
+    outcome: { type: 'string', enum: ['COMPLETED', 'FAILED'] },
+    summary: { type: 'string', minLength: 1, maxLength: 4_000 },
+    commits: {
+      type: 'array',
+      items: { type: 'string', pattern: '^[a-f0-9]{7,64}$' },
+      minItems: 0,
+      maxItems: 100,
+    },
+  },
+  required: ['outcome', 'summary', 'commits'],
+  additionalProperties: false,
+};
 
 export const RepairAttemptViewSchema = z.object({
   id: z.uuid(),

@@ -177,6 +177,7 @@ export class RepairService {
     bugId: string,
     content: string,
     priority = -1_000_000,
+    attachmentIds: string[] = [],
   ): string {
     const source = this.source(bugId);
     const context = this.requireContext(bugId);
@@ -201,7 +202,7 @@ export class RepairService {
       renderedPrompt: prompt.renderedPrompt,
       renderedPromptHash: prompt.renderedPromptHash,
       outputJsonSchema: prompt.outputJsonSchema,
-      attachmentIds: [],
+      attachmentIds,
       resumeSessionId: context.session_id,
     });
     const now = this.now().toISOString();

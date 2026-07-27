@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   ExecutionInteractionSchema,
   ExecutionStateSchema,
+  type JsonObject,
 } from '@agent-party-time/execution-contract';
 import { BugIdSchema } from '@/modules/cooking/bugs/contract';
 import { CommitShaSchema } from '@/modules/cooking/repair/contract';
@@ -13,6 +14,7 @@ import {
 
 export const UpdateBatchIdSchema = z.uuid();
 export const UpdateAttemptIdSchema = z.uuid();
+export const ExternalDeploymentReportIdSchema = z.uuid();
 export const UpdateBatchStateSchema = z.enum([
   'READY',
   'RUNNING',
@@ -40,9 +42,39 @@ export const LocalScriptUpdateExecutionResultSchema = z.discriminatedUnion(
   ],
 );
 
-export const LocalScriptUpdateOutputJsonSchema = z.toJSONSchema(
-  LocalScriptUpdateExecutionResultSchema,
-);
+export const CiCdUpdateExecutionResultSchema = z.discriminatedUnion('outcome', [
+  z
+    .object({
+      outcome: z.literal('PUSHED'),
+      summary: z.string().trim().min(1).max(4_000),
+    })
+    .strict(),
+  z
+    .object({
+      outcome: z.literal('FAILED'),
+      summary: z.string().trim().min(1).max(4_000),
+    })
+    .strict(),
+]);
+
+export const LocalScriptUpdateOutputJsonSchema: JsonObject = {
+  type: 'object',
+  properties: {
+    outcome: { type: 'string', enum: ['COMPLETED', 'FAILED'] },
+    summary: { type: 'string', minLength: 1, maxLength: 4_000 },
+  },
+  required: ['outcome', 'summary'],
+  additionalProperties: false,
+};
+export const CiCdUpdateOutputJsonSchema: JsonObject = {
+  type: 'object',
+  properties: {
+    outcome: { type: 'string', enum: ['PUSHED', 'FAILED'] },
+    summary: { type: 'string', minLength: 1, maxLength: 4_000 },
+  },
+  required: ['outcome', 'summary'],
+  additionalProperties: false,
+};
 
 export const PendingDeliveryViewSchema = z.object({
   submissionItemId: SubmissionItemIdSchema,
@@ -69,6 +101,29 @@ export const UpdateAttemptViewSchema = z.object({
   finishedAt: z.iso.datetime().nullable(),
 });
 
+export const UpdateAttachmentViewSchema = z.object({
+  id: z.uuid(),
+  originalName: z.string().trim().min(1).max(255),
+  mediaType: z.enum([
+    'image/png',
+    'image/jpeg',
+    'image/webp',
+    'text/plain',
+    'application/json',
+  ]),
+  sizeBytes: z.number().int().positive(),
+  createdAt: z.iso.datetime(),
+});
+
+export const ExternalDeploymentReportViewSchema = z.object({
+  id: ExternalDeploymentReportIdSchema,
+  round: z.number().int().positive(),
+  outcome: z.enum(['SUCCEEDED', 'FAILED']),
+  summary: z.string().nullable(),
+  attachments: z.array(UpdateAttachmentViewSchema),
+  createdAt: z.iso.datetime(),
+});
+
 export const UpdateBatchViewSchema = z.object({
   id: UpdateBatchIdSchema,
   submissionId: SubmissionIdSchema,
@@ -77,10 +132,17 @@ export const UpdateBatchViewSchema = z.object({
   version: z.number().int().positive(),
   activeExecutionId: z.uuid().nullable(),
   frozenAt: z.iso.datetime(),
+  deploymentKind: z.enum(['LOCAL_SCRIPT', 'CI_CD']),
   entries: z.array(UpdateBatchEntryViewSchema).min(1),
   attempts: z.array(UpdateAttemptViewSchema),
+  externalReports: z.array(ExternalDeploymentReportViewSchema),
   availableActions: z.array(
-    z.enum(['CONTINUE_UPDATE', 'CANCEL_BATCH', 'STOP_EXECUTION']),
+    z.enum([
+      'CONTINUE_UPDATE',
+      'CANCEL_BATCH',
+      'STOP_EXECUTION',
+      'REPORT_EXTERNAL',
+    ]),
   ),
   presentation: z.object({ statusLabel: z.string().trim().min(1) }),
 });
@@ -112,8 +174,28 @@ export const FreezeUpdateInputSchema = z.object({
 export const ContinueUpdateInputSchema = z.object({
   mutationId: CookingMutationIdSchema,
   expectedVersion: z.number().int().positive(),
-  content: z.string().trim().min(1).max(8_000),
+  content: z.string().trim().min(1).max(8_000).optional(),
 });
+
+export const ExternalDeploymentReportInputSchema = z.discriminatedUnion(
+  'outcome',
+  [
+    z.object({
+      mutationId: CookingMutationIdSchema,
+      expectedVersion: z.number().int().positive(),
+      outcome: z.literal('SUCCEEDED'),
+      summary: z.string().trim().min(1).max(8_000).optional(),
+      attachmentIds: z.array(z.uuid()).max(5),
+    }),
+    z.object({
+      mutationId: CookingMutationIdSchema,
+      expectedVersion: z.number().int().positive(),
+      outcome: z.literal('FAILED'),
+      summary: z.string().trim().min(1).max(8_000),
+      attachmentIds: z.array(z.uuid()).max(5),
+    }),
+  ],
+);
 
 export const UpdateBatchCommandInputSchema = z.object({
   mutationId: CookingMutationIdSchema,
@@ -129,12 +211,15 @@ export const ResolveUpdateInteractionInputSchema = z.object({
 export const UpdateMutationResultSchema = z.object({
   batchId: UpdateBatchIdSchema,
   batchVersion: z.number().int().positive(),
-  executionId: z.uuid(),
+  executionId: z.uuid().nullable(),
   revision: z.number().int().positive(),
 });
 
 export type LocalScriptUpdateExecutionResult = z.infer<
   typeof LocalScriptUpdateExecutionResultSchema
+>;
+export type CiCdUpdateExecutionResult = z.infer<
+  typeof CiCdUpdateExecutionResultSchema
 >;
 export type PendingDeliveryView = z.infer<typeof PendingDeliveryViewSchema>;
 export type UpdateBatchView = z.infer<typeof UpdateBatchViewSchema>;
@@ -144,6 +229,9 @@ export type UpdateWorkspaceProjection = z.infer<
 >;
 export type FreezeUpdateInput = z.infer<typeof FreezeUpdateInputSchema>;
 export type ContinueUpdateInput = z.infer<typeof ContinueUpdateInputSchema>;
+export type ExternalDeploymentReportInput = z.infer<
+  typeof ExternalDeploymentReportInputSchema
+>;
 export type UpdateBatchCommandInput = z.infer<
   typeof UpdateBatchCommandInputSchema
 >;

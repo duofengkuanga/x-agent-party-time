@@ -170,6 +170,10 @@ function workspace(revision: number) {
     pendingDeliveries: [],
     updateBatches: [],
     updateInteractions: [],
+    verificationsByBug: {},
+    cleanups: [],
+    cleanupInteractions: [],
+    timeline: [],
     submissions: [
       {
         submission: submission(revision, now),

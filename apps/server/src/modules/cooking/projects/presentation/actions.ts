@@ -21,7 +21,7 @@ export async function createProjectAction(formData: FormData): Promise<never> {
     revalidatePath('/cooking/projects');
     redirect(
       messageRedirectPath(
-        `/cooking/projects/${result.project.id}`,
+        projectSettingsPath(result.project.id, 'engineering'),
         'success',
         '项目已创建',
       ),
@@ -45,17 +45,14 @@ export async function inviteProjectUserAction(
     refreshProject(projectId);
     redirect(
       messageRedirectPath(
-        `/cooking/projects/${projectId}`,
+        projectSettingsPath(projectId, 'collaboration'),
         'success',
         '邀请已发送',
       ),
     );
   } catch (error) {
     rethrowRedirectError(error);
-    redirectWithError(
-      `/cooking/projects/${encodeURIComponent(projectId)}`,
-      error,
-    );
+    redirectWithError(projectSettingsPath(projectId, 'collaboration'), error);
   }
 }
 
@@ -99,17 +96,14 @@ export async function revokeProjectInvitationAction(
     refreshProject(projectId);
     redirect(
       messageRedirectPath(
-        `/cooking/projects/${projectId}`,
+        projectSettingsPath(projectId, 'collaboration'),
         'success',
         '邀请已撤销',
       ),
     );
   } catch (error) {
     rethrowRedirectError(error);
-    redirectWithError(
-      `/cooking/projects/${encodeURIComponent(projectId)}`,
-      error,
-    );
+    redirectWithError(projectSettingsPath(projectId, 'collaboration'), error);
   }
 }
 
@@ -125,17 +119,14 @@ export async function updateProjectAction(formData: FormData): Promise<never> {
     refreshProject(projectId);
     redirect(
       messageRedirectPath(
-        `/cooking/projects/${projectId}`,
+        projectSettingsPath(projectId, 'collaboration'),
         'success',
         '项目名称已更新',
       ),
     );
   } catch (error) {
     rethrowRedirectError(error);
-    redirectWithError(
-      `/cooking/projects/${encodeURIComponent(projectId)}`,
-      error,
-    );
+    redirectWithError(projectSettingsPath(projectId, 'collaboration'), error);
   }
 }
 
@@ -157,23 +148,20 @@ export async function removeProjectMemberAction(
     refreshProject(projectId);
     redirect(
       messageRedirectPath(
-        `/cooking/projects/${projectId}`,
+        projectSettingsPath(projectId, 'collaboration'),
         'success',
         '成员已移除',
       ),
     );
   } catch (error) {
     rethrowRedirectError(error);
-    redirectWithError(
-      `/cooking/projects/${encodeURIComponent(projectId)}`,
-      error,
-    );
+    redirectWithError(projectSettingsPath(projectId, 'collaboration'), error);
   }
 }
 
 function refreshProject(projectId: string): void {
   revalidatePath('/cooking/projects');
-  revalidatePath(`/cooking/projects/${projectId}`);
+  revalidatePath(projectSettingsPath(projectId, 'collaboration'));
 }
 
 function field(formData: FormData, name: string): string {
@@ -186,4 +174,11 @@ function numberField(formData: FormData, name: string): number {
 
 function redirectWithError(path: string, error: unknown): never {
   redirect(messageRedirectPath(path, 'error', publicError(error).message));
+}
+
+function projectSettingsPath(
+  projectId: string,
+  panel: 'collaboration' | 'engineering',
+): string {
+  return `/cooking/projects?project=${encodeURIComponent(projectId)}&panel=${panel}`;
 }

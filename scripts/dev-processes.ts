@@ -3,7 +3,7 @@ import { readlinkSync, realpathSync } from 'node:fs';
 import { dirname, normalize, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export type ServiceKey = 'control-plane' | 'runner' | 'web';
+export type ServiceKey = 'server' | 'runner';
 
 export type ProcessRow = {
   pid: number;
@@ -36,22 +36,22 @@ const BUN = String.raw`(?:^|\s)(?:\S*\/)?bun`;
 
 const SERVICE_DEFINITIONS: readonly ServiceDefinition[] = [
   {
-    key: 'control-plane',
-    label: 'Control Plane',
+    key: 'server',
+    label: 'Server',
     matchers: [
       {
-        pattern: new RegExp(`${BUN}\\s+run\\s+dev:control-plane(?:\\s|$)`),
+        pattern: new RegExp(`${BUN}\\s+run\\s+dev:server(?:\\s|$)`),
         relativeCwds: ['.'],
       },
       {
         pattern: new RegExp(
-          `${BUN}\\s+--cwd\\s+(?:\\S*\/)?services/control-plane\\s+dev(?:\\s|$)`,
+          `${BUN}\\s+--cwd\\s+(?:\\S*\/)?apps/server\\s+dev(?:\\s|$)`,
         ),
-        relativeCwds: ['.', 'services/control-plane'],
+        relativeCwds: ['.', 'apps/server'],
       },
       {
-        pattern: new RegExp(`${BUN}\\s+--watch\\s+src/main\\.ts(?:\\s|$)`),
-        relativeCwds: ['services/control-plane'],
+        pattern: /(?:^|\s)(?:\S*\/)?next\s+dev(?:\s|$)|next-server/u,
+        relativeCwds: ['apps/server'],
       },
     ],
   },
@@ -65,29 +65,9 @@ const SERVICE_DEFINITIONS: readonly ServiceDefinition[] = [
       },
       {
         pattern: new RegExp(
-          `${BUN}\\s+(?:\\S*\/)?packages/cli/src/index\\.ts\\s+start(?:\\s|$)`,
+          `${BUN}\\s+(?:\\S*\/)?packages/runner/src/index\\.ts\\s+start(?:\\s|$)`,
         ),
         relativeCwds: ['.'],
-      },
-    ],
-  },
-  {
-    key: 'web',
-    label: 'Web',
-    matchers: [
-      {
-        pattern: new RegExp(`${BUN}\\s+run\\s+dev:web(?:\\s|$)`),
-        relativeCwds: ['.'],
-      },
-      {
-        pattern: new RegExp(
-          `${BUN}\\s+--cwd\\s+(?:\\S*\/)?apps/web\\s+dev(?:\\s|$)`,
-        ),
-        relativeCwds: ['.', 'apps/web'],
-      },
-      {
-        pattern: /(?:^|\s)(?:\S*\/)?next\s+dev(?:\s|$)|next-server/u,
-        relativeCwds: ['apps/web'],
       },
     ],
   },
@@ -329,7 +309,7 @@ async function stopServices(
     return 1;
   }
 
-  console.log('Control Plane、Runner、Web 开发服务已全部停止。');
+  console.log('Server、Runner 开发服务已全部停止。');
   return 0;
 }
 

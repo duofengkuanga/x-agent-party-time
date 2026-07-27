@@ -393,6 +393,7 @@ describe('BugService', () => {
       'EDIT_REPORT',
       'ASSIGN',
       'REQUEST_REPAIR',
+      'CANCEL',
     ]);
     const repairing = fixture.service.requestRepair(
       fixture.users.tester.id,

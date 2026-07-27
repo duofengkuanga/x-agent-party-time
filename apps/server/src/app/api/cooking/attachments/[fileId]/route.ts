@@ -1,9 +1,10 @@
 import { currentUser } from '@/platform/auth/server';
-import { publicError } from '@/platform/errors';
+import { PlatformError, publicError } from '@/platform/errors';
 import {
   bugService,
   cookingFileStore,
 } from '@/modules/cooking/application/server';
+import { updateService } from '@/modules/cooking/update/application/server';
 
 export async function GET(
   _request: Request,
@@ -17,7 +18,13 @@ export async function GET(
     );
   try {
     const { fileId } = await context.params;
-    bugService().requireAttachmentAccess(user.id, fileId);
+    try {
+      bugService().requireAttachmentAccess(user.id, fileId);
+    } catch (error) {
+      if (!(error instanceof PlatformError) || error.code !== 'NOT_FOUND')
+        throw error;
+      updateService().requireExternalAttachmentAccess(user.id, fileId);
+    }
     const { file, bytes } = await cookingFileStore().read(fileId);
     return new Response(Uint8Array.from(bytes).buffer, {
       headers: {

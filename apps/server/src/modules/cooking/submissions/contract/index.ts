@@ -105,7 +105,7 @@ export const SubmissionViewSchema = z.object({
   tester: UserSchema,
   createdBy: UserSchema,
   items: z.array(SubmissionItemViewSchema),
-  availableActions: z.array(z.enum(['EDIT_DETAILS'])),
+  availableActions: z.array(z.enum(['EDIT_DETAILS', 'CLOSE'])),
 });
 
 export const CookingWorkspaceSnapshotSchema = z.object({

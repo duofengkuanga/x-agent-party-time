@@ -9,7 +9,9 @@ import { ExecutionService } from '@/platform/execution/service';
 import { DeploymentMethodSchema } from '@/modules/cooking/engineering/contract';
 import { CookingWriteStore } from '@/modules/cooking/shared/write-store';
 import {
+  CiCdUpdateExecutionResultSchema,
   ContinueUpdateInputSchema,
+  ExternalDeploymentReportInputSchema,
   FreezeUpdateInputSchema,
   LocalScriptUpdateExecutionResultSchema,
   ResolveUpdateInteractionInputSchema,
@@ -19,6 +21,7 @@ import {
   UpdateMutationResultSchema,
   UpdateWorkspaceProjectionSchema,
   type ContinueUpdateInput,
+  type ExternalDeploymentReportInput,
   type ResolveUpdateInteractionInput,
   type UpdateBatchCommandInput,
   type UpdateBatchView,
@@ -27,8 +30,11 @@ import {
   type UpdateWorkspaceProjection,
 } from '../contract';
 import {
+  buildContinuationCiCdUpdatePrompt,
   buildContinuationLocalScriptUpdatePrompt,
+  buildInitialCiCdUpdatePrompt,
   buildInitialLocalScriptUpdatePrompt,
+  buildManualContinuationCiCdUpdatePrompt,
 } from '../prompt';
 
 const QUIET_WINDOW_MS = 2 * 60 * 1_000;
@@ -82,12 +88,31 @@ type AttemptRow = {
   id: string;
   batch_id: string;
   execution_id: string;
+  continuation_report_id: string | null;
   attempt: number;
   outcome_json: string | null;
   created_at: string;
   finished_at: string | null;
   state: Execution['state'];
   session_id: string | null;
+};
+
+type ExternalReportRow = {
+  id: string;
+  batch_id: string;
+  round: number;
+  outcome: 'SUCCEEDED' | 'FAILED';
+  summary: string | null;
+  reported_by_user_id: string;
+  created_at: string;
+};
+
+type ExternalReportAttachmentRow = {
+  id: string;
+  original_name: string;
+  media_type: string;
+  size_bytes: number;
+  created_at: string;
 };
 
 type FrozenBatch = {
@@ -155,7 +180,6 @@ export class UpdateService {
            ON submission.id = item.submission_id
          WHERE pending.eligible_at <= ?
            AND submission.status = 'ACTIVE'
-           AND json_extract(item.deployment_json, '$.kind') = 'LOCAL_SCRIPT'
          ORDER BY pending.eligible_at, pending.submission_item_id`,
       )
       .all(now) as Array<{ submission_item_id: string }>;
@@ -190,7 +214,7 @@ export class UpdateService {
       resultSchema: UpdateMutationResultSchema,
       perform: () => {
         const source = this.requireResponsible(actorUserId, submissionItemId);
-        this.requireLocalScript(source);
+        DeploymentMethodSchema.parse(JSON.parse(source.deployment_json));
         const now = this.now().toISOString();
         const frozen = this.freezeItem(submissionItemId, now, false);
         if (!frozen)
@@ -249,34 +273,70 @@ export class UpdateService {
         const latest = this.latestAttempt(batchId);
         if (!latest || !isTerminal(latest.state))
           throw new PlatformError('RESOURCE_CONFLICT', '当前更新执行尚未结束');
-        const prompt = buildContinuationLocalScriptUpdatePrompt({
-          content: input.content,
-        });
+        const source = this.itemSource(batch.submission_item_id);
+        const deployment = DeploymentMethodSchema.parse(
+          JSON.parse(batch.deployment_json),
+        );
+        const externalReport =
+          deployment.kind === 'CI_CD'
+            ? this.latestUnconsumedFailedReport(batchId)
+            : undefined;
+        if (!externalReport && !input.content)
+          throw new PlatformError(
+            'VALIDATION_FAILED',
+            '请补充本次继续执行所需的信息',
+          );
+        const attachmentIds = externalReport
+          ? this.externalReportAttachmentIds(externalReport.id)
+          : [];
+        const prompt =
+          deployment.kind === 'LOCAL_SCRIPT'
+            ? buildContinuationLocalScriptUpdatePrompt({
+                content: input.content!,
+              })
+            : externalReport
+              ? buildContinuationCiCdUpdatePrompt({
+                  reportRound: externalReport.round,
+                  summary: externalReport.summary!,
+                  attachmentNames: this.externalReportAttachments(
+                    externalReport.id,
+                  ).map(({ original_name }) => original_name),
+                })
+              : buildManualContinuationCiCdUpdatePrompt({
+                  content: input.content!,
+                });
         const attemptId = this.createId();
         const execution = this.executions.enqueue({
           owner: { namespace: 'cooking', kind: 'UPDATE_BATCH', id: attemptId },
           attempt: latest.attempt + 1,
           previousExecutionId: latest.execution_id,
-          runnerId: this.itemSource(batch.submission_item_id).runner_id,
-          bindingId: this.itemSource(batch.submission_item_id).binding_id,
+          runnerId: source.runner_id,
+          bindingId: source.binding_id,
           priority: UPDATE_PRIORITY,
           promptKind: prompt.kind,
           promptVersion: prompt.version,
           renderedPrompt: prompt.renderedPrompt,
           renderedPromptHash: prompt.renderedPromptHash,
           outputJsonSchema: prompt.outputJsonSchema,
-          attachmentIds: [],
+          attachmentIds,
           resumeSessionId: batch.session_id,
         });
         const now = this.now().toISOString();
         this.db
           .prepare(
             `INSERT INTO cooking_update_attempt(
-               id, batch_id, execution_id, attempt, outcome_json,
-               created_at, finished_at
-             ) VALUES (?, ?, ?, ?, NULL, ?, NULL)`,
+               id, batch_id, execution_id, continuation_report_id, attempt,
+               outcome_json, created_at, finished_at
+             ) VALUES (?, ?, ?, ?, ?, NULL, ?, NULL)`,
           )
-          .run(attemptId, batchId, execution.id, latest.attempt + 1, now);
+          .run(
+            attemptId,
+            batchId,
+            execution.id,
+            externalReport?.id ?? null,
+            latest.attempt + 1,
+            now,
+          );
         const update = this.db
           .prepare(
             `UPDATE cooking_update_batch
@@ -302,6 +362,110 @@ export class UpdateService {
               targetType: 'UPDATE_BATCH',
               targetId: batchId,
               details: { executionId: execution.id },
+            },
+          ],
+        };
+      },
+    });
+    if (!replay) {
+      const batch = this.batch(batchId);
+      this.onInvalidated(batch.submission_id, result.revision);
+    }
+    return result;
+  }
+
+  reportExternalDeployment(
+    actorUserId: string,
+    batchId: string,
+    inputValue: ExternalDeploymentReportInput,
+  ): UpdateMutationResult {
+    const input = ExternalDeploymentReportInputSchema.parse(inputValue);
+    const replay = this.hasRecordedMutation(input.mutationId);
+    const result = this.writes.run({
+      mutationId: input.mutationId,
+      actorUserId,
+      operation: 'UPDATE_BATCH_REPORT_EXTERNAL',
+      resourceType: 'UPDATE_BATCH',
+      resultSchema: UpdateMutationResultSchema,
+      perform: () => {
+        const batch = this.requireBatchResponsible(actorUserId, batchId);
+        this.requireBatchVersion(batch, input.expectedVersion);
+        const deployment = DeploymentMethodSchema.parse(
+          JSON.parse(batch.deployment_json),
+        );
+        if (deployment.kind !== 'CI_CD')
+          throw new PlatformError(
+            'INVALID_TRANSITION',
+            '只有 CI/CD 更新批次需要外部结果',
+          );
+        if (batch.state !== 'WAITING_EXTERNAL')
+          throw new PlatformError(
+            'INVALID_TRANSITION',
+            '当前更新批次不在等待外部结果',
+          );
+        this.requireBindableExternalFiles(actorUserId, input.attachmentIds);
+        const now = this.now().toISOString();
+        const reportId = this.createId();
+        const reportRound = this.nextExternalReportRound(batchId);
+        this.db
+          .prepare(
+            `INSERT INTO cooking_external_deployment_report(
+               id, batch_id, round, outcome, summary,
+               reported_by_user_id, created_at
+             ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            reportId,
+            batchId,
+            reportRound,
+            input.outcome,
+            input.summary?.trim() || null,
+            actorUserId,
+            now,
+          );
+        input.attachmentIds.forEach((fileId, position) =>
+          this.db
+            .prepare(
+              `INSERT INTO cooking_external_deployment_report_attachment(
+                 file_id, report_id, position
+               ) VALUES (?, ?, ?)`,
+            )
+            .run(fileId, reportId, position),
+        );
+        const state = input.outcome === 'SUCCEEDED' ? 'COMPLETED' : 'FAILED';
+        const batchUpdate = this.db
+          .prepare(
+            `UPDATE cooking_update_batch
+             SET state = ?, active_execution_id = NULL,
+                 version = version + 1, updated_at = ?
+             WHERE id = ? AND version = ? AND state = 'WAITING_EXTERNAL'`,
+          )
+          .run(state, now, batchId, input.expectedVersion);
+        if (batchUpdate.changes !== 1) throw staleBatch();
+        if (input.outcome === 'SUCCEEDED') this.completeBatchBugs(batchId, now);
+        const revision = this.bumpRevision(batch.submission_id, now);
+        return {
+          result: {
+            batchId,
+            batchVersion: input.expectedVersion + 1,
+            executionId: null,
+            revision,
+          },
+          resourceId: batchId,
+          audits: [
+            {
+              projectId: this.itemSource(batch.submission_item_id).project_id,
+              action:
+                input.outcome === 'SUCCEEDED'
+                  ? 'EXTERNAL_DEPLOYMENT_SUCCEEDED'
+                  : 'EXTERNAL_DEPLOYMENT_FAILED',
+              targetType: 'UPDATE_BATCH',
+              targetId: batchId,
+              details: {
+                reportId,
+                round: reportRound,
+                attachmentCount: input.attachmentIds.length,
+              },
             },
           ],
         };
@@ -562,7 +726,7 @@ export class UpdateService {
     if (!attempt || attempt.outcome_json) return;
     const batch = this.batch(attempt.batch_id);
     const now = this.now().toISOString();
-    const interpreted = this.interpret(execution);
+    const interpreted = this.interpret(execution, batch);
     if (interpreted.kind === 'COMPLETED') {
       const batchUpdate = this.db
         .prepare(
@@ -574,34 +738,18 @@ export class UpdateService {
         )
         .run(execution.sessionId, now, batch.id);
       if (batchUpdate.changes !== 1) throw staleBatch();
-      const entries = this.batchEntries(batch.id);
-      const bugUpdate = this.db
+      this.completeBatchBugs(batch.id, now);
+    } else if (interpreted.kind === 'PUSHED') {
+      const batchUpdate = this.db
         .prepare(
-          `UPDATE cooking_bug
-           SET stage = 'WAITING_FOR_VERIFICATION', version = version + 1,
-               updated_at = ?
-           WHERE id IN (
-             SELECT bug_id FROM cooking_update_batch_entry WHERE batch_id = ?
-           ) AND stage = 'UPDATING'`,
-        )
-        .run(now, batch.id);
-      if (bugUpdate.changes !== entries.length)
-        throw new PlatformError('STALE_STATE', '更新批次中的缺陷状态已变化');
-      const contextUpdate = this.db
-        .prepare(
-          `UPDATE cooking_bug_repair_context
-           SET pending_commits_json = '[]', last_candidate_at = NULL,
+          `UPDATE cooking_update_batch
+           SET state = 'WAITING_EXTERNAL', active_execution_id = NULL,
+               session_id = COALESCE(?, session_id),
                version = version + 1, updated_at = ?
-           WHERE bug_id IN (
-             SELECT bug_id FROM cooking_update_batch_entry WHERE batch_id = ?
-           )`,
+           WHERE id = ? AND state IN ('READY', 'RUNNING')`,
         )
-        .run(now, batch.id);
-      if (contextUpdate.changes !== entries.length)
-        throw new PlatformError(
-          'INTERNAL_ERROR',
-          '更新批次候选提交上下文不完整',
-        );
+        .run(execution.sessionId, now, batch.id);
+      if (batchUpdate.changes !== 1) throw staleBatch();
     } else {
       const batchUpdate = this.db
         .prepare(
@@ -621,9 +769,11 @@ export class UpdateService {
       .run(JSON.stringify(interpreted.attemptOutcome), now, attempt.id);
     this.auditForBatch(
       batch,
-      interpreted.kind === 'COMPLETED'
-        ? 'UPDATE_ATTEMPT_COMPLETED'
-        : 'UPDATE_ATTEMPT_FAILED',
+      interpreted.kind === 'FAILED'
+        ? 'UPDATE_ATTEMPT_FAILED'
+        : interpreted.kind === 'PUSHED'
+          ? 'UPDATE_ATTEMPT_PUSHED'
+          : 'UPDATE_ATTEMPT_COMPLETED',
       {
         executionId: execution.id,
         attempt: attempt.attempt,
@@ -685,10 +835,7 @@ export class UpdateService {
       lastCandidateAt: row.last_candidate_at,
       eligibleAt: row.eligible_at,
       availableActions:
-        row.responsible_user_id === userId &&
-        row.deployment_kind === 'LOCAL_SCRIPT'
-          ? (['FREEZE_NOW'] as const)
-          : [],
+        row.responsible_user_id === userId ? (['FREEZE_NOW'] as const) : [],
     }));
     const batchIds = (
       this.db
@@ -716,6 +863,9 @@ export class UpdateService {
     const active = batch.active_execution_id
       ? this.executions.get(batch.active_execution_id)
       : null;
+    const deployment = DeploymentMethodSchema.parse(
+      JSON.parse(batch.deployment_json),
+    );
     return UpdateBatchViewSchema.parse({
       id: batch.id,
       submissionId: batch.submission_id,
@@ -724,6 +874,7 @@ export class UpdateService {
       version: batch.version,
       activeExecutionId: technical ? batch.active_execution_id : null,
       frozenAt: batch.frozen_at,
+      deploymentKind: deployment.kind,
       entries: entries.map((entry) => ({
         bugId: entry.bug_id,
         bugShortId: entry.short_id,
@@ -753,6 +904,22 @@ export class UpdateService {
             };
           })
         : [],
+      externalReports: this.externalReports(batchId).map((report) => ({
+        id: report.id,
+        round: report.round,
+        outcome: report.outcome,
+        summary: technical ? report.summary : null,
+        attachments: technical
+          ? this.externalReportAttachments(report.id).map((attachment) => ({
+              id: attachment.id,
+              originalName: attachment.original_name,
+              mediaType: attachment.media_type,
+              sizeBytes: attachment.size_bytes,
+              createdAt: attachment.created_at,
+            }))
+          : [],
+        createdAt: report.created_at,
+      })),
       availableActions: technical
         ? [
             ...(batch.state === 'FAILED' && latest && isTerminal(latest.state)
@@ -767,6 +934,10 @@ export class UpdateService {
               active.state,
             )
               ? (['STOP_EXECUTION'] as const)
+              : []),
+            ...(batch.state === 'WAITING_EXTERNAL' &&
+            deployment.kind === 'CI_CD'
+              ? (['REPORT_EXTERNAL'] as const)
               : []),
           ]
         : [],
@@ -822,6 +993,28 @@ export class UpdateService {
     });
   }
 
+  requireExternalAttachmentAccess(userId: string, fileId: string): void {
+    const row = this.db
+      .prepare(
+        `SELECT batch.submission_id, item.responsible_user_id
+         FROM cooking_external_deployment_report_attachment attachment
+         JOIN cooking_external_deployment_report report
+           ON report.id = attachment.report_id
+         JOIN cooking_update_batch batch ON batch.id = report.batch_id
+         JOIN cooking_submission_item item ON item.id = batch.submission_item_id
+         WHERE attachment.file_id = ?`,
+      )
+      .get(fileId) as
+      { submission_id: string; responsible_user_id: string } | undefined;
+    if (!row || row.responsible_user_id !== userId)
+      throw new PlatformError('NOT_FOUND', '附件不存在或无权访问');
+    try {
+      this.requireSubmissionAccess(userId, row.submission_id);
+    } catch {
+      throw new PlatformError('NOT_FOUND', '附件不存在或无权访问');
+    }
+  }
+
   private freezeItem(
     submissionItemId: string,
     now: string,
@@ -829,7 +1022,9 @@ export class UpdateService {
   ): FrozenBatch | undefined {
     const source = this.itemSource(submissionItemId);
     if (source.submission_status !== 'ACTIVE') return undefined;
-    this.requireLocalScript(source);
+    const deployment = DeploymentMethodSchema.parse(
+      JSON.parse(source.deployment_json),
+    );
     const pending = this.db
       .prepare(
         `SELECT last_candidate_at, eligible_at
@@ -848,23 +1043,28 @@ export class UpdateService {
         .run(submissionItemId);
       return undefined;
     }
-    const deployment = this.requireLocalScript(source);
     const batchId = this.createId();
     const attemptId = this.createId();
-    const prompt = buildInitialLocalScriptUpdatePrompt({
+    const promptInput = {
       workspaceKey: `update-batch:${batchId}`,
       submissionTitle: source.submission_title,
       engineeringName: source.engineering_name,
       repositoryUrl: source.repository_url,
       targetBranch: source.target_branch,
       environmentName: source.environment_name,
-      deploymentCommand: deployment.command,
       entries: candidates.map((candidate) => ({
         bugShortId: candidate.short_id,
         bugTitle: candidate.title,
         commits: parseCommits(candidate.pending_commits_json),
       })),
-    });
+    };
+    const prompt =
+      deployment.kind === 'LOCAL_SCRIPT'
+        ? buildInitialLocalScriptUpdatePrompt({
+            ...promptInput,
+            deploymentCommand: deployment.command,
+          })
+        : buildInitialCiCdUpdatePrompt(promptInput);
     this.db
       .prepare(
         `INSERT INTO cooking_update_batch(
@@ -913,9 +1113,9 @@ export class UpdateService {
     this.db
       .prepare(
         `INSERT INTO cooking_update_attempt(
-           id, batch_id, execution_id, attempt, outcome_json,
-           created_at, finished_at
-         ) VALUES (?, ?, ?, 1, NULL, ?, NULL)`,
+           id, batch_id, execution_id, continuation_report_id, attempt,
+           outcome_json, created_at, finished_at
+         ) VALUES (?, ?, ?, NULL, 1, NULL, ?, NULL)`,
       )
       .run(attemptId, batchId, execution.id, now);
     this.db
@@ -946,15 +1146,25 @@ export class UpdateService {
 
   private interpret(
     execution: Execution,
+    batch: BatchRow,
   ):
     | { kind: 'COMPLETED'; attemptOutcome: unknown }
+    | { kind: 'PUSHED'; attemptOutcome: unknown }
     | { kind: 'FAILED'; attemptOutcome: unknown } {
     if (execution.outcome?.kind === 'SUCCEEDED') {
-      const parsed = LocalScriptUpdateExecutionResultSchema.safeParse(
-        execution.outcome.result,
+      const deployment = DeploymentMethodSchema.parse(
+        JSON.parse(batch.deployment_json),
       );
+      const parsed =
+        deployment.kind === 'LOCAL_SCRIPT'
+          ? LocalScriptUpdateExecutionResultSchema.safeParse(
+              execution.outcome.result,
+            )
+          : CiCdUpdateExecutionResultSchema.safeParse(execution.outcome.result);
       if (parsed.success && parsed.data.outcome === 'COMPLETED')
         return { kind: 'COMPLETED', attemptOutcome: parsed.data };
+      if (parsed.success && parsed.data.outcome === 'PUSHED')
+        return { kind: 'PUSHED', attemptOutcome: parsed.data };
       if (parsed.success)
         return { kind: 'FAILED', attemptOutcome: parsed.data };
       this.markExecutionResultInvalid(execution.id);
@@ -1001,6 +1211,132 @@ export class UpdateService {
         }),
         executionId,
       );
+  }
+
+  private completeBatchBugs(batchId: string, now: string): void {
+    const entries = this.batchEntries(batchId);
+    const bugUpdate = this.db
+      .prepare(
+        `UPDATE cooking_bug
+         SET stage = 'WAITING_FOR_VERIFICATION', version = version + 1,
+             updated_at = ?
+         WHERE id IN (
+           SELECT bug_id FROM cooking_update_batch_entry WHERE batch_id = ?
+         ) AND stage = 'UPDATING'`,
+      )
+      .run(now, batchId);
+    if (bugUpdate.changes !== entries.length)
+      throw new PlatformError('STALE_STATE', '更新批次中的缺陷状态已变化');
+    const contextUpdate = this.db
+      .prepare(
+        `UPDATE cooking_bug_repair_context
+         SET pending_commits_json = '[]', last_candidate_at = NULL,
+             version = version + 1, updated_at = ?
+         WHERE bug_id IN (
+           SELECT bug_id FROM cooking_update_batch_entry WHERE batch_id = ?
+         )`,
+      )
+      .run(now, batchId);
+    if (contextUpdate.changes !== entries.length)
+      throw new PlatformError('INTERNAL_ERROR', '更新批次候选提交上下文不完整');
+  }
+
+  private nextExternalReportRound(batchId: string): number {
+    const row = this.db
+      .prepare(
+        `SELECT COALESCE(MAX(round), 0) + 1 round
+         FROM cooking_external_deployment_report WHERE batch_id = ?`,
+      )
+      .get(batchId) as { round: number };
+    return row.round;
+  }
+
+  private externalReports(batchId: string): ExternalReportRow[] {
+    return this.db
+      .prepare(
+        `SELECT * FROM cooking_external_deployment_report
+         WHERE batch_id = ? ORDER BY round, created_at, id`,
+      )
+      .all(batchId) as ExternalReportRow[];
+  }
+
+  private latestUnconsumedFailedReport(
+    batchId: string,
+  ): ExternalReportRow | undefined {
+    return this.db
+      .prepare(
+        `SELECT report.*
+         FROM cooking_external_deployment_report report
+         LEFT JOIN cooking_update_attempt attempt
+           ON attempt.continuation_report_id = report.id
+         WHERE report.batch_id = ? AND report.outcome = 'FAILED'
+           AND attempt.id IS NULL
+         ORDER BY report.round DESC LIMIT 1`,
+      )
+      .get(batchId) as ExternalReportRow | undefined;
+  }
+
+  private externalReportAttachmentIds(reportId: string): string[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT file_id
+           FROM cooking_external_deployment_report_attachment
+           WHERE report_id = ? ORDER BY position`,
+        )
+        .all(reportId) as Array<{ file_id: string }>
+    ).map(({ file_id }) => file_id);
+  }
+
+  private externalReportAttachments(
+    reportId: string,
+  ): ExternalReportAttachmentRow[] {
+    return this.db
+      .prepare(
+        `SELECT file.id, file.original_name, file.media_type,
+                file.size_bytes, file.created_at
+         FROM cooking_external_deployment_report_attachment attachment
+         JOIN platform_file file ON file.id = attachment.file_id
+         WHERE attachment.report_id = ? ORDER BY attachment.position`,
+      )
+      .all(reportId) as ExternalReportAttachmentRow[];
+  }
+
+  private requireBindableExternalFiles(
+    actorUserId: string,
+    fileIds: string[],
+  ): void {
+    for (const fileId of fileIds) {
+      const row = this.db
+        .prepare(
+          `SELECT file.uploaded_by_user_id,
+                  bug_attachment.file_id bug_file_id,
+                  report_attachment.file_id report_file_id
+           FROM platform_file file
+           LEFT JOIN cooking_bug_attachment bug_attachment
+             ON bug_attachment.file_id = file.id
+           LEFT JOIN cooking_external_deployment_report_attachment report_attachment
+             ON report_attachment.file_id = file.id
+           WHERE file.id = ?`,
+        )
+        .get(fileId) as
+        | {
+            uploaded_by_user_id: string;
+            bug_file_id: string | null;
+            report_file_id: string | null;
+          }
+        | undefined;
+      if (
+        !row ||
+        row.uploaded_by_user_id !== actorUserId ||
+        row.bug_file_id ||
+        row.report_file_id
+      )
+        throw new PlatformError(
+          'VALIDATION_FAILED',
+          '附件不存在、已被使用或不属于当前用户',
+        );
+    }
   }
 
   private recalculatePendingDelivery(submissionItemId: string): void {
@@ -1169,21 +1505,6 @@ export class UpdateService {
     const batch = this.batch(batchId);
     this.requireResponsible(userId, batch.submission_item_id);
     return batch;
-  }
-
-  private requireLocalScript(source: ItemSourceRow): {
-    kind: 'LOCAL_SCRIPT';
-    command: string;
-  } {
-    const deployment = DeploymentMethodSchema.parse(
-      JSON.parse(source.deployment_json),
-    );
-    if (deployment.kind !== 'LOCAL_SCRIPT')
-      throw new PlatformError(
-        'INVALID_TRANSITION',
-        '当前环境不是本地脚本部署方式',
-      );
-    return deployment;
   }
 
   private requireBatchVersion(batch: BatchRow, expectedVersion: number): void {

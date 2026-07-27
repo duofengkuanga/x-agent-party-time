@@ -1037,6 +1037,10 @@ export class BugService {
       | 'REQUEST_REPAIR'
       | 'WITHDRAW_REPAIR'
       | 'ADD_FEEDBACK'
+      | 'VERIFY_PASS'
+      | 'VERIFY_FAIL'
+      | 'REOPEN'
+      | 'CANCEL'
     > = [];
     if (!bug.reportLockedAt) {
       if (tester) actions.push('EDIT_REPORT');
@@ -1057,7 +1061,35 @@ export class BugService {
       )
         actions.push('WITHDRAW_REPAIR');
     }
+    if (tester && bug.stage === 'WAITING_FOR_VERIFICATION')
+      actions.push('VERIFY_PASS', 'VERIFY_FAIL');
+    if (tester && bug.stage === 'DONE') actions.push('REOPEN');
+    if (
+      tester &&
+      ['WAITING_FOR_REPAIR', 'WAITING_FOR_UPDATE'].includes(bug.stage)
+    )
+      actions.push('CANCEL');
+    if (
+      tester &&
+      bug.stage === 'REPAIRING' &&
+      !this.hasActiveRepairExecution(bug.id)
+    )
+      actions.push('CANCEL');
     return actions;
+  }
+
+  private hasActiveRepairExecution(bugId: string): boolean {
+    const row = this.db
+      .prepare(
+        `SELECT execution.state
+         FROM cooking_repair_attempt attempt
+         JOIN platform_execution execution ON execution.id = attempt.execution_id
+         WHERE attempt.bug_id = ? ORDER BY attempt.attempt DESC LIMIT 1`,
+      )
+      .get(bugId) as { state: string } | undefined;
+    return Boolean(
+      row && !['SUCCEEDED', 'FAILED', 'CANCELLED'].includes(row.state),
+    );
   }
 
   private getUser(userId: string): User {

@@ -29,7 +29,7 @@ export async function createEngineeringAction(
     refreshProject(projectId);
     redirect(
       messageRedirectPath(
-        engineeringPath(engineering.id),
+        engineeringPath(projectId, engineering.id),
         'success',
         '工程已创建',
       ),
@@ -56,14 +56,14 @@ export async function updateEngineeringAction(
     refreshEngineering(projectId, engineeringId);
     redirect(
       messageRedirectPath(
-        engineeringPath(engineeringId),
+        engineeringPath(projectId, engineeringId),
         'success',
         '工程设置已更新',
       ),
     );
   } catch (error) {
     rethrowRedirectError(error);
-    redirectWithError(engineeringPath(engineeringId), error);
+    redirectWithError(engineeringPath(projectId, engineeringId), error);
   }
 }
 
@@ -81,14 +81,14 @@ export async function archiveEngineeringAction(
     refreshEngineering(projectId, engineeringId);
     redirect(
       messageRedirectPath(
-        engineeringPath(engineeringId),
+        engineeringPath(projectId, engineeringId),
         'success',
         '工程已归档，历史数据仍然保留',
       ),
     );
   } catch (error) {
     rethrowRedirectError(error);
-    redirectWithError(engineeringPath(engineeringId), error);
+    redirectWithError(engineeringPath(projectId, engineeringId), error);
   }
 }
 
@@ -108,14 +108,14 @@ export async function addEngineeringMemberAction(
     refreshEngineering(projectId, engineeringId);
     redirect(
       messageRedirectPath(
-        engineeringPath(engineeringId),
+        engineeringPath(projectId, engineeringId),
         'success',
         '工程成员已添加',
       ),
     );
   } catch (error) {
     rethrowRedirectError(error);
-    redirectWithError(engineeringPath(engineeringId), error);
+    redirectWithError(engineeringPath(projectId, engineeringId), error);
   }
 }
 
@@ -138,14 +138,14 @@ export async function removeEngineeringMemberAction(
     refreshEngineering(projectId, engineeringId);
     redirect(
       messageRedirectPath(
-        engineeringPath(engineeringId),
+        engineeringPath(projectId, engineeringId),
         'success',
         '工程成员已移除',
       ),
     );
   } catch (error) {
     rethrowRedirectError(error);
-    redirectWithError(engineeringPath(engineeringId), error);
+    redirectWithError(engineeringPath(projectId, engineeringId), error);
   }
 }
 
@@ -164,14 +164,14 @@ export async function createEnvironmentAction(
     refreshEngineering(projectId, engineeringId);
     redirect(
       messageRedirectPath(
-        engineeringPath(engineeringId),
+        engineeringPath(projectId, engineeringId),
         'success',
         '测试环境已创建',
       ),
     );
   } catch (error) {
     rethrowRedirectError(error);
-    redirectWithError(engineeringPath(engineeringId), error);
+    redirectWithError(engineeringPath(projectId, engineeringId), error);
   }
 }
 
@@ -195,14 +195,14 @@ export async function updateEnvironmentAction(
     refreshEngineering(projectId, engineeringId);
     redirect(
       messageRedirectPath(
-        engineeringPath(engineeringId),
+        engineeringPath(projectId, engineeringId),
         'success',
         '测试环境已更新',
       ),
     );
   } catch (error) {
     rethrowRedirectError(error);
-    redirectWithError(engineeringPath(engineeringId), error);
+    redirectWithError(engineeringPath(projectId, engineeringId), error);
   }
 }
 
@@ -224,14 +224,14 @@ export async function deleteEnvironmentAction(
     refreshEngineering(projectId, engineeringId);
     redirect(
       messageRedirectPath(
-        engineeringPath(engineeringId),
+        engineeringPath(projectId, engineeringId),
         'success',
         '测试环境已删除',
       ),
     );
   } catch (error) {
     rethrowRedirectError(error);
-    redirectWithError(engineeringPath(engineeringId), error);
+    redirectWithError(engineeringPath(projectId, engineeringId), error);
   }
 }
 
@@ -251,21 +251,21 @@ function numberField(formData: FormData, name: string): number {
 }
 
 function projectPath(projectId: string): string {
-  return `/cooking/projects/${encodeURIComponent(projectId)}`;
+  return `/cooking/projects?project=${encodeURIComponent(projectId)}&panel=engineering`;
 }
 
-function engineeringPath(engineeringId: string): string {
-  return `/cooking/engineering/${encodeURIComponent(engineeringId)}`;
+function engineeringPath(projectId: string, engineeringId: string): string {
+  return `${projectPath(projectId)}&engineering=${encodeURIComponent(engineeringId)}`;
 }
 
 function refreshProject(projectId: string): void {
   revalidatePath('/cooking');
-  revalidatePath(projectPath(projectId));
+  revalidatePath('/cooking/projects');
 }
 
 function refreshEngineering(projectId: string, engineeringId: string): void {
   refreshProject(projectId);
-  revalidatePath(engineeringPath(engineeringId));
+  revalidatePath('/cooking/projects');
 }
 
 function redirectWithError(path: string, error: unknown): never {

@@ -344,6 +344,10 @@ export class SubmissionService {
     const canEdit =
       row.status === 'ACTIVE' &&
       (row.created_by_user_id === userId || row.membership_role === 'OWNER');
+    const canClose =
+      row.status === 'ACTIVE' &&
+      row.tester_user_id === userId &&
+      this.canCloseSubmission(submissionId);
     return CookingWorkspaceSnapshotSchema.parse({
       revision: row.workspace_revision,
       currentUser: this.getUser(userId),
@@ -376,7 +380,10 @@ export class SubmissionService {
               : null,
           createdAt: item.createdAt,
         })),
-        availableActions: canEdit ? ['EDIT_DETAILS'] : [],
+        availableActions: [
+          ...(canEdit ? (['EDIT_DETAILS'] as const) : []),
+          ...(canClose ? (['CLOSE'] as const) : []),
+        ],
       },
     });
   }
@@ -390,6 +397,44 @@ export class SubmissionService {
         return false;
       throw error;
     }
+  }
+
+  private canCloseSubmission(submissionId: string): boolean {
+    const nonTerminal = this.db
+      .prepare(
+        `SELECT 1 blocked FROM cooking_bug
+         WHERE submission_id = ? AND stage NOT IN ('DONE', 'CANCELLED')
+         LIMIT 1`,
+      )
+      .get(submissionId);
+    if (nonTerminal) return false;
+    const unfinishedBatch = this.db
+      .prepare(
+        `SELECT 1 blocked FROM cooking_update_batch
+         WHERE submission_id = ? AND state NOT IN ('COMPLETED', 'CANCELLED')
+         LIMIT 1`,
+      )
+      .get(submissionId);
+    if (unfinishedBatch) return false;
+    return !this.db
+      .prepare(
+        `SELECT 1 active
+         FROM platform_execution execution
+         WHERE execution.state IN (
+           'QUEUED', 'CLAIMED', 'RUNNING', 'WAITING_FOR_INTERACTION', 'CANCEL_REQUESTED'
+         ) AND (
+           execution.id IN (
+             SELECT attempt.execution_id FROM cooking_repair_attempt attempt
+             JOIN cooking_bug bug ON bug.id = attempt.bug_id
+             WHERE bug.submission_id = ?
+           ) OR execution.id IN (
+             SELECT attempt.execution_id FROM cooking_update_attempt attempt
+             JOIN cooking_update_batch batch ON batch.id = attempt.batch_id
+             WHERE batch.submission_id = ?
+           )
+         ) LIMIT 1`,
+      )
+      .get(submissionId, submissionId);
   }
 
   private hasRecordedMutation(mutationId: string): boolean {

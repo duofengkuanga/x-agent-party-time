@@ -6,9 +6,8 @@ type ServiceCommand = {
 };
 
 const commands: ServiceCommand[] = [
-  { label: 'Control Plane', script: 'dev:control-plane' },
+  { label: 'Server', script: 'dev:server' },
   { label: 'Runner', script: 'dev:runner' },
-  { label: 'Web', script: 'dev:web' },
 ];
 
 const activeChildren = new Set<ChildProcess>();
@@ -65,6 +64,4 @@ for (const command of commands) {
 process.once('SIGINT', () => stopAll(0, 'SIGINT'));
 process.once('SIGTERM', () => stopAll(0, 'SIGTERM'));
 
-console.log(
-  '[dev] 已启动 Control Plane、Runner 与 Web；按 Ctrl+C 可统一停止。',
-);
+console.log('[dev] 已启动 Server 与 Runner；按 Ctrl+C 可统一停止。');
