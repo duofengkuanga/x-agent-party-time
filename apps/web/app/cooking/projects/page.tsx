@@ -19,22 +19,23 @@ import {
   updateEnvironmentAction,
 } from '@/features/cooking/engineering/presentation/actions';
 import { DeploymentFields } from '@/features/cooking/engineering/presentation/deployment-fields';
+import type { ReceivedProjectInvitation } from '@/features/cooking/projects/contract';
 import {
-  createProjectAction,
   inviteProjectUserAction,
   removeProjectMemberAction,
   respondProjectInvitationAction,
   revokeProjectInvitationAction,
   updateProjectAction,
 } from '@/features/cooking/projects/presentation/actions';
+import { ProjectSettingsControls } from './project-settings-controls';
 
 export default async function ProjectSettingsPage({
   searchParams,
 }: {
   searchParams: Promise<{
-    create?: string;
     engineering?: string;
     error?: string;
+    mode?: string;
     panel?: string;
     project?: string;
     success?: string;
@@ -51,128 +52,48 @@ export default async function ProjectSettingsPage({
 
   return (
     <>
-      <main className="project-settings project-settings-shell">
-        <section className="project-settings__hero">
-          <div className="project-settings__intro">
-            <span className="collab-section-label">协作基础设置</span>
-            <h1>项目与工程</h1>
-            <p>管理私密项目、成员、工程、测试环境与本机 Runner 绑定。</p>
-          </div>
-          <div className="project-settings__toolbar-actions">
-            <Link className="project-settings__quiet-action" href="/cooking">
-              返回提测
-            </Link>
-            <Link
-              className="project-settings__primary-action"
-              href="/cooking/projects?create=1"
-            >
-              ＋ 新建项目
-            </Link>
-          </div>
-        </section>
-
-        <section className="project-settings__content">
-          {query.error ? (
-            <p className="project-settings__error" role="alert">
-              {query.error}
-            </p>
-          ) : null}
-          {query.success ? (
-            <p className="notice notice-success">{query.success}</p>
-          ) : null}
-
-          {query.create === '1' || projects.length === 0 ? (
-            <form
-              action={createProjectAction}
-              className="project-settings__create"
-            >
-              <input name="mutationId" type="hidden" value={randomUUID()} />
-              <div>
-                <span>新项目</span>
-                <p>项目创建后继续配置成员、工程与 Runner。</p>
+      <ProjectSettingsControls
+        error={query.error}
+        hasProjects={projects.length > 0}
+        mutationId={randomUUID()}
+        success={query.success}
+      >
+        <ol className="project-settings__list">
+          {projects.map(({ project, membership }) => (
+            <li key={project.id}>
+              <div className="project-settings__project-copy">
+                <span>
+                  {membership.role === 'OWNER' ? '项目负责人' : '项目成员'}
+                </span>
+                <h2>{project.name}</h2>
               </div>
-              <label>
-                <span>项目名称</span>
-                <input maxLength={120} name="name" required />
-              </label>
-              <button type="submit">创建并配置工程</button>
-            </form>
-          ) : null}
+              <div className="project-settings__row-actions">
+                <Link href={settingsHref(project.id, 'collaboration')}>
+                  成员
+                </Link>
+                <Link
+                  className="project-settings__row-primary"
+                  href={settingsHref(project.id, 'engineering')}
+                >
+                  工程与 Runner
+                </Link>
+                <Link href="/cooking">提测</Link>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </ProjectSettingsControls>
 
-          {projects.length ? (
-            <ol className="project-settings__list">
-              {projects.map(({ project, membership }) => (
-                <li key={project.id}>
-                  <div className="project-settings__project-copy">
-                    <span>
-                      {membership.role === 'OWNER' ? '项目负责人' : '项目成员'}
-                    </span>
-                    <h2>{project.name}</h2>
-                  </div>
-                  <div className="project-settings__row-actions">
-                    <Link href={settingsHref(project.id, 'collaboration')}>
-                      成员与邀请
-                    </Link>
-                    <Link
-                      className="project-settings__row-primary"
-                      href={settingsHref(project.id, 'engineering')}
-                    >
-                      工程与 Runner
-                    </Link>
-                    <Link href="/cooking">提测</Link>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <div className="project-settings__empty">
-              <span>暂无项目</span>
-              <h2>从一个项目开始。</h2>
-              <p>项目创建后，可继续添加工程、配置测试环境并绑定本机 Runner。</p>
-            </div>
-          )}
-
-          {invitations.length ? (
-            <section className="project-settings__empty">
-              <span>项目邀请</span>
-              <h2>等待你的决定。</h2>
-              <ol className="project-settings__list">
-                {invitations.map(
-                  ({ invitation, projectName, invitedByDisplayName }) => (
-                    <li key={invitation.id}>
-                      <div className="project-settings__project-copy">
-                        <span>{invitedByDisplayName} 邀请</span>
-                        <h2>{projectName}</h2>
-                      </div>
-                      <div className="project-settings__row-actions">
-                        <InvitationForm
-                          decision="ACCEPT"
-                          invitationId={invitation.id}
-                          label="接受邀请"
-                          version={invitation.version}
-                        />
-                        <InvitationForm
-                          decision="REJECT"
-                          invitationId={invitation.id}
-                          label="拒绝邀请"
-                          version={invitation.version}
-                        />
-                      </div>
-                    </li>
-                  ),
-                )}
-              </ol>
-            </section>
-          ) : null}
-        </section>
-      </main>
-
+      {panel === 'invitations' ? (
+        <InvitationDialog invitations={invitations} />
+      ) : null}
       {selected && panel === 'collaboration' ? (
         <CollaborationDialog projectId={selected.project.id} userId={user.id} />
       ) : null}
       {selected && panel === 'engineering' ? (
         <EngineeringDialog
           engineeringId={query.engineering}
+          mode={query.mode}
           projectId={selected.project.id}
           userId={user.id}
         />
@@ -192,23 +113,34 @@ function CollaborationDialog({
   const summary = projects.getProject(userId, projectId);
   const members = projects.listMembers(userId, projectId);
   const invitations = projects.listProjectInvitations(userId, projectId);
+  const pendingInvitations = invitations.filter(
+    ({ invitation }) => invitation.status === 'PENDING',
+  );
   const owner = summary.membership.role === 'OWNER';
   return (
-    <Dialog title="成员与邀请" kicker={summary.project.name}>
-      <div className="collaboration-dialog__body">
-        <section className="collaboration-section">
+    <Dialog
+      className="project-collaboration-dialog"
+      title={`${summary.project.name} · 成员`}
+      kicker="私密项目"
+      overlayClassName=""
+    >
+      <div className="collaboration-ledger">
+        <section>
           <div className="collaboration-section-title">
             <span>项目成员</span>
-            <small>{members.length}</small>
+            <small>{members.length} 人</small>
           </div>
-          <ul className="collaboration-list">
+          <div className="collaboration-member-list">
             {members.map(({ membership, user }) => (
-              <li key={user.id}>
+              <article className="collaboration-member" key={user.id}>
+                <span aria-hidden="true">{user.displayName.slice(0, 1)}</span>
                 <div>
                   <strong>{user.displayName}</strong>
                   <small>@{user.username}</small>
                 </div>
-                <span>{membership.role === 'OWNER' ? '负责人' : '成员'}</span>
+                <em>
+                  {membership.role === 'OWNER' ? '项目负责人' : '项目成员'}
+                </em>
                 {owner && membership.role !== 'OWNER' ? (
                   <form action={removeProjectMemberAction}>
                     <ProjectFields projectId={projectId} />
@@ -221,45 +153,51 @@ function CollaborationDialog({
                     <button type="submit">移除</button>
                   </form>
                 ) : null}
-              </li>
+              </article>
             ))}
-          </ul>
+          </div>
         </section>
 
         {owner ? (
-          <section className="collaboration-section">
+          <section>
             <div className="collaboration-section-title">
               <span>邀请成员</span>
+              <small>仅限已注册用户</small>
             </div>
             <form
               action={inviteProjectUserAction}
               className="collaboration-invite-form"
             >
               <ProjectFields projectId={projectId} />
-              <label>
-                <span>用户名</span>
-                <input maxLength={80} name="username" required />
-              </label>
-              <button type="submit">发送邀请</button>
+              <input
+                aria-label="受邀用户名"
+                maxLength={80}
+                name="username"
+                placeholder="输入用户名"
+                required
+              />
+              <button className="repair-primary" type="submit">
+                发出邀请
+              </button>
             </form>
           </section>
         ) : null}
 
-        {invitations.length ? (
-          <section className="collaboration-section">
-            <div className="collaboration-section-title">
-              <span>邀请记录</span>
-              <small>{invitations.length}</small>
-            </div>
-            <ul className="collaboration-list">
-              {invitations.map(({ invitation, invitedUser }) => (
-                <li key={invitation.id}>
+        <section>
+          <div className="collaboration-section-title">
+            <span>待处理邀请</span>
+            <small>{pendingInvitations.length} 条</small>
+          </div>
+          {pendingInvitations.length ? (
+            <div className="collaboration-invitation-list">
+              {pendingInvitations.map(({ invitation, invitedUser }) => (
+                <article key={invitation.id}>
                   <div>
                     <strong>{invitedUser.displayName}</strong>
                     <small>@{invitedUser.username}</small>
                   </div>
-                  <span>{invitationStatus(invitation.status)}</span>
-                  {owner && invitation.status === 'PENDING' ? (
+                  <span>等待接受</span>
+                  {owner ? (
                     <form action={revokeProjectInvitationAction}>
                       <ProjectFields projectId={projectId} />
                       <input
@@ -275,14 +213,16 @@ function CollaborationDialog({
                       <button type="submit">撤销</button>
                     </form>
                   ) : null}
-                </li>
+                </article>
               ))}
-            </ul>
-          </section>
-        ) : null}
+            </div>
+          ) : (
+            <p className="collaboration-empty">没有待处理邀请。</p>
+          )}
+        </section>
 
         {owner ? (
-          <section className="collaboration-section">
+          <section>
             <div className="collaboration-section-title">
               <span>项目名称</span>
             </div>
@@ -306,12 +246,75 @@ function CollaborationDialog({
   );
 }
 
+function InvitationDialog({
+  invitations,
+}: {
+  invitations: ReceivedProjectInvitation[];
+}) {
+  return (
+    <div className="repair-overlay" role="presentation">
+      <section
+        aria-modal="true"
+        className="bug-dialog project-inbox-dialog"
+        role="dialog"
+      >
+        <header>
+          <div>
+            <p className="repair-kicker">项目邀请</p>
+            <h2>项目邀请</h2>
+          </div>
+          <Link aria-label="关闭项目邀请" href="/cooking/projects">
+            ×
+          </Link>
+        </header>
+        {invitations.length ? (
+          <div className="project-inbox-list">
+            {invitations.map(
+              ({ invitation, invitedByDisplayName, projectName }) => (
+                <article key={invitation.id}>
+                  <div>
+                    <strong>{projectName}</strong>
+                    <span>邀请人：{invitedByDisplayName}</span>
+                  </div>
+                  <em>{invitationStatus(invitation.status)}</em>
+                  {invitation.status === 'PENDING' ? (
+                    <div>
+                      <InvitationForm
+                        decision="REJECT"
+                        invitationId={invitation.id}
+                        label="拒绝"
+                        version={invitation.version}
+                      />
+                      <InvitationForm
+                        decision="ACCEPT"
+                        invitationId={invitation.id}
+                        label="接受邀请"
+                        version={invitation.version}
+                      />
+                    </div>
+                  ) : null}
+                </article>
+              ),
+            )}
+          </div>
+        ) : (
+          <p className="collaboration-empty collaboration-empty--large">
+            暂时没有项目邀请。
+          </p>
+        )}
+      </section>
+    </div>
+  );
+}
+
 function EngineeringDialog({
   engineeringId,
+  mode,
   projectId,
   userId,
 }: {
   engineeringId?: string;
+  mode?: string;
   projectId: string;
   userId: string;
 }) {
@@ -320,15 +323,19 @@ function EngineeringDialog({
   const project = projects.getProject(userId, projectId);
   const items = engineering.listEngineering(userId, projectId);
   const members = projects.listMembers(userId, projectId);
-  const selected = engineeringId
-    ? items.find((candidate) => candidate.id === engineeringId)
-    : undefined;
+  const selected =
+    engineeringId && engineeringId !== 'new'
+      ? items.find((candidate) => candidate.id === engineeringId)
+      : undefined;
   const owner = project.membership.role === 'OWNER';
 
   return (
     <Dialog title="工程目录" kicker={project.project.name}>
-      {selected ? (
+      {engineeringId === 'new' && owner ? (
+        <EngineeringCreateForm projectId={projectId} />
+      ) : selected ? (
         <EngineeringDetail
+          editing={mode === 'edit'}
           engineeringId={selected.id}
           owner={owner}
           projectId={projectId}
@@ -342,9 +349,14 @@ function EngineeringDialog({
               <span>工程与 Runner</span>
               <p>维护工程成员、测试环境和开发者本机 Binding。</p>
             </div>
-            <div className="engineering-detail__actions">
-              <Link href="/cooking/runners">Runner 管理</Link>
-            </div>
+            {owner ? (
+              <Link
+                className="repair-primary"
+                href={engineeringCreateHref(projectId)}
+              >
+                新增工程
+              </Link>
+            ) : null}
           </div>
           <section className="engineering-group">
             <div className="collaboration-section-title">
@@ -365,45 +377,52 @@ function EngineeringDialog({
               ))}
             </div>
           </section>
-          {owner ? (
-            <section className="engineering-group">
-              <div className="collaboration-section-title">
-                <span>新增工程</span>
-              </div>
-              <form
-                action={createEngineeringAction}
-                className="engineering-editor"
-              >
-                <ProjectFields projectId={projectId} />
-                <div className="engineering-editor__grid">
-                  <label>
-                    <span>工程名称</span>
-                    <input maxLength={120} name="name" required />
-                  </label>
-                  <label>
-                    <span>远程仓库地址</span>
-                    <input maxLength={500} name="repositoryUrl" required />
-                  </label>
-                </div>
-                <div className="dialog-actions">
-                  <button type="submit">创建工程</button>
-                </div>
-              </form>
-            </section>
-          ) : null}
         </div>
       )}
     </Dialog>
   );
 }
 
+function EngineeringCreateForm({ projectId }: { projectId: string }) {
+  return (
+    <form action={createEngineeringAction} className="engineering-editor">
+      <div className="engineering-editor__heading">
+        <div>
+          <strong>新增工程</strong>
+          <small>工程创建后再配置成员、环境与 Runner Binding。</small>
+        </div>
+        <Link href={settingsHref(projectId, 'engineering')}>取消</Link>
+      </div>
+      <ProjectFields projectId={projectId} />
+      <div className="engineering-editor__grid">
+        <label>
+          <span>工程名称</span>
+          <input maxLength={120} name="name" required />
+        </label>
+        <label>
+          <span>远程仓库地址</span>
+          <input maxLength={500} name="repositoryUrl" required />
+        </label>
+      </div>
+      <div className="dialog-actions">
+        <Link href={settingsHref(projectId, 'engineering')}>返回目录</Link>
+        <button className="repair-primary" type="submit">
+          创建工程
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function EngineeringDetail({
+  editing,
   engineeringId,
   owner,
   projectId,
   projectMembers,
   userId,
 }: {
+  editing: boolean;
   engineeringId: string;
   owner: boolean;
   projectId: string;
@@ -433,7 +452,7 @@ function EngineeringDetail({
         <Link href={settingsHref(projectId, 'engineering')}>返回工程列表</Link>
       </div>
 
-      {owner ? (
+      {owner && editing ? (
         <form action={updateEngineeringAction} className="engineering-editor">
           <EngineeringFields
             engineeringId={engineeringId}
@@ -480,7 +499,7 @@ function EngineeringDetail({
                 <strong>{user.displayName}</strong>
                 <small>@{user.username}</small>
               </span>
-              {owner ? (
+              {owner && editing ? (
                 <form action={removeEngineeringMemberAction}>
                   <EngineeringFields
                     engineeringId={engineeringId}
@@ -498,7 +517,7 @@ function EngineeringDetail({
             </li>
           ))}
         </ul>
-        {owner && availableMembers.length ? (
+        {owner && editing && availableMembers.length ? (
           <form
             action={addEngineeringMemberAction}
             className="engineering-binding-form"
@@ -526,34 +545,44 @@ function EngineeringDetail({
         </div>
         {workspace.environments.map((environment) => (
           <article key={environment.id}>
-            <form
-              action={updateEnvironmentAction}
-              className="engineering-editor"
-            >
-              <EngineeringFields
-                engineeringId={engineeringId}
-                projectId={projectId}
-              />
-              <input
-                name="environmentId"
-                type="hidden"
-                value={environment.id}
-              />
-              <input
-                name="expectedVersion"
-                type="hidden"
-                value={environment.version}
-              />
-              <label>
-                <span>环境名称</span>
-                <input defaultValue={environment.name} name="name" required />
-              </label>
-              <DeploymentFields deployment={environment.deployment} />
-              <div className="dialog-actions">
-                <button type="submit">保存环境</button>
+            {owner && editing ? (
+              <form
+                action={updateEnvironmentAction}
+                className="engineering-editor"
+              >
+                <EngineeringFields
+                  engineeringId={engineeringId}
+                  projectId={projectId}
+                />
+                <input
+                  name="environmentId"
+                  type="hidden"
+                  value={environment.id}
+                />
+                <input
+                  name="expectedVersion"
+                  type="hidden"
+                  value={environment.version}
+                />
+                <label>
+                  <span>环境名称</span>
+                  <input defaultValue={environment.name} name="name" required />
+                </label>
+                <DeploymentFields deployment={environment.deployment} />
+                <div className="dialog-actions">
+                  <button type="submit">保存环境</button>
+                </div>
+              </form>
+            ) : (
+              <div>
+                <strong>{environment.name}</strong>
+                <small>{deploymentLabel(environment.deployment.kind)}</small>
+                {'command' in environment.deployment ? (
+                  <code>{environment.deployment.command}</code>
+                ) : null}
               </div>
-            </form>
-            {owner ? (
+            )}
+            {owner && editing ? (
               <form action={deleteEnvironmentAction}>
                 <EngineeringFields
                   engineeringId={engineeringId}
@@ -579,7 +608,7 @@ function EngineeringDetail({
             ) : null}
           </article>
         ))}
-        {owner ? (
+        {owner && editing ? (
           <form action={createEnvironmentAction} className="engineering-editor">
             <EngineeringFields
               engineeringId={engineeringId}
@@ -642,44 +671,57 @@ function EngineeringDetail({
         )}
       </section>
 
-      {owner && !workspace.engineering.archivedAt ? (
-        <form
-          action={archiveEngineeringAction}
-          className="engineering-detail__actions"
-        >
-          <EngineeringFields
-            engineeringId={engineeringId}
-            projectId={projectId}
-          />
-          <input
-            name="expectedVersion"
-            type="hidden"
-            value={workspace.engineering.version}
-          />
-          <button type="submit">归档工程</button>
-        </form>
-      ) : null}
+      <div className="dialog-actions engineering-detail__actions">
+        <Link href={settingsHref(projectId, 'engineering')}>返回目录</Link>
+        {owner ? (
+          <Link
+            className="repair-primary"
+            href={
+              editing
+                ? engineeringHref(projectId, engineeringId)
+                : engineeringEditHref(projectId, engineeringId)
+            }
+          >
+            {editing ? '完成编辑' : '编辑配置'}
+          </Link>
+        ) : null}
+        {owner && !workspace.engineering.archivedAt ? (
+          <form action={archiveEngineeringAction}>
+            <EngineeringFields
+              engineeringId={engineeringId}
+              projectId={projectId}
+            />
+            <input
+              name="expectedVersion"
+              type="hidden"
+              value={workspace.engineering.version}
+            />
+            <button type="submit">归档工程</button>
+          </form>
+        ) : null}
+      </div>
     </div>
   );
 }
 
 function Dialog({
   children,
+  className = 'engineering-catalog-dialog',
   kicker,
+  overlayClassName = 'engineering-catalog-overlay',
   title,
 }: {
   children: React.ReactNode;
+  className?: string;
   kicker: string;
+  overlayClassName?: string;
   title: string;
 }) {
   return (
-    <div
-      className="repair-overlay engineering-catalog-overlay"
-      role="presentation"
-    >
+    <div className={`repair-overlay ${overlayClassName}`} role="presentation">
       <section
         aria-modal="true"
-        className="bug-dialog engineering-catalog-dialog"
+        className={`bug-dialog ${className}`}
         role="dialog"
       >
         <header className="engineering-dialog__header">
@@ -756,6 +798,18 @@ function settingsHref(
 
 function engineeringHref(projectId: string, engineeringId: string): string {
   return `${settingsHref(projectId, 'engineering')}&engineering=${encodeURIComponent(engineeringId)}`;
+}
+
+function engineeringCreateHref(projectId: string): string {
+  return engineeringHref(projectId, 'new');
+}
+
+function engineeringEditHref(projectId: string, engineeringId: string): string {
+  return `${engineeringHref(projectId, engineeringId)}&mode=edit`;
+}
+
+function deploymentLabel(kind: 'LOCAL_SCRIPT' | 'CI_CD'): string {
+  return kind === 'LOCAL_SCRIPT' ? '本地脚本' : '持续集成';
 }
 
 function invitationStatus(status: string): string {

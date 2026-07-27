@@ -72,10 +72,16 @@ export async function respondProjectInvitationAction(
       },
     );
     revalidatePath('/cooking/projects');
-    redirect(messageRedirectPath('/cooking/projects', 'success', '邀请已处理'));
+    redirect(
+      messageRedirectPath(
+        '/cooking/projects?panel=invitations',
+        'success',
+        '邀请已处理',
+      ),
+    );
   } catch (error) {
     rethrowRedirectError(error);
-    redirectWithError('/cooking/projects', error);
+    redirectWithError('/cooking/projects?panel=invitations', error);
   }
 }
 
