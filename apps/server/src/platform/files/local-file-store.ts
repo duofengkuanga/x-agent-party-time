@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
@@ -19,6 +19,7 @@ export const StoredFileSchema = z.object({
   originalName: z.string().trim().min(1).max(255),
   mediaType: AllowedMediaTypeSchema,
   sizeBytes: z.number().int().positive(),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/u),
   uploadedByUserId: z.string().trim().min(1).max(80),
   createdAt: z.iso.datetime(),
 });
@@ -32,6 +33,7 @@ type StoredFileRow = {
   original_name: string;
   media_type: string;
   size_bytes: number;
+  sha256: string;
   uploaded_by_user_id: string;
   created_at: string;
 };
@@ -70,6 +72,7 @@ export class LocalFileStore {
       originalName,
       mediaType,
       sizeBytes: input.bytes.byteLength,
+      sha256: createHash('sha256').update(input.bytes).digest('hex'),
       uploadedByUserId: input.uploadedByUserId,
       createdAt: this.now().toISOString(),
     });
@@ -84,8 +87,8 @@ export class LocalFileStore {
         .prepare(
           `INSERT INTO platform_file(
              id, storage_key, original_name, media_type, size_bytes,
-             uploaded_by_user_id, created_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+             sha256, uploaded_by_user_id, created_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           storedFile.id,
@@ -93,6 +96,7 @@ export class LocalFileStore {
           storedFile.originalName,
           storedFile.mediaType,
           storedFile.sizeBytes,
+          storedFile.sha256,
           storedFile.uploadedByUserId,
           storedFile.createdAt,
         );
@@ -108,7 +112,7 @@ export class LocalFileStore {
     const row = this.db
       .prepare(
         `SELECT id, storage_key, original_name, media_type, size_bytes,
-                uploaded_by_user_id, created_at
+                sha256, uploaded_by_user_id, created_at
          FROM platform_file WHERE id = ?`,
       )
       .get(fileId) as StoredFileRow | undefined;
@@ -155,6 +159,7 @@ function mapStoredFile(row: StoredFileRow): StoredFile {
     originalName: row.original_name,
     mediaType: row.media_type,
     sizeBytes: row.size_bytes,
+    sha256: row.sha256,
     uploadedByUserId: row.uploaded_by_user_id,
     createdAt: row.created_at,
   });

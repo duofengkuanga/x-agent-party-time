@@ -57,6 +57,9 @@ describe('Server SQLite schema', () => {
           .all()
           .map(({ name }) => name),
       ).toEqual([
+        'platform_execution',
+        'platform_execution_attachment',
+        'platform_execution_interaction',
         'platform_file',
         'platform_runner',
         'platform_runner_pairing_code',

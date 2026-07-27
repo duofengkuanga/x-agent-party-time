@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { requireCurrentUser } from '@/platform/auth/server';
+import { executionService } from '@/platform/execution/server';
 import { PairingCodeForm } from '@/platform/runner/pairing-code-form';
 import { revokeRunnerAction } from '@/platform/runner/actions';
 import { runnerService } from '@/platform/runner/server';
@@ -10,7 +11,13 @@ export default async function RunnersPage({
   searchParams: Promise<{ error?: string; success?: string }>;
 }) {
   const user = await requireCurrentUser();
-  const runners = runnerService().listRunners(user.id);
+  const executions = executionService();
+  const runners = runnerService()
+    .listRunners(user.id)
+    .map((status) => ({
+      ...status,
+      activity: executions.activityForRunner(status.runner.id),
+    }));
   const message = await searchParams;
   return (
     <main className="workspace-page">
@@ -43,7 +50,7 @@ export default async function RunnersPage({
           </div>
           {runners.length ? (
             <ul className="card-list">
-              {runners.map(({ runner, online }) => (
+              {runners.map(({ runner, online, activity }) => (
                 <li className="list-card" key={runner.id}>
                   <div>
                     <h3>{runner.name}</h3>
@@ -56,6 +63,16 @@ export default async function RunnersPage({
                     </p>
                     <small className="logical-id">
                       Runner 标识：{runner.id}
+                    </small>
+                    <small className="logical-id">
+                      通用执行协议：
+                      {runner.revokedAt
+                        ? '已停用'
+                        : online
+                          ? '正常'
+                          : '等待心跳'}
+                      {' · '}活动执行 {activity.activeExecutionCount}
+                      {' · '}待处理交互 {activity.waitingInteractionCount}
                     </small>
                   </div>
                   <form action={revokeRunnerAction}>

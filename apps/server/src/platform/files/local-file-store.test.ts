@@ -87,9 +87,9 @@ describe('LocalFileStore', () => {
     database
       .prepare(
         `INSERT INTO platform_file(
-           id, storage_key, original_name, media_type, size_bytes,
-           uploaded_by_user_id, created_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+         id, storage_key, original_name, media_type, size_bytes,
+           sha256, uploaded_by_user_id, created_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         '00000000-0000-4000-8000-000000000001',
@@ -97,6 +97,7 @@ describe('LocalFileStore', () => {
         'outside.txt',
         'text/plain',
         1,
+        '0'.repeat(64),
         user.id,
         new Date().toISOString(),
       );
