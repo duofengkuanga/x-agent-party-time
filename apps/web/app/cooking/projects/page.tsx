@@ -29,6 +29,7 @@ import {
   updateProjectAction,
 } from '@/features/cooking/projects/presentation/actions';
 import { ProjectDialogEffects } from './project-dialog-effects';
+import { EngineeringCreateEnvironments } from './engineering-create-environments';
 import { ProjectSettingsControls } from './project-settings-controls';
 
 export const metadata: Metadata = {
@@ -574,7 +575,7 @@ function EngineeringCreateForm({
         <div>
           <strong>新建工程</strong>
           <small>
-            配置工程成员与首个测试环境；仓库由首次本机 Runner 绑定确认。
+            配置工程成员与测试环境；仓库由首次本机 Runner 绑定确认。
           </small>
         </div>
       </div>
@@ -584,7 +585,6 @@ function EngineeringCreateForm({
         type="hidden"
         value={randomUUID()}
       />
-      <input name="environmentMutationId" type="hidden" value={randomUUID()} />
       <div className="engineering-editor__grid">
         <label className="field-wide">
           <span>工程名称</span>
@@ -623,24 +623,7 @@ function EngineeringCreateForm({
         ) : null}
       </div>
 
-      <section className="engineering-environments">
-        <div className="collaboration-section-title">
-          <span>首个测试环境与更新方式</span>
-          <small>创建后可继续添加</small>
-        </div>
-        <article>
-          <label>
-            <span>环境名称</span>
-            <input
-              defaultValue="测试环境"
-              maxLength={120}
-              name="environmentName"
-              required
-            />
-          </label>
-          <DeploymentFields />
-        </article>
-      </section>
+      <EngineeringCreateEnvironments initialMutationId={randomUUID()} />
 
       <div className="dialog-actions">
         <Link href={settingsHref(projectId, 'engineering')}>返回目录</Link>

@@ -97,13 +97,26 @@ export class EngineeringService {
       name: string;
       creatorMembershipMutationId: string;
       members: Array<{ userId: string; mutationId: string }>;
-      environment: {
+      environments: Array<{
         mutationId: string;
         name: string;
         deployment: DeploymentMethod;
-      };
+      }>;
     },
   ): Engineering {
+    if (!input.environments.length)
+      throw new PlatformError(
+        'VALIDATION_FAILED',
+        '新建工程时至少配置一个测试环境',
+      );
+    if (
+      new Set(input.environments.map(({ mutationId }) => mutationId)).size !==
+      input.environments.length
+    )
+      throw new PlatformError(
+        'VALIDATION_FAILED',
+        '测试环境的操作标识不能重复',
+      );
     return this.db.transaction(() => {
       const engineering = this.createEngineering(actorUserId, projectId, {
         mutationId: input.mutationId,
@@ -116,7 +129,8 @@ export class EngineeringService {
         this.addMember(actorUserId, engineering.id, member.userId, {
           mutationId: member.mutationId,
         });
-      this.createEnvironment(actorUserId, engineering.id, input.environment);
+      for (const environment of input.environments)
+        this.createEnvironment(actorUserId, engineering.id, environment);
       return engineering;
     })();
   }

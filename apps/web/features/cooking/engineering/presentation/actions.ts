@@ -31,11 +31,11 @@ export async function createEngineeringAction(
           userId,
           mutationId: field(formData, `memberMutationId:${userId}`),
         })),
-        environment: {
-          mutationId: field(formData, 'environmentMutationId'),
-          name: field(formData, 'environmentName'),
-          deployment: deploymentField(formData),
-        },
+        environments: stringFields(formData, 'environmentKey').map((key) => ({
+          mutationId: field(formData, `environmentMutationId:${key}`),
+          name: field(formData, `environmentName:${key}`),
+          deployment: keyedDeploymentField(formData, key),
+        })),
       },
     );
     refreshProject(projectId);
@@ -249,6 +249,16 @@ export async function deleteEnvironmentAction(
 function deploymentField(formData: FormData): DeploymentMethod {
   const kind = field(formData, 'deploymentKind');
   const command = field(formData, 'command').trim();
+  const raw = command ? { kind, command } : { kind };
+  return DeploymentMethodSchema.parse(raw);
+}
+
+function keyedDeploymentField(
+  formData: FormData,
+  key: string,
+): DeploymentMethod {
+  const kind = field(formData, `deploymentKind:${key}`);
+  const command = field(formData, `command:${key}`).trim();
   const raw = command ? { kind, command } : { kind };
   return DeploymentMethodSchema.parse(raw);
 }

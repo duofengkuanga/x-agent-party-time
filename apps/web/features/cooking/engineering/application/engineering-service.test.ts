@@ -99,7 +99,7 @@ afterEach(async () => {
 });
 
 describe('EngineeringService', () => {
-  test('工程初始化原子创建创建者成员、额外成员与首个环境', async () => {
+  test('工程初始化原子创建创建者成员、额外成员与多个环境', async () => {
     const { project, service, users } = await setup();
     const engineering = service.createEngineeringSetup(
       users.owner.id,
@@ -109,22 +109,37 @@ describe('EngineeringService', () => {
         name: '完整初始化工程',
         creatorMembershipMutationId: randomUUID(),
         members: [{ userId: users.member.id, mutationId: randomUUID() }],
-        environment: {
-          mutationId: randomUUID(),
-          name: '测试环境',
-          deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' },
-        },
+        environments: [
+          {
+            mutationId: randomUUID(),
+            name: '测试环境',
+            deployment: {
+              kind: 'LOCAL_SCRIPT',
+              command: 'bun run deploy:test',
+            },
+          },
+          {
+            mutationId: randomUUID(),
+            name: '预发布环境',
+            deployment: { kind: 'CI_CD' },
+          },
+        ],
       },
     );
     const workspace = service.getWorkspace(users.owner.id, engineering.id);
     expect(workspace.members.map(({ user }) => user.id).sort()).toEqual(
       [users.owner.id, users.member.id].sort(),
     );
-    expect(workspace.environments).toHaveLength(1);
-    expect(workspace.environments[0]).toMatchObject({
-      name: '测试环境',
-      deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' },
-    });
+    expect(workspace.environments).toEqual([
+      expect.objectContaining({
+        name: '测试环境',
+        deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' },
+      }),
+      expect.objectContaining({
+        name: '预发布环境',
+        deployment: { kind: 'CI_CD' },
+      }),
+    ]);
   });
 
   test('工程初始化后续步骤失败时回滚工程与 Mutation', async () => {
@@ -139,14 +154,21 @@ describe('EngineeringService', () => {
         mutationId: randomUUID(),
         name: '应回滚工程',
         creatorMembershipMutationId: randomUUID(),
-        members: [{ userId: users.other.id, mutationId: randomUUID() }],
-        environment: {
-          mutationId: randomUUID(),
-          name: '测试环境',
-          deployment: { kind: 'CI_CD' },
-        },
+        members: [{ userId: users.member.id, mutationId: randomUUID() }],
+        environments: [
+          {
+            mutationId: randomUUID(),
+            name: '重复环境',
+            deployment: { kind: 'CI_CD' },
+          },
+          {
+            mutationId: randomUUID(),
+            name: '重复环境',
+            deployment: { kind: 'CI_CD' },
+          },
+        ],
       }),
-    ).toThrow(expect.objectContaining({ code: 'NOT_FOUND' }));
+    ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
     expect(service.listEngineering(users.owner.id, project.id)).toEqual([]);
     expect(
       database
@@ -155,6 +177,46 @@ describe('EngineeringService', () => {
         )
         .get()?.count,
     ).toBe(mutationCountBefore);
+  });
+
+  test('工程初始化至少需要一个测试环境', async () => {
+    const { project, service, users } = await setup();
+    expect(() =>
+      service.createEngineeringSetup(users.owner.id, project.id, {
+        mutationId: randomUUID(),
+        name: '缺少环境的工程',
+        creatorMembershipMutationId: randomUUID(),
+        members: [],
+        environments: [],
+      }),
+    ).toThrow(expect.objectContaining({ code: 'VALIDATION_FAILED' }));
+    expect(service.listEngineering(users.owner.id, project.id)).toEqual([]);
+  });
+
+  test('工程初始化拒绝复用测试环境操作标识', async () => {
+    const { project, service, users } = await setup();
+    const environmentMutationId = randomUUID();
+    expect(() =>
+      service.createEngineeringSetup(users.owner.id, project.id, {
+        mutationId: randomUUID(),
+        name: '环境操作标识重复',
+        creatorMembershipMutationId: randomUUID(),
+        members: [],
+        environments: [
+          {
+            mutationId: environmentMutationId,
+            name: '测试环境',
+            deployment: { kind: 'CI_CD' },
+          },
+          {
+            mutationId: environmentMutationId,
+            name: '预发布环境',
+            deployment: { kind: 'CI_CD' },
+          },
+        ],
+      }),
+    ).toThrow(expect.objectContaining({ code: 'VALIDATION_FAILED' }));
+    expect(service.listEngineering(users.owner.id, project.id)).toEqual([]);
   });
 
   test('OWNER 可以创建任意命名工程，项目成员可读但不能管理', async () => {

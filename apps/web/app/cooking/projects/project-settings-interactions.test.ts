@@ -4,6 +4,10 @@ import { join } from 'node:path';
 
 const pagePath = join(import.meta.dir, 'page.tsx');
 const controlsPath = join(import.meta.dir, 'project-settings-controls.tsx');
+const createEnvironmentsPath = join(
+  import.meta.dir,
+  'engineering-create-environments.tsx',
+);
 const effectsPath = join(import.meta.dir, 'project-dialog-effects.tsx');
 const cssPath = join(import.meta.dir, '../cooking.css');
 const engineeringActionsPath = join(
@@ -32,6 +36,8 @@ describe('项目与工程交互基线', () => {
     expect(controls).toContain('name="name"');
     expect(controls).not.toContain('name="slug"');
     expect(controls).toContain('showCreate ? null');
+    expect(controls).toContain('aria-controls="project-create-form"');
+    expect(controls).toContain('id="project-create-form"');
   });
 
   test('项目名称修改使用独立项目设置弹窗，不混入成员与邀请', async () => {
@@ -71,7 +77,7 @@ describe('项目与工程交互基线', () => {
     expect(page).toContain("engineeringId === 'new'");
     expect(page).toContain('<EngineeringCreateForm');
     expect(page).toContain('projectMembers={members}');
-    expect(page).toContain('name="environmentName"');
+    expect(page).toContain('<EngineeringCreateEnvironments');
     expect(page).toContain('name="memberUserId"');
     expect(page).toContain("mode === 'edit'");
     expect(page).not.toContain('name="repositoryUrl"');
@@ -84,17 +90,34 @@ describe('项目与工程交互基线', () => {
     expect(page).toContain('tabIndex={-1}');
     expect(effects).toContain("document.body.style.overflow = 'hidden'");
   });
-  test('新建工程沿用当前领域模型并一次提交成员与首个环境', async () => {
+  test('新建工程一次提交成员与可增删的多个测试环境', async () => {
     const page = await readFile(pagePath, 'utf8');
     const actions = await readFile(engineeringActionsPath, 'utf8');
+    const environments = await readFile(createEnvironmentsPath, 'utf8');
     expect(page).toContain('creatorMembershipMutationId');
-    expect(page).toContain('environmentMutationId');
     expect(page).toContain('工程成员 / 选填');
-    expect(page).toContain('首个测试环境与更新方式');
+    expect(page).toContain('initialMutationId={randomUUID()}');
+    expect(environments).toContain('测试环境与更新方式');
+    expect(environments).toContain('添加测试环境');
+    expect(environments).toContain('removeEnvironment');
+    expect(environments).toContain('name="environmentKey"');
+    expect(environments).toContain('environmentMutationId:${environment.key}');
+    expect(environments).toContain('environmentName:${environment.key}');
+    expect(environments).toContain('deploymentKind:${environment.key}');
     expect(actions).toContain('createEngineeringSetup');
     expect(actions).toContain("stringFields(formData, 'memberUserId')");
+    expect(actions).toContain("stringFields(formData, 'environmentKey')");
     expect(actions).toContain('creatorMembershipMutationId');
-    expect(actions).toContain('environment: {');
+    expect(actions).toContain('environments:');
+  });
+
+  test('新建项目按钮覆盖默认、展开、悬停、焦点与移动端状态', async () => {
+    const css = await readFile(cssPath, 'utf8');
+    expect(css).toContain('.project-settings__primary-action {');
+    expect(css).toContain("[aria-expanded='true']");
+    expect(css).toContain('.project-settings__primary-action:hover');
+    expect(css).toContain('.project-settings button:focus-visible');
+    expect(css).toContain('.project-settings__toolbar-actions,');
   });
 
   test('共享 CookingShell 下项目画布保持全宽且弹窗操作区可响应换行', async () => {

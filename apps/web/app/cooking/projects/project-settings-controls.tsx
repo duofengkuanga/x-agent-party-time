@@ -100,6 +100,7 @@ export function ProjectSettingsControls({
           </div>
           <div className="project-settings__toolbar-actions">
             <button
+              aria-controls="project-create-form"
               aria-expanded={showCreate}
               className="project-settings__primary-action"
               onClick={() => setShowCreate((current) => !current)}
@@ -115,6 +116,7 @@ export function ProjectSettingsControls({
             <form
               action={createProjectAction}
               className="project-settings__create"
+              id="project-create-form"
             >
               <input name="mutationId" type="hidden" value={mutationId} />
               <div>

@@ -4,9 +4,13 @@ import { useState } from 'react';
 import type { DeploymentMethod } from '../contract';
 
 export function DeploymentFields({
+  commandName = 'command',
   deployment,
+  kindName = 'deploymentKind',
 }: {
+  commandName?: string;
   deployment?: DeploymentMethod;
+  kindName?: string;
 }) {
   const [kind, setKind] = useState<DeploymentMethod['kind']>(
     deployment?.kind ?? 'LOCAL_SCRIPT',
@@ -16,7 +20,7 @@ export function DeploymentFields({
       <label>
         <span>更新方式</span>
         <select
-          name="deploymentKind"
+          name={kindName}
           onChange={(event) =>
             setKind(event.target.value === 'CI_CD' ? 'CI_CD' : 'LOCAL_SCRIPT')
           }
@@ -33,7 +37,7 @@ export function DeploymentFields({
             defaultValue={
               deployment?.kind === 'LOCAL_SCRIPT' ? deployment.command : ''
             }
-            name="command"
+            name={commandName}
             placeholder="例如：bun run deploy:test"
             required
           />
