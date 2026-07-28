@@ -7,7 +7,7 @@ import { bindingService } from '@/features/cooking/application/server';
 import { AgentRevokeForm } from './agent-revoke-form';
 
 export const metadata: Metadata = {
-  title: 'Agent 管理 — Agent Party Time',
+  title: '我的 Agent — Agent Party Time',
   description: '查看本机 Agent 的连接状态和工程绑定。',
 };
 
@@ -34,7 +34,7 @@ export default async function AgentsPage({
           ← 返回工作台
         </Link>
         <span>本机协作能力</span>
-        <h1>Agent 管理</h1>
+        <h1>我的 Agent</h1>
         <p>查看连接状态和工程绑定。运行细节与停用操作只在需要时展开。</p>
       </header>
 

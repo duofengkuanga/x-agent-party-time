@@ -1040,7 +1040,7 @@ function EmptyStage({
         <button className="collab-primary" onClick={onCreate} type="button">
           创建第一张提测单
         </button>
-        <Link href="/cooking/projects">项目与工程</Link>
+        <Link href="/cooking/projects">我的项目</Link>
       </div>
     </div>
   );

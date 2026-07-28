@@ -23,7 +23,7 @@ export function ProjectSettingsControls({
       {hasProjects ? (
         <section className="project-settings__hero">
           <div className="project-settings__intro">
-            <h1>项目与工程</h1>
+            <h1>我的项目</h1>
             <p>
               在这里维护项目成员、工程环境和 Agent 绑定；提测仍在工作台完成。
             </p>

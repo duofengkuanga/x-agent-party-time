@@ -37,7 +37,7 @@ import { BindingRequestRefresh } from './binding-request-refresh';
 import { ProjectSettingsControls } from './project-settings-controls';
 
 export const metadata: Metadata = {
-  title: '项目与工程 — Agent Party Time',
+  title: '我的项目 — Agent Party Time',
   description: '管理协作提测项目、成员、工程配置与本机 Agent 绑定。',
 };
 
@@ -136,7 +136,7 @@ export default async function ProjectSettingsPage({
           error={query.error}
           mode={query.mode}
           projectId={selected.project.id}
-          success={query.success}
+          success={query.bindingRequest ? undefined : query.success}
           userId={user.id}
         />
       ) : null}
@@ -496,94 +496,92 @@ function EngineeringDialog({
               </Link>
             ) : null}
           </div>
-          {items.length ? (
-            [
-              { label: '前端工程', type: 'FRONTEND' as const },
-              { label: '后端工程', type: 'BACKEND' as const },
-            ].map((group) => {
-              const groupItems = items.filter(
-                (item) => item.type === group.type,
-              );
-              if (!groupItems.length) return null;
-              return (
-                <section className="engineering-group" key={group.type}>
-                  <div className="collaboration-section-title">
-                    <span>{group.label}</span>
-                    <small>{groupItems.length} 个</small>
-                  </div>
-                  <div className="engineering-list">
-                    {groupItems.map((item) => {
-                      const currentUserIsEngineeringMember = engineering
-                        .listMembers(userId, item.id)
-                        .some(({ user }) => user.id === userId);
-                      const currentUserRelation = owner
-                        ? '项目所有者'
-                        : currentUserIsEngineeringMember
-                          ? '工程成员'
-                          : '项目成员';
-                      return (
-                        <article className="engineering-card" key={item.id}>
-                          <div className="engineering-card__copy">
-                            <strong>{item.name}</strong>
-                            <small>
-                              {item.identifier} · {currentUserRelation}
-                            </small>
-                          </div>
-                          <nav
-                            aria-label={`${item.name}管理`}
-                            className="engineering-card__actions"
-                          >
-                            {owner ? (
-                              <>
-                                <Link
-                                  href={engineeringViewHref(
-                                    projectId,
-                                    item.id,
-                                    'members',
-                                  )}
-                                  replace
-                                >
-                                  成员管理
-                                </Link>
-                                <Link
-                                  href={engineeringViewHref(
-                                    projectId,
-                                    item.id,
-                                    'environments',
-                                  )}
-                                  replace
-                                >
-                                  环境管理
-                                </Link>
-                                <Link
-                                  href={engineeringViewHref(
-                                    projectId,
-                                    item.id,
-                                    'information',
-                                  )}
-                                  replace
-                                >
-                                  信息管理
-                                </Link>
-                              </>
-                            ) : null}
-                            <Link
-                              href={engineeringHref(projectId, item.id)}
-                              replace
+          {items.length
+            ? [
+                { label: '前端工程', type: 'FRONTEND' as const },
+                { label: '后端工程', type: 'BACKEND' as const },
+              ].map((group) => {
+                const groupItems = items.filter(
+                  (item) => item.type === group.type,
+                );
+                if (!groupItems.length) return null;
+                return (
+                  <section className="engineering-group" key={group.type}>
+                    <div className="collaboration-section-title">
+                      <span>{group.label}</span>
+                      <small>{groupItems.length} 个</small>
+                    </div>
+                    <div className="engineering-list">
+                      {groupItems.map((item) => {
+                        const currentUserIsEngineeringMember = engineering
+                          .listMembers(userId, item.id)
+                          .some(({ user }) => user.id === userId);
+                        const currentUserRelation = owner
+                          ? '项目所有者'
+                          : currentUserIsEngineeringMember
+                            ? '工程成员'
+                            : '项目成员';
+                        return (
+                          <article className="engineering-card" key={item.id}>
+                            <div className="engineering-card__copy">
+                              <strong>{item.name}</strong>
+                              <small>
+                                {item.identifier} · {currentUserRelation}
+                              </small>
+                            </div>
+                            <nav
+                              aria-label={`${item.name}管理`}
+                              className="engineering-card__actions"
                             >
-                              详情
-                            </Link>
-                          </nav>
-                        </article>
-                      );
-                    })}
-                  </div>
-                </section>
-              );
-            })
-          ) : (
-            <p className="collaboration-empty">还没有工程。</p>
-          )}
+                              {owner ? (
+                                <>
+                                  <Link
+                                    href={engineeringViewHref(
+                                      projectId,
+                                      item.id,
+                                      'members',
+                                    )}
+                                    replace
+                                  >
+                                    成员管理
+                                  </Link>
+                                  <Link
+                                    href={engineeringViewHref(
+                                      projectId,
+                                      item.id,
+                                      'environments',
+                                    )}
+                                    replace
+                                  >
+                                    环境管理
+                                  </Link>
+                                  <Link
+                                    href={engineeringViewHref(
+                                      projectId,
+                                      item.id,
+                                      'information',
+                                    )}
+                                    replace
+                                  >
+                                    信息管理
+                                  </Link>
+                                </>
+                              ) : null}
+                              <Link
+                                href={engineeringHref(projectId, item.id)}
+                                replace
+                              >
+                                详情
+                              </Link>
+                            </nav>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </section>
+                );
+              })
+            : null}
         </div>
       )}
     </Dialog>
@@ -1098,7 +1096,7 @@ function EngineeringDetail({
         ) : (
           <p className="collaboration-empty">还没有开发人员绑定本机 Agent。</p>
         )}
-        {bindingRequest ? (
+        {bindingRequest && bindingRequest.state !== 'SUCCEEDED' ? (
           <div
             className="engineering-binding-request"
             data-state={bindingRequest.state}
@@ -1109,17 +1107,14 @@ function EngineeringDetail({
             <strong>{bindingRequestLabel(bindingRequest.state)}</strong>
             <p>
               {bindingRequest.errorMessage ??
-                (bindingRequest.state === 'PROCESSING'
-                  ? '请在本机选择要绑定的 Git 仓库。'
-                  : '等待本机 Agent 领取请求。')}
+                bindingRequestMessage(bindingRequest.state)}
             </p>
           </div>
         ) : null}
-        {currentBinding ? (
-          <p className="collaboration-empty">
-            你已绑定 {currentBinding.runner.name}，无需重复创建。
-          </p>
-        ) : assigned.has(userId) && runners.length ? (
+        {currentBinding ? null : bindingRequest &&
+          ['PENDING', 'PROCESSING'].includes(
+            bindingRequest.state,
+          ) ? null : assigned.has(userId) && runners.length ? (
           <div className="engineering-binding-disclosure">
             <form
               action={createEngineeringBindingAction}
@@ -1148,7 +1143,7 @@ function EngineeringDetail({
               <strong>需要先连接本机 Agent</strong>
               <p>连接完成后再为当前工程建立绑定。</p>
             </div>
-            <Link href="/cooking/agents">Agent 管理</Link>
+            <Link href="/cooking/agents">我的 Agent</Link>
           </div>
         ) : (
           <div className="collab-form__blocked">
@@ -1324,6 +1319,18 @@ function bindingRequestLabel(
     SUCCEEDED: '工程绑定已完成',
     FAILED: '工程绑定未完成',
     CANCELLED: '工程绑定已取消',
+  }[state];
+}
+
+function bindingRequestMessage(
+  state: 'PENDING' | 'PROCESSING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED',
+): string {
+  return {
+    PENDING: '等待本机 Agent 领取请求。',
+    PROCESSING: '请在本机选择要绑定的 Git 仓库。',
+    SUCCEEDED: '工程绑定已完成。',
+    FAILED: '请根据提示重新发起工程绑定。',
+    CANCELLED: '如需继续，请重新发起工程绑定。',
   }[state];
 }
 
