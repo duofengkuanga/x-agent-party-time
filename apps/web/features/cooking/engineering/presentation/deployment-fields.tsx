@@ -14,7 +14,7 @@ export function DeploymentFields({
   return (
     <>
       <label>
-        部署方式
+        <span>更新方式</span>
         <select
           name="deploymentKind"
           onChange={(event) =>
@@ -22,13 +22,13 @@ export function DeploymentFields({
           }
           value={kind}
         >
-          <option value="LOCAL_SCRIPT">本地脚本</option>
-          <option value="CI_CD">持续集成 / 持续交付</option>
+          <option value="LOCAL_SCRIPT">本地脚本自动更新</option>
+          <option value="CI_CD">CI/CD 人工确认</option>
         </select>
       </label>
       {kind === 'LOCAL_SCRIPT' ? (
-        <label>
-          本地部署命令
+        <label className="field-wide">
+          <span>部署命令</span>
           <input
             defaultValue={
               deployment?.kind === 'LOCAL_SCRIPT' ? deployment.command : ''
@@ -37,8 +37,15 @@ export function DeploymentFields({
             placeholder="例如：bun run deploy:test"
             required
           />
+          <small>
+            不要填写令牌、密码或密钥；请在 Runner 本机使用环境变量。
+          </small>
         </label>
-      ) : null}
+      ) : (
+        <p className="engineering-environment-note">
+          外部 CI/CD 完成构建与部署后，由开发人员回到系统确认结果。
+        </p>
+      )}
     </>
   );
 }

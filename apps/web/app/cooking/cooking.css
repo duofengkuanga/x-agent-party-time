@@ -4388,3 +4388,240 @@
 .collab-submission-projects td > small {
   display: block;
 }
+
+/* /cooking/projects restoration on top of the shared CookingShell. */
+.project-settings {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  width: 100%;
+}
+
+.project-settings__create {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.project-settings .project-settings__create > button {
+  grid-column: auto;
+  justify-self: stretch;
+}
+
+.project-account-menu__badge {
+  height: 38px;
+  min-height: 38px;
+}
+
+.project-account-menu__initial {
+  align-items: center;
+  align-self: stretch;
+  background: var(--ink);
+  color: var(--paper);
+  display: inline-flex;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 16px;
+  font-style: italic;
+  justify-content: center;
+  order: -1;
+  width: 34px;
+}
+
+.project-account-menu__chevron {
+  align-items: center;
+  align-self: stretch;
+  border-left: 1px solid var(--line);
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 12px;
+  justify-content: center;
+  order: 3;
+  transition: transform 140ms ease;
+  width: 28px;
+}
+
+.collab-account-menu--open .project-account-menu__chevron {
+  color: inherit;
+  transform: rotate(180deg);
+}
+
+.collab-account-menu > .account-badge .collab-account-menu__count {
+  align-self: center;
+  margin-right: 8px;
+  order: 2;
+}
+
+.project-account-menu__notifications-host {
+  display: contents;
+}
+
+.collab-account-menu__invitation-list article form {
+  display: block;
+  padding: 0;
+}
+
+.project-dialog__feedback {
+  border-bottom: 1px solid var(--line);
+  font-size: 10px;
+  line-height: 1.6;
+  margin: 0;
+  padding: 10px 22px;
+}
+
+.project-dialog__feedback--error {
+  background: color-mix(in srgb, var(--accent), transparent 92%);
+  color: var(--accent-dark);
+}
+
+.project-dialog__feedback--success {
+  background: color-mix(in srgb, var(--success), transparent 90%);
+  color: var(--success);
+}
+
+.engineering-list > .collaboration-empty {
+  grid-column: 1 / -1;
+  min-height: 110px;
+  place-content: center;
+}
+
+.engineering-editor__setup-note {
+  background: var(--paper-deep);
+  border-left: 2px solid var(--accent-dark);
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+}
+
+.engineering-editor__setup-note > span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.engineering-editor__setup-note > strong {
+  font-size: 11px;
+}
+
+.engineering-editor__setup-note > small {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.engineering-editor__grid .field-wide,
+.engineering-environments > article .field-wide {
+  grid-column: 1 / -1;
+}
+
+.engineering-editor .inline-check > span {
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.engineering-detail__bindings li > form,
+.dialog-actions > form,
+.engineering-detail__actions > form {
+  display: block;
+  padding: 0;
+}
+
+.engineering-detail__bindings li > form button {
+  min-height: 32px;
+  padding: 0 10px;
+}
+
+.engineering-detail__environments > .collaboration-empty,
+.engineering-detail__bindings > .collaboration-empty {
+  background: var(--paper-deep);
+  border-left: 2px solid var(--line);
+  padding: 12px 14px;
+}
+
+.engineering-detail__environments article > form.engineering-editor {
+  grid-column: 1 / -1;
+  overflow: visible;
+}
+
+.engineering-detail__environments article > form:not(.engineering-editor) {
+  display: block;
+  grid-column: 1 / -1;
+  padding: 0;
+}
+
+.dialog-actions {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding-top: 18px;
+}
+
+.dialog-actions > a,
+.dialog-actions > button,
+.dialog-actions > form button {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--strong-line);
+  color: var(--ink);
+  display: inline-flex;
+  font: inherit;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 18px;
+  text-decoration: none;
+}
+
+.dialog-actions > a:hover,
+.dialog-actions > button:hover,
+.dialog-actions > form button:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+@media (max-width: 900px) {
+  .project-settings__create {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .project-settings__create > button {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .project-account-menu__badge .account-badge__copy {
+    display: none;
+  }
+
+  .engineering-editor > .dialog-actions,
+  .engineering-detail__actions {
+    margin-inline: 0;
+  }
+
+  .engineering-editor > .dialog-actions > a,
+  .engineering-editor > .dialog-actions > button,
+  .engineering-detail__actions > a,
+  .engineering-detail__actions > form,
+  .engineering-detail__actions > .repair-primary {
+    flex: 1 1 120px;
+  }
+
+  .engineering-detail__actions > form button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 620px) {
+  .project-settings__create {
+    grid-template-columns: 1fr;
+  }
+
+  .project-settings__create > button {
+    grid-column: auto;
+  }
+
+  .project-account-menu__chevron {
+    width: 24px;
+  }
+}

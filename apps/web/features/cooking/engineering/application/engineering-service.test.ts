@@ -99,6 +99,64 @@ afterEach(async () => {
 });
 
 describe('EngineeringService', () => {
+  test('工程初始化原子创建创建者成员、额外成员与首个环境', async () => {
+    const { project, service, users } = await setup();
+    const engineering = service.createEngineeringSetup(
+      users.owner.id,
+      project.id,
+      {
+        mutationId: randomUUID(),
+        name: '完整初始化工程',
+        creatorMembershipMutationId: randomUUID(),
+        members: [{ userId: users.member.id, mutationId: randomUUID() }],
+        environment: {
+          mutationId: randomUUID(),
+          name: '测试环境',
+          deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' },
+        },
+      },
+    );
+    const workspace = service.getWorkspace(users.owner.id, engineering.id);
+    expect(workspace.members.map(({ user }) => user.id).sort()).toEqual(
+      [users.owner.id, users.member.id].sort(),
+    );
+    expect(workspace.environments).toHaveLength(1);
+    expect(workspace.environments[0]).toMatchObject({
+      name: '测试环境',
+      deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' },
+    });
+  });
+
+  test('工程初始化后续步骤失败时回滚工程与 Mutation', async () => {
+    const { database, project, service, users } = await setup();
+    const mutationCountBefore = database
+      .query<{ count: number }, []>(
+        'SELECT COUNT(*) count FROM cooking_mutation',
+      )
+      .get()!.count;
+    expect(() =>
+      service.createEngineeringSetup(users.owner.id, project.id, {
+        mutationId: randomUUID(),
+        name: '应回滚工程',
+        creatorMembershipMutationId: randomUUID(),
+        members: [{ userId: users.other.id, mutationId: randomUUID() }],
+        environment: {
+          mutationId: randomUUID(),
+          name: '测试环境',
+          deployment: { kind: 'CI_CD' },
+        },
+      }),
+    ).toThrow(expect.objectContaining({ code: 'NOT_FOUND' }));
+    expect(service.listEngineering(users.owner.id, project.id)).toEqual([]);
+    expect(
+      database
+        .query<{ count: number }, []>(
+          'SELECT COUNT(*) count FROM cooking_mutation',
+        )
+        .get()?.count,
+    ).toBe(mutationCountBefore);
+  });
+
   test('OWNER 可以创建任意命名工程，项目成员可读但不能管理', async () => {
     const { database, project, service, users } = await setup();
     const mutationId = randomUUID();

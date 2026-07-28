@@ -89,6 +89,38 @@ export class EngineeringService {
     this.writes = new CookingWriteStore(db, now, createId);
   }
 
+  createEngineeringSetup(
+    actorUserId: string,
+    projectId: string,
+    input: {
+      mutationId: string;
+      name: string;
+      creatorMembershipMutationId: string;
+      members: Array<{ userId: string; mutationId: string }>;
+      environment: {
+        mutationId: string;
+        name: string;
+        deployment: DeploymentMethod;
+      };
+    },
+  ): Engineering {
+    return this.db.transaction(() => {
+      const engineering = this.createEngineering(actorUserId, projectId, {
+        mutationId: input.mutationId,
+        name: input.name,
+      });
+      this.addMember(actorUserId, engineering.id, actorUserId, {
+        mutationId: input.creatorMembershipMutationId,
+      });
+      for (const member of input.members)
+        this.addMember(actorUserId, engineering.id, member.userId, {
+          mutationId: member.mutationId,
+        });
+      this.createEnvironment(actorUserId, engineering.id, input.environment);
+      return engineering;
+    })();
+  }
+
   createEngineering(
     actorUserId: string,
     projectId: string,
