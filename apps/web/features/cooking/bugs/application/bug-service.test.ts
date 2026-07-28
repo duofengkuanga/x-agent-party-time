@@ -56,12 +56,10 @@ async function setup() {
   const front = engineering.createEngineering(users.owner.id, project.id, {
     mutationId: randomUUID(),
     name: '前端工程',
-    repositoryUrl: 'https://example.com/front.git',
   });
   const back = engineering.createEngineering(users.owner.id, project.id, {
     mutationId: randomUUID(),
     name: '后端工程',
-    repositoryUrl: 'https://example.com/back.git',
   });
   engineering.addMember(users.owner.id, front.id, users.developerA.id, {
     mutationId: randomUUID(),
@@ -108,6 +106,16 @@ async function setup() {
     back.id,
     runnerB.runner.id,
     randomUUID(),
+  );
+  bindings.confirmRepository(
+    runnerA.runner.id,
+    frontBinding.id,
+    'https://example.com/front.git',
+  );
+  bindings.confirmRepository(
+    runnerB.runner.id,
+    backBinding.id,
+    'https://example.com/back.git',
   );
   const submission = new SubmissionService(database).createSubmission(
     users.owner.id,

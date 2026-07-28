@@ -23,7 +23,6 @@ export async function createEngineeringAction(
       {
         mutationId: field(formData, 'mutationId'),
         name: field(formData, 'name'),
-        repositoryUrl: field(formData, 'repositoryUrl'),
       },
     );
     refreshProject(projectId);
@@ -51,7 +50,6 @@ export async function updateEngineeringAction(
       mutationId: field(formData, 'mutationId'),
       expectedVersion: numberField(formData, 'expectedVersion'),
       name: field(formData, 'name'),
-      repositoryUrl: field(formData, 'repositoryUrl'),
     });
     refreshEngineering(projectId, engineeringId);
     redirect(

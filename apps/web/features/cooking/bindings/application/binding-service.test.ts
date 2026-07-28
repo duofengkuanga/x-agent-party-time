@@ -61,7 +61,6 @@ async function setup() {
     {
       mutationId: randomUUID(),
       name: 'Binding 工程',
-      repositoryUrl: 'https://example.com/binding.git',
     },
   );
   engineeringService.addMember(
@@ -172,4 +171,53 @@ describe('BindingService', () => {
       expect.objectContaining({ code: 'NOT_FOUND' }),
     );
   });
+});
+
+test('首次 Runner Binding 确认仓库身份，后续 Binding 必须匹配', async () => {
+  const { database, engineering, runners, service, users } = await setup();
+  const binding = service.createBinding(
+    users.member.id,
+    engineering.id,
+    runners.member.runner.id,
+    randomUUID(),
+  );
+  expect(
+    service.confirmRepository(
+      runners.member.runner.id,
+      binding.id,
+      'git@Example.com:team/project.git',
+    ),
+  ).toBe('https://example.com/team/project.git');
+  expect(
+    new EngineeringService(database).getEngineering(
+      binding.userId,
+      engineering.id,
+    ),
+  ).toMatchObject({
+    repositoryState: 'CONFIRMED',
+    repositoryUrl: 'https://example.com/team/project.git',
+    version: 2,
+  });
+  expect(
+    service.confirmRepository(
+      runners.member.runner.id,
+      binding.id,
+      'ssh://git@example.com/team/project',
+    ),
+  ).toBe('https://example.com/team/project.git');
+  expect(
+    database
+      .query<{ count: number }, []>(
+        `SELECT COUNT(*) count FROM cooking_audit_event
+         WHERE action = 'ENGINEERING_REPOSITORY_CONFIRMED'`,
+      )
+      .get()?.count,
+  ).toBe(1);
+  expect(() =>
+    service.confirmRepository(
+      runners.member.runner.id,
+      binding.id,
+      'https://example.com/other/project.git',
+    ),
+  ).toThrow('本机仓库与工程仓库身份不一致');
 });

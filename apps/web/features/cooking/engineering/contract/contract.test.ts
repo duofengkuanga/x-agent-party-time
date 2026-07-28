@@ -39,7 +39,7 @@ describe('RepositoryUrl', () => {
       'https://example.com/team/app.git',
     );
     expect(RepositoryUrlSchema.parse('git@example.com:team/app.git')).toBe(
-      'git@example.com:team/app.git',
+      'https://example.com/team/app.git',
     );
     expect(() => RepositoryUrlSchema.parse('/Users/me/app')).toThrow();
   });

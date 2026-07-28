@@ -105,13 +105,12 @@ describe('EngineeringService', () => {
     const engineering = service.createEngineering(users.owner.id, project.id, {
       mutationId,
       name: '全栈一体化工程',
-      repositoryUrl: 'git@example.com:team/full-stack.git',
     });
+    expect(engineering).toMatchObject({ repositoryState: 'PENDING' });
     expect(
       service.createEngineering(users.owner.id, project.id, {
         mutationId,
         name: '不会重复创建',
-        repositoryUrl: 'https://example.com/other.git',
       }),
     ).toEqual(engineering);
     expect(service.listEngineering(users.member.id, project.id)).toEqual([
@@ -124,7 +123,6 @@ describe('EngineeringService', () => {
       service.createEngineering(users.member.id, project.id, {
         mutationId: randomUUID(),
         name: '越权工程',
-        repositoryUrl: 'https://example.com/forbidden.git',
       }),
     ).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
     expect(
@@ -141,7 +139,6 @@ describe('EngineeringService', () => {
     const engineering = service.createEngineering(users.owner.id, project.id, {
       mutationId: randomUUID(),
       name: '成员工程',
-      repositoryUrl: 'https://example.com/member.git',
     });
     expect(() =>
       service.addMember(users.owner.id, engineering.id, users.other.id, {
@@ -184,7 +181,6 @@ describe('EngineeringService', () => {
     const engineering = service.createEngineering(users.owner.id, project.id, {
       mutationId: randomUUID(),
       name: '环境工程',
-      repositoryUrl: 'https://example.com/environments.git',
     });
     const environment = service.createEnvironment(
       users.owner.id,
@@ -228,7 +224,6 @@ describe('EngineeringService', () => {
     const engineering = service.createEngineering(users.owner.id, project.id, {
       mutationId: randomUUID(),
       name: '历史工程',
-      repositoryUrl: 'https://example.com/history.git',
     });
     service.addMember(users.owner.id, engineering.id, users.member.id, {
       mutationId: randomUUID(),

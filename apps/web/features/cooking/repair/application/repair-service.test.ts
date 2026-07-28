@@ -69,7 +69,6 @@ async function setup(options: { repairCreateId?: () => string } = {}) {
   const source = engineering.createEngineering(users.owner.id, project.id, {
     mutationId: randomUUID(),
     name: '支付工程',
-    repositoryUrl: 'https://example.com/payment.git',
   });
   engineering.addMember(users.owner.id, source.id, users.developer.id, {
     mutationId: randomUUID(),
@@ -89,11 +88,17 @@ async function setup(options: { repairCreateId?: () => string } = {}) {
     runners.issuePairingCode(users.owner.id).code,
     '其他 Runner',
   ).runner;
-  const binding = new BindingService(database).createBinding(
+  const bindings = new BindingService(database);
+  const binding = bindings.createBinding(
     users.developer.id,
     source.id,
     runner.id,
     randomUUID(),
+  );
+  bindings.confirmRepository(
+    runner.id,
+    binding.id,
+    'https://example.com/payment.git',
   );
   const submission = new SubmissionService(database).createSubmission(
     users.owner.id,

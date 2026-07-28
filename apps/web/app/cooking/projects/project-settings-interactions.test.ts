@@ -28,5 +28,7 @@ describe('项目与工程交互基线', () => {
     expect(page).toContain("engineeringId === 'new'");
     expect(page).toContain('<EngineeringCreateForm projectId={projectId} />');
     expect(page).toContain("mode === 'edit'");
+    expect(page).not.toContain('name="repositoryUrl"');
+    expect(page).toContain('等待首次本机 Binding 确认仓库');
   });
 });

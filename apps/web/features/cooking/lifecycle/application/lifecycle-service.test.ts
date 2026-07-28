@@ -56,7 +56,6 @@ async function setup() {
     {
       mutationId: randomUUID(),
       name: '本地脚本工程',
-      repositoryUrl: 'https://example.com/local.git',
     },
   );
   const ciEngineering = engineering.createEngineering(
@@ -65,7 +64,6 @@ async function setup() {
     {
       mutationId: randomUUID(),
       name: '持续集成工程',
-      repositoryUrl: 'https://example.com/ci.git',
     },
   );
   for (const item of [localEngineering, ciEngineering])
@@ -107,6 +105,16 @@ async function setup() {
     ciEngineering.id,
     paired.runner.id,
     randomUUID(),
+  );
+  bindings.confirmRepository(
+    paired.runner.id,
+    localBinding.id,
+    'https://example.com/local.git',
+  );
+  bindings.confirmRepository(
+    paired.runner.id,
+    ciBinding.id,
+    'https://example.com/ci.git',
   );
   const submissions = new SubmissionService(database, clock.now);
   const submission = submissions.createSubmission(users.owner.id, project.id, {

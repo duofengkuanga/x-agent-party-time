@@ -22,8 +22,12 @@ test('RunnerClient 配对后私下保存 Credential，后续请求使用 Bearer'
     runnerLocalPaths({ AGENT_PARTY_TIME_RUNNER_HOME: root }),
   );
   const credential = 'credential-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy';
-  const calls: Array<{ url: string; authorization?: string; body?: string }> =
-    [];
+  const calls: Array<{
+    url: string;
+    method?: string;
+    authorization?: string;
+    body?: string;
+  }> = [];
   const fetchImplementation = (async (
     input: string | URL | Request,
     init?: RequestInit,
@@ -31,6 +35,7 @@ test('RunnerClient 配对后私下保存 Credential，后续请求使用 Bearer'
     const url = String(input);
     calls.push({
       url,
+      method: init?.method,
       authorization:
         new Headers(init?.headers).get('authorization') ?? undefined,
       body: typeof init?.body === 'string' ? init.body : undefined,
@@ -47,6 +52,8 @@ test('RunnerClient 配对后私下保存 Credential，后续请求使用 Bearer'
           lastSeenAt: '2026-07-26T12:30:00.000Z',
         },
       });
+    if (url.endsWith('/bindings') && init?.method === 'POST')
+      return Response.json(JSON.parse(String(init.body)));
     return Response.json({
       bindings: [{ bindingId: '00000000-0000-4000-8000-000000000012' }],
     });
@@ -61,12 +68,23 @@ test('RunnerClient 配对后私下保存 Credential，后续请求使用 Bearer'
   expect('credential' in paired).toBe(false);
   expect((await state.loadConfig()).credential).toBe(credential);
   await client.heartbeat();
+  await client.confirmBinding(
+    '00000000-0000-4000-8000-000000000012',
+    'git@Example.com:team/repository.git',
+  );
   expect(await client.listServerBindings()).toEqual([
     { bindingId: '00000000-0000-4000-8000-000000000012' },
   ]);
   expect(calls[0]?.body).not.toContain('password');
   expect(calls[1]?.authorization).toBe(`Bearer ${credential}`);
   expect(calls[2]?.authorization).toBe(`Bearer ${credential}`);
+  expect(calls[2]?.body).toBe(
+    JSON.stringify({
+      bindingId: '00000000-0000-4000-8000-000000000012',
+      repositoryUrl: 'https://example.com/team/repository.git',
+    }),
+  );
+  expect(calls[3]?.authorization).toBe(`Bearer ${credential}`);
 });
 
 function runner(id: string) {

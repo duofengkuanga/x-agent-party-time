@@ -1,5 +1,61 @@
 import { z } from 'zod';
 
+const RepositoryUrlInputSchema = z.string().trim().min(1).max(500);
+
+export const RepositoryUrlSchema = RepositoryUrlInputSchema.transform(
+  (value, context) => {
+    const normalized = normalizedRepositoryUrl(value);
+    if (normalized) return normalized;
+    context.addIssue({
+      code: 'custom',
+      message: '仓库地址必须是 HTTP(S)、SSH、Git URL 或 SCP 风格地址',
+    });
+    return z.NEVER;
+  },
+);
+
+export function normalizeRepositoryUrl(value: string): string {
+  return RepositoryUrlSchema.parse(value);
+}
+
+function normalizedRepositoryUrl(value: string): string | null {
+  const scp = value.includes('://')
+    ? null
+    : value.match(/^[^\s@]+@([^\s:]+):(.+)$/u);
+  if (scp) return canonicalRepositoryUrl(scp[1]!, undefined, scp[2]!);
+
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+  if (!['http:', 'https:', 'ssh:', 'git:'].includes(url.protocol)) return null;
+  const defaultPorts: Record<string, string> = {
+    'http:': '80',
+    'https:': '443',
+    'ssh:': '22',
+    'git:': '9418',
+  };
+  const port = url.port === defaultPorts[url.protocol] ? undefined : url.port;
+  return canonicalRepositoryUrl(url.hostname, port, url.pathname);
+}
+
+function canonicalRepositoryUrl(
+  hostnameInput: string,
+  port: string | undefined,
+  pathInput: string,
+): string | null {
+  const hostname = hostnameInput.trim().toLowerCase();
+  const path = pathInput
+    .trim()
+    .replace(/^\/+|\/+$/gu, '')
+    .replace(/\.git$/iu, '');
+  if (!hostname || !path || /\s/u.test(path)) return null;
+  const renderedHost = hostname.includes(':') ? `[${hostname}]` : hostname;
+  return `https://${renderedHost}${port ? `:${port}` : ''}/${path}.git`;
+}
+
 export const RunnerIdSchema = z.uuid();
 export const RunnerNameSchema = z.string().trim().min(1).max(120);
 export const RunnerCredentialSchema = z.string().min(32).max(256);
@@ -47,6 +103,16 @@ export const RunnerBindingRefSchema = z.object({
   bindingId: z.uuid(),
 });
 
+export const RunnerBindingConfirmationRequestSchema = z
+  .object({
+    bindingId: z.uuid(),
+    repositoryUrl: RepositoryUrlSchema,
+  })
+  .strict();
+
+export const RunnerBindingConfirmationResponseSchema =
+  RunnerBindingConfirmationRequestSchema;
+
 export const RunnerBindingsResponseSchema = z.object({
   bindings: z.array(RunnerBindingRefSchema),
 });
@@ -60,6 +126,9 @@ export type RunnerHeartbeatResponse = z.infer<
   typeof RunnerHeartbeatResponseSchema
 >;
 export type RunnerBindingRef = z.infer<typeof RunnerBindingRefSchema>;
+export type RunnerBindingConfirmationRequest = z.infer<
+  typeof RunnerBindingConfirmationRequestSchema
+>;
 export type RunnerBindingsResponse = z.infer<
   typeof RunnerBindingsResponseSchema
 >;

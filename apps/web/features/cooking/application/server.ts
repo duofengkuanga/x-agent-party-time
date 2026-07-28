@@ -118,7 +118,9 @@ export function submissionCreationCatalog(
       members: projects.listMembers(userId, project.id).map(({ user }) => user),
       engineerings: engineering
         .listEngineering(userId, project.id)
-        .filter(({ archivedAt }) => !archivedAt)
+        .filter(
+          (item) => !item.archivedAt && item.repositoryState === 'CONFIRMED',
+        )
         .map((item) => {
           const workspace = engineering.getWorkspace(userId, item.id);
           return {

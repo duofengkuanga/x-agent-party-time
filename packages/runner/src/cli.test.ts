@@ -37,6 +37,7 @@ test('CLI 输出不泄露 Credential 或本机路径', async () => {
       credential,
     })) as unknown as typeof fetch);
   const lines: string[] = [];
+  client.confirmBinding = async () => undefined;
   const output = { log: (line: string) => lines.push(line) };
   await runRunnerCli(
     [
@@ -56,9 +57,47 @@ test('CLI 输出不泄露 Credential 或本机路径', async () => {
     client,
     state,
     output,
+    repositoryOrigin: async () => 'https://example.com/team/repository.git',
   });
   const text = lines.join('\n');
   expect(text).not.toContain(credential);
   expect(text).not.toContain(localPath);
   expect(text).toContain(bindingId);
+});
+
+test('仓库没有 origin 时允许命令末尾手工提供仓库地址', async () => {
+  const confirmations: Array<{ bindingId: string; repositoryUrl: string }> = [];
+  const bindings: Array<{ bindingId: string; repositoryPath: string }> = [];
+  const client = {
+    confirmBinding: async (bindingId: string, repositoryUrl: string) => {
+      confirmations.push({ bindingId, repositoryUrl });
+    },
+  } as RunnerClient;
+  const state = {
+    bind: async (bindingId: string, repositoryPath: string) => {
+      bindings.push({ bindingId, repositoryPath });
+      return {
+        bindingId,
+        repositoryPath,
+        updatedAt: '2026-07-28T00:00:00.000Z',
+      };
+    },
+  } as RunnerStateStore;
+  const bindingId = '00000000-0000-4000-8000-000000000023';
+  await runRunnerCli(
+    ['bind', bindingId, '/tmp/repository', 'git@Example.com:team/repository'],
+    {
+      client,
+      state,
+      output: { log: () => undefined },
+      repositoryOrigin: async () => null,
+    },
+  );
+  expect(confirmations).toEqual([
+    {
+      bindingId,
+      repositoryUrl: 'https://example.com/team/repository.git',
+    },
+  ]);
+  expect(bindings).toEqual([{ bindingId, repositoryPath: '/tmp/repository' }]);
 });

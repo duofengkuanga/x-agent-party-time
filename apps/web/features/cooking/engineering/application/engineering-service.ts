@@ -15,7 +15,6 @@ import {
   EngineeringWorkspaceSchema,
   EnvironmentIdSchema,
   EnvironmentNameSchema,
-  RepositoryUrlSchema,
   TestEnvironmentSchema,
   type DeploymentMethod,
   type Engineering,
@@ -29,7 +28,8 @@ type EngineeringRow = {
   id: string;
   project_id: string;
   name: string;
-  repository_url: string;
+  repository_state: 'PENDING' | 'CONFIRMED';
+  repository_url: string | null;
   version: number;
   archived_at: string | null;
   created_at: string;
@@ -95,13 +95,11 @@ export class EngineeringService {
     input: {
       mutationId: string;
       name: string;
-      repositoryUrl: string;
     },
   ): Engineering {
     ProjectIdSchema.parse(projectId);
     CookingMutationIdSchema.parse(input.mutationId);
     const name = EngineeringNameSchema.parse(input.name);
-    const repositoryUrl = RepositoryUrlSchema.parse(input.repositoryUrl);
     return this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
@@ -116,16 +114,16 @@ export class EngineeringService {
         this.db
           .prepare(
             `INSERT INTO cooking_engineering(
-               id, project_id, name, repository_url, version, archived_at,
+               id, project_id, name, repository_state, repository_url, version, archived_at,
                created_at, updated_at
-             ) VALUES (?, ?, ?, ?, 1, NULL, ?, ?)`,
+             ) VALUES (?, ?, ?, 'PENDING', NULL, 1, NULL, ?, ?)`,
           )
-          .run(id, projectId, name, repositoryUrl, createdAt, createdAt);
+          .run(id, projectId, name, createdAt, createdAt);
         const result = EngineeringSchema.parse({
           id,
           projectId,
           name,
-          repositoryUrl,
+          repositoryState: 'PENDING',
           version: 1,
           archivedAt: null,
           createdAt,
@@ -140,7 +138,7 @@ export class EngineeringService {
               action: 'ENGINEERING_CREATED',
               targetType: 'ENGINEERING',
               targetId: id,
-              details: { name, repositoryUrl },
+              details: { name },
             },
           ],
         };
@@ -152,7 +150,7 @@ export class EngineeringService {
     this.requireProjectMember(userId, projectId);
     return this.db
       .prepare(
-        `SELECT id, project_id, name, repository_url, version, archived_at,
+        `SELECT id, project_id, name, repository_state, repository_url, version, archived_at,
                 created_at, updated_at
          FROM cooking_engineering
          WHERE project_id = ?
@@ -184,11 +182,9 @@ export class EngineeringService {
       mutationId: string;
       expectedVersion: number;
       name: string;
-      repositoryUrl: string;
     },
   ): Engineering {
     const name = EngineeringNameSchema.parse(input.name);
-    const repositoryUrl = RepositoryUrlSchema.parse(input.repositoryUrl);
     return this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
@@ -215,23 +211,16 @@ export class EngineeringService {
         const update = this.db
           .prepare(
             `UPDATE cooking_engineering
-             SET name = ?, repository_url = ?, version = version + 1,
+             SET name = ?, version = version + 1,
                  updated_at = ?
              WHERE id = ? AND version = ? AND archived_at IS NULL`,
           )
-          .run(
-            name,
-            repositoryUrl,
-            updatedAt,
-            engineeringId,
-            input.expectedVersion,
-          );
+          .run(name, updatedAt, engineeringId, input.expectedVersion);
         if (update.changes !== 1)
           throw new PlatformError('STALE_STATE', '工程已更新，请刷新后重试');
         const result = EngineeringSchema.parse({
           ...current,
           name,
-          repositoryUrl,
           version: current.version + 1,
           updatedAt,
         });
@@ -244,7 +233,7 @@ export class EngineeringService {
               action: 'ENGINEERING_UPDATED',
               targetType: 'ENGINEERING',
               targetId: engineeringId,
-              details: { name, repositoryUrl },
+              details: { name },
             },
           ],
         };
@@ -724,7 +713,7 @@ export class EngineeringService {
   ): EngineeringRow {
     const row = this.db
       .prepare(
-        `SELECT e.id, e.project_id, e.name, e.repository_url, e.version,
+        `SELECT e.id, e.project_id, e.name, e.repository_state, e.repository_url, e.version,
                 e.archived_at, e.created_at, e.updated_at
          FROM cooking_engineering e
          JOIN cooking_project_membership p
@@ -742,7 +731,7 @@ export class EngineeringService {
   ): Engineering {
     const row = this.db
       .prepare(
-        `SELECT e.id, e.project_id, e.name, e.repository_url, e.version,
+        `SELECT e.id, e.project_id, e.name, e.repository_state, e.repository_url, e.version,
                 e.archived_at, e.created_at, e.updated_at, p.role
          FROM cooking_engineering e
          JOIN cooking_project_membership p
@@ -819,7 +808,10 @@ function mapEngineering(row: EngineeringRow): Engineering {
     id: row.id,
     projectId: row.project_id,
     name: row.name,
-    repositoryUrl: row.repository_url,
+    repositoryState: row.repository_state,
+    ...(row.repository_state === 'CONFIRMED'
+      ? { repositoryUrl: row.repository_url }
+      : {}),
     version: row.version,
     archivedAt: row.archived_at,
     createdAt: row.created_at,

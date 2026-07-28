@@ -20,7 +20,9 @@ import {
 } from '@agent-party-time/execution-contract';
 import {
   PairingCodeSchema,
+  RunnerBindingConfirmationRequestSchema,
   RunnerBindingsResponseSchema,
+  RunnerBindingConfirmationResponseSchema,
   RunnerHeartbeatResponseSchema,
   RunnerNameSchema,
   RunnerPairingResultSchema,
@@ -85,6 +87,20 @@ export class RunnerClient {
     );
     return RunnerBindingsResponseSchema.parse(await responseJson(response))
       .bindings;
+  }
+
+  async confirmBinding(
+    bindingId: string,
+    repositoryUrl: string,
+  ): Promise<void> {
+    const body = RunnerBindingConfirmationRequestSchema.parse({
+      bindingId,
+      repositoryUrl,
+    });
+    await this.authorizedJson('/api/runner/bindings', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }).then((value) => RunnerBindingConfirmationResponseSchema.parse(value));
   }
 
   async claimExecutions(

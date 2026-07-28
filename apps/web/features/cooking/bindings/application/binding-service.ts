@@ -2,7 +2,10 @@ import { randomUUID } from 'node:crypto';
 import type { AppDatabase } from '@/server/database';
 import { PlatformError } from '@/server/errors';
 import { RunnerSchema } from '@/server/runner/contract';
-import { EngineeringIdSchema } from '@/features/cooking/engineering/contract';
+import {
+  EngineeringIdSchema,
+  RepositoryUrlSchema,
+} from '@/features/cooking/engineering/contract';
 import { CookingWriteStore } from '@/features/cooking/shared/write-store';
 import {
   EngineeringBindingSchema,
@@ -115,6 +118,53 @@ export class BindingService {
     });
   }
 
+  confirmRepository(
+    runnerId: string,
+    bindingId: string,
+    repositoryUrlInput: string,
+  ): string {
+    const repositoryUrl = RepositoryUrlSchema.parse(repositoryUrlInput);
+    return this.db.transaction(() => {
+      const row = this.repositoryConfirmationTarget(runnerId, bindingId);
+      if (row.archived_at)
+        throw new PlatformError('INVALID_TRANSITION', '已归档工程不能确认仓库');
+      if (row.repository_state === 'CONFIRMED')
+        return requireMatchingRepository(row.repository_url, repositoryUrl);
+
+      const confirmedAt = this.now().toISOString();
+      const update = this.db
+        .prepare(
+          `UPDATE cooking_engineering
+           SET repository_state = 'CONFIRMED', repository_url = ?,
+               version = version + 1, updated_at = ?
+           WHERE id = ? AND repository_state = 'PENDING'`,
+        )
+        .run(repositoryUrl, confirmedAt, row.engineering_id);
+      if (update.changes !== 1) {
+        const current = this.repositoryConfirmationTarget(runnerId, bindingId);
+        return requireMatchingRepository(current.repository_url, repositoryUrl);
+      }
+      this.db
+        .prepare(
+          `INSERT INTO cooking_audit_event(
+             id, project_id, actor_user_id, action, target_type, target_id,
+             details_json, created_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          this.createId(),
+          row.project_id,
+          row.user_id,
+          'ENGINEERING_REPOSITORY_CONFIRMED',
+          'ENGINEERING',
+          row.engineering_id,
+          JSON.stringify({ repositoryUrl }),
+          confirmedAt,
+        );
+      return repositoryUrl;
+    })();
+  }
+
   listBindings(
     userId: string,
     engineeringId: string,
@@ -168,6 +218,46 @@ export class BindingService {
     if (!membership)
       throw new PlatformError('NOT_FOUND', '工程不存在或无权访问');
   }
+
+  private repositoryConfirmationTarget(
+    runnerId: string,
+    bindingId: string,
+  ): RepositoryConfirmationRow {
+    const row = this.db
+      .prepare(
+        `SELECT engineering.id engineering_id, engineering.project_id,
+                engineering.repository_state, engineering.repository_url,
+                engineering.archived_at, binding.user_id
+         FROM cooking_engineering_binding binding
+         JOIN cooking_engineering engineering ON engineering.id = binding.engineering_id
+         WHERE binding.id = ? AND binding.runner_id = ?`,
+      )
+      .get(bindingId, runnerId) as RepositoryConfirmationRow | undefined;
+    if (!row)
+      throw new PlatformError('NOT_FOUND', 'Binding 不存在或不属于当前 Runner');
+    return row;
+  }
+}
+
+type RepositoryConfirmationRow = {
+  engineering_id: string;
+  project_id: string;
+  user_id: string;
+  repository_state: 'PENDING' | 'CONFIRMED';
+  repository_url: string | null;
+  archived_at: string | null;
+};
+
+function requireMatchingRepository(
+  confirmedRepositoryUrl: string | null,
+  repositoryUrl: string,
+): string {
+  if (confirmedRepositoryUrl !== repositoryUrl)
+    throw new PlatformError(
+      'RESOURCE_CONFLICT',
+      '本机仓库与工程仓库身份不一致',
+    );
+  return repositoryUrl;
 }
 
 type BindingSummaryRow = BindingRow & {

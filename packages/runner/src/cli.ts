@@ -1,6 +1,9 @@
+import { isAbsolute } from 'node:path';
+import { normalizeRepositoryUrl } from '@agent-party-time/runner-contract';
 import { RunnerClient } from './client';
 import { RunnerWorker } from './worker';
 import { RunnerStateStore } from './state';
+import { readRepositoryOrigin } from './repository-origin';
 
 type Output = Pick<Console, 'log'>;
 
@@ -10,11 +13,14 @@ export async function runRunnerCli(
     client?: RunnerClient;
     state?: RunnerStateStore;
     output?: Output;
+    repositoryOrigin?: (path: string) => Promise<string | null>;
   } = {},
 ): Promise<void> {
   const client = dependencies.client ?? new RunnerClient();
   const state = dependencies.state ?? new RunnerStateStore();
   const output = dependencies.output ?? console;
+  const repositoryOrigin =
+    dependencies.repositoryOrigin ?? readRepositoryOrigin;
   const [command, ...rest] = args;
   switch (command) {
     case 'pair': {
@@ -31,9 +37,21 @@ export async function runRunnerCli(
       return;
     }
     case 'bind': {
-      const [bindingId, repositoryPath] = rest;
+      const [bindingId, repositoryPath, manualRepositoryUrl] = rest;
       if (!bindingId || !repositoryPath)
-        throw new Error('用法：runner bind <bindingId> <本机绝对路径>');
+        throw new Error(
+          '用法：runner bind <bindingId> <本机绝对路径> [仓库地址]',
+        );
+      if (!isAbsolute(repositoryPath))
+        throw new Error('仓库路径必须是本机绝对路径');
+      const discoveredOrigin = await repositoryOrigin(repositoryPath);
+      if (!discoveredOrigin && !manualRepositoryUrl)
+        throw new Error(
+          '本机仓库没有可用的 remote.origin.url；可在命令末尾手工提供仓库地址',
+        );
+      const origin =
+        discoveredOrigin ?? normalizeRepositoryUrl(manualRepositoryUrl!);
+      await client.confirmBinding(bindingId, origin);
       const binding = await state.bind(bindingId, repositoryPath);
       output.log(`已登记绑定：${binding.bindingId}`);
       return;
@@ -78,7 +96,7 @@ export async function runRunnerCli(
           'Agent Party Time Runner',
           '  pair --server <服务端地址> --code <配对码> --name <名称>',
           '  heartbeat',
-          '  bind <bindingId> <本机绝对路径>',
+          '  bind <bindingId> <本机绝对路径> [仓库地址]',
           '  bindings',
           '  start [--concurrency <1-32>]',
         ].join('\n'),

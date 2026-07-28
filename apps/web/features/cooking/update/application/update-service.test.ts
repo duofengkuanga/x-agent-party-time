@@ -79,7 +79,6 @@ async function setup(
   const source = engineering.createEngineering(users.owner.id, project.id, {
     mutationId: randomUUID(),
     name: '支付工程',
-    repositoryUrl: 'https://example.com/payment.git',
   });
   engineering.addMember(users.owner.id, source.id, users.developer.id, {
     mutationId: randomUUID(),
@@ -98,11 +97,17 @@ async function setup(
     'Update Runner',
   );
   const runner = pairedRunner.runner;
-  const binding = new BindingService(database).createBinding(
+  const bindings = new BindingService(database);
+  const binding = bindings.createBinding(
     users.developer.id,
     source.id,
     runner.id,
     randomUUID(),
+  );
+  bindings.confirmRepository(
+    runner.id,
+    binding.id,
+    'https://example.com/payment.git',
   );
   let secondBinding: { id: string } | null = null;
   let secondEnvironment: { id: string } | null = null;
@@ -111,7 +116,6 @@ async function setup(
     secondSource = engineering.createEngineering(users.owner.id, project.id, {
       mutationId: randomUUID(),
       name: '订单工程',
-      repositoryUrl: 'https://example.com/order.git',
     });
     engineering.addMember(users.owner.id, secondSource.id, users.developer.id, {
       mutationId: randomUUID(),
@@ -125,11 +129,16 @@ async function setup(
         deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:order' },
       },
     );
-    secondBinding = new BindingService(database).createBinding(
+    secondBinding = bindings.createBinding(
       users.developer.id,
       secondSource.id,
       runner.id,
       randomUUID(),
+    );
+    bindings.confirmRepository(
+      runner.id,
+      secondBinding.id,
+      'https://example.com/order.git',
     );
   }
   const submission = new SubmissionService(database).createSubmission(

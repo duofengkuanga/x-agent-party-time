@@ -1,4 +1,6 @@
 import {
+  RunnerBindingConfirmationRequestSchema,
+  RunnerBindingConfirmationResponseSchema,
   RunnerBindingsResponseSchema,
   RunnerHeartbeatResponseSchema,
   RunnerPairRequestSchema,
@@ -48,6 +50,31 @@ export async function handleRunnerBindings(
     return jsonResponse(
       RunnerBindingsResponseSchema.parse({
         bindings: listBindingRefs(runner.id),
+      }),
+    );
+  } catch (error) {
+    return errorResponse(normalizeRequestError(error));
+  }
+}
+
+export async function handleRunnerBindingConfirmation(
+  request: Request,
+  runners: Pick<RunnerService, 'authenticateCredential'>,
+  confirm: (
+    runnerId: string,
+    bindingId: string,
+    repositoryUrl: string,
+  ) => string,
+): Promise<Response> {
+  try {
+    const runner = runners.authenticateCredential(bearerCredential(request));
+    const body = RunnerBindingConfirmationRequestSchema.parse(
+      await request.json(),
+    );
+    return jsonResponse(
+      RunnerBindingConfirmationResponseSchema.parse({
+        ...body,
+        repositoryUrl: confirm(runner.id, body.bindingId, body.repositoryUrl),
       }),
     );
   } catch (error) {

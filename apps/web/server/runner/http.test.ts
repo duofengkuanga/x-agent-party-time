@@ -7,6 +7,7 @@ import type { AppDatabase } from '@/server/database';
 import { openDatabase } from '@/server/database';
 import { RunnerService } from './service';
 import {
+  handleRunnerBindingConfirmation,
   handleRunnerBindings,
   handleRunnerHeartbeat,
   handleRunnerPair,
@@ -97,6 +98,29 @@ describe('Runner HTTP protocol', () => {
     expect(body).toContain('00000000-0000-4000-8000-000000000001');
     expect(body).not.toContain(paired.credential);
     expect(body).not.toMatch(/\/Users\/|localPath/iu);
+
+    const confirmation = await handleRunnerBindingConfirmation(
+      bearerJsonRequest(
+        'http://server/api/runner/bindings',
+        paired.credential,
+        {
+          bindingId: '00000000-0000-4000-8000-000000000001',
+          repositoryUrl: 'git@Example.com:team/project.git',
+        },
+      ),
+      runners,
+      (runnerId, bindingId, repositoryUrl) => {
+        expect(runnerId).toBe(paired.runner.id);
+        expect(bindingId).toBe('00000000-0000-4000-8000-000000000001');
+        expect(repositoryUrl).toBe('https://example.com/team/project.git');
+        return repositoryUrl;
+      },
+    );
+    expect(confirmation.status).toBe(200);
+    expect(await confirmation.json()).toEqual({
+      bindingId: '00000000-0000-4000-8000-000000000001',
+      repositoryUrl: 'https://example.com/team/project.git',
+    });
   });
 
   test('无效 JSON 和非法请求结构返回安全 Validation Error', async () => {
@@ -132,5 +156,20 @@ function bearerRequest(
   return new Request(url, {
     method,
     headers: { authorization: `Bearer ${credential}` },
+  });
+}
+
+function bearerJsonRequest(
+  url: string,
+  credential: string,
+  body: unknown,
+): Request {
+  return new Request(url, {
+    method: 'POST',
+    body: JSON.stringify(body),
+    headers: {
+      authorization: `Bearer ${credential}`,
+      'content-type': 'application/json',
+    },
   });
 }

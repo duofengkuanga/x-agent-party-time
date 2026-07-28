@@ -66,7 +66,6 @@ test('工程成员关系接入 Project 成员活动职责保护', async () => {
     {
       mutationId: randomUUID(),
       name: '职责工程',
-      repositoryUrl: 'https://example.com/duty.git',
     },
   );
   new EngineeringService(database).addMember(
