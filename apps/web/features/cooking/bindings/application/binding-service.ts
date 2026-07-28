@@ -74,7 +74,7 @@ export class BindingService {
         if (!runner)
           throw new PlatformError(
             'NOT_FOUND',
-            'Runner 不存在、已撤销或不属于当前用户',
+            'Agent 不存在、已停用或不属于当前用户',
           );
         const existing = this.db
           .prepare(

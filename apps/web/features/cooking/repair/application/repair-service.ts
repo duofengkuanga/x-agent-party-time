@@ -233,7 +233,7 @@ export class RepairService {
       .run(
         JSON.stringify({
           outcome: 'FAILED',
-          summary: '修复请求在 Runner 领取前撤回。',
+          summary: '修复请求在 Agent 领取前撤回。',
           technicalFailure: execution.outcome?.kind,
         }),
         now,
@@ -1055,7 +1055,7 @@ function isRepairExecution(execution: Execution): boolean {
 
 function repairStateLabel(state: Execution['state']): string {
   return {
-    QUEUED: '等待 Runner',
+    QUEUED: '等待 Agent',
     CLAIMED: '正在准备修复',
     RUNNING: '正在修复',
     WAITING_FOR_INTERACTION: '等待工程负责人处理',

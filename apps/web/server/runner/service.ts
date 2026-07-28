@@ -212,14 +212,14 @@ export class RunnerService {
            WHERE id = ? AND owner_user_id = ?`,
         )
         .get(runnerId, ownerUserId) as RunnerRow | undefined;
-      if (!row) throw new PlatformError('NOT_FOUND', 'Runner 不存在或无权访问');
+      if (!row) throw new PlatformError('NOT_FOUND', 'Agent 不存在或无权访问');
       if (row.revoked_at) return mapRunner(row);
       if (row.version !== expectedVersion)
-        throw new PlatformError('STALE_STATE', 'Runner 已更新，请刷新后重试');
+        throw new PlatformError('STALE_STATE', 'Agent 已更新，请刷新后重试');
       if (this.hasActiveExecutions(runnerId))
         throw new PlatformError(
           'RESOURCE_CONFLICT',
-          'Runner 仍有活动执行，暂时不能撤销',
+          'Agent 仍有活动执行，暂时不能停用',
         );
       const revokedAt = this.now().toISOString();
       const update = this.db
@@ -231,7 +231,7 @@ export class RunnerService {
         )
         .run(revokedAt, runnerId, ownerUserId, expectedVersion);
       if (update.changes !== 1)
-        throw new PlatformError('STALE_STATE', 'Runner 已更新，请刷新后重试');
+        throw new PlatformError('STALE_STATE', 'Agent 已更新，请刷新后重试');
       return RunnerSchema.parse({
         ...mapRunner(row),
         revokedAt,

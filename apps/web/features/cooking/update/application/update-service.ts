@@ -512,7 +512,7 @@ export class UpdateService {
           .run(
             JSON.stringify({
               outcome: 'FAILED',
-              summary: '更新批次在 Runner 领取前取消。',
+              summary: '更新批次在 Agent 领取前取消。',
               technicalFailure: execution.outcome?.kind,
             }),
             now,
@@ -1621,7 +1621,7 @@ function isTerminal(state: Execution['state']): boolean {
 
 function batchStateLabel(state: BatchRow['state']): string {
   return {
-    READY: '等待 Runner',
+    READY: '等待 Agent',
     RUNNING: '正在统一更新',
     WAITING_EXTERNAL: '等待外部部署结果',
     FAILED: '统一更新未完成',

@@ -252,7 +252,7 @@ export function SubmissionComposer({
                   <div>
                     <strong>当前项目还不能创建提测单</strong>
                     <p>
-                      至少需要一个工程成员、可用 Runner 绑定
+                      至少需要一个工程成员、可用 Agent 绑定
                       和测试环境，且测试负责人不能同时负责提测项。
                     </p>
                   </div>
@@ -299,7 +299,7 @@ export function SubmissionComposer({
             <div className="collab-form__blocked">
               <div>
                 <strong>还没有可用项目</strong>
-                <p>请先创建项目并完成工程、Runner 绑定和环境配置。</p>
+                <p>请先创建项目并完成工程、Agent 绑定和环境配置。</p>
               </div>
               <Link href="/cooking/projects">前往配置</Link>
             </div>
@@ -402,7 +402,7 @@ function ItemEditor({
           </select>
         </label>
         <label>
-          <span>Runner 绑定</span>
+          <span>Agent 绑定</span>
           <select
             onChange={(event) =>
               onChange({ ...draft, bindingId: event.target.value })

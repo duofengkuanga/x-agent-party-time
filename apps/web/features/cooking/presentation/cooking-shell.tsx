@@ -108,7 +108,7 @@ function AccountMenu({
         <nav aria-label="账号导航" className="collab-account-menu__navigation">
           <span>工作区</span>
           <Link href="/cooking/projects">项目与工程</Link>
-          <Link href="/cooking/runners">Runner 管理</Link>
+          <Link href="/cooking/agents">Agent 管理</Link>
         </nav>
         <form action={logoutAction}>
           <button type="submit">退出登录</button>

@@ -77,7 +77,7 @@ describe('项目与工程交互基线', () => {
     expect(page).toContain('name="memberUserId"');
     expect(page).toContain("mode === 'edit'");
     expect(page).not.toContain('name="repositoryUrl"');
-    expect(page).toContain('等待首次本机 Runner 绑定确认仓库');
+    expect(page).toContain('等待首次本机 Agent 绑定确认仓库');
     expect(page).toContain(
       '<DialogFeedback error={error} success={success} />',
     );

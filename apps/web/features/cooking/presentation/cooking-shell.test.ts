@@ -17,7 +17,7 @@ describe('Cooking 页面框架', () => {
 
     const pageImplementations = [
       'app/cooking/projects/page.tsx',
-      'app/cooking/runners/page.tsx',
+      'app/cooking/agents/page.tsx',
       'features/cooking/submissions/presentation/submission-workspace.tsx',
     ];
     for (const page of pageImplementations) {
@@ -39,6 +39,29 @@ describe('Cooking 页面框架', () => {
     }
     expect(definitions).toEqual([relative(webRoot, shellPath)]);
   });
+
+  test('Agent 是唯一用户路由与页面术语', async () => {
+    const cookingSources = await Promise.all(
+      [
+        ...(await tsxFiles(join(webRoot, 'app/cooking'))),
+        ...(await tsxFiles(join(webRoot, 'features/cooking/presentation'))),
+      ].map((path) => readFile(path, 'utf8')),
+    );
+    expect(cookingSources.join('\n')).not.toContain('/cooking/runners');
+    expect(
+      await fileExists(join(webRoot, 'app/cooking/runners/page.tsx')),
+    ).toBe(false);
+
+    const agentPage = await readFile(
+      join(webRoot, 'app/cooking/agents/page.tsx'),
+      'utf8',
+    );
+    expect(agentPage).toContain('<h1>Agent 管理</h1>');
+    expect(agentPage).toContain('绑定工程');
+    expect(agentPage).toContain('需要处理');
+    expect(agentPage).not.toContain('Runner 管理');
+    expect(agentPage).not.toContain('Runner 标识');
+  });
 });
 
 async function tsxFiles(directory: string): Promise<string[]> {
@@ -49,4 +72,13 @@ async function tsxFiles(directory: string): Promise<string[]> {
     else if (entry.name.endsWith('.tsx')) files.push(path);
   }
   return files;
+}
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await readFile(path);
+    return true;
+  } catch {
+    return false;
+  }
 }

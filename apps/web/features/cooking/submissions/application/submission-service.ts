@@ -517,7 +517,7 @@ export class SubmissionService {
     if (!source)
       throw new PlatformError(
         'VALIDATION_FAILED',
-        '提测项仓库、负责人、绑定、Runner 或环境配置无效',
+        '提测项仓库、负责人、绑定、Agent 或环境配置无效',
       );
     return source;
   }
