@@ -20,23 +20,27 @@ export function ProjectSettingsControls({
 
   return (
     <main className="project-settings project-settings-shell">
-      <section className="project-settings__hero">
-        <div className="project-settings__intro">
-          <h1>项目与工程</h1>
-          <p>在这里维护项目成员、工程环境和 Agent 绑定；提测仍在工作台完成。</p>
-        </div>
-        <div className="project-settings__toolbar-actions">
-          <button
-            aria-controls="project-create-form"
-            aria-expanded={showCreate}
-            className="project-settings__primary-action"
-            onClick={() => setShowCreate((current) => !current)}
-            type="button"
-          >
-            {showCreate ? '取消' : '新建项目'}
-          </button>
-        </div>
-      </section>
+      {hasProjects ? (
+        <section className="project-settings__hero">
+          <div className="project-settings__intro">
+            <h1>项目与工程</h1>
+            <p>
+              在这里维护项目成员、工程环境和 Agent 绑定；提测仍在工作台完成。
+            </p>
+          </div>
+          <div className="project-settings__toolbar-actions">
+            <button
+              aria-controls="project-create-form"
+              aria-expanded={showCreate}
+              className="project-settings__primary-action"
+              onClick={() => setShowCreate((current) => !current)}
+              type="button"
+            >
+              {showCreate ? '取消' : '新建项目'}
+            </button>
+          </div>
+        </section>
+      ) : null}
 
       <section className="project-settings__content">
         {showCreate ? (

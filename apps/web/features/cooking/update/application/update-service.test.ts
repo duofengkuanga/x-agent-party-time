@@ -79,6 +79,8 @@ async function setup(
   const source = engineering.createEngineering(users.owner.id, project.id, {
     mutationId: randomUUID(),
     name: '支付工程',
+    type: 'BACKEND',
+    identifier: 'payment-api',
   });
   engineering.addMember(users.owner.id, source.id, users.developer.id, {
     mutationId: randomUUID(),
@@ -116,6 +118,8 @@ async function setup(
     secondSource = engineering.createEngineering(users.owner.id, project.id, {
       mutationId: randomUUID(),
       name: '订单工程',
+      type: 'BACKEND',
+      identifier: 'order-api',
     });
     engineering.addMember(users.owner.id, secondSource.id, users.developer.id, {
       mutationId: randomUUID(),

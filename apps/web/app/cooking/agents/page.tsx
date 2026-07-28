@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { requireCurrentUser } from '@/server/auth/server';
 import { executionService } from '@/server/execution/server';
-import { PairingCodeForm } from '@/server/runner/pairing-code-form';
 import { runnerService } from '@/server/runner/server';
 import { bindingService } from '@/features/cooking/application/server';
 import { AgentRevokeForm } from './agent-revoke-form';
@@ -139,20 +138,15 @@ export default async function AgentsPage({
               )}
             </ol>
 
-            <details className="agent-connect">
-              <summary>连接另一台 Agent</summary>
-              <div>
-                <p>连接码短时有效且只能使用一次，长期凭据只保存在本机。</p>
-                <PairingCodeForm />
-              </div>
-            </details>
+            <p className="agent-ledger__connect-note">
+              启动另一台未连接的本机 Agent 后，会自动打开浏览器确认页。
+            </p>
           </>
         ) : (
           <div className="agent-empty">
             <span>暂无 Agent</span>
             <h2>连接第一台本机 Agent。</h2>
-            <p>生成一次性连接码，在本机完成首次连接。</p>
-            <PairingCodeForm />
+            <p>启动本机 Agent 后，按自动打开的浏览器页面完成确认。</p>
           </div>
         )}
       </section>

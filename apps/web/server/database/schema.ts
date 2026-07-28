@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { PlatformError } from '@/server/errors';
 
-export const SERVER_SCHEMA_VERSION = 12;
+export const SERVER_SCHEMA_VERSION = 14;
 
 const SCHEMA = `
 CREATE TABLE platform_user (
@@ -58,6 +58,34 @@ CREATE TABLE platform_runner_pairing_code (
 ) STRICT;
 CREATE INDEX platform_runner_pairing_expiry
   ON platform_runner_pairing_code(expires_at, used_at);
+
+CREATE TABLE platform_runner_authorization_request (
+  id TEXT PRIMARY KEY,
+  verifier_hash TEXT NOT NULL UNIQUE CHECK (length(verifier_hash) = 64),
+  fingerprint TEXT NOT NULL,
+  suggested_name TEXT NOT NULL,
+  approved_name TEXT,
+  owner_user_id TEXT REFERENCES platform_user(id) ON DELETE RESTRICT,
+  state TEXT NOT NULL CHECK (state IN (
+    'PENDING',
+    'APPROVED',
+    'REJECTED',
+    'CONSUMED'
+  )),
+  approval_token_hash TEXT CHECK (
+    approval_token_hash IS NULL OR length(approval_token_hash) = 64
+  ),
+  expires_at TEXT NOT NULL,
+  approved_at TEXT,
+  consumed_at TEXT,
+  last_polled_at TEXT,
+  poll_count INTEGER NOT NULL DEFAULT 0 CHECK (poll_count >= 0),
+  created_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX platform_runner_authorization_expiry
+  ON platform_runner_authorization_request(state, expires_at);
+CREATE INDEX platform_runner_authorization_created
+  ON platform_runner_authorization_request(created_at);
 
 CREATE TABLE platform_execution (
   id TEXT PRIMARY KEY,
@@ -207,6 +235,8 @@ CREATE TABLE cooking_engineering (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL REFERENCES cooking_project(id) ON DELETE CASCADE,
   name TEXT NOT NULL COLLATE NOCASE,
+  type TEXT NOT NULL CHECK (type IN ('FRONTEND', 'BACKEND')),
+  identifier TEXT NOT NULL COLLATE NOCASE,
   repository_state TEXT NOT NULL CHECK (repository_state IN ('PENDING', 'CONFIRMED')),
   repository_url TEXT,
   version INTEGER NOT NULL CHECK (version > 0),
@@ -221,6 +251,8 @@ CREATE TABLE cooking_engineering (
 CREATE UNIQUE INDEX cooking_engineering_active_name
   ON cooking_engineering(project_id, name)
   WHERE archived_at IS NULL;
+CREATE UNIQUE INDEX cooking_engineering_project_identifier
+  ON cooking_engineering(project_id, identifier);
 CREATE INDEX cooking_engineering_project
   ON cooking_engineering(project_id, archived_at, created_at);
 
@@ -253,12 +285,42 @@ CREATE TABLE cooking_engineering_binding (
   user_id TEXT NOT NULL REFERENCES platform_user(id) ON DELETE RESTRICT,
   runner_id TEXT NOT NULL REFERENCES platform_runner(id) ON DELETE RESTRICT,
   created_at TEXT NOT NULL,
-  UNIQUE(engineering_id, user_id, runner_id)
+  UNIQUE(engineering_id, user_id)
 ) STRICT;
 CREATE INDEX cooking_engineering_binding_runner
   ON cooking_engineering_binding(runner_id, created_at);
 CREATE INDEX cooking_engineering_binding_engineering
   ON cooking_engineering_binding(engineering_id, created_at);
+
+CREATE TABLE cooking_binding_request (
+  id TEXT PRIMARY KEY,
+  engineering_id TEXT NOT NULL REFERENCES cooking_engineering(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES platform_user(id) ON DELETE RESTRICT,
+  runner_id TEXT NOT NULL REFERENCES platform_runner(id) ON DELETE RESTRICT,
+  state TEXT NOT NULL CHECK (state IN (
+    'PENDING',
+    'PROCESSING',
+    'SUCCEEDED',
+    'FAILED',
+    'CANCELLED'
+  )),
+  error_message TEXT,
+  repository_url TEXT,
+  binding_id TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  claimed_at TEXT,
+  completed_at TEXT,
+  created_at TEXT NOT NULL,
+  CHECK (
+    (state = 'SUCCEEDED' AND repository_url IS NOT NULL) OR
+    (state <> 'SUCCEEDED' AND repository_url IS NULL)
+  )
+) STRICT;
+CREATE UNIQUE INDEX cooking_binding_request_active
+  ON cooking_binding_request(engineering_id, user_id)
+  WHERE state IN ('PENDING', 'PROCESSING');
+CREATE INDEX cooking_binding_request_runner
+  ON cooking_binding_request(runner_id, state, expires_at, created_at);
 
 CREATE TABLE cooking_test_submission (
   id TEXT PRIMARY KEY,
@@ -285,6 +347,8 @@ CREATE TABLE cooking_submission_item (
   position INTEGER NOT NULL CHECK (position >= 0),
   engineering_id TEXT NOT NULL,
   engineering_name TEXT NOT NULL,
+  engineering_type TEXT NOT NULL CHECK (engineering_type IN ('FRONTEND', 'BACKEND')),
+  engineering_identifier TEXT NOT NULL,
   repository_url TEXT NOT NULL,
   responsible_user_id TEXT NOT NULL,
   responsible_username TEXT NOT NULL,

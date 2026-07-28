@@ -3,8 +3,11 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireCurrentUser } from '@/server/auth/server';
-import { publicError } from '@/server/errors';
-import { bindingService } from '@/features/cooking/application/server';
+import { PlatformError, publicError } from '@/server/errors';
+import {
+  bindingRequestService,
+  bindingService,
+} from '@/features/cooking/application/server';
 import {
   messageRedirectPath,
   rethrowRedirectError,
@@ -17,7 +20,7 @@ export async function createEngineeringBindingAction(
   const engineeringId = field(formData, 'engineeringId');
   const projectId = field(formData, 'projectId');
   try {
-    bindingService().createBinding(
+    const request = bindingRequestService().createRequest(
       user.id,
       engineeringId,
       field(formData, 'runnerId'),
@@ -26,9 +29,43 @@ export async function createEngineeringBindingAction(
     revalidatePath('/cooking/projects');
     redirect(
       messageRedirectPath(
+        settingsPath(projectId, engineeringId, request.id),
+        'success',
+        '已发送到本机 Agent，请选择仓库目录',
+      ),
+    );
+  } catch (error) {
+    rethrowRedirectError(error);
+    redirect(
+      messageRedirectPath(
+        settingsPath(projectId, engineeringId),
+        'error',
+        publicError(error).message,
+      ),
+    );
+  }
+}
+
+export async function deleteEngineeringBindingAction(
+  formData: FormData,
+): Promise<never> {
+  const user = await requireCurrentUser();
+  const engineeringId = field(formData, 'engineeringId');
+  const projectId = field(formData, 'projectId');
+  try {
+    if (field(formData, 'confirmed') !== 'yes')
+      throw new PlatformError('VALIDATION_FAILED', '请先确认删除影响');
+    bindingService().deleteBinding(
+      user.id,
+      field(formData, 'bindingId'),
+      field(formData, 'mutationId'),
+    );
+    revalidatePath('/cooking/projects');
+    redirect(
+      messageRedirectPath(
         settingsPath(projectId, engineeringId),
         'success',
-        '工程绑定已创建，请在本机 Agent 中登记路径',
+        '工程绑定已删除',
       ),
     );
   } catch (error) {
@@ -47,6 +84,13 @@ function field(formData: FormData, name: string): string {
   return String(formData.get(name) ?? '');
 }
 
-function settingsPath(projectId: string, engineeringId: string): string {
-  return `/cooking/projects?project=${encodeURIComponent(projectId)}&panel=engineering&engineering=${encodeURIComponent(engineeringId)}`;
+function settingsPath(
+  projectId: string,
+  engineeringId: string,
+  bindingRequestId?: string,
+): string {
+  const base = `/cooking/projects?project=${encodeURIComponent(projectId)}&panel=engineering&engineering=${encodeURIComponent(engineeringId)}`;
+  return bindingRequestId
+    ? `${base}&bindingRequest=${encodeURIComponent(bindingRequestId)}`
+    : base;
 }

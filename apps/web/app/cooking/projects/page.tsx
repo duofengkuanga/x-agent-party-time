@@ -2,8 +2,10 @@ import { randomUUID } from 'node:crypto';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { requireCurrentUser } from '@/server/auth/server';
+import { PlatformError } from '@/server/errors';
 import { runnerService } from '@/server/runner/server';
 import {
+  bindingRequestService,
   bindingService,
   engineeringService,
   projectService,
@@ -30,6 +32,8 @@ import {
 } from '@/features/cooking/projects/presentation/actions';
 import { ProjectDialogEffects } from './project-dialog-effects';
 import { EngineeringCreateEnvironments } from './engineering-create-environments';
+import { BindingDeleteForm } from './binding-delete-form';
+import { BindingRequestRefresh } from './binding-request-refresh';
 import { ProjectSettingsControls } from './project-settings-controls';
 
 export const metadata: Metadata = {
@@ -42,6 +46,7 @@ export default async function ProjectSettingsPage({
 }: {
   searchParams: Promise<{
     engineering?: string;
+    bindingRequest?: string;
     error?: string;
     mode?: string;
     panel?: string;
@@ -127,6 +132,7 @@ export default async function ProjectSettingsPage({
       {selected && panel === 'engineering' ? (
         <EngineeringDialog
           engineeringId={query.engineering}
+          bindingRequestId={query.bindingRequest}
           error={query.error}
           mode={query.mode}
           projectId={selected.project.id}
@@ -411,6 +417,7 @@ function InvitationDialog({
 }
 
 function EngineeringDialog({
+  bindingRequestId,
   engineeringId,
   error,
   mode,
@@ -418,6 +425,7 @@ function EngineeringDialog({
   success,
   userId,
 }: {
+  bindingRequestId?: string;
   engineeringId?: string;
   error?: string;
   mode?: string;
@@ -445,13 +453,30 @@ function EngineeringDialog({
           projectMembers={members}
           userId={userId}
         />
-      ) : selected ? (
-        <EngineeringDetail
-          editing={mode === 'edit'}
+      ) : selected && mode === 'members' && owner ? (
+        <EngineeringMemberManagement
           engineeringId={selected.id}
-          owner={owner}
           projectId={projectId}
           projectMembers={members}
+          userId={userId}
+        />
+      ) : selected && mode === 'environments' && owner ? (
+        <EngineeringEnvironmentManagement
+          engineeringId={selected.id}
+          projectId={projectId}
+          userId={userId}
+        />
+      ) : selected && mode === 'information' && owner ? (
+        <EngineeringInformationManagement
+          engineeringId={selected.id}
+          projectId={projectId}
+          userId={userId}
+        />
+      ) : selected ? (
+        <EngineeringDetail
+          bindingRequestId={bindingRequestId}
+          engineeringId={selected.id}
+          projectId={projectId}
           userId={userId}
         />
       ) : (
@@ -471,34 +496,94 @@ function EngineeringDialog({
               </Link>
             ) : null}
           </div>
-          <section className="engineering-group">
-            <div className="collaboration-section-title">
-              <span>工程列表</span>
-              <small>{items.length} 个</small>
-            </div>
-            <div className="engineering-list">
-              {items.length ? (
-                items.map((item) => (
-                  <Link
-                    className="engineering-card"
-                    href={engineeringHref(projectId, item.id)}
-                    key={item.id}
-                    replace
-                  >
-                    <span>{item.archivedAt ? '已归档' : '代码工程'}</span>
-                    <strong>{item.name}</strong>
-                    <small>
-                      {item.repositoryState === 'CONFIRMED'
-                        ? item.repositoryUrl
-                        : '等待首次本机 Agent 绑定确认仓库'}
-                    </small>
-                  </Link>
-                ))
-              ) : (
-                <p className="collaboration-empty">还没有工程。</p>
-              )}
-            </div>
-          </section>
+          {items.length ? (
+            [
+              { label: '前端工程', type: 'FRONTEND' as const },
+              { label: '后端工程', type: 'BACKEND' as const },
+            ].map((group) => {
+              const groupItems = items.filter(
+                (item) => item.type === group.type,
+              );
+              if (!groupItems.length) return null;
+              return (
+                <section className="engineering-group" key={group.type}>
+                  <div className="collaboration-section-title">
+                    <span>{group.label}</span>
+                    <small>{groupItems.length} 个</small>
+                  </div>
+                  <div className="engineering-list">
+                    {groupItems.map((item) => {
+                      const currentUserIsEngineeringMember = engineering
+                        .listMembers(userId, item.id)
+                        .some(({ user }) => user.id === userId);
+                      const currentUserRelation = owner
+                        ? '项目所有者'
+                        : currentUserIsEngineeringMember
+                          ? '工程成员'
+                          : '项目成员';
+                      return (
+                        <article className="engineering-card" key={item.id}>
+                          <div className="engineering-card__copy">
+                            <strong>{item.name}</strong>
+                            <small>
+                              {item.identifier} · {currentUserRelation}
+                            </small>
+                          </div>
+                          <nav
+                            aria-label={`${item.name}管理`}
+                            className="engineering-card__actions"
+                          >
+                            {owner ? (
+                              <>
+                                <Link
+                                  href={engineeringViewHref(
+                                    projectId,
+                                    item.id,
+                                    'members',
+                                  )}
+                                  replace
+                                >
+                                  成员管理
+                                </Link>
+                                <Link
+                                  href={engineeringViewHref(
+                                    projectId,
+                                    item.id,
+                                    'environments',
+                                  )}
+                                  replace
+                                >
+                                  环境管理
+                                </Link>
+                                <Link
+                                  href={engineeringViewHref(
+                                    projectId,
+                                    item.id,
+                                    'information',
+                                  )}
+                                  replace
+                                >
+                                  信息管理
+                                </Link>
+                              </>
+                            ) : null}
+                            <Link
+                              href={engineeringHref(projectId, item.id)}
+                              replace
+                            >
+                              详情
+                            </Link>
+                          </nav>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </section>
+              );
+            })
+          ) : (
+            <p className="collaboration-empty">还没有工程。</p>
+          )}
         </div>
       )}
     </Dialog>
@@ -539,6 +624,26 @@ function EngineeringCreateForm({
             maxLength={120}
             name="name"
             placeholder="例如：商城前端"
+            required
+          />
+        </label>
+        <label>
+          <span>工程归属</span>
+          <select defaultValue="" name="type" required>
+            <option disabled value="">
+              请选择
+            </option>
+            <option value="FRONTEND">前端</option>
+            <option value="BACKEND">后端</option>
+          </select>
+        </label>
+        <label>
+          <span>稳定标识</span>
+          <input
+            autoComplete="off"
+            maxLength={40}
+            name="identifier"
+            placeholder="例如：web"
             required
           />
         </label>
@@ -583,31 +688,322 @@ function EngineeringCreateForm({
   );
 }
 
-function EngineeringDetail({
-  editing,
+function EngineeringMemberManagement({
   engineeringId,
-  owner,
   projectId,
   projectMembers,
   userId,
 }: {
-  editing: boolean;
   engineeringId: string;
-  owner: boolean;
   projectId: string;
   projectMembers: ReturnType<ReturnType<typeof projectService>['listMembers']>;
   userId: string;
 }) {
-  const service = engineeringService();
-  const workspace = service.getWorkspace(userId, engineeringId);
-  const bindings = bindingService().listBindings(userId, engineeringId);
+  const workspace = engineeringService().getWorkspace(userId, engineeringId);
   const assigned = new Set(workspace.members.map(({ user }) => user.id));
   const availableMembers = projectMembers.filter(
     ({ user }) => !assigned.has(user.id),
   );
+
+  return (
+    <div className="engineering-task">
+      <EngineeringTaskHeading
+        label="成员管理"
+        name={workspace.engineering.name}
+        projectId={projectId}
+      />
+
+      <section className="engineering-task__section">
+        <div className="engineering-task__section-title">
+          <strong>工程成员</strong>
+          <small>{workspace.members.length} 人</small>
+        </div>
+        <ul className="engineering-member-list">
+          {workspace.members.map(({ membership, user }) => (
+            <li key={user.id}>
+              <span>
+                <strong>{user.displayName}</strong>
+                <small>@{user.username}</small>
+              </span>
+              <form action={removeEngineeringMemberAction}>
+                <EngineeringFields
+                  engineeringId={engineeringId}
+                  projectId={projectId}
+                />
+                <input name="userId" type="hidden" value={user.id} />
+                <input
+                  name="expectedVersion"
+                  type="hidden"
+                  value={membership.version}
+                />
+                <button type="submit">移出工程</button>
+              </form>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {availableMembers.length ? (
+        <section className="engineering-task__section engineering-member-add">
+          <div className="engineering-task__section-title">
+            <strong>添加成员</strong>
+            <small>从项目成员中选择</small>
+          </div>
+          <form action={addEngineeringMemberAction}>
+            <EngineeringFields
+              engineeringId={engineeringId}
+              projectId={projectId}
+            />
+            <label>
+              <span>项目成员</span>
+              <select name="userId" required>
+                {availableMembers.map(({ user }) => (
+                  <option key={user.id} value={user.id}>
+                    {user.displayName}（@{user.username}）
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="submit">添加成员</button>
+          </form>
+        </section>
+      ) : (
+        <p className="engineering-task__empty">所有项目成员都已加入工程。</p>
+      )}
+    </div>
+  );
+}
+
+function EngineeringEnvironmentManagement({
+  engineeringId,
+  projectId,
+  userId,
+}: {
+  engineeringId: string;
+  projectId: string;
+  userId: string;
+}) {
+  const workspace = engineeringService().getWorkspace(userId, engineeringId);
+
+  return (
+    <div className="engineering-task engineering-task--environments">
+      <EngineeringTaskHeading
+        label="环境管理"
+        name={workspace.engineering.name}
+        projectId={projectId}
+      />
+
+      <section className="engineering-task__section">
+        <div className="engineering-task__section-title">
+          <strong>测试环境</strong>
+          <small>{workspace.environments.length} 个</small>
+        </div>
+        <div className="engineering-environment-list">
+          {workspace.environments.map((environment) => (
+            <details
+              className="engineering-environment-row"
+              key={environment.id}
+            >
+              <summary>
+                <span>
+                  <strong>{environment.name}</strong>
+                  <small>{deploymentLabel(environment.deployment.kind)}</small>
+                </span>
+                <small>编辑</small>
+              </summary>
+              <form action={updateEnvironmentAction}>
+                <EngineeringFields
+                  engineeringId={engineeringId}
+                  projectId={projectId}
+                />
+                <input
+                  name="environmentId"
+                  type="hidden"
+                  value={environment.id}
+                />
+                <input
+                  name="expectedVersion"
+                  type="hidden"
+                  value={environment.version}
+                />
+                <label>
+                  <span>环境名称</span>
+                  <input defaultValue={environment.name} name="name" required />
+                </label>
+                <DeploymentFields deployment={environment.deployment} />
+                <div className="engineering-task__form-actions">
+                  <button
+                    className="engineering-task__danger"
+                    formAction={deleteEnvironmentAction}
+                    type="submit"
+                  >
+                    删除环境
+                  </button>
+                  <button type="submit">保存环境</button>
+                </div>
+              </form>
+            </details>
+          ))}
+        </div>
+        {workspace.environments.length ? null : (
+          <p className="engineering-task__empty">还没有测试环境。</p>
+        )}
+      </section>
+
+      <section className="engineering-environment-create">
+        <form
+          action={createEnvironmentAction}
+          className="engineering-environment-batch-form"
+        >
+          <EngineeringFields
+            engineeringId={engineeringId}
+            projectId={projectId}
+          />
+          <EngineeringCreateEnvironments
+            initialMutationId={randomUUID()}
+            saveContext="一起保存到当前工程"
+            submitLabel="保存测试环境"
+          />
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function EngineeringInformationManagement({
+  engineeringId,
+  projectId,
+  userId,
+}: {
+  engineeringId: string;
+  projectId: string;
+  userId: string;
+}) {
+  const service = engineeringService();
+  const workspace = service.getWorkspace(userId, engineeringId);
+  const identifierLocked = service.isIdentifierLocked(userId, engineeringId);
+
+  return (
+    <div className="engineering-task">
+      <EngineeringTaskHeading
+        label="信息管理"
+        name={workspace.engineering.name}
+        projectId={projectId}
+      />
+
+      <section className="engineering-task__section">
+        <div className="engineering-task__section-title">
+          <strong>工程信息</strong>
+        </div>
+        <form
+          action={updateEngineeringAction}
+          className="engineering-information-form"
+        >
+          <EngineeringFields
+            engineeringId={engineeringId}
+            projectId={projectId}
+          />
+          <input
+            name="expectedVersion"
+            type="hidden"
+            value={workspace.engineering.version}
+          />
+          <label>
+            <span>名称</span>
+            <input
+              defaultValue={workspace.engineering.name}
+              name="name"
+              required
+            />
+          </label>
+          <label>
+            <span>归属</span>
+            <select defaultValue={workspace.engineering.type} name="type">
+              <option value="FRONTEND">前端</option>
+              <option value="BACKEND">后端</option>
+            </select>
+          </label>
+          <label>
+            <span>稳定标识</span>
+            <input
+              aria-describedby={
+                identifierLocked ? 'engineering-identifier-lock' : undefined
+              }
+              defaultValue={workspace.engineering.identifier}
+              maxLength={40}
+              name="identifier"
+              pattern="[a-z][a-z0-9]*(?:-[a-z0-9]+)*"
+              readOnly={identifierLocked}
+              required
+            />
+            {identifierLocked ? (
+              <small id="engineering-identifier-lock">
+                已被提测引用，不可修改。
+              </small>
+            ) : null}
+          </label>
+          <button type="submit">保存工程信息</button>
+        </form>
+      </section>
+
+      {!workspace.engineering.archivedAt ? (
+        <section className="engineering-task__archive">
+          <div className="engineering-task__section-title">
+            <strong>工程归档</strong>
+          </div>
+          <form action={archiveEngineeringAction}>
+            <EngineeringFields
+              engineeringId={engineeringId}
+              projectId={projectId}
+            />
+            <input
+              name="expectedVersion"
+              type="hidden"
+              value={workspace.engineering.version}
+            />
+            <p>归档后保留历史记录，并停止继续使用这个工程。</p>
+            <button type="submit">归档工程</button>
+          </form>
+        </section>
+      ) : (
+        <p className="engineering-task__empty">这个工程已经归档。</p>
+      )}
+    </div>
+  );
+}
+
+function EngineeringDetail({
+  bindingRequestId,
+  engineeringId,
+  projectId,
+  userId,
+}: {
+  bindingRequestId?: string;
+  engineeringId: string;
+  projectId: string;
+  userId: string;
+}) {
+  const service = engineeringService();
+  const workspace = service.getWorkspace(userId, engineeringId);
+  let bindingRequest: ReturnType<
+    ReturnType<typeof bindingRequestService>['getRequest']
+  > | null = null;
+  if (bindingRequestId) {
+    try {
+      bindingRequest = bindingRequestService().getRequest(
+        userId,
+        bindingRequestId,
+      );
+    } catch (error) {
+      if (!(error instanceof PlatformError && error.code === 'NOT_FOUND'))
+        throw error;
+    }
+  }
+  const bindings = bindingService().listBindings(userId, engineeringId);
+  const assigned = new Set(workspace.members.map(({ user }) => user.id));
   const runners = runnerService()
     .listRunners(userId)
-    .filter(({ runner }) => !runner.revokedAt);
+    .filter(({ online, runner }) => online && !runner.revokedAt);
   const currentBinding = bindings.find(({ user }) => user.id === userId);
   const repositoryLabel =
     workspace.engineering.repositoryState === 'CONFIRMED'
@@ -616,17 +1012,22 @@ function EngineeringDetail({
 
   return (
     <div className="engineering-detail">
-      <div className="engineering-detail__headline">
-        <div>
-          <span>
-            {workspace.engineering.archivedAt ? '已归档工程' : '代码工程'}
-          </span>
-          <h3>{workspace.engineering.name}</h3>
-        </div>
-        <em>{workspace.engineering.archivedAt ? '已归档' : '使用中'}</em>
-      </div>
+      <EngineeringTaskHeading
+        label="工程详情"
+        name={workspace.engineering.name}
+        projectId={projectId}
+        status={workspace.engineering.archivedAt ? '已归档' : '使用中'}
+      />
 
       <dl>
+        <div>
+          <dt>工程归属</dt>
+          <dd>{workspace.engineering.type === 'FRONTEND' ? '前端' : '后端'}</dd>
+        </div>
+        <div>
+          <dt>稳定标识</dt>
+          <dd>{workspace.engineering.identifier}</dd>
+        </div>
         <div>
           <dt>仓库地址</dt>
           <dd>{repositoryLabel}</dd>
@@ -641,92 +1042,6 @@ function EngineeringDetail({
         </div>
       </dl>
 
-      {owner && editing ? (
-        <form action={updateEngineeringAction} className="engineering-editor">
-          <EngineeringFields
-            engineeringId={engineeringId}
-            projectId={projectId}
-          />
-          <input
-            name="expectedVersion"
-            type="hidden"
-            value={workspace.engineering.version}
-          />
-          <div className="engineering-editor__grid">
-            <label className="field-wide">
-              <span>工程名称</span>
-              <input
-                defaultValue={workspace.engineering.name}
-                name="name"
-                required
-              />
-            </label>
-          </div>
-          <div className="dialog-actions">
-            <Link href={engineeringHref(projectId, engineeringId)} replace>
-              取消编辑
-            </Link>
-            <button className="repair-primary" type="submit">
-              保存工程设置
-            </button>
-          </div>
-        </form>
-      ) : null}
-
-      {owner && editing ? (
-        <section className="engineering-detail__bindings">
-          <div className="collaboration-section-title">
-            <span>工程成员配置</span>
-            <small>{workspace.members.length} 人</small>
-          </div>
-          <ul>
-            {workspace.members.map(({ membership, user }) => (
-              <li key={user.id}>
-                <span>
-                  <strong>{user.displayName}</strong>
-                  <small>@{user.username}</small>
-                </span>
-                <form action={removeEngineeringMemberAction}>
-                  <EngineeringFields
-                    engineeringId={engineeringId}
-                    projectId={projectId}
-                  />
-                  <input name="userId" type="hidden" value={user.id} />
-                  <input
-                    name="expectedVersion"
-                    type="hidden"
-                    value={membership.version}
-                  />
-                  <button type="submit">移出工程</button>
-                </form>
-              </li>
-            ))}
-          </ul>
-          {availableMembers.length ? (
-            <form
-              action={addEngineeringMemberAction}
-              className="engineering-binding-form"
-            >
-              <EngineeringFields
-                engineeringId={engineeringId}
-                projectId={projectId}
-              />
-              <label>
-                <span>添加项目成员</span>
-                <select name="userId" required>
-                  {availableMembers.map(({ user }) => (
-                    <option key={user.id} value={user.id}>
-                      {user.displayName}（@{user.username}）
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button type="submit">添加成员</button>
-            </form>
-          ) : null}
-        </section>
-      ) : null}
-
       <section className="engineering-detail__environments">
         <div className="collaboration-section-title">
           <span>测试环境</span>
@@ -735,92 +1050,18 @@ function EngineeringDetail({
         {workspace.environments.length ? (
           workspace.environments.map((environment) => (
             <article key={environment.id}>
-              {owner && editing ? (
-                <form
-                  action={updateEnvironmentAction}
-                  className="engineering-editor"
-                >
-                  <EngineeringFields
-                    engineeringId={engineeringId}
-                    projectId={projectId}
-                  />
-                  <input
-                    name="environmentId"
-                    type="hidden"
-                    value={environment.id}
-                  />
-                  <input
-                    name="expectedVersion"
-                    type="hidden"
-                    value={environment.version}
-                  />
-                  <label>
-                    <span>环境名称</span>
-                    <input
-                      defaultValue={environment.name}
-                      name="name"
-                      required
-                    />
-                  </label>
-                  <DeploymentFields deployment={environment.deployment} />
-                  <div className="dialog-actions">
-                    <button type="submit">保存环境</button>
-                  </div>
-                </form>
-              ) : (
-                <div>
-                  <strong>{environment.name}</strong>
-                  <small>{deploymentLabel(environment.deployment.kind)}</small>
-                  {'command' in environment.deployment ? (
-                    <code>{environment.deployment.command}</code>
-                  ) : null}
-                </div>
-              )}
-              {owner && editing ? (
-                <form action={deleteEnvironmentAction}>
-                  <EngineeringFields
-                    engineeringId={engineeringId}
-                    projectId={projectId}
-                  />
-                  <input
-                    name="environmentId"
-                    type="hidden"
-                    value={environment.id}
-                  />
-                  <input
-                    name="expectedVersion"
-                    type="hidden"
-                    value={environment.version}
-                  />
-                  <button
-                    className="engineering-remove-environment"
-                    type="submit"
-                  >
-                    删除环境
-                  </button>
-                </form>
-              ) : null}
+              <div>
+                <strong>{environment.name}</strong>
+                <small>{deploymentLabel(environment.deployment.kind)}</small>
+                {'command' in environment.deployment ? (
+                  <code>{environment.deployment.command}</code>
+                ) : null}
+              </div>
             </article>
           ))
         ) : (
           <p className="collaboration-empty">还没有测试环境。</p>
         )}
-        {owner && editing ? (
-          <form action={createEnvironmentAction} className="engineering-editor">
-            <EngineeringFields
-              engineeringId={engineeringId}
-              projectId={projectId}
-            />
-            <label>
-              <span>环境名称</span>
-              <input name="name" required />
-            </label>
-            <DeploymentFields />
-            <div className="dialog-actions">
-              <button type="submit">创建测试环境</button>
-            </div>
-          </form>
-        ) : null}
       </section>
 
       <section className="engineering-detail__bindings">
@@ -843,37 +1084,64 @@ function EngineeringDetail({
                       ? '已连接'
                       : '未连接'}
                 </em>
+                {binding.userId === userId ? (
+                  <BindingDeleteForm
+                    bindingId={binding.id}
+                    engineeringId={engineeringId}
+                    mutationId={randomUUID()}
+                    projectId={projectId}
+                  />
+                ) : null}
               </li>
             ))}
           </ul>
         ) : (
           <p className="collaboration-empty">还没有开发人员绑定本机 Agent。</p>
         )}
+        {bindingRequest ? (
+          <div
+            className="engineering-binding-request"
+            data-state={bindingRequest.state}
+          >
+            <BindingRequestRefresh
+              active={['PENDING', 'PROCESSING'].includes(bindingRequest.state)}
+            />
+            <strong>{bindingRequestLabel(bindingRequest.state)}</strong>
+            <p>
+              {bindingRequest.errorMessage ??
+                (bindingRequest.state === 'PROCESSING'
+                  ? '请在本机选择要绑定的 Git 仓库。'
+                  : '等待本机 Agent 领取请求。')}
+            </p>
+          </div>
+        ) : null}
         {currentBinding ? (
           <p className="collaboration-empty">
             你已绑定 {currentBinding.runner.name}，无需重复创建。
           </p>
         ) : assigned.has(userId) && runners.length ? (
-          <form
-            action={createEngineeringBindingAction}
-            className="engineering-binding-form"
-          >
-            <EngineeringFields
-              engineeringId={engineeringId}
-              projectId={projectId}
-            />
-            <label>
-              <span>选择本机 Agent</span>
-              <select name="runnerId" required>
-                {runners.map(({ runner }) => (
-                  <option key={runner.id} value={runner.id}>
-                    {runner.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button type="submit">创建 Agent 绑定</button>
-          </form>
+          <div className="engineering-binding-disclosure">
+            <form
+              action={createEngineeringBindingAction}
+              className="engineering-binding-form"
+            >
+              <EngineeringFields
+                engineeringId={engineeringId}
+                projectId={projectId}
+              />
+              <label>
+                <span>选择本机 Agent</span>
+                <select name="runnerId" required>
+                  {runners.map(({ runner }) => (
+                    <option key={runner.id} value={runner.id}>
+                      {runner.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button type="submit">绑定本机 Agent</button>
+            </form>
+          </div>
         ) : assigned.has(userId) ? (
           <div className="collab-form__blocked">
             <div>
@@ -891,35 +1159,33 @@ function EngineeringDetail({
           </div>
         )}
       </section>
+    </div>
+  );
+}
 
-      <div className="dialog-actions engineering-detail__actions">
-        <Link href={settingsHref(projectId, 'engineering')} replace>
-          返回目录
-        </Link>
-        {owner && !workspace.engineering.archivedAt ? (
-          <form action={archiveEngineeringAction}>
-            <EngineeringFields
-              engineeringId={engineeringId}
-              projectId={projectId}
-            />
-            <input
-              name="expectedVersion"
-              type="hidden"
-              value={workspace.engineering.version}
-            />
-            <button type="submit">归档工程</button>
-          </form>
-        ) : null}
-        {owner && !editing ? (
-          <Link
-            className="repair-primary"
-            href={engineeringEditHref(projectId, engineeringId)}
-            replace
-          >
-            编辑配置
-          </Link>
-        ) : null}
+function EngineeringTaskHeading({
+  label,
+  name,
+  projectId,
+  status,
+}: {
+  label: string;
+  name: string;
+  projectId: string;
+  status?: string;
+}) {
+  return (
+    <div className="engineering-task__heading">
+      <div>
+        <span>
+          {label}
+          {status ? ` · ${status}` : ''}
+        </span>
+        <h3>{name}</h3>
       </div>
+      <Link href={settingsHref(projectId, 'engineering')} replace>
+        返回目录
+      </Link>
     </div>
   );
 }
@@ -1037,12 +1303,28 @@ function engineeringCreateHref(projectId: string): string {
   return engineeringHref(projectId, 'new');
 }
 
-function engineeringEditHref(projectId: string, engineeringId: string): string {
-  return `${engineeringHref(projectId, engineeringId)}&mode=edit`;
+function engineeringViewHref(
+  projectId: string,
+  engineeringId: string,
+  mode: 'members' | 'environments' | 'information',
+): string {
+  return `${engineeringHref(projectId, engineeringId)}&mode=${mode}`;
 }
 
 function deploymentLabel(kind: 'LOCAL_SCRIPT' | 'CI_CD'): string {
   return kind === 'LOCAL_SCRIPT' ? '本地脚本' : '持续集成';
+}
+
+function bindingRequestLabel(
+  state: 'PENDING' | 'PROCESSING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED',
+): string {
+  return {
+    PENDING: '等待 Agent 响应',
+    PROCESSING: '等待选择仓库',
+    SUCCEEDED: '工程绑定已完成',
+    FAILED: '工程绑定未完成',
+    CANCELLED: '工程绑定已取消',
+  }[state];
 }
 
 function invitationStatus(status: string): string {

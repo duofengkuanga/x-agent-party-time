@@ -6,6 +6,405 @@
   overflow: auto;
 }
 
+/* Engineering directory: four equal task entry points. */
+.engineering-list .engineering-card {
+  align-items: center;
+  background: transparent;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  padding: 16px 4px;
+}
+
+.engineering-list .engineering-card:hover {
+  background: transparent;
+  color: var(--ink);
+  padding-inline: 4px;
+}
+
+.engineering-card__copy {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.engineering-card__copy > strong {
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 18px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.engineering-card__copy > small {
+  color: var(--muted);
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.engineering-card__actions {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+}
+
+.engineering-catalog-dialog .engineering-card__actions > a {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 700;
+  height: 34px;
+  justify-content: center;
+  padding: 0 10px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.engineering-catalog-dialog .engineering-card__actions > a:hover,
+.engineering-catalog-dialog .engineering-card__actions > a:focus-visible {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.engineering-task {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.engineering-task__heading {
+  align-items: end;
+  border-bottom: 1px solid var(--strong-line);
+  display: flex;
+  justify-content: space-between;
+  padding: 20px 22px 16px;
+}
+
+.engineering-task__heading > div {
+  display: grid;
+  gap: 4px;
+}
+
+.engineering-task__heading span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.engineering-task__heading h3 {
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 24px;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.engineering-task__heading > a {
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 10px;
+  padding-bottom: 2px;
+  text-decoration: none;
+}
+
+.engineering-task__heading > a:hover {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.engineering-task__section {
+  padding: 20px 22px;
+}
+
+.engineering-task__section + .engineering-task__section {
+  border-top: 1px solid var(--line);
+}
+
+.engineering-task__section-title {
+  align-items: baseline;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.engineering-task__section-title > strong {
+  font-size: 12px;
+}
+
+.engineering-task__section-title > small {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.engineering-member-list {
+  border-top: 1px solid var(--line);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.engineering-member-list > li {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  min-height: 56px;
+  padding: 9px 4px;
+}
+
+.engineering-member-list > li > span {
+  display: grid;
+  gap: 2px;
+}
+
+.engineering-member-list strong {
+  font-size: 12px;
+}
+
+.engineering-member-list small {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.bug-dialog .engineering-member-list form {
+  display: block;
+  padding: 0;
+}
+
+.bug-dialog .engineering-member-list button,
+.bug-dialog .engineering-member-add button,
+.bug-dialog .engineering-information-form button,
+.bug-dialog .engineering-task__form-actions button,
+.bug-dialog .engineering-task__archive button {
+  background: transparent;
+  border: 1px solid var(--strong-line);
+  color: var(--ink);
+  font: inherit;
+  font-size: 10px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+.bug-dialog .engineering-member-list button:hover,
+.bug-dialog .engineering-member-add button:hover,
+.bug-dialog .engineering-information-form button:hover,
+.bug-dialog .engineering-task__form-actions button:hover,
+.bug-dialog .engineering-task__archive button:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.bug-dialog .engineering-member-add form,
+.bug-dialog .engineering-information-form {
+  align-items: end;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 0;
+}
+
+.bug-dialog .engineering-information-form {
+  grid-template-columns:
+    minmax(0, 1.3fr) minmax(120px, 0.7fr) minmax(160px, 0.9fr)
+    auto;
+}
+
+.engineering-information-form label > small {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.engineering-task__empty {
+  background: var(--paper-deep);
+  border-left: 2px solid var(--line);
+  color: var(--muted);
+  font-size: 10px;
+  margin: 0 22px 20px;
+  padding: 12px 14px;
+}
+
+.engineering-environment-list {
+  border-top: 1px solid var(--line);
+}
+
+.engineering-environment-row {
+  border-bottom: 1px solid var(--line);
+}
+
+.engineering-environment-row > summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  list-style: none;
+  min-height: 56px;
+  padding: 9px 4px;
+}
+
+.engineering-environment-row > summary::-webkit-details-marker {
+  display: none;
+}
+
+.engineering-environment-row > summary > span {
+  display: grid;
+  gap: 3px;
+}
+
+.engineering-environment-row > summary strong {
+  font-size: 12px;
+}
+
+.engineering-environment-row > summary small {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.engineering-environment-row[open] > summary {
+  border-bottom: 1px dashed var(--line);
+}
+
+.bug-dialog .engineering-environment-row > form,
+.bug-dialog .engineering-environment-create > form {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 18px 4px 20px;
+}
+
+.engineering-task__form-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+}
+
+.bug-dialog .engineering-task__form-actions button.engineering-task__danger {
+  border-color: var(--line);
+  color: var(--muted);
+  margin-right: auto;
+}
+
+.engineering-environment-create {
+  border-top: 1px solid var(--strong-line);
+  margin: 0 22px 22px;
+  padding-top: 14px;
+}
+
+.bug-dialog
+  .engineering-environment-create
+  > form.engineering-environment-batch-form {
+  display: block;
+  padding: 0;
+}
+
+.engineering-environment-batch-form .engineering-environments {
+  border-top: 0;
+  padding: 0;
+}
+
+.engineering-environments__submit {
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+  padding-top: 14px;
+}
+
+.engineering-environments__submit > button {
+  background: transparent;
+  border: 1px solid var(--strong-line);
+  color: var(--ink);
+  font: inherit;
+  font-size: 10px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 12px;
+}
+
+.engineering-environments__submit > button:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.engineering-environment-create > summary {
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 800;
+  list-style: none;
+  width: fit-content;
+}
+
+.engineering-environment-create > summary::before {
+  content: '＋';
+  margin-right: 6px;
+}
+
+.engineering-environment-create[open] > summary::before {
+  content: '−';
+}
+
+.engineering-task__archive {
+  border-top: 1px solid var(--line);
+  margin: 18px 22px 22px;
+  padding-top: 12px;
+}
+
+.engineering-task__archive > summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 10px;
+  list-style: none;
+  width: fit-content;
+}
+
+.engineering-task__archive > summary::before {
+  content: '＋';
+  margin-right: 6px;
+}
+
+.engineering-task__archive[open] > summary::before {
+  content: '−';
+}
+
+.bug-dialog .engineering-task__archive > form {
+  align-items: center;
+  background: var(--paper-deep);
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  margin-top: 10px;
+  padding: 12px;
+}
+
+.engineering-task__archive p {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.engineering-detail__actions {
+  justify-content: flex-start;
+}
+
+.engineering-detail > .engineering-task__heading {
+  margin: -22px -22px 0;
+}
+
 .workspace-header,
 .section-heading,
 .list-card,
@@ -3042,7 +3441,7 @@
 
 .engineering-catalog {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .engineering-catalog__intro {
@@ -3063,9 +3462,23 @@
 }
 
 .engineering-catalog__intro .repair-primary {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--strong-line);
   box-shadow: none;
+  color: var(--ink);
+  display: inline-flex;
+  justify-content: center;
   min-height: 38px;
+  padding: 0 14px;
+  text-decoration: none;
   white-space: nowrap;
+}
+
+.engineering-catalog__intro .repair-primary:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }
 
 .engineering-group {
@@ -3074,7 +3487,7 @@
 }
 
 .engineering-group + .engineering-group {
-  border-left: 1px solid var(--line);
+  border-top: 1px solid var(--line);
 }
 
 .engineering-catalog-dialog .collaboration-section-title {
@@ -3105,15 +3518,21 @@
   gap: 4px 12px;
   grid-template-columns: minmax(0, 1fr) auto;
   padding: 14px 10px;
+  text-decoration: none;
   text-align: left;
   transition:
     background 140ms ease,
     padding 140ms ease;
 }
 
-.engineering-card:not(:disabled):hover {
-  background: color-mix(in srgb, var(--accent), transparent 94%);
+.engineering-card[href]:not(:disabled):hover {
+  background: var(--accent);
+  color: #fff;
   padding-inline: 14px 6px;
+}
+
+.engineering-card[href]:not(:disabled):hover > :where(span, strong, small) {
+  color: inherit;
 }
 
 .engineering-card:disabled {
@@ -3333,7 +3752,21 @@
   padding: 14px 22px;
 }
 
-.engineering-catalog-dialog .dialog-actions > button {
+.dialog-actions.engineering-detail__actions {
+  justify-content: flex-start;
+}
+
+.engineering-detail__actions > a {
+  font-size: 13px;
+  height: 36px;
+  min-height: 36px;
+  padding-inline: 14px;
+}
+
+.engineering-catalog-dialog .dialog-actions > a,
+.engineering-catalog-dialog .dialog-actions > button,
+.engineering-catalog-dialog .dialog-actions > form > button {
+  height: 38px;
   box-shadow: none;
   min-height: 38px;
 }
@@ -3349,10 +3782,139 @@
   flex: 0 0 auto;
 }
 
-.engineering-detail > .engineering-editor {
-  flex: 0 0 auto;
-  min-height: max-content;
-  overflow: visible;
+.engineering-editor__panel {
+  border-bottom: 1px solid var(--line);
+}
+
+.engineering-editor__panel > summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  list-style: none;
+  padding: 16px 22px;
+}
+
+.engineering-editor__panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.engineering-editor__panel > summary::after {
+  color: var(--muted);
+  content: '＋';
+  font-size: 15px;
+}
+
+.engineering-editor__panel[open] > summary::after {
+  content: '−';
+}
+
+.engineering-editor__panel > summary > span {
+  display: grid;
+  gap: 3px;
+}
+
+.engineering-editor__panel > summary strong {
+  font-size: 13px;
+}
+
+.engineering-editor__panel > summary small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.bug-dialog .engineering-editor__primary-form {
+  align-items: end;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 0 22px 18px;
+}
+
+.engineering-editor__primary-form > .dialog-actions {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.engineering-editor__primary-form > .dialog-actions > :where(a, button) {
+  font-size: 12px;
+  height: 36px;
+  min-height: 36px;
+  padding-inline: 12px;
+}
+
+.engineering-editor__panel-body {
+  padding: 0 22px 18px;
+}
+
+.engineering-editor__environment-list {
+  border-top: 1px solid var(--line);
+}
+
+.engineering-editor__environment {
+  border-bottom: 1px solid var(--line);
+}
+
+.engineering-editor__environment > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 13px 4px;
+}
+
+.engineering-editor__environment > summary::-webkit-details-marker {
+  display: none;
+}
+
+.engineering-editor__environment > summary > span {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.engineering-editor__environment > summary strong {
+  font-size: 12px;
+}
+
+.engineering-editor__environment > summary small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.bug-dialog .engineering-editor__environment > form {
+  border-top: 1px dashed var(--line);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 16px 4px 18px;
+}
+
+.engineering-editor__environment-list .dialog-actions {
+  grid-column: 1 / -1;
+}
+
+.engineering-editor__environment-create {
+  margin-top: 14px;
+}
+
+.engineering-editor__environment-create summary {
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+  width: fit-content;
+}
+
+.engineering-editor__environment-create[open] summary {
+  margin-bottom: 12px;
+}
+
+.bug-dialog .engineering-editor__environment-create form {
+  border-top: 1px dashed var(--line);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 12px;
+  padding: 16px 4px 0;
+}
+
+.engineering-editor__environment-create .dialog-actions {
+  grid-column: 1 / -1;
 }
 
 .engineering-detail__headline {
@@ -3500,6 +4062,61 @@
   padding: 14px;
 }
 
+.engineering-binding-disclosure {
+  border-top: 1px solid var(--line);
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.engineering-binding-disclosure > summary {
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+  list-style: none;
+  width: fit-content;
+}
+
+.engineering-binding-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.engineering-binding-disclosure > summary::before {
+  content: '＋';
+  margin-right: 6px;
+}
+
+.engineering-binding-disclosure[open] > summary::before {
+  content: '−';
+}
+
+.bug-dialog .engineering-binding-disclosure .engineering-binding-form {
+  align-items: end;
+  background: transparent;
+  border: 0;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 14px 0 0;
+}
+
+.engineering-binding-disclosure .engineering-binding-form button {
+  height: 36px;
+  min-height: 36px;
+  min-width: auto;
+}
+
+.engineering-binding-disclosure .engineering-binding-form select {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font: inherit;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 10px;
+  width: 100%;
+}
+
 .engineering-binding-form__field {
   display: grid;
   gap: 8px;
@@ -3540,6 +4157,119 @@
 
 .engineering-binding-form small {
   line-height: 1.55;
+}
+
+.engineering-detail__management {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.engineering-detail__management > summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  list-style: none;
+  width: fit-content;
+}
+
+.engineering-detail__management > summary::-webkit-details-marker {
+  display: none;
+}
+
+.engineering-detail__management > summary::before {
+  content: '＋';
+  margin-right: 6px;
+}
+
+.engineering-detail__management[open] > summary::before {
+  content: '−';
+}
+
+.engineering-detail__management > summary:hover {
+  color: var(--ink);
+}
+
+.bug-dialog .engineering-detail__management > form {
+  align-items: center;
+  background: var(--paper-deep);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-top: 10px;
+  padding: 10px 12px;
+}
+
+.engineering-detail__management > form p {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.engineering-detail__management > form button {
+  background: transparent;
+  border: 1px solid var(--strong-line);
+  color: var(--ink);
+  font: inherit;
+  min-height: 34px;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.engineering-catalog-dialog
+  :where(
+    input:not([type='hidden']):not([type='checkbox']):not([type='radio']),
+    select,
+    textarea
+  ) {
+  appearance: none;
+  background-color: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--strong-line);
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--ink);
+  font: inherit;
+  min-height: 38px;
+  padding: 0 2px;
+}
+
+.engineering-catalog-dialog select {
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 9px) 50%,
+    calc(100% - 5px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  padding-right: 22px;
+}
+
+.engineering-catalog-dialog textarea {
+  padding-block: 9px;
+}
+
+.engineering-catalog-dialog
+  :where(
+    input:not([type='hidden']):not([type='checkbox']):not([type='radio']),
+    select,
+    textarea
+  ):focus-visible {
+  border-bottom-color: var(--accent);
+  box-shadow: 0 1px 0 var(--accent);
+  outline: 0;
+}
+
+.engineering-catalog-dialog :where(input, textarea)::placeholder {
+  color: var(--muted);
+  opacity: 0.75;
+}
+
+.engineering-catalog-dialog :where(input, select, textarea):disabled {
+  background-color: var(--paper-deep);
+  color: var(--muted);
+  cursor: not-allowed;
 }
 
 @media (max-width: 760px) {
@@ -4533,6 +5263,32 @@
   padding: 0 10px;
 }
 
+.engineering-binding-request {
+  border-left: 2px solid var(--line);
+  display: grid;
+  gap: 5px;
+  padding: 11px 14px;
+}
+
+.engineering-binding-request[data-state='PROCESSING'] {
+  border-color: var(--accent);
+}
+
+.engineering-binding-request[data-state='SUCCEEDED'] {
+  border-color: var(--success);
+}
+
+.engineering-binding-request > strong {
+  font-size: 10px;
+}
+
+.engineering-binding-request > p {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.55;
+  margin: 0;
+}
+
 .engineering-detail__environments > .collaboration-empty,
 .engineering-detail__bindings > .collaboration-empty {
   background: var(--paper-deep);
@@ -5000,6 +5756,162 @@
 
 .agent-empty .pairing-card {
   margin-top: 20px;
+}
+
+.agent-ledger__connect-note {
+  border-left: 2px solid var(--line);
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.65;
+  margin: 24px 0 0;
+  padding: 8px 0 8px 14px;
+}
+
+.agent-connect {
+  border: 0;
+  flex: 1 1 auto;
+  margin-inline: auto;
+  max-width: 1080px;
+  overflow-y: auto;
+  padding: clamp(48px, 8vw, 96px) clamp(18px, 6vw, 72px) 72px;
+  width: 100%;
+}
+
+.agent-connect > header {
+  border-bottom: 1px solid var(--strong-line);
+  padding-bottom: 28px;
+}
+
+.agent-connect > header > span {
+  color: var(--accent-dark);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.agent-connect > header h1 {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(48px, 7vw, 80px);
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: -0.06em;
+  line-height: 0.95;
+  margin: 12px 0 16px;
+}
+
+.agent-connect > header p,
+.agent-connect__request p,
+.agent-connect__result p {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.65;
+  margin: 0;
+}
+
+.agent-connect__request,
+.agent-connect__result {
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 26px;
+  padding: 30px 0;
+}
+
+.agent-connect__request dl {
+  border-block: 1px solid var(--line);
+  margin: 0;
+}
+
+.agent-connect__request dl > div {
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+}
+
+.agent-connect__request dl > div:last-child {
+  border-bottom: 0;
+}
+
+.agent-connect__request dt,
+.agent-connect__request dd {
+  font-size: 10px;
+  line-height: 1.55;
+  margin: 0;
+  padding: 11px 8px;
+}
+
+.agent-connect__request dt {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.agent-connect__request dd {
+  overflow-wrap: anywhere;
+}
+
+.agent-connect__request form {
+  display: grid;
+  gap: 18px;
+  max-width: 620px;
+}
+
+.agent-connect__request label {
+  display: grid;
+  gap: 7px;
+}
+
+.agent-connect__request label > span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.agent-connect__request input:not([type='hidden']) {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--strong-line);
+  color: var(--ink);
+  font: inherit;
+  min-height: 42px;
+  padding: 0 4px;
+}
+
+.agent-connect__actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.agent-connect__actions button,
+.agent-connect__result a,
+.agent-connect__back {
+  align-items: center;
+  border: 1px solid var(--strong-line);
+  color: var(--ink);
+  display: inline-flex;
+  font-size: 10px;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 14px;
+  text-decoration: none;
+}
+
+.agent-connect__result {
+  justify-items: start;
+}
+
+.agent-connect__result strong {
+  font-size: 13px;
+}
+
+.agent-connect__result a:hover,
+.agent-connect__back:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.agent-connect__back {
+  margin-top: 30px;
 }
 
 @media (max-width: 700px) {

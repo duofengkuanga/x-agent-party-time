@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,7 +8,11 @@ import type { AppDatabase } from '@/server/database';
 import { openDatabase } from '@/server/database';
 import { RunnerService } from './service';
 import {
+  handleRunnerAuthorizationClaim,
+  handleRunnerAuthorizationCreate,
   handleRunnerBindingConfirmation,
+  handleRunnerBindingWorkClaim,
+  handleRunnerBindingWorkCompletion,
   handleRunnerBindings,
   handleRunnerHeartbeat,
   handleRunnerPair,
@@ -121,6 +126,116 @@ describe('Runner HTTP protocol', () => {
       bindingId: '00000000-0000-4000-8000-000000000001',
       repositoryUrl: 'https://example.com/team/project.git',
     });
+  });
+
+  test('浏览器授权 Route 不向浏览器或响应泄露 verifier 与长期凭据', async () => {
+    const { runners, user } = await setup();
+    const verifier = 'v'.repeat(43);
+    const creation = await handleRunnerAuthorizationCreate(
+      new Request('http://server/api/runner/authorizations', {
+        method: 'POST',
+        body: JSON.stringify({
+          verifierHash: createHash('sha256').update(verifier).digest('hex'),
+          fingerprint: 'ABCD-1234-EF56',
+          suggestedName: 'HTTP Agent',
+        }),
+        headers: { 'content-type': 'application/json' },
+      }),
+      runners,
+    );
+    expect(creation.status).toBe(201);
+    const issue = (await creation.json()) as {
+      requestId: string;
+      expiresAt: string;
+    };
+    expect(issue.requestId.length).toBeGreaterThanOrEqual(32);
+    expect(JSON.stringify(issue)).not.toContain(verifier);
+    expect(JSON.stringify(issue)).not.toContain('credential');
+
+    const approval = runners.prepareAuthorizationApproval(
+      user.id,
+      issue.requestId,
+    );
+    runners.approveAuthorization(
+      user.id,
+      issue.requestId,
+      approval.approvalToken!,
+      'HTTP Agent',
+    );
+    const claim = await handleRunnerAuthorizationClaim(
+      new Request(
+        `http://server/api/runner/authorizations/${issue.requestId}/claim`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ verifier }),
+          headers: { 'content-type': 'application/json' },
+        },
+      ),
+      issue.requestId,
+      runners,
+    );
+    expect(claim.status).toBe(200);
+    expect(await claim.json()).toMatchObject({
+      state: 'AUTHORIZED',
+      runner: { name: 'HTTP Agent' },
+    });
+  });
+
+  test('Agent 只通过 Bearer 出站领取并完成 Binding 请求', async () => {
+    const { runners, user } = await setup();
+    const paired = runners.pair(
+      runners.issuePairingCode(user.id).code,
+      'Binding Agent',
+    );
+    const work = {
+      requestId: '00000000-0000-4000-8000-000000000011',
+      bindingId: '00000000-0000-4000-8000-000000000012',
+      expiresAt: '2026-07-28T13:05:00.000Z',
+    };
+    const unauthorized = await handleRunnerBindingWorkClaim(
+      new Request('http://server/api/runner/binding-requests'),
+      runners,
+      () => work,
+    );
+    expect(unauthorized.status).toBe(401);
+
+    const claim = await handleRunnerBindingWorkClaim(
+      bearerRequest(
+        'http://server/api/runner/binding-requests',
+        paired.credential,
+      ),
+      runners,
+      (runnerId) => {
+        expect(runnerId).toBe(paired.runner.id);
+        return work;
+      },
+    );
+    const claimedWork = await claim.json();
+    expect(claimedWork).toEqual({ request: work });
+    expect(JSON.stringify(claimedWork)).not.toContain('/Users/');
+
+    const completion = await handleRunnerBindingWorkCompletion(
+      bearerJsonRequest(
+        `http://server/api/runner/binding-requests/${work.requestId}`,
+        paired.credential,
+        {
+          outcome: 'SUCCEEDED',
+          repositoryUrl: 'git@Example.com:team/project.git',
+        },
+      ),
+      work.requestId,
+      runners,
+      (runnerId, requestId, result) => {
+        expect(runnerId).toBe(paired.runner.id);
+        expect(requestId).toBe(work.requestId);
+        expect(result).toEqual({
+          outcome: 'SUCCEEDED',
+          repositoryUrl: 'https://example.com/team/project.git',
+        });
+        return 'SUCCEEDED';
+      },
+    );
+    expect(await completion.json()).toEqual({ state: 'SUCCEEDED' });
   });
 
   test('无效 JSON 和非法请求结构返回安全 Validation Error', async () => {

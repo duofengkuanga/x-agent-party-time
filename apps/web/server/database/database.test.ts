@@ -62,6 +62,7 @@ describe('Server SQLite schema', () => {
         'platform_execution_interaction',
         'platform_file',
         'platform_runner',
+        'platform_runner_authorization_request',
         'platform_runner_pairing_code',
         'platform_session',
         'platform_user',

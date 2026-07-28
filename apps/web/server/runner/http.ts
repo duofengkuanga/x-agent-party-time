@@ -1,6 +1,13 @@
 import {
+  RunnerAuthorizationClaimRequestSchema,
+  RunnerAuthorizationClaimResponseSchema,
+  RunnerAuthorizationCreateRequestSchema,
+  RunnerAuthorizationIssueSchema,
   RunnerBindingConfirmationRequestSchema,
   RunnerBindingConfirmationResponseSchema,
+  RunnerBindingWorkCompletionResponseSchema,
+  RunnerBindingWorkCompletionSchema,
+  RunnerBindingWorkResponseSchema,
   RunnerBindingsResponseSchema,
   RunnerHeartbeatResponseSchema,
   RunnerPairRequestSchema,
@@ -19,6 +26,44 @@ export async function handleRunnerPair(
     const body = RunnerPairRequestSchema.parse(await request.json());
     return jsonResponse(
       RunnerPairingResultSchema.parse(runners.pair(body.code, body.name)),
+    );
+  } catch (error) {
+    return errorResponse(normalizeRequestError(error));
+  }
+}
+
+export async function handleRunnerAuthorizationCreate(
+  request: Request,
+  runners: Pick<RunnerService, 'createAuthorizationRequest'>,
+): Promise<Response> {
+  try {
+    const body = RunnerAuthorizationCreateRequestSchema.parse(
+      await request.json(),
+    );
+    return jsonResponse(
+      RunnerAuthorizationIssueSchema.parse(
+        runners.createAuthorizationRequest(body),
+      ),
+      201,
+    );
+  } catch (error) {
+    return errorResponse(normalizeRequestError(error));
+  }
+}
+
+export async function handleRunnerAuthorizationClaim(
+  request: Request,
+  requestId: string,
+  runners: Pick<RunnerService, 'claimAuthorization'>,
+): Promise<Response> {
+  try {
+    const body = RunnerAuthorizationClaimRequestSchema.parse(
+      await request.json(),
+    );
+    return jsonResponse(
+      RunnerAuthorizationClaimResponseSchema.parse(
+        runners.claimAuthorization(requestId, body.verifier),
+      ),
     );
   } catch (error) {
     return errorResponse(normalizeRequestError(error));
@@ -75,6 +120,46 @@ export async function handleRunnerBindingConfirmation(
       RunnerBindingConfirmationResponseSchema.parse({
         ...body,
         repositoryUrl: confirm(runner.id, body.bindingId, body.repositoryUrl),
+      }),
+    );
+  } catch (error) {
+    return errorResponse(normalizeRequestError(error));
+  }
+}
+
+export async function handleRunnerBindingWorkClaim(
+  request: Request,
+  runners: Pick<RunnerService, 'authenticateCredential'>,
+  claim: (runnerId: string) => unknown,
+): Promise<Response> {
+  try {
+    const runner = runners.authenticateCredential(bearerCredential(request));
+    return jsonResponse(
+      RunnerBindingWorkResponseSchema.parse({ request: claim(runner.id) }),
+    );
+  } catch (error) {
+    return errorResponse(normalizeRequestError(error));
+  }
+}
+
+export async function handleRunnerBindingWorkCompletion(
+  request: Request,
+  requestId: string,
+  runners: Pick<RunnerService, 'authenticateCredential'>,
+  complete: (
+    runnerId: string,
+    requestId: string,
+    completion: ReturnType<typeof RunnerBindingWorkCompletionSchema.parse>,
+  ) => 'SUCCEEDED' | 'FAILED',
+): Promise<Response> {
+  try {
+    const runner = runners.authenticateCredential(bearerCredential(request));
+    const completion = RunnerBindingWorkCompletionSchema.parse(
+      await request.json(),
+    );
+    return jsonResponse(
+      RunnerBindingWorkCompletionResponseSchema.parse({
+        state: complete(runner.id, requestId, completion),
       }),
     );
   } catch (error) {

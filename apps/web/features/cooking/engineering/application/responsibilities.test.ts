@@ -66,6 +66,8 @@ test('工程成员关系接入 Project 成员活动职责保护', async () => {
     {
       mutationId: randomUUID(),
       name: '职责工程',
+      type: 'BACKEND',
+      identifier: 'responsibility-api',
     },
   );
   new EngineeringService(database).addMember(

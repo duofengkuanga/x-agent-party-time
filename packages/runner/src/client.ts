@@ -20,14 +20,25 @@ import {
 } from '@agent-party-time/execution-contract';
 import {
   PairingCodeSchema,
+  RunnerAuthorizationClaimResponseSchema,
+  RunnerAuthorizationCreateRequestSchema,
+  RunnerAuthorizationIssueSchema,
+  RunnerAuthorizationVerifierSchema,
   RunnerBindingConfirmationRequestSchema,
   RunnerBindingsResponseSchema,
   RunnerBindingConfirmationResponseSchema,
+  RunnerBindingWorkCompletionResponseSchema,
+  RunnerBindingWorkCompletionSchema,
+  RunnerBindingWorkResponseSchema,
   RunnerHeartbeatResponseSchema,
   RunnerNameSchema,
   RunnerPairingResultSchema,
   type Runner,
+  type RunnerAuthorizationClaimResponse,
+  type RunnerAuthorizationIssue,
   type RunnerBindingRef,
+  type RunnerBindingWork,
+  type RunnerBindingWorkCompletion,
 } from '@agent-party-time/runner-contract';
 import { normalizeServerUrl } from './server-url';
 import { RunnerStateStore } from './state';
@@ -66,6 +77,50 @@ export class RunnerClient {
     return paired.runner;
   }
 
+  async createAuthorization(
+    serverUrlInput: string,
+    inputValue: unknown,
+  ): Promise<RunnerAuthorizationIssue> {
+    const serverUrl = normalizeServerUrl(serverUrlInput);
+    const body = RunnerAuthorizationCreateRequestSchema.parse(inputValue);
+    const response = await this.fetchImplementation(
+      `${serverUrl}/api/runner/authorizations`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+    );
+    return RunnerAuthorizationIssueSchema.parse(await responseJson(response));
+  }
+
+  async claimAuthorization(
+    serverUrlInput: string,
+    requestId: string,
+    verifierInput: string,
+  ): Promise<RunnerAuthorizationClaimResponse> {
+    const serverUrl = normalizeServerUrl(serverUrlInput);
+    const verifier = RunnerAuthorizationVerifierSchema.parse(verifierInput);
+    const response = await this.fetchImplementation(
+      `${serverUrl}/api/runner/authorizations/${encodeURIComponent(requestId)}/claim`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ verifier }),
+      },
+    );
+    const result = RunnerAuthorizationClaimResponseSchema.parse(
+      await responseJson(response),
+    );
+    if (result.state === 'AUTHORIZED')
+      await this.state.saveConfig({
+        serverUrl,
+        runnerId: result.runner.id,
+        credential: result.credential,
+      });
+    return result;
+  }
+
   async heartbeat(): Promise<Runner> {
     const config = await this.state.loadConfig();
     const response = await this.fetchImplementation(
@@ -101,6 +156,30 @@ export class RunnerClient {
       method: 'POST',
       body: JSON.stringify(body),
     }).then((value) => RunnerBindingConfirmationResponseSchema.parse(value));
+  }
+
+  async claimBindingWork(): Promise<RunnerBindingWork | null> {
+    return RunnerBindingWorkResponseSchema.parse(
+      await this.authorizedJson('/api/runner/binding-requests', {
+        method: 'POST',
+      }),
+    ).request;
+  }
+
+  async completeBindingWork(
+    requestId: string,
+    completionInput: RunnerBindingWorkCompletion,
+  ): Promise<'SUCCEEDED' | 'FAILED'> {
+    const completion = RunnerBindingWorkCompletionSchema.parse(completionInput);
+    return RunnerBindingWorkCompletionResponseSchema.parse(
+      await this.authorizedJson(
+        `/api/runner/binding-requests/${encodeURIComponent(requestId)}`,
+        {
+          method: 'POST',
+          body: JSON.stringify(completion),
+        },
+      ),
+    ).state;
   }
 
   async claimExecutions(

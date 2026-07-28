@@ -4,7 +4,9 @@ import { BindingIdSchema } from '@/features/cooking/bindings/contract';
 import {
   DeploymentMethodSchema,
   EngineeringIdSchema,
+  EngineeringIdentifierSchema,
   EngineeringNameSchema,
+  EngineeringTypeSchema,
   EnvironmentIdSchema,
   EnvironmentNameSchema,
   RepositoryUrlSchema,
@@ -43,6 +45,8 @@ export const SubmissionItemSchema = z.object({
   engineering: z.object({
     id: EngineeringIdSchema,
     name: EngineeringNameSchema,
+    type: EngineeringTypeSchema,
+    identifier: EngineeringIdentifierSchema,
     repositoryUrl: RepositoryUrlSchema,
   }),
   responsibleUser: UserSchema,
@@ -129,6 +133,8 @@ export const SubmissionCreationCatalogSchema = z.array(
       z.object({
         id: EngineeringIdSchema,
         name: EngineeringNameSchema,
+        type: EngineeringTypeSchema,
+        identifier: EngineeringIdentifierSchema,
         members: z.array(UserSchema),
         environments: z.array(
           z.object({

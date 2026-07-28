@@ -56,6 +56,8 @@ async function setup() {
     {
       mutationId: randomUUID(),
       name: '本地脚本工程',
+      type: 'FRONTEND',
+      identifier: 'local-web',
     },
   );
   const ciEngineering = engineering.createEngineering(
@@ -64,6 +66,8 @@ async function setup() {
     {
       mutationId: randomUUID(),
       name: '持续集成工程',
+      type: 'BACKEND',
+      identifier: 'ci-api',
     },
   );
   for (const item of [localEngineering, ciEngineering])

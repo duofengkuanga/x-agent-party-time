@@ -4,6 +4,10 @@ import {
   SubmissionIdSchema,
   SubmissionItemIdSchema,
 } from '@/features/cooking/submissions/contract';
+import {
+  EngineeringIdentifierSchema,
+  EngineeringTypeSchema,
+} from '@/features/cooking/engineering/contract';
 import { CookingMutationIdSchema } from '@/features/cooking/shared/contract';
 
 export const BugIdSchema = z.uuid();
@@ -140,6 +144,8 @@ export const BugViewSchema = BugSchema.omit({
     .object({
       submissionItemId: SubmissionItemIdSchema,
       engineeringName: z.string().trim().min(1).max(120),
+      engineeringType: EngineeringTypeSchema,
+      engineeringIdentifier: EngineeringIdentifierSchema,
       responsibleUser: UserSchema,
     })
     .nullable(),

@@ -18,6 +18,7 @@ describe('Cooking 页面框架', () => {
     const pageImplementations = [
       'app/cooking/projects/page.tsx',
       'app/cooking/agents/page.tsx',
+      'app/cooking/agents/connect/page.tsx',
       'features/cooking/submissions/presentation/submission-workspace.tsx',
     ];
     for (const page of pageImplementations) {
@@ -61,6 +62,16 @@ describe('Cooking 页面框架', () => {
     expect(agentPage).toContain('需要处理');
     expect(agentPage).not.toContain('Runner 管理');
     expect(agentPage).not.toContain('Runner 标识');
+
+    const connectPage = await readFile(
+      join(webRoot, 'app/cooking/agents/connect/page.tsx'),
+      'utf8',
+    );
+    expect(connectPage).toContain('<h1>连接 Agent</h1>');
+    expect(connectPage).toContain('approval.fingerprint');
+    expect(connectPage).toContain('name="approvalToken"');
+    expect(connectPage).not.toContain('verifier');
+    expect(connectPage).not.toContain('credential');
   });
 });
 

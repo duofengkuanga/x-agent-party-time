@@ -61,6 +61,8 @@ type AccessRow = {
 type ItemRow = {
   id: string;
   engineering_name: string;
+  engineering_type: 'FRONTEND' | 'BACKEND';
+  engineering_identifier: string;
   responsible_user_id: string;
   responsible_username: string;
   responsible_display_name: string;
@@ -632,6 +634,8 @@ export class BugService {
           ? {
               submissionItemId: item.id,
               engineeringName: item.engineering_name,
+              engineeringType: item.engineering_type,
+              engineeringIdentifier: item.engineering_identifier,
               responsibleUser: itemUser(item),
             }
           : null,
@@ -653,7 +657,9 @@ export class BugService {
         ),
         presentation: {
           stageLabel: STAGE_LABELS[bug.stage],
-          assignmentLabel: item?.engineering_name ?? '暂未确定工程',
+          assignmentLabel: item
+            ? `${item.engineering_name}（${item.engineering_identifier}）`
+            : '暂未确定工程',
           queuePosition: queuePosition.get(bug.id) ?? null,
         },
       };
@@ -794,7 +800,8 @@ export class BugService {
     if (!itemId) return null;
     const row = this.db
       .prepare(
-        `SELECT id, engineering_name, responsible_user_id,
+        `SELECT id, engineering_name, engineering_type,
+                engineering_identifier, responsible_user_id,
                 responsible_username, responsible_display_name,
                 responsible_user_created_at, binding_id
          FROM cooking_submission_item

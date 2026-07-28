@@ -59,6 +59,22 @@ function canonicalRepositoryUrl(
 export const RunnerIdSchema = z.uuid();
 export const RunnerNameSchema = z.string().trim().min(1).max(120);
 export const RunnerCredentialSchema = z.string().min(32).max(256);
+export const RunnerAuthorizationRequestIdSchema = z
+  .string()
+  .min(32)
+  .max(128)
+  .regex(/^[A-Za-z0-9_-]+$/u);
+export const RunnerAuthorizationVerifierSchema = z
+  .string()
+  .min(43)
+  .max(128)
+  .regex(/^[A-Za-z0-9_-]+$/u);
+export const RunnerAuthorizationVerifierHashSchema = z
+  .string()
+  .regex(/^[a-f0-9]{64}$/u);
+export const RunnerFingerprintSchema = z
+  .string()
+  .regex(/^[A-F0-9]{4}(?:-[A-F0-9]{4}){2}$/u);
 export const PairingCodeSchema = z
   .string()
   .trim()
@@ -95,6 +111,42 @@ export const RunnerPairingResultSchema = z.object({
   credential: RunnerCredentialSchema,
 });
 
+export const RunnerAuthorizationCreateRequestSchema = z
+  .object({
+    verifierHash: RunnerAuthorizationVerifierHashSchema,
+    fingerprint: RunnerFingerprintSchema,
+    suggestedName: RunnerNameSchema,
+  })
+  .strict();
+
+export const RunnerAuthorizationIssueSchema = z.object({
+  requestId: RunnerAuthorizationRequestIdSchema,
+  expiresAt: z.iso.datetime(),
+});
+
+export const RunnerAuthorizationClaimRequestSchema = z
+  .object({
+    verifier: RunnerAuthorizationVerifierSchema,
+  })
+  .strict();
+
+export const RunnerAuthorizationClaimResponseSchema = z.discriminatedUnion(
+  'state',
+  [
+    z.object({
+      state: z.literal('WAITING'),
+      retryAfterMs: z.number().int().min(500).max(30_000),
+    }),
+    z.object({
+      state: z.literal('REJECTED'),
+      message: z.string().trim().min(1).max(240),
+    }),
+    RunnerPairingResultSchema.extend({
+      state: z.literal('AUTHORIZED'),
+    }),
+  ],
+);
+
 export const RunnerHeartbeatResponseSchema = z.object({
   runner: RunnerSchema,
 });
@@ -117,11 +169,60 @@ export const RunnerBindingsResponseSchema = z.object({
   bindings: z.array(RunnerBindingRefSchema),
 });
 
+export const RunnerBindingWorkSchema = z.object({
+  requestId: z.uuid(),
+  bindingId: z.uuid(),
+  expiresAt: z.iso.datetime(),
+});
+
+export const RunnerBindingWorkResponseSchema = z.object({
+  request: RunnerBindingWorkSchema.nullable(),
+});
+
+export const RunnerBindingWorkCompletionSchema = z.discriminatedUnion(
+  'outcome',
+  [
+    z
+      .object({
+        outcome: z.literal('SUCCEEDED'),
+        repositoryUrl: RepositoryUrlSchema,
+      })
+      .strict(),
+    z
+      .object({
+        outcome: z.literal('FAILED'),
+        code: z.enum([
+          'CANCELLED',
+          'INVALID_DIRECTORY',
+          'NOT_GIT_REPOSITORY',
+          'MISSING_REMOTE',
+          'LOCAL_STATE_FAILED',
+          'UNSUPPORTED_PLATFORM',
+        ]),
+        message: z.string().trim().min(1).max(240),
+      })
+      .strict(),
+  ],
+);
+
+export const RunnerBindingWorkCompletionResponseSchema = z.object({
+  state: z.enum(['SUCCEEDED', 'FAILED']),
+});
+
 export type Runner = z.infer<typeof RunnerSchema>;
 export type RunnerStatus = z.infer<typeof RunnerStatusSchema>;
 export type PairingCodeIssue = z.infer<typeof PairingCodeIssueSchema>;
 export type RunnerPairRequest = z.infer<typeof RunnerPairRequestSchema>;
 export type RunnerPairingResult = z.infer<typeof RunnerPairingResultSchema>;
+export type RunnerAuthorizationCreateRequest = z.infer<
+  typeof RunnerAuthorizationCreateRequestSchema
+>;
+export type RunnerAuthorizationIssue = z.infer<
+  typeof RunnerAuthorizationIssueSchema
+>;
+export type RunnerAuthorizationClaimResponse = z.infer<
+  typeof RunnerAuthorizationClaimResponseSchema
+>;
 export type RunnerHeartbeatResponse = z.infer<
   typeof RunnerHeartbeatResponseSchema
 >;
@@ -131,4 +232,8 @@ export type RunnerBindingConfirmationRequest = z.infer<
 >;
 export type RunnerBindingsResponse = z.infer<
   typeof RunnerBindingsResponseSchema
+>;
+export type RunnerBindingWork = z.infer<typeof RunnerBindingWorkSchema>;
+export type RunnerBindingWorkCompletion = z.infer<
+  typeof RunnerBindingWorkCompletionSchema
 >;
