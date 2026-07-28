@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { requireCurrentUser } from '@/server/auth/server';
+import { currentUser } from '@/server/auth/server';
 import { projectService } from '@/features/cooking/application/server';
 import { AccountInvitationNotifications } from '@/features/cooking/projects/presentation/account-invitation-notifications';
 import { CookingShell } from '@/features/cooking/presentation/cooking-shell';
@@ -10,14 +10,15 @@ export default async function CookingLayout({
 }: {
   children: ReactNode;
 }) {
-  const currentUser = await requireCurrentUser();
-  const invitations = projectService().listReceivedInvitations(currentUser.id);
+  const user = await currentUser();
+  if (!user) return children;
+  const invitations = projectService().listReceivedInvitations(user.id);
   return (
     <CookingShell
       accountNotifications={
         <AccountInvitationNotifications invitations={invitations} />
       }
-      currentUser={currentUser}
+      currentUser={user}
     >
       {children}
     </CookingShell>

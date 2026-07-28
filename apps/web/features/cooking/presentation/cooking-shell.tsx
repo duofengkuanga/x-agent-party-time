@@ -70,6 +70,7 @@ function AccountMenu({
 }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const closeMenu = () => setOpen(false);
   useEffect(() => {
     if (!open) return;
     function closeOnPointerDown(event: PointerEvent) {
@@ -107,8 +108,12 @@ function AccountMenu({
         {notifications}
         <nav aria-label="账号导航" className="collab-account-menu__navigation">
           <span>工作区</span>
-          <Link href="/cooking/projects">项目与工程</Link>
-          <Link href="/cooking/agents">Agent 管理</Link>
+          <Link href="/cooking/projects" onClick={closeMenu}>
+            我的项目
+          </Link>
+          <Link href="/cooking/agents" onClick={closeMenu}>
+            我的 Agent
+          </Link>
         </nav>
         <form action={logoutAction}>
           <button type="submit">退出登录</button>

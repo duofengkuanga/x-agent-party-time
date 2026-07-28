@@ -49,9 +49,10 @@ Seed 默认创建三名本地开发用户：
 
 ```bash
 bun install --frozen-lockfile
-bun run seed:app
 bun run dev
 ```
+
+`bun run dev` 会在空数据库中自动创建上述本地开发用户。
 
 `bun run dev` 前台管理两个进程：
 

@@ -105,16 +105,16 @@ export default async function AgentConnectPage({
           <strong>{authorizationStateLabel(approval.state)}</strong>
           <p>
             {approval.state === 'CONSUMED'
-              ? '这台 Agent 已领取凭据，可以返回 Agent 管理查看连接状态。'
+              ? '这台 Agent 已领取凭据，可以返回我的 Agent 查看连接状态。'
               : approval.state === 'APPROVED'
                 ? '浏览器确认已完成，正在等待本机 Agent 建立连接。'
                 : '如需连接，请重新启动本机 Agent 发起新的授权。'}
           </p>
-          <Link href="/cooking/agents">返回 Agent 管理</Link>
+          <Link href="/cooking/agents">返回我的 Agent</Link>
         </section>
       ) : (
         <Link className="agent-connect__back" href="/cooking/agents">
-          返回 Agent 管理
+          返回我的 Agent
         </Link>
       )}
     </main>

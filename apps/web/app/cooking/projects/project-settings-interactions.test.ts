@@ -41,6 +41,7 @@ describe('项目与工程交互基线', () => {
     expect(controls).toContain('hasProjects ? (');
     expect(controls).toContain('<section className="project-settings__hero">');
     expect(controls).toContain('<div className="project-settings__empty">');
+    expect(controls).toContain('<h1>我的项目</h1>');
   });
 
   test('项目名称修改使用独立项目设置弹窗，不混入成员与邀请', async () => {
@@ -89,7 +90,7 @@ describe('项目与工程交互基线', () => {
     expect(page).toContain('成员管理');
     expect(page).toContain('环境管理');
     expect(page).toContain('信息管理');
-    expect(page).toContain('详情\n                            </Link>');
+    expect(page).toMatch(/>\s*详情\s*<\/Link>/u);
     expect(page).toContain("{ label: '前端工程', type: 'FRONTEND' as const }");
     expect(page).toContain("{ label: '后端工程', type: 'BACKEND' as const }");
     expect(page).toContain('item.identifier} · {currentUserRelation');
@@ -108,6 +109,7 @@ describe('项目与工程交互基线', () => {
     expect(page).not.toContain('只展开当前需要修改的配置');
     expect(page).not.toContain('代码工程');
     expect(page).not.toContain('编辑配置');
+    expect(page).not.toContain('还没有工程');
     expect(page).toContain('name="identifier"');
     expect(page).toContain('name="type"');
     expect(page).toContain('identifierLocked');
