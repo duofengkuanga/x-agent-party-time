@@ -3265,11 +3265,32 @@
 
 .engineering-environments .collaboration-section-title button {
   background: transparent;
-  border: 0;
-  color: var(--accent-dark);
+  border: 1px solid var(--strong-line);
+  color: var(--ink);
   font-size: 10px;
   font-weight: 800;
-  padding: 4px 0;
+  min-height: 34px;
+  padding: 0 11px;
+}
+
+.engineering-environments .collaboration-section-title button:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.engineering-environments button:focus-visible {
+  outline: 2px solid var(--accent-dark);
+  outline-offset: 3px;
+}
+
+.engineering-environments__title > div {
+  display: grid;
+  gap: 4px;
+}
+
+.engineering-environments__title > div > small {
+  display: block;
 }
 
 .engineering-environments > article {
@@ -3291,17 +3312,32 @@
   padding: 10px 0;
 }
 
+.engineering-environment-card__header {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  padding-bottom: 10px;
+}
+
+.engineering-environment-card__header > strong {
+  font-size: 10px;
+}
+
 .engineering-remove-environment {
   background: transparent;
-  border: 0;
-  color: var(--muted);
+  border: 1px solid var(--strong-line);
+  color: var(--ink);
   font-size: 10px;
   justify-self: start;
-  padding: 2px 0;
+  min-height: 30px;
+  padding: 0 10px;
 }
 
 .engineering-remove-environment:hover {
-  color: var(--accent-dark);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }
 
 .engineering-editor > .dialog-actions,
@@ -3922,17 +3958,36 @@
 }
 
 .project-settings .project-settings__primary-action {
+  appearance: none;
   background: transparent;
   border: 1px solid var(--strong-line);
   color: var(--ink);
   font-size: 11px;
   font-weight: 900;
+  min-width: 104px;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
 }
 
 .project-settings .project-settings__primary-action:hover {
   background: var(--accent);
   border-color: var(--accent);
   color: #fffaf0;
+}
+
+.project-settings .project-settings__primary-action[aria-expanded='true'] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+
+.project-settings
+  .project-settings__primary-action[aria-expanded='true']:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }
 
 .project-settings .project-settings__create > button,
@@ -4610,9 +4665,29 @@
   .engineering-detail__actions > form button {
     width: 100%;
   }
+
+  .engineering-environments__title {
+    align-items: stretch;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .engineering-environments__title > button {
+    width: 100%;
+  }
 }
 
 @media (max-width: 620px) {
+  .project-settings__hero {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .project-settings__toolbar-actions,
+  .project-settings .project-settings__primary-action {
+    width: 100%;
+  }
+
   .project-settings__create {
     grid-template-columns: 1fr;
   }
