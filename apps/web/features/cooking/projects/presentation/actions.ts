@@ -60,6 +60,7 @@ export async function respondProjectInvitationAction(
   formData: FormData,
 ): Promise<never> {
   const user = await requireCurrentUser();
+  const returnTo = invitationReturnPath(field(formData, 'returnTo'));
   try {
     projectService().respondToInvitation(
       user.id,
@@ -72,16 +73,10 @@ export async function respondProjectInvitationAction(
       },
     );
     revalidatePath('/cooking/projects');
-    redirect(
-      messageRedirectPath(
-        '/cooking/projects?panel=invitations',
-        'success',
-        '邀请已处理',
-      ),
-    );
+    redirect(messageRedirectPath(returnTo, 'success', '邀请已处理'));
   } catch (error) {
     rethrowRedirectError(error);
-    redirectWithError('/cooking/projects?panel=invitations', error);
+    redirectWithError(returnTo, error);
   }
 }
 
@@ -163,6 +158,12 @@ export async function removeProjectMemberAction(
     rethrowRedirectError(error);
     redirectWithError(projectSettingsPath(projectId, 'collaboration'), error);
   }
+}
+
+function invitationReturnPath(value: string): string {
+  return value === '/cooking/projects'
+    ? value
+    : '/cooking/projects?panel=invitations';
 }
 
 function refreshProject(projectId: string): void {

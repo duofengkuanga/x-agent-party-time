@@ -17,12 +17,25 @@ export async function createEngineeringAction(
   const user = await requireCurrentUser();
   const projectId = field(formData, 'projectId');
   try {
-    const engineering = engineeringService().createEngineering(
+    const engineering = engineeringService().createEngineeringSetup(
       user.id,
       projectId,
       {
         mutationId: field(formData, 'mutationId'),
         name: field(formData, 'name'),
+        creatorMembershipMutationId: field(
+          formData,
+          'creatorMembershipMutationId',
+        ),
+        members: stringFields(formData, 'memberUserId').map((userId) => ({
+          userId,
+          mutationId: field(formData, `memberMutationId:${userId}`),
+        })),
+        environment: {
+          mutationId: field(formData, 'environmentMutationId'),
+          name: field(formData, 'environmentName'),
+          deployment: deploymentField(formData),
+        },
       },
     );
     refreshProject(projectId);
@@ -246,6 +259,10 @@ function field(formData: FormData, name: string): string {
 
 function numberField(formData: FormData, name: string): number {
   return Number(field(formData, name));
+}
+
+function stringFields(formData: FormData, name: string): string[] {
+  return formData.getAll(name).map(String);
 }
 
 function projectPath(projectId: string): string {
