@@ -12,6 +12,8 @@ describe('Cooking 页面框架', () => {
       'utf8',
     );
     expect(layout).toContain('<CookingShell');
+    expect(layout).toContain('<AccountInvitationNotifications');
+    expect(layout).toContain('accountNotifications=');
 
     const pageImplementations = [
       'app/cooking/projects/page.tsx',

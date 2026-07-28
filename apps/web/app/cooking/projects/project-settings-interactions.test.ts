@@ -55,17 +55,13 @@ describe('项目与工程交互基线', () => {
     expect(actions).toContain("projectSettingsPath(projectId, 'project')");
   });
 
-  test('邀请通知恢复到账户区域并保留独立邀请弹窗深链', async () => {
+  test('项目页不改造共享账号区域并保留邀请弹窗深链', async () => {
     const page = await readFile(pagePath, 'utf8');
     const controls = await readFile(controlsPath, 'utf8');
     const actions = await readFile(actionsPath, 'utf8');
-    expect(controls).toContain(
-      "'.collab-topbar__actions .collab-account-menu'",
-    );
-    expect(controls).toContain('createPortal(accountNotifications');
-    expect(page).toContain('collab-account-menu__notifications');
-    expect(controls).toContain('collab-account-menu__count');
-    expect(page).toContain('returnTo="/cooking/projects"');
+    expect(controls).not.toContain('document.querySelector');
+    expect(controls).not.toContain('createPortal');
+    expect(controls).not.toContain('project-account-menu');
     expect(page).toContain("panel === 'invitations'");
     expect(actions).toContain('invitationReturnPath');
   });

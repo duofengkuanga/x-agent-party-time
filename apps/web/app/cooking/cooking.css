@@ -2560,21 +2560,6 @@
   color: inherit;
 }
 
-.collab-account-menu__count {
-  align-items: center;
-  background: var(--accent-dark);
-  border: 1px solid var(--paper);
-  border-radius: 999px;
-  color: var(--paper);
-  display: inline-flex;
-  font-size: 8px;
-  font-weight: 900;
-  height: 18px;
-  justify-content: center;
-  min-width: 18px;
-  padding: 0 4px;
-}
-
 .collab-account-menu__panel[hidden] {
   display: none;
 }
@@ -4461,53 +4446,6 @@
   justify-self: stretch;
 }
 
-.project-account-menu__badge {
-  height: 38px;
-  min-height: 38px;
-}
-
-.project-account-menu__initial {
-  align-items: center;
-  align-self: stretch;
-  background: var(--ink);
-  color: var(--paper);
-  display: inline-flex;
-  font-family: Georgia, 'Times New Roman', serif;
-  font-size: 16px;
-  font-style: italic;
-  justify-content: center;
-  order: -1;
-  width: 34px;
-}
-
-.project-account-menu__chevron {
-  align-items: center;
-  align-self: stretch;
-  border-left: 1px solid var(--line);
-  color: var(--muted);
-  display: inline-flex;
-  font-size: 12px;
-  justify-content: center;
-  order: 3;
-  transition: transform 140ms ease;
-  width: 28px;
-}
-
-.collab-account-menu--open .project-account-menu__chevron {
-  color: inherit;
-  transform: rotate(180deg);
-}
-
-.collab-account-menu > .account-badge .collab-account-menu__count {
-  align-self: center;
-  margin-right: 8px;
-  order: 2;
-}
-
-.project-account-menu__notifications-host {
-  display: contents;
-}
-
 .collab-account-menu__invitation-list article form {
   display: block;
   padding: 0;
@@ -4645,10 +4583,6 @@
 }
 
 @media (max-width: 760px) {
-  .project-account-menu__badge .account-badge__copy {
-    display: none;
-  }
-
   .engineering-editor > .dialog-actions,
   .engineering-detail__actions {
     margin-inline: 0;
@@ -4694,10 +4628,6 @@
 
   .project-settings__create > button {
     grid-column: auto;
-  }
-
-  .project-account-menu__chevron {
-    width: 24px;
   }
 }
 

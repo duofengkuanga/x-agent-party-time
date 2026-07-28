@@ -8,10 +8,12 @@ import { logoutAction } from '@/server/auth/logout-action';
 type Theme = 'paper' | 'night';
 
 export function CookingShell({
+  accountNotifications,
   children,
   className,
   currentUser,
 }: {
+  accountNotifications: ReactNode;
   children: ReactNode;
   className?: string;
   currentUser: User;
@@ -48,7 +50,10 @@ export function CookingShell({
           >
             {theme === 'paper' ? '◐ 暗夜' : '◑ 纸张'}
           </button>
-          <AccountMenu currentUser={currentUser} />
+          <AccountMenu
+            currentUser={currentUser}
+            notifications={accountNotifications}
+          />
         </div>
       </header>
       {children}
@@ -56,7 +61,13 @@ export function CookingShell({
   );
 }
 
-function AccountMenu({ currentUser }: { currentUser: User }) {
+function AccountMenu({
+  currentUser,
+  notifications,
+}: {
+  currentUser: User;
+  notifications: ReactNode;
+}) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -93,6 +104,7 @@ function AccountMenu({ currentUser }: { currentUser: User }) {
         </span>
       </button>
       <div className="collab-account-menu__panel" hidden={!open}>
+        {notifications}
         <nav aria-label="账号导航" className="collab-account-menu__navigation">
           <span>工作区</span>
           <Link href="/cooking/projects">项目与工程</Link>
