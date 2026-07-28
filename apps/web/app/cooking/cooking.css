@@ -3339,9 +3339,20 @@
 }
 
 .engineering-detail {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 20px;
   padding: 22px;
+}
+
+.engineering-detail > * {
+  flex: 0 0 auto;
+}
+
+.engineering-detail > .engineering-editor {
+  flex: 0 0 auto;
+  min-height: max-content;
+  overflow: visible;
 }
 
 .engineering-detail__headline {

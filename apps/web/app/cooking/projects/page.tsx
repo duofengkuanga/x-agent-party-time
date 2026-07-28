@@ -465,6 +465,7 @@ function EngineeringDialog({
               <Link
                 className="repair-primary"
                 href={engineeringCreateHref(projectId)}
+                replace
               >
                 新建工程
               </Link>
@@ -482,6 +483,7 @@ function EngineeringDialog({
                     className="engineering-card"
                     href={engineeringHref(projectId, item.id)}
                     key={item.id}
+                    replace
                   >
                     <span>{item.archivedAt ? '已归档' : '代码工程'}</span>
                     <strong>{item.name}</strong>
@@ -570,7 +572,9 @@ function EngineeringCreateForm({
       <EngineeringCreateEnvironments initialMutationId={randomUUID()} />
 
       <div className="dialog-actions">
-        <Link href={settingsHref(projectId, 'engineering')}>返回目录</Link>
+        <Link href={settingsHref(projectId, 'engineering')} replace>
+          返回目录
+        </Link>
         <button className="repair-primary" type="submit">
           创建工程
         </button>
@@ -659,7 +663,12 @@ function EngineeringDetail({
             </label>
           </div>
           <div className="dialog-actions">
-            <button type="submit">保存工程设置</button>
+            <Link href={engineeringHref(projectId, engineeringId)} replace>
+              取消编辑
+            </Link>
+            <button className="repair-primary" type="submit">
+              保存工程设置
+            </button>
           </div>
         </form>
       ) : null}
@@ -884,7 +893,9 @@ function EngineeringDetail({
       </section>
 
       <div className="dialog-actions engineering-detail__actions">
-        <Link href={settingsHref(projectId, 'engineering')}>返回目录</Link>
+        <Link href={settingsHref(projectId, 'engineering')} replace>
+          返回目录
+        </Link>
         {owner && !workspace.engineering.archivedAt ? (
           <form action={archiveEngineeringAction}>
             <EngineeringFields
@@ -899,16 +910,13 @@ function EngineeringDetail({
             <button type="submit">归档工程</button>
           </form>
         ) : null}
-        {owner ? (
+        {owner && !editing ? (
           <Link
             className="repair-primary"
-            href={
-              editing
-                ? engineeringHref(projectId, engineeringId)
-                : engineeringEditHref(projectId, engineeringId)
-            }
+            href={engineeringEditHref(projectId, engineeringId)}
+            replace
           >
-            {editing ? '完成编辑' : '编辑配置'}
+            编辑配置
           </Link>
         ) : null}
       </div>
@@ -948,6 +956,7 @@ function Dialog({
             aria-label={`关闭${title}`}
             className="engineering-dialog__close"
             href="/cooking/projects"
+            replace
           >
             ×
           </Link>
