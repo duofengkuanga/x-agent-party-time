@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
+import { redirect, RedirectType } from 'next/navigation';
 import { requireCurrentUser } from '@/server/auth/server';
 import { publicError } from '@/server/errors';
 import {
@@ -39,7 +39,7 @@ export async function createEngineeringAction(
       },
     );
     refreshProject(projectId);
-    redirect(
+    redirectReplacingHistory(
       messageRedirectPath(
         engineeringPath(projectId, engineering.id),
         'success',
@@ -48,7 +48,7 @@ export async function createEngineeringAction(
     );
   } catch (error) {
     rethrowRedirectError(error);
-    redirectWithError(projectPath(projectId), error);
+    redirectWithError(engineeringCreatePath(projectId), error);
   }
 }
 
@@ -65,7 +65,7 @@ export async function updateEngineeringAction(
       name: field(formData, 'name'),
     });
     refreshEngineering(projectId, engineeringId);
-    redirect(
+    redirectReplacingHistory(
       messageRedirectPath(
         engineeringPath(projectId, engineeringId),
         'success',
@@ -74,7 +74,7 @@ export async function updateEngineeringAction(
     );
   } catch (error) {
     rethrowRedirectError(error);
-    redirectWithError(engineeringPath(projectId, engineeringId), error);
+    redirectWithError(engineeringEditPath(projectId, engineeringId), error);
   }
 }
 
@@ -90,7 +90,7 @@ export async function archiveEngineeringAction(
       expectedVersion: numberField(formData, 'expectedVersion'),
     });
     refreshEngineering(projectId, engineeringId);
-    redirect(
+    redirectReplacingHistory(
       messageRedirectPath(
         engineeringPath(projectId, engineeringId),
         'success',
@@ -117,16 +117,16 @@ export async function addEngineeringMemberAction(
       { mutationId: field(formData, 'mutationId') },
     );
     refreshEngineering(projectId, engineeringId);
-    redirect(
+    redirectReplacingHistory(
       messageRedirectPath(
-        engineeringPath(projectId, engineeringId),
+        engineeringEditPath(projectId, engineeringId),
         'success',
         '工程成员已添加',
       ),
     );
   } catch (error) {
     rethrowRedirectError(error);
-    redirectWithError(engineeringPath(projectId, engineeringId), error);
+    redirectWithError(engineeringEditPath(projectId, engineeringId), error);
   }
 }
 
@@ -147,16 +147,16 @@ export async function removeEngineeringMemberAction(
       },
     );
     refreshEngineering(projectId, engineeringId);
-    redirect(
+    redirectReplacingHistory(
       messageRedirectPath(
-        engineeringPath(projectId, engineeringId),
+        engineeringEditPath(projectId, engineeringId),
         'success',
         '工程成员已移除',
       ),
     );
   } catch (error) {
     rethrowRedirectError(error);
-    redirectWithError(engineeringPath(projectId, engineeringId), error);
+    redirectWithError(engineeringEditPath(projectId, engineeringId), error);
   }
 }
 
@@ -173,16 +173,16 @@ export async function createEnvironmentAction(
       deployment: deploymentField(formData),
     });
     refreshEngineering(projectId, engineeringId);
-    redirect(
+    redirectReplacingHistory(
       messageRedirectPath(
-        engineeringPath(projectId, engineeringId),
+        engineeringEditPath(projectId, engineeringId),
         'success',
         '测试环境已创建',
       ),
     );
   } catch (error) {
     rethrowRedirectError(error);
-    redirectWithError(engineeringPath(projectId, engineeringId), error);
+    redirectWithError(engineeringEditPath(projectId, engineeringId), error);
   }
 }
 
@@ -204,16 +204,16 @@ export async function updateEnvironmentAction(
       },
     );
     refreshEngineering(projectId, engineeringId);
-    redirect(
+    redirectReplacingHistory(
       messageRedirectPath(
-        engineeringPath(projectId, engineeringId),
+        engineeringEditPath(projectId, engineeringId),
         'success',
         '测试环境已更新',
       ),
     );
   } catch (error) {
     rethrowRedirectError(error);
-    redirectWithError(engineeringPath(projectId, engineeringId), error);
+    redirectWithError(engineeringEditPath(projectId, engineeringId), error);
   }
 }
 
@@ -233,16 +233,16 @@ export async function deleteEnvironmentAction(
       },
     );
     refreshEngineering(projectId, engineeringId);
-    redirect(
+    redirectReplacingHistory(
       messageRedirectPath(
-        engineeringPath(projectId, engineeringId),
+        engineeringEditPath(projectId, engineeringId),
         'success',
         '测试环境已删除',
       ),
     );
   } catch (error) {
     rethrowRedirectError(error);
-    redirectWithError(engineeringPath(projectId, engineeringId), error);
+    redirectWithError(engineeringEditPath(projectId, engineeringId), error);
   }
 }
 
@@ -283,6 +283,14 @@ function engineeringPath(projectId: string, engineeringId: string): string {
   return `${projectPath(projectId)}&engineering=${encodeURIComponent(engineeringId)}`;
 }
 
+function engineeringCreatePath(projectId: string): string {
+  return engineeringPath(projectId, 'new');
+}
+
+function engineeringEditPath(projectId: string, engineeringId: string): string {
+  return `${engineeringPath(projectId, engineeringId)}&mode=edit`;
+}
+
 function refreshProject(projectId: string): void {
   revalidatePath('/cooking');
   revalidatePath('/cooking/projects');
@@ -294,5 +302,11 @@ function refreshEngineering(projectId: string, engineeringId: string): void {
 }
 
 function redirectWithError(path: string, error: unknown): never {
-  redirect(messageRedirectPath(path, 'error', publicError(error).message));
+  redirectReplacingHistory(
+    messageRedirectPath(path, 'error', publicError(error).message),
+  );
+}
+
+function redirectReplacingHistory(path: string): never {
+  redirect(path, RedirectType.replace);
 }

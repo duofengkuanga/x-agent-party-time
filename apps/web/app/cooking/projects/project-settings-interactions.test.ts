@@ -76,6 +76,14 @@ describe('项目与工程交互基线', () => {
     expect(page).toContain('<EngineeringCreateEnvironments');
     expect(page).toContain('name="memberUserId"');
     expect(page).toContain("mode === 'edit'");
+    expect(page).toContain('取消编辑');
+    expect(page).not.toContain('完成编辑');
+    expect(page).toContain('href={engineeringCreateHref(projectId)}');
+    expect(page).toContain('href={engineeringHref(projectId, item.id)}');
+    expect(page).toContain(
+      'href={engineeringEditHref(projectId, engineeringId)}',
+    );
+    expect(page.match(/replace/g)?.length).toBeGreaterThanOrEqual(6);
     expect(page).not.toContain('name="repositoryUrl"');
     expect(page).toContain('等待首次本机 Agent 绑定确认仓库');
     expect(page).toContain(
@@ -85,6 +93,22 @@ describe('项目与工程交互基线', () => {
     expect(effects).toContain('event.target === overlay');
     expect(page).toContain('tabIndex={-1}');
     expect(effects).toContain("document.body.style.overflow = 'hidden'");
+  });
+
+  test('工程弹窗提交后保留当前目录、新建、详情或编辑上下文', async () => {
+    const actions = await readFile(engineeringActionsPath, 'utf8');
+    expect(actions).toContain(
+      'redirectWithError(engineeringCreatePath(projectId), error)',
+    );
+    expect(actions).toContain(
+      'redirectWithError(engineeringEditPath(projectId, engineeringId), error)',
+    );
+    expect(actions).toContain('engineeringPath(projectId, engineering.id)');
+    expect(actions).toContain('redirect(path, RedirectType.replace)');
+    expect(actions.match(/redirectReplacingHistory\(/g)?.length).toBe(10);
+    expect(
+      actions.match(/engineeringEditPath\(projectId, engineeringId\)/g)?.length,
+    ).toBeGreaterThanOrEqual(11);
   });
   test('新建工程一次提交成员与可增删的多个测试环境', async () => {
     const page = await readFile(pagePath, 'utf8');
@@ -107,7 +131,7 @@ describe('项目与工程交互基线', () => {
     expect(actions).toContain('environments:');
   });
 
-  test('新建项目按钮覆盖默认、展开、悬停、焦点与移动端状态', async () => {
+  test('新建项目按钮覆盖默认、展开、悬停与焦点状态', async () => {
     const css = await readFile(cssPath, 'utf8');
     expect(css).toContain('.project-settings__primary-action {');
     expect(css).toContain("[aria-expanded='true']");
@@ -123,5 +147,7 @@ describe('项目与工程交互基线', () => {
     expect(css).toContain('.dialog-actions {');
     expect(css).toContain('display: flex');
     expect(css).toContain('margin-inline: 0');
+    expect(css).toContain('.engineering-detail > .engineering-editor {');
+    expect(css).toContain('overflow: visible');
   });
 });
