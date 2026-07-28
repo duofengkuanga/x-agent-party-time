@@ -480,6 +480,12 @@ function BugForm({
 }) {
   const canEditReport = !bug || bug.availableActions.includes('EDIT_REPORT');
   const canAssign = !bug || bug.availableActions.includes('ASSIGN');
+  const frontendItems = snapshot.submission.items.filter(
+    ({ engineering }) => engineering.type === 'FRONTEND',
+  );
+  const backendItems = snapshot.submission.items.filter(
+    ({ engineering }) => engineering.type === 'BACKEND',
+  );
   const [submissionItemId, setSubmissionItemId] = useState(
     bug?.submissionItemId ?? '',
   );
@@ -561,11 +567,24 @@ function BugForm({
             value={submissionItemId}
           >
             <option value="">暂不确定</option>
-            {snapshot.submission.items.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.engineering.name}
-              </option>
-            ))}
+            {frontendItems.length ? (
+              <optgroup label="前端">
+                {frontendItems.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.engineering.name}（{item.engineering.identifier}）
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+            {backendItems.length ? (
+              <optgroup label="后端">
+                {backendItems.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.engineering.name}（{item.engineering.identifier}）
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
           </select>
         </label>
       </fieldset>

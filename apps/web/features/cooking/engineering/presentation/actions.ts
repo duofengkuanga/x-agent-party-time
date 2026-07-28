@@ -9,7 +9,11 @@ import {
   rethrowRedirectError,
 } from '@/server/http/message-redirect';
 import { engineeringService } from '@/features/cooking/application/server';
-import { DeploymentMethodSchema, type DeploymentMethod } from '../contract';
+import {
+  DeploymentMethodSchema,
+  EngineeringTypeSchema,
+  type DeploymentMethod,
+} from '../contract';
 
 export async function createEngineeringAction(
   formData: FormData,
@@ -23,6 +27,8 @@ export async function createEngineeringAction(
       {
         mutationId: field(formData, 'mutationId'),
         name: field(formData, 'name'),
+        type: EngineeringTypeSchema.parse(field(formData, 'type')),
+        identifier: field(formData, 'identifier'),
         creatorMembershipMutationId: field(
           formData,
           'creatorMembershipMutationId',
@@ -63,18 +69,23 @@ export async function updateEngineeringAction(
       mutationId: field(formData, 'mutationId'),
       expectedVersion: numberField(formData, 'expectedVersion'),
       name: field(formData, 'name'),
+      type: EngineeringTypeSchema.parse(field(formData, 'type')),
+      identifier: field(formData, 'identifier'),
     });
     refreshEngineering(projectId, engineeringId);
     redirectReplacingHistory(
       messageRedirectPath(
-        engineeringPath(projectId, engineeringId),
+        engineeringViewPath(projectId, engineeringId, 'information'),
         'success',
         '工程设置已更新',
       ),
     );
   } catch (error) {
     rethrowRedirectError(error);
-    redirectWithError(engineeringEditPath(projectId, engineeringId), error);
+    redirectWithError(
+      engineeringViewPath(projectId, engineeringId, 'information'),
+      error,
+    );
   }
 }
 
@@ -99,7 +110,10 @@ export async function archiveEngineeringAction(
     );
   } catch (error) {
     rethrowRedirectError(error);
-    redirectWithError(engineeringPath(projectId, engineeringId), error);
+    redirectWithError(
+      engineeringViewPath(projectId, engineeringId, 'information'),
+      error,
+    );
   }
 }
 
@@ -119,14 +133,17 @@ export async function addEngineeringMemberAction(
     refreshEngineering(projectId, engineeringId);
     redirectReplacingHistory(
       messageRedirectPath(
-        engineeringEditPath(projectId, engineeringId),
+        engineeringViewPath(projectId, engineeringId, 'members'),
         'success',
         '工程成员已添加',
       ),
     );
   } catch (error) {
     rethrowRedirectError(error);
-    redirectWithError(engineeringEditPath(projectId, engineeringId), error);
+    redirectWithError(
+      engineeringViewPath(projectId, engineeringId, 'members'),
+      error,
+    );
   }
 }
 
@@ -149,14 +166,17 @@ export async function removeEngineeringMemberAction(
     refreshEngineering(projectId, engineeringId);
     redirectReplacingHistory(
       messageRedirectPath(
-        engineeringEditPath(projectId, engineeringId),
+        engineeringViewPath(projectId, engineeringId, 'members'),
         'success',
         '工程成员已移除',
       ),
     );
   } catch (error) {
     rethrowRedirectError(error);
-    redirectWithError(engineeringEditPath(projectId, engineeringId), error);
+    redirectWithError(
+      engineeringViewPath(projectId, engineeringId, 'members'),
+      error,
+    );
   }
 }
 
@@ -167,22 +187,29 @@ export async function createEnvironmentAction(
   const engineeringId = field(formData, 'engineeringId');
   const projectId = field(formData, 'projectId');
   try {
-    engineeringService().createEnvironment(user.id, engineeringId, {
-      mutationId: field(formData, 'mutationId'),
-      name: field(formData, 'name'),
-      deployment: deploymentField(formData),
-    });
+    engineeringService().createEnvironments(
+      user.id,
+      engineeringId,
+      stringFields(formData, 'environmentKey').map((key) => ({
+        mutationId: field(formData, `environmentMutationId:${key}`),
+        name: field(formData, `environmentName:${key}`),
+        deployment: keyedDeploymentField(formData, key),
+      })),
+    );
     refreshEngineering(projectId, engineeringId);
     redirectReplacingHistory(
       messageRedirectPath(
-        engineeringEditPath(projectId, engineeringId),
+        engineeringViewPath(projectId, engineeringId, 'environments'),
         'success',
         '测试环境已创建',
       ),
     );
   } catch (error) {
     rethrowRedirectError(error);
-    redirectWithError(engineeringEditPath(projectId, engineeringId), error);
+    redirectWithError(
+      engineeringViewPath(projectId, engineeringId, 'environments'),
+      error,
+    );
   }
 }
 
@@ -206,14 +233,17 @@ export async function updateEnvironmentAction(
     refreshEngineering(projectId, engineeringId);
     redirectReplacingHistory(
       messageRedirectPath(
-        engineeringEditPath(projectId, engineeringId),
+        engineeringViewPath(projectId, engineeringId, 'environments'),
         'success',
         '测试环境已更新',
       ),
     );
   } catch (error) {
     rethrowRedirectError(error);
-    redirectWithError(engineeringEditPath(projectId, engineeringId), error);
+    redirectWithError(
+      engineeringViewPath(projectId, engineeringId, 'environments'),
+      error,
+    );
   }
 }
 
@@ -235,14 +265,17 @@ export async function deleteEnvironmentAction(
     refreshEngineering(projectId, engineeringId);
     redirectReplacingHistory(
       messageRedirectPath(
-        engineeringEditPath(projectId, engineeringId),
+        engineeringViewPath(projectId, engineeringId, 'environments'),
         'success',
         '测试环境已删除',
       ),
     );
   } catch (error) {
     rethrowRedirectError(error);
-    redirectWithError(engineeringEditPath(projectId, engineeringId), error);
+    redirectWithError(
+      engineeringViewPath(projectId, engineeringId, 'environments'),
+      error,
+    );
   }
 }
 
@@ -287,8 +320,12 @@ function engineeringCreatePath(projectId: string): string {
   return engineeringPath(projectId, 'new');
 }
 
-function engineeringEditPath(projectId: string, engineeringId: string): string {
-  return `${engineeringPath(projectId, engineeringId)}&mode=edit`;
+function engineeringViewPath(
+  projectId: string,
+  engineeringId: string,
+  view: 'members' | 'environments' | 'information',
+): string {
+  return `${engineeringPath(projectId, engineeringId)}&mode=${view}`;
 }
 
 function refreshProject(projectId: string): void {

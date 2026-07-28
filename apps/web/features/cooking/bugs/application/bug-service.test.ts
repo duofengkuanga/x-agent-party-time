@@ -56,10 +56,14 @@ async function setup() {
   const front = engineering.createEngineering(users.owner.id, project.id, {
     mutationId: randomUUID(),
     name: '前端工程',
+    type: 'FRONTEND',
+    identifier: 'web',
   });
   const back = engineering.createEngineering(users.owner.id, project.id, {
     mutationId: randomUUID(),
     name: '后端工程',
+    type: 'BACKEND',
+    identifier: 'api',
   });
   engineering.addMember(users.owner.id, front.id, users.developerA.id, {
     mutationId: randomUUID(),
@@ -276,6 +280,22 @@ describe('BugService', () => {
       },
     ).bug;
     expect(assigned.submissionItemId).toBe(fixture.items.front);
+    const assignedView = fixture.service
+      .workspace(fixture.users.developerA.id, fixture.submission.id)
+      .bugs.find(({ id }) => id === assigned.id);
+    expect(assignedView?.assignment).toMatchObject({
+      engineeringName: '前端工程',
+      engineeringType: 'FRONTEND',
+      engineeringIdentifier: 'web',
+    });
+    expect(assignedView?.presentation.assignmentLabel).toBe('前端工程（web）');
+    expect(
+      fixture.database
+        .query<{ name: string }, []>('PRAGMA table_info(cooking_bug)')
+        .all()
+        .map(({ name }) => name)
+        .filter((name) => name.startsWith('engineering_')),
+    ).toEqual([]);
     expect(() =>
       fixture.service.requestRepair(fixture.users.developerB.id, assigned.id, {
         mutationId: randomUUID(),

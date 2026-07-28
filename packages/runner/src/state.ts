@@ -80,6 +80,20 @@ export class RunnerStateStore {
     );
   }
 
+  async clearConfig(): Promise<void> {
+    await rm(this.paths.config, { force: true });
+  }
+
+  async hasConfig(): Promise<boolean> {
+    try {
+      await stat(this.paths.config);
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+      throw error;
+    }
+  }
+
   async bind(bindingId: string, repositoryPath: string): Promise<LocalBinding> {
     const absolutePath = normalizeAbsolutePath(repositoryPath);
     const current = await this.readBindingState();
@@ -104,6 +118,28 @@ export class RunnerStateStore {
     return Object.values((await this.readBindingState()).bindings).sort(
       (a, b) => a.bindingId.localeCompare(b.bindingId),
     );
+  }
+
+  async pruneBindings(bindingIds: readonly string[]): Promise<string[]> {
+    const active = new Set(bindingIds.map((id) => z.uuid().parse(id)));
+    const current = await this.readBindingState();
+    const removed: string[] = [];
+    for (const bindingId of Object.keys(current.bindings)) {
+      if (active.has(bindingId)) continue;
+      delete current.bindings[bindingId];
+      removed.push(bindingId);
+    }
+    if (removed.length) await writePrivateJson(this.paths.bindings, current);
+    return removed.sort();
+  }
+
+  async removeBinding(bindingId: string): Promise<boolean> {
+    const id = z.uuid().parse(bindingId);
+    const current = await this.readBindingState();
+    if (!current.bindings[id]) return false;
+    delete current.bindings[id];
+    await writePrivateJson(this.paths.bindings, current);
+    return true;
   }
 
   async fileModes(): Promise<{

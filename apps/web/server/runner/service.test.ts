@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -99,6 +100,119 @@ describe('Runner pairing', () => {
     setNow('2026-07-26T10:00:02Z');
     expect(() => service.pair(issue.code, '过期 Runner')).toThrow(
       expect.objectContaining({ code: 'AUTHENTICATION_FAILED' }),
+    );
+  });
+});
+
+describe('Agent 浏览器授权', () => {
+  test('公开请求 ID 与 verifier 分离，浏览器确认后凭据只能领取一次', async () => {
+    const { database, service, setNow, users } = await setup();
+    const verifier = 'v'.repeat(43);
+    const issue = service.createAuthorizationRequest({
+      verifierHash: createHash('sha256').update(verifier).digest('hex'),
+      fingerprint: 'ABCD-1234-EF56',
+      suggestedName: '本机 Agent',
+    });
+    expect(issue.requestId).not.toContain(verifier);
+    const stored = database
+      .query<{ verifier_hash: string; approval_token_hash: string | null }, []>(
+        `SELECT verifier_hash, approval_token_hash
+         FROM platform_runner_authorization_request WHERE id = ?`,
+      )
+      .get(issue.requestId);
+    expect(stored?.verifier_hash).not.toBe(verifier);
+
+    expect(service.claimAuthorization(issue.requestId, verifier)).toEqual({
+      state: 'WAITING',
+      retryAfterMs: 1_000,
+    });
+    const approval = service.prepareAuthorizationApproval(
+      users.owner.id,
+      issue.requestId,
+    );
+    expect(approval).toMatchObject({
+      fingerprint: 'ABCD-1234-EF56',
+      suggestedName: '本机 Agent',
+      state: 'PENDING',
+    });
+    expect(approval.approvalToken).toBeTruthy();
+    expect(
+      database
+        .query<{ approval_token_hash: string }, []>(
+          `SELECT approval_token_hash
+           FROM platform_runner_authorization_request WHERE id = ?`,
+        )
+        .get(issue.requestId)?.approval_token_hash,
+    ).not.toBe(approval.approvalToken);
+    expect(() =>
+      service.prepareAuthorizationApproval(users.other.id, issue.requestId),
+    ).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
+    expect(() =>
+      service.approveAuthorization(
+        users.other.id,
+        issue.requestId,
+        approval.approvalToken!,
+        '伪造 Agent',
+      ),
+    ).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
+
+    service.approveAuthorization(
+      users.owner.id,
+      issue.requestId,
+      approval.approvalToken!,
+      '我的 Mac Agent',
+    );
+    expect(service.claimAuthorization(issue.requestId, verifier)).toEqual({
+      state: 'WAITING',
+      retryAfterMs: 750,
+    });
+    setNow('2026-07-26T10:00:01Z');
+    const claimed = service.claimAuthorization(issue.requestId, verifier);
+    expect(claimed).toMatchObject({
+      state: 'AUTHORIZED',
+      runner: {
+        ownerUserId: users.owner.id,
+        name: '我的 Mac Agent',
+      },
+    });
+    expect(service.claimAuthorization(issue.requestId, verifier)).toMatchObject(
+      { state: 'REJECTED' },
+    );
+  });
+
+  test('拒绝、过期和过快轮询不会创建 Agent', async () => {
+    const { database, service, setNow, users } = await setup();
+    const verifier = 'x'.repeat(43);
+    const issue = service.createAuthorizationRequest(
+      {
+        verifierHash: createHash('sha256').update(verifier).digest('hex'),
+        fingerprint: 'AAAA-BBBB-CCCC',
+        suggestedName: '待确认 Agent',
+      },
+      1_000,
+    );
+    const approval = service.prepareAuthorizationApproval(
+      users.owner.id,
+      issue.requestId,
+    );
+    service.rejectAuthorization(
+      users.owner.id,
+      issue.requestId,
+      approval.approvalToken!,
+    );
+    expect(service.claimAuthorization(issue.requestId, verifier)).toMatchObject(
+      { state: 'REJECTED' },
+    );
+    expect(
+      database
+        .query<{ count: number }, []>(
+          'SELECT COUNT(*) count FROM platform_runner',
+        )
+        .get()?.count,
+    ).toBe(0);
+    setNow('2026-07-26T10:00:02Z');
+    expect(service.claimAuthorization(issue.requestId, verifier)).toMatchObject(
+      { state: 'REJECTED' },
     );
   });
 });

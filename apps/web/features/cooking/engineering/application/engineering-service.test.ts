@@ -107,6 +107,8 @@ describe('EngineeringService', () => {
       {
         mutationId: randomUUID(),
         name: '完整初始化工程',
+        type: 'FRONTEND',
+        identifier: 'full-web',
         creatorMembershipMutationId: randomUUID(),
         members: [{ userId: users.member.id, mutationId: randomUUID() }],
         environments: [
@@ -153,6 +155,8 @@ describe('EngineeringService', () => {
       service.createEngineeringSetup(users.owner.id, project.id, {
         mutationId: randomUUID(),
         name: '应回滚工程',
+        type: 'FRONTEND',
+        identifier: 'rollback-web',
         creatorMembershipMutationId: randomUUID(),
         members: [{ userId: users.member.id, mutationId: randomUUID() }],
         environments: [
@@ -185,6 +189,8 @@ describe('EngineeringService', () => {
       service.createEngineeringSetup(users.owner.id, project.id, {
         mutationId: randomUUID(),
         name: '缺少环境的工程',
+        type: 'FRONTEND',
+        identifier: 'missing-environment',
         creatorMembershipMutationId: randomUUID(),
         members: [],
         environments: [],
@@ -200,6 +206,8 @@ describe('EngineeringService', () => {
       service.createEngineeringSetup(users.owner.id, project.id, {
         mutationId: randomUUID(),
         name: '环境操作标识重复',
+        type: 'FRONTEND',
+        identifier: 'duplicate-mutation',
         creatorMembershipMutationId: randomUUID(),
         members: [],
         environments: [
@@ -225,12 +233,16 @@ describe('EngineeringService', () => {
     const engineering = service.createEngineering(users.owner.id, project.id, {
       mutationId,
       name: '全栈一体化工程',
+      type: 'FRONTEND',
+      identifier: 'fullstack-web',
     });
     expect(engineering).toMatchObject({ repositoryState: 'PENDING' });
     expect(
       service.createEngineering(users.owner.id, project.id, {
         mutationId,
         name: '不会重复创建',
+        type: 'BACKEND',
+        identifier: 'replay-api',
       }),
     ).toEqual(engineering);
     expect(service.listEngineering(users.member.id, project.id)).toEqual([
@@ -243,6 +255,8 @@ describe('EngineeringService', () => {
       service.createEngineering(users.member.id, project.id, {
         mutationId: randomUUID(),
         name: '越权工程',
+        type: 'BACKEND',
+        identifier: 'forbidden-api',
       }),
     ).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
     expect(
@@ -254,11 +268,100 @@ describe('EngineeringService', () => {
     ).toBe(1);
   });
 
+  test('稳定标识格式正确、项目内唯一且归档后仍不能复用', async () => {
+    const { project, projects, service, users } = await setup();
+    const engineering = service.createEngineering(users.owner.id, project.id, {
+      mutationId: randomUUID(),
+      name: '商城前端',
+      type: 'FRONTEND',
+      identifier: 'web',
+    });
+    expect(() =>
+      service.createEngineering(users.owner.id, project.id, {
+        mutationId: randomUUID(),
+        name: '移动端',
+        type: 'FRONTEND',
+        identifier: 'web',
+      }),
+    ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
+    expect(() =>
+      service.createEngineering(users.owner.id, project.id, {
+        mutationId: randomUUID(),
+        name: '非法标识',
+        type: 'FRONTEND',
+        identifier: 'Web App',
+      }),
+    ).toThrow();
+
+    service.archiveEngineering(users.owner.id, engineering.id, {
+      mutationId: randomUUID(),
+      expectedVersion: engineering.version,
+    });
+    expect(() =>
+      service.createEngineering(users.owner.id, project.id, {
+        mutationId: randomUUID(),
+        name: '归档后复用',
+        type: 'FRONTEND',
+        identifier: 'web',
+      }),
+    ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
+
+    const otherProject = projects.createProject(users.owner.id, {
+      mutationId: randomUUID(),
+      name: '另一个项目',
+    }).project;
+    expect(
+      service.createEngineering(users.owner.id, otherProject.id, {
+        mutationId: randomUUID(),
+        name: '另一个商城前端',
+        type: 'FRONTEND',
+        identifier: 'web',
+      }).identifier,
+    ).toBe('web');
+  });
+
+  test('首次被提测引用后名称和归属仍可修改，但稳定标识锁定', async () => {
+    const { project, references, service, users } = await setup();
+    const engineering = service.createEngineering(users.owner.id, project.id, {
+      mutationId: randomUUID(),
+      name: '旧名称',
+      type: 'FRONTEND',
+      identifier: 'web',
+    });
+    references.engineering.add(engineering.id);
+    const renamed = service.updateEngineering(users.owner.id, engineering.id, {
+      mutationId: randomUUID(),
+      expectedVersion: engineering.version,
+      name: '新名称',
+      type: 'BACKEND',
+      identifier: engineering.identifier,
+    });
+    expect(renamed).toMatchObject({
+      name: '新名称',
+      type: 'BACKEND',
+      identifier: 'web',
+    });
+    expect(service.isIdentifierLocked(users.owner.id, engineering.id)).toBe(
+      true,
+    );
+    expect(() =>
+      service.updateEngineering(users.owner.id, engineering.id, {
+        mutationId: randomUUID(),
+        expectedVersion: renamed.version,
+        name: '继续改名',
+        type: 'BACKEND',
+        identifier: 'admin-web',
+      }),
+    ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
+  });
+
   test('工程成员必须先属于项目，添加幂等且活动职责阻止移除', async () => {
     const { project, references, service, users } = await setup();
     const engineering = service.createEngineering(users.owner.id, project.id, {
       mutationId: randomUUID(),
       name: '成员工程',
+      type: 'BACKEND',
+      identifier: 'member-api',
     });
     expect(() =>
       service.addMember(users.owner.id, engineering.id, users.other.id, {
@@ -301,6 +404,8 @@ describe('EngineeringService', () => {
     const engineering = service.createEngineering(users.owner.id, project.id, {
       mutationId: randomUUID(),
       name: '环境工程',
+      type: 'BACKEND',
+      identifier: 'environment-api',
     });
     const environment = service.createEnvironment(
       users.owner.id,
@@ -339,11 +444,54 @@ describe('EngineeringService', () => {
     ]);
   });
 
+  test('批量创建测试环境保持原子性', async () => {
+    const { project, service, users } = await setup();
+    const engineering = service.createEngineering(users.owner.id, project.id, {
+      mutationId: randomUUID(),
+      name: '批量环境工程',
+      type: 'BACKEND',
+      identifier: 'batch-environment-api',
+    });
+    expect(() =>
+      service.createEnvironments(users.owner.id, engineering.id, [
+        {
+          mutationId: randomUUID(),
+          name: '重复环境',
+          deployment: { kind: 'CI_CD' },
+        },
+        {
+          mutationId: randomUUID(),
+          name: '重复环境',
+          deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' },
+        },
+      ]),
+    ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
+    expect(service.listEnvironments(users.owner.id, engineering.id)).toEqual(
+      [],
+    );
+
+    const created = service.createEnvironments(users.owner.id, engineering.id, [
+      {
+        mutationId: randomUUID(),
+        name: '测试环境',
+        deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' },
+      },
+      {
+        mutationId: randomUUID(),
+        name: '预发布环境',
+        deployment: { kind: 'CI_CD' },
+      },
+    ]);
+    expect(created.map(({ name }) => name)).toEqual(['测试环境', '预发布环境']);
+  });
+
   test('活动引用阻止破坏性修改，归档保留工程、成员和环境历史', async () => {
     const { database, project, references, service, users } = await setup();
     const engineering = service.createEngineering(users.owner.id, project.id, {
       mutationId: randomUUID(),
       name: '历史工程',
+      type: 'FRONTEND',
+      identifier: 'history-web',
     });
     service.addMember(users.owner.id, engineering.id, users.member.id, {
       mutationId: randomUUID(),

@@ -1,9 +1,12 @@
 import { isAbsolute } from 'node:path';
 import { normalizeRepositoryUrl } from '@agent-party-time/runner-contract';
 import { RunnerClient } from './client';
+import { AgentAuthorization } from './authorization';
+import { AgentBindingWorker } from './binding-worker';
 import { RunnerWorker } from './worker';
 import { RunnerStateStore } from './state';
 import { readRepositoryOrigin } from './repository-origin';
+import { normalizeServerUrl } from './server-url';
 
 type Output = Pick<Console, 'log'>;
 
@@ -14,6 +17,8 @@ export async function runRunnerCli(
     state?: RunnerStateStore;
     output?: Output;
     repositoryOrigin?: (path: string) => Promise<string | null>;
+    authorization?: Pick<AgentAuthorization, 'ensureAuthorized'>;
+    bindingWorker?: Pick<AgentBindingWorker, 'run' | 'stop'>;
   } = {},
 ): Promise<void> {
   const client = dependencies.client ?? new RunnerClient();
@@ -74,6 +79,23 @@ export async function runRunnerCli(
         concurrency > 32
       )
         throw new Error('--concurrency 必须是 1 到 32 的整数');
+      const serverUrl = normalizeServerUrl(
+        optional(rest, '--server') ??
+          process.env.AGENT_PARTY_TIME_SERVER_URL ??
+          'http://localhost:3000',
+      );
+      const authorization =
+        dependencies.authorization ??
+        new AgentAuthorization(
+          client,
+          state,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          output,
+        );
+      await authorization.ensureAuthorized(serverUrl);
       const worker = new RunnerWorker(
         client,
         state,
@@ -86,8 +108,24 @@ export async function runRunnerCli(
           error: (line) => output.log(line),
         },
       );
-      output.log(`Runner 已启动，并发数：${concurrency}`);
-      await worker.run();
+      output.log(`Agent 已启动，并发数：${concurrency}`);
+      const bindingWorker =
+        dependencies.bindingWorker ??
+        new AgentBindingWorker(
+          client,
+          state,
+          undefined,
+          undefined,
+          undefined,
+          output,
+        );
+      const bindingTask = bindingWorker.run();
+      try {
+        await worker.run();
+      } finally {
+        bindingWorker.stop();
+        await bindingTask;
+      }
       return;
     }
     default:
@@ -98,7 +136,7 @@ export async function runRunnerCli(
           '  heartbeat',
           '  bind <bindingId> <本机绝对路径> [仓库地址]',
           '  bindings',
-          '  start [--concurrency <1-32>]',
+          '  start [--server <服务端地址>] [--concurrency <1-32>]',
         ].join('\n'),
       );
   }

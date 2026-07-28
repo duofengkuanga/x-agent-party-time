@@ -68,6 +68,8 @@ async function setup(options: { confirmRepositories?: boolean } = {}) {
     {
       mutationId: randomUUID(),
       name: '前端工程',
+      type: 'FRONTEND',
+      identifier: 'web',
     },
   );
   const back = engineeringService.createEngineering(
@@ -76,6 +78,8 @@ async function setup(options: { confirmRepositories?: boolean } = {}) {
     {
       mutationId: randomUUID(),
       name: '后端工程',
+      type: 'BACKEND',
+      identifier: 'api',
     },
   );
   for (const [engineeringId, developerId] of [
@@ -219,6 +223,43 @@ describe('SubmissionService create', () => {
     }
   });
 
+  test('提测项固定工程名称、归属和稳定标识快照', async () => {
+    const fixture = await setup();
+    const submission = createSubmission(fixture, [
+      item(fixture, 'front', 'developerA', 'frontA', 'feature/snapshot'),
+    ]);
+    const engineering = new EngineeringService(fixture.database, {
+      engineeringReferenced: (engineeringId) =>
+        submissionReferencesEngineering(fixture.database, engineeringId),
+      environmentReferenced: () => false,
+      memberHasActiveResponsibilities: () => false,
+    });
+    const current = engineering.getEngineering(
+      fixture.users.owner.id,
+      fixture.engineering.front.id,
+    );
+    engineering.updateEngineering(
+      fixture.users.owner.id,
+      fixture.engineering.front.id,
+      {
+        mutationId: randomUUID(),
+        expectedVersion: current.version,
+        name: '改名后的工程',
+        type: 'BACKEND',
+        identifier: current.identifier,
+      },
+    );
+
+    expect(
+      fixture.service.getWorkspace(fixture.users.creator.id, submission.id)
+        .submission.items[0]?.engineering,
+    ).toMatchObject({
+      name: '前端工程',
+      type: 'FRONTEND',
+      identifier: 'web',
+    });
+  });
+
   test('参与者、Binding、Runner 与环境验证失败时原子回滚', async () => {
     const fixture = await setup();
     expect(() =>
@@ -251,20 +292,13 @@ describe('SubmissionService create', () => {
       ).toBe(0);
     }
 
-    const forgedBindingId = randomUUID();
     fixture.database
       .prepare(
-        `INSERT INTO cooking_engineering_binding(
-           id, engineering_id, user_id, runner_id, created_at
-         ) VALUES (?, ?, ?, ?, ?)`,
+        `UPDATE cooking_engineering_binding
+         SET runner_id = ?
+         WHERE id = ?`,
       )
-      .run(
-        forgedBindingId,
-        fixture.engineering.front.id,
-        fixture.users.developerA.id,
-        fixture.runners.runnerB.runner.id,
-        '2026-07-27T01:00:00.000Z',
-      );
+      .run(fixture.runners.runnerB.runner.id, fixture.bindings.frontA.id);
     expect(() =>
       createSubmission(fixture, [
         {
@@ -275,11 +309,18 @@ describe('SubmissionService create', () => {
             'frontA',
             'feature/forged-runner',
           ),
-          bindingId: forgedBindingId,
+          bindingId: fixture.bindings.frontA.id,
         },
       ]),
     ).toThrow(PlatformErrorLike);
     expect(countRows(fixture.database, 'cooking_test_submission')).toBe(0);
+    fixture.database
+      .prepare(
+        `UPDATE cooking_engineering_binding
+         SET runner_id = ?
+         WHERE id = ?`,
+      )
+      .run(fixture.runners.runnerA.runner.id, fixture.bindings.frontA.id);
 
     const active = createSubmission(fixture, [
       item(fixture, 'front', 'developerA', 'frontA', 'feature/active'),
@@ -379,7 +420,7 @@ describe('Submission workspace', () => {
     );
   });
 
-  test('活动提测保护 Tester、负责人、工程与环境配置', async () => {
+  test('活动提测保护 Tester、负责人、工程标识与环境配置', async () => {
     const fixture = await setup();
     createSubmission(fixture, [
       item(fixture, 'front', 'developerA', 'frontA', 'feature/front'),
@@ -407,6 +448,8 @@ describe('Submission workspace', () => {
             fixture.engineering.front.id,
           ).version,
           name: fixture.engineering.front.name,
+          type: fixture.engineering.front.type,
+          identifier: 'renamed-web',
         },
       ),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));

@@ -52,6 +52,8 @@ type SubmissionItemRow = {
   submission_id: string;
   engineering_id: string;
   engineering_name: string;
+  engineering_type: 'FRONTEND' | 'BACKEND';
+  engineering_identifier: string;
   repository_url: string;
   responsible_user_id: string;
   responsible_username: string;
@@ -68,6 +70,8 @@ type SubmissionItemRow = {
 type ItemSnapshotSource = {
   engineering_id: string;
   engineering_name: string;
+  engineering_type: 'FRONTEND' | 'BACKEND';
+  engineering_identifier: string;
   repository_url: string;
   responsible_user_id: string;
   responsible_username: string;
@@ -363,6 +367,8 @@ export class SubmissionService {
           engineering: {
             id: item.engineering.id,
             name: item.engineering.name,
+            type: item.engineering.type,
+            identifier: item.engineering.identifier,
           },
           responsibleUser: item.responsibleUser,
           environment: {
@@ -472,6 +478,8 @@ export class SubmissionService {
       .prepare(
         `SELECT engineering.id engineering_id,
                 engineering.name engineering_name,
+                engineering.type engineering_type,
+                engineering.identifier engineering_identifier,
                 engineering.repository_url,
                 responsible.id responsible_user_id,
                 responsible.username responsible_username,
@@ -534,11 +542,12 @@ export class SubmissionService {
       .prepare(
         `INSERT INTO cooking_submission_item(
            id, submission_id, position, engineering_id, engineering_name,
-           repository_url, responsible_user_id, responsible_username,
+           engineering_type, engineering_identifier, repository_url,
+           responsible_user_id, responsible_username,
            responsible_display_name, responsible_user_created_at,
            binding_id, target_branch, environment_id, environment_name,
            deployment_json, created_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         itemId,
@@ -546,6 +555,8 @@ export class SubmissionService {
         position,
         source.engineering_id,
         source.engineering_name,
+        source.engineering_type,
+        source.engineering_identifier,
         source.repository_url,
         source.responsible_user_id,
         source.responsible_username,
@@ -647,6 +658,8 @@ function mapItem(row: SubmissionItemRow): SubmissionItem {
     engineering: {
       id: row.engineering_id,
       name: row.engineering_name,
+      type: row.engineering_type,
+      identifier: row.engineering_identifier,
       repositoryUrl: row.repository_url,
     },
     responsibleUser: {

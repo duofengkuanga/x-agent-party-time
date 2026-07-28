@@ -69,6 +69,8 @@ async function setup(options: { repairCreateId?: () => string } = {}) {
   const source = engineering.createEngineering(users.owner.id, project.id, {
     mutationId: randomUUID(),
     name: '支付工程',
+    type: 'BACKEND',
+    identifier: 'payment-api',
   });
   engineering.addMember(users.owner.id, source.id, users.developer.id, {
     mutationId: randomUUID(),

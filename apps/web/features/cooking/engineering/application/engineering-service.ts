@@ -8,10 +8,12 @@ import { CookingWriteStore } from '@/features/cooking/shared/write-store';
 import {
   DeploymentMethodSchema,
   EngineeringIdSchema,
+  EngineeringIdentifierSchema,
   EngineeringMemberSchema,
   EngineeringMembershipSchema,
   EngineeringNameSchema,
   EngineeringSchema,
+  EngineeringTypeSchema,
   EngineeringWorkspaceSchema,
   EnvironmentIdSchema,
   EnvironmentNameSchema,
@@ -28,6 +30,8 @@ type EngineeringRow = {
   id: string;
   project_id: string;
   name: string;
+  type: 'FRONTEND' | 'BACKEND';
+  identifier: string;
   repository_state: 'PENDING' | 'CONFIRMED';
   repository_url: string | null;
   version: number;
@@ -95,6 +99,8 @@ export class EngineeringService {
     input: {
       mutationId: string;
       name: string;
+      type: 'FRONTEND' | 'BACKEND';
+      identifier: string;
       creatorMembershipMutationId: string;
       members: Array<{ userId: string; mutationId: string }>;
       environments: Array<{
@@ -121,6 +127,8 @@ export class EngineeringService {
       const engineering = this.createEngineering(actorUserId, projectId, {
         mutationId: input.mutationId,
         name: input.name,
+        type: input.type,
+        identifier: input.identifier,
       });
       this.addMember(actorUserId, engineering.id, actorUserId, {
         mutationId: input.creatorMembershipMutationId,
@@ -141,11 +149,15 @@ export class EngineeringService {
     input: {
       mutationId: string;
       name: string;
+      type: 'FRONTEND' | 'BACKEND';
+      identifier: string;
     },
   ): Engineering {
     ProjectIdSchema.parse(projectId);
     CookingMutationIdSchema.parse(input.mutationId);
     const name = EngineeringNameSchema.parse(input.name);
+    const type = EngineeringTypeSchema.parse(input.type);
+    const identifier = EngineeringIdentifierSchema.parse(input.identifier);
     return this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
@@ -155,20 +167,23 @@ export class EngineeringService {
       perform: () => {
         this.requireProjectOwner(actorUserId, projectId);
         this.ensureEngineeringNameAvailable(projectId, name);
+        this.ensureEngineeringIdentifierAvailable(projectId, identifier);
         const id = this.createId();
         const createdAt = this.now().toISOString();
         this.db
           .prepare(
             `INSERT INTO cooking_engineering(
-               id, project_id, name, repository_state, repository_url, version, archived_at,
-               created_at, updated_at
-             ) VALUES (?, ?, ?, 'PENDING', NULL, 1, NULL, ?, ?)`,
+               id, project_id, name, type, identifier, repository_state,
+               repository_url, version, archived_at, created_at, updated_at
+             ) VALUES (?, ?, ?, ?, ?, 'PENDING', NULL, 1, NULL, ?, ?)`,
           )
-          .run(id, projectId, name, createdAt, createdAt);
+          .run(id, projectId, name, type, identifier, createdAt, createdAt);
         const result = EngineeringSchema.parse({
           id,
           projectId,
           name,
+          type,
+          identifier,
           repositoryState: 'PENDING',
           version: 1,
           archivedAt: null,
@@ -184,7 +199,7 @@ export class EngineeringService {
               action: 'ENGINEERING_CREATED',
               targetType: 'ENGINEERING',
               targetId: id,
-              details: { name },
+              details: { name, type, identifier },
             },
           ],
         };
@@ -196,8 +211,8 @@ export class EngineeringService {
     this.requireProjectMember(userId, projectId);
     return this.db
       .prepare(
-        `SELECT id, project_id, name, repository_state, repository_url, version, archived_at,
-                created_at, updated_at
+        `SELECT id, project_id, name, type, identifier, repository_state,
+                repository_url, version, archived_at, created_at, updated_at
          FROM cooking_engineering
          WHERE project_id = ?
          ORDER BY archived_at IS NOT NULL, name COLLATE NOCASE, id`,
@@ -221,6 +236,11 @@ export class EngineeringService {
     });
   }
 
+  isIdentifierLocked(userId: string, engineeringId: string): boolean {
+    this.getEngineering(userId, engineeringId);
+    return this.guards.engineeringReferenced(engineeringId);
+  }
+
   updateEngineering(
     actorUserId: string,
     engineeringId: string,
@@ -228,9 +248,13 @@ export class EngineeringService {
       mutationId: string;
       expectedVersion: number;
       name: string;
+      type: 'FRONTEND' | 'BACKEND';
+      identifier: string;
     },
   ): Engineering {
     const name = EngineeringNameSchema.parse(input.name);
+    const type = EngineeringTypeSchema.parse(input.type);
+    const identifier = EngineeringIdentifierSchema.parse(input.identifier);
     return this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
@@ -246,27 +270,45 @@ export class EngineeringService {
           throw new PlatformError('INVALID_TRANSITION', '已归档工程不能修改');
         if (current.version !== input.expectedVersion)
           throw new PlatformError('STALE_STATE', '工程已更新，请刷新后重试');
-        if (this.guards.engineeringReferenced(engineeringId))
+        if (
+          current.identifier !== identifier &&
+          this.guards.engineeringReferenced(engineeringId)
+        )
           throw new PlatformError(
             'RESOURCE_CONFLICT',
-            '工程正在被活动提测引用，暂时不能修改',
+            '工程已被提测引用，稳定标识不能修改',
           );
         if (current.name.toLowerCase() !== name.toLowerCase())
           this.ensureEngineeringNameAvailable(current.projectId, name);
+        if (current.identifier !== identifier)
+          this.ensureEngineeringIdentifierAvailable(
+            current.projectId,
+            identifier,
+            engineeringId,
+          );
         const updatedAt = this.now().toISOString();
         const update = this.db
           .prepare(
             `UPDATE cooking_engineering
-             SET name = ?, version = version + 1,
+             SET name = ?, type = ?, identifier = ?, version = version + 1,
                  updated_at = ?
              WHERE id = ? AND version = ? AND archived_at IS NULL`,
           )
-          .run(name, updatedAt, engineeringId, input.expectedVersion);
+          .run(
+            name,
+            type,
+            identifier,
+            updatedAt,
+            engineeringId,
+            input.expectedVersion,
+          );
         if (update.changes !== 1)
           throw new PlatformError('STALE_STATE', '工程已更新，请刷新后重试');
         const result = EngineeringSchema.parse({
           ...current,
           name,
+          type,
+          identifier,
           version: current.version + 1,
           updatedAt,
         });
@@ -279,7 +321,7 @@ export class EngineeringService {
               action: 'ENGINEERING_UPDATED',
               targetType: 'ENGINEERING',
               targetId: engineeringId,
-              details: { name },
+              details: { name, type, identifier },
             },
           ],
         };
@@ -502,6 +544,32 @@ export class EngineeringService {
         };
       },
     });
+  }
+
+  createEnvironments(
+    actorUserId: string,
+    engineeringId: string,
+    environments: Array<{
+      mutationId: string;
+      name: string;
+      deployment: DeploymentMethod;
+    }>,
+  ): TestEnvironment[] {
+    if (!environments.length)
+      throw new PlatformError('VALIDATION_FAILED', '至少添加一个测试环境');
+    if (
+      new Set(environments.map(({ mutationId }) => mutationId)).size !==
+      environments.length
+    )
+      throw new PlatformError(
+        'VALIDATION_FAILED',
+        '测试环境的操作标识不能重复',
+      );
+    return this.db.transaction(() =>
+      environments.map((environment) =>
+        this.createEnvironment(actorUserId, engineeringId, environment),
+      ),
+    )();
   }
 
   createEnvironment(
@@ -759,7 +827,8 @@ export class EngineeringService {
   ): EngineeringRow {
     const row = this.db
       .prepare(
-        `SELECT e.id, e.project_id, e.name, e.repository_state, e.repository_url, e.version,
+        `SELECT e.id, e.project_id, e.name, e.type, e.identifier,
+                e.repository_state, e.repository_url, e.version,
                 e.archived_at, e.created_at, e.updated_at
          FROM cooking_engineering e
          JOIN cooking_project_membership p
@@ -777,7 +846,8 @@ export class EngineeringService {
   ): Engineering {
     const row = this.db
       .prepare(
-        `SELECT e.id, e.project_id, e.name, e.repository_state, e.repository_url, e.version,
+        `SELECT e.id, e.project_id, e.name, e.type, e.identifier,
+                e.repository_state, e.repository_url, e.version,
                 e.archived_at, e.created_at, e.updated_at, p.role
          FROM cooking_engineering e
          JOIN cooking_project_membership p
@@ -834,6 +904,27 @@ export class EngineeringService {
       throw new PlatformError('RESOURCE_CONFLICT', '项目中已存在同名工程');
   }
 
+  private ensureEngineeringIdentifierAvailable(
+    projectId: string,
+    identifier: string,
+    excludedEngineeringId?: string,
+  ): void {
+    const existing = this.db
+      .prepare(
+        `SELECT 1 present FROM cooking_engineering
+         WHERE project_id = ? AND identifier = ? COLLATE NOCASE
+           AND (? IS NULL OR id <> ?)`,
+      )
+      .get(
+        projectId,
+        identifier,
+        excludedEngineeringId ?? null,
+        excludedEngineeringId ?? null,
+      );
+    if (existing)
+      throw new PlatformError('RESOURCE_CONFLICT', '项目中已存在相同工程标识');
+  }
+
   private ensureEnvironmentNameAvailable(
     engineeringId: string,
     name: string,
@@ -854,6 +945,8 @@ function mapEngineering(row: EngineeringRow): Engineering {
     id: row.id,
     projectId: row.project_id,
     name: row.name,
+    type: row.type,
+    identifier: row.identifier,
     repositoryState: row.repository_state,
     ...(row.repository_state === 'CONFIRMED'
       ? { repositoryUrl: row.repository_url }

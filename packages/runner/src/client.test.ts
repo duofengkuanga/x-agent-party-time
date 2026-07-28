@@ -87,6 +87,71 @@ test('RunnerClient 配对后私下保存 Credential，后续请求使用 Bearer'
   expect(calls[3]?.authorization).toBe(`Bearer ${credential}`);
 });
 
+test('浏览器授权领取凭据并通过出站请求处理 Web Binding', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'agent-party-time-runner-client-'));
+  directories.push(root);
+  const state = new RunnerStateStore(
+    runnerLocalPaths({ AGENT_PARTY_TIME_RUNNER_HOME: root }),
+  );
+  const credential = 'credential-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  const calls: Array<{ url: string; authorization?: string }> = [];
+  const fetchImplementation = (async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ) => {
+    const url = String(input);
+    calls.push({
+      url,
+      authorization:
+        new Headers(init?.headers).get('authorization') ?? undefined,
+    });
+    if (url.endsWith('/api/runner/authorizations'))
+      return Response.json({
+        requestId: 'r'.repeat(32),
+        expiresAt: '2026-07-28T13:05:00.000Z',
+      });
+    if (url.includes('/authorizations/') && url.endsWith('/claim'))
+      return Response.json({
+        state: 'AUTHORIZED',
+        runner: runner('00000000-0000-4000-8000-000000000111'),
+        credential,
+      });
+    if (url.endsWith('/api/runner/binding-requests'))
+      return Response.json({
+        request: {
+          requestId: '00000000-0000-4000-8000-000000000112',
+          bindingId: '00000000-0000-4000-8000-000000000113',
+          expiresAt: '2026-07-28T13:05:00.000Z',
+        },
+      });
+    if (url.includes('/api/runner/binding-requests/'))
+      return Response.json({ state: 'SUCCEEDED' });
+    return Response.json({ error: { message: '未处理' } }, { status: 500 });
+  }) as typeof fetch;
+  const client = new RunnerClient(state, fetchImplementation);
+  const issue = await client.createAuthorization('http://localhost:3000', {
+    verifierHash: 'a'.repeat(64),
+    fingerprint: 'AAAA-BBBB-CCCC',
+    suggestedName: '本机 Agent',
+  });
+  await client.claimAuthorization(
+    'http://localhost:3000',
+    issue.requestId,
+    'v'.repeat(43),
+  );
+  expect((await state.loadConfig()).credential).toBe(credential);
+  const work = await client.claimBindingWork();
+  expect(work?.bindingId).toBe('00000000-0000-4000-8000-000000000113');
+  expect(
+    await client.completeBindingWork(work!.requestId, {
+      outcome: 'SUCCEEDED',
+      repositoryUrl: 'git@Example.com:team/repository.git',
+    }),
+  ).toBe('SUCCEEDED');
+  expect(calls[2]?.authorization).toBe(`Bearer ${credential}`);
+  expect(calls[3]?.authorization).toBe(`Bearer ${credential}`);
+});
+
 function runner(id: string) {
   return {
     id,

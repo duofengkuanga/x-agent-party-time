@@ -2,6 +2,7 @@ import { database } from '@/server/database';
 import { serverPaths } from '@/server/config';
 import { LocalFileStore } from '@/server/files/local-file-store';
 import { BindingService } from '@/features/cooking/bindings/application/binding-service';
+import { BindingRequestService } from '@/features/cooking/bindings/application/binding-request-service';
 import { BugService } from '@/features/cooking/bugs/application/bug-service';
 import { EngineeringService } from '@/features/cooking/engineering/application/engineering-service';
 import { projectMemberHasEngineeringResponsibilities } from '@/features/cooking/engineering/application/responsibilities';
@@ -61,6 +62,14 @@ export function engineeringService(): EngineeringService {
 
 export function bindingService(): BindingService {
   return new BindingService(database());
+}
+
+export function bindingRequestService(): BindingRequestService {
+  const appDatabase = database();
+  return new BindingRequestService(
+    appDatabase,
+    new BindingService(appDatabase),
+  );
 }
 
 export function submissionService(): SubmissionService {
@@ -126,6 +135,8 @@ export function submissionCreationCatalog(
           return {
             id: item.id,
             name: item.name,
+            type: item.type,
+            identifier: item.identifier,
             members: workspace.members.map(({ user }) => user),
             environments: workspace.environments.map(({ id, name }) => ({
               id,

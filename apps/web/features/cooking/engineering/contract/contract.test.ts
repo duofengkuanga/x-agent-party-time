@@ -1,5 +1,19 @@
 import { describe, expect, test } from 'bun:test';
-import { DeploymentMethodSchema, RepositoryUrlSchema } from './index';
+import {
+  DeploymentMethodSchema,
+  EngineeringIdentifierSchema,
+  RepositoryUrlSchema,
+} from './index';
+
+describe('EngineeringIdentifier', () => {
+  test('接受稳定短标识并拒绝大小写、空格和连续分隔符', () => {
+    expect(EngineeringIdentifierSchema.parse('web')).toBe('web');
+    expect(EngineeringIdentifierSchema.parse('admin-web')).toBe('admin-web');
+    expect(() => EngineeringIdentifierSchema.parse('Web')).toThrow();
+    expect(() => EngineeringIdentifierSchema.parse('admin web')).toThrow();
+    expect(() => EngineeringIdentifierSchema.parse('admin--web')).toThrow();
+  });
+});
 
 describe('DeploymentMethod', () => {
   test('LOCAL_SCRIPT 必须且只能携带非空 command', () => {
