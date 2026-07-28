@@ -41,9 +41,7 @@ export function DeploymentFields({
             placeholder="例如：bun run deploy:test"
             required
           />
-          <small>
-            不要填写令牌、密码或密钥；请在 Runner 本机使用环境变量。
-          </small>
+          <small>不要填写令牌、密码或密钥；请在 Agent 本机使用环境变量。</small>
         </label>
       ) : (
         <p className="engineering-environment-note">

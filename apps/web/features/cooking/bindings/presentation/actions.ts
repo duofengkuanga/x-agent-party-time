@@ -28,7 +28,7 @@ export async function createEngineeringBindingAction(
       messageRedirectPath(
         settingsPath(projectId, engineeringId),
         'success',
-        '工程绑定已创建，请在本机 Runner 中登记路径',
+        '工程绑定已创建，请在本机 Agent 中登记路径',
       ),
     );
   } catch (error) {

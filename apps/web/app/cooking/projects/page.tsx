@@ -34,7 +34,7 @@ import { ProjectSettingsControls } from './project-settings-controls';
 
 export const metadata: Metadata = {
   title: '项目与工程 — Agent Party Time',
-  description: '管理协作提测项目、成员、工程配置与本机 Runner 绑定。',
+  description: '管理协作提测项目、成员、工程配置与本机 Agent 绑定。',
 };
 
 export default async function ProjectSettingsPage({
@@ -92,7 +92,7 @@ export default async function ProjectSettingsPage({
                   className="project-settings__row-primary"
                   href={settingsHref(project.id, 'engineering')}
                 >
-                  工程与 Runner
+                  工程与 Agent
                 </Link>
                 <Link href="/cooking">提测</Link>
               </div>
@@ -458,8 +458,8 @@ function EngineeringDialog({
         <div className="engineering-catalog">
           <div className="engineering-catalog__intro">
             <div>
-              <span>工程与 Runner</span>
-              <p>维护工程成员、测试环境和开发者本机 Runner 绑定。</p>
+              <span>工程与 Agent</span>
+              <p>维护工程成员、测试环境和开发者本机 Agent 绑定。</p>
             </div>
             {owner ? (
               <Link
@@ -488,7 +488,7 @@ function EngineeringDialog({
                     <small>
                       {item.repositoryState === 'CONFIRMED'
                         ? item.repositoryUrl
-                        : '等待首次本机 Runner 绑定确认仓库'}
+                        : '等待首次本机 Agent 绑定确认仓库'}
                     </small>
                   </Link>
                 ))
@@ -520,9 +520,7 @@ function EngineeringCreateForm({
       <div className="engineering-editor__heading">
         <div>
           <strong>新建工程</strong>
-          <small>
-            配置工程成员与测试环境；仓库由首次本机 Runner 绑定确认。
-          </small>
+          <small>配置工程成员与测试环境；仓库由首次本机 Agent 绑定确认。</small>
         </div>
       </div>
       <ProjectFields projectId={projectId} />
@@ -544,7 +542,7 @@ function EngineeringCreateForm({
         </label>
         <div className="engineering-editor__setup-note field-wide">
           <span>仓库识别</span>
-          <strong>首次创建本机 Runner 绑定后自动确认</strong>
+          <strong>首次创建本机 Agent 绑定后自动确认</strong>
           <small>
             这里不填写远程仓库地址，避免网页配置与本机实际仓库不一致。
           </small>
@@ -610,7 +608,7 @@ function EngineeringDetail({
   const repositoryLabel =
     workspace.engineering.repositoryState === 'CONFIRMED'
       ? workspace.engineering.repositoryUrl
-      : '等待首次本机 Runner 绑定确认仓库';
+      : '等待首次本机 Agent 绑定确认仓库';
 
   return (
     <div className="engineering-detail">
@@ -818,7 +816,7 @@ function EngineeringDetail({
 
       <section className="engineering-detail__bindings">
         <div className="collaboration-section-title">
-          <span>本机 Runner 绑定</span>
+          <span>本机 Agent 绑定</span>
           <small>{bindings.length} 个</small>
         </div>
         {bindings.length ? (
@@ -840,7 +838,7 @@ function EngineeringDetail({
             ))}
           </ul>
         ) : (
-          <p className="collaboration-empty">还没有开发人员绑定本机 Runner。</p>
+          <p className="collaboration-empty">还没有开发人员绑定本机 Agent。</p>
         )}
         {currentBinding ? (
           <p className="collaboration-empty">
@@ -856,7 +854,7 @@ function EngineeringDetail({
               projectId={projectId}
             />
             <label>
-              <span>选择本机 Runner</span>
+              <span>选择本机 Agent</span>
               <select name="runnerId" required>
                 {runners.map(({ runner }) => (
                   <option key={runner.id} value={runner.id}>
@@ -865,21 +863,21 @@ function EngineeringDetail({
                 ))}
               </select>
             </label>
-            <button type="submit">创建 Runner 绑定</button>
+            <button type="submit">创建 Agent 绑定</button>
           </form>
         ) : assigned.has(userId) ? (
           <div className="collab-form__blocked">
             <div>
-              <strong>需要先配对本机 Runner</strong>
-              <p>配对完成后再为当前工程建立绑定。</p>
+              <strong>需要先连接本机 Agent</strong>
+              <p>连接完成后再为当前工程建立绑定。</p>
             </div>
-            <Link href="/cooking/runners">Runner 管理</Link>
+            <Link href="/cooking/agents">Agent 管理</Link>
           </div>
         ) : (
           <div className="collab-form__blocked">
             <div>
               <strong>你还不是工程成员</strong>
-              <p>由项目负责人把你加入工程后，才能创建本机 Runner 绑定。</p>
+              <p>由项目负责人把你加入工程后，才能创建本机 Agent 绑定。</p>
             </div>
           </div>
         )}

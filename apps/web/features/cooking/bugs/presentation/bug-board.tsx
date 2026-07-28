@@ -1966,7 +1966,7 @@ function repairStateLabel(
   state: BugRepairView['attempts'][number]['executionState'],
 ): string {
   return {
-    QUEUED: '等待 Runner',
+    QUEUED: '等待 Agent',
     CLAIMED: '正在准备修复',
     RUNNING: '正在修复',
     WAITING_FOR_INTERACTION: '等待工程负责人处理',

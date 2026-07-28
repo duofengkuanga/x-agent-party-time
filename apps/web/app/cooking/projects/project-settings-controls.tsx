@@ -23,9 +23,7 @@ export function ProjectSettingsControls({
       <section className="project-settings__hero">
         <div className="project-settings__intro">
           <h1>项目与工程</h1>
-          <p>
-            在这里维护项目成员、工程环境和 Runner 绑定；提测仍在工作台完成。
-          </p>
+          <p>在这里维护项目成员、工程环境和 Agent 绑定；提测仍在工作台完成。</p>
         </div>
         <div className="project-settings__toolbar-actions">
           <button
@@ -79,7 +77,7 @@ export function ProjectSettingsControls({
           <div className="project-settings__empty">
             <span>暂无项目</span>
             <h2>从一个项目开始。</h2>
-            <p>项目创建后，可继续添加工程、配置测试环境并绑定本机 Runner。</p>
+            <p>项目创建后，可继续添加工程、配置测试环境并绑定本机 Agent。</p>
             <button onClick={() => setShowCreate(true)} type="button">
               新建项目
             </button>

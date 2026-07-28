@@ -176,7 +176,7 @@ describe('SubmissionService create', () => {
       createSubmission(fixture, [
         item(fixture, 'front', 'developerA', 'frontA', 'feature/pending'),
       ]),
-    ).toThrow('提测项仓库、负责人、绑定、Runner 或环境配置无效');
+    ).toThrow('提测项仓库、负责人、绑定、Agent 或环境配置无效');
     expect(countRows(fixture.database, 'cooking_test_submission')).toBe(0);
   });
 

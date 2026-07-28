@@ -1035,7 +1035,7 @@ function EmptyStage({
   return (
     <div className="collab-empty-stage">
       <h1>{hasClosedSubmissions ? '暂无进行中的提测单' : '暂无提测单'}</h1>
-      <p>创建提测单前，请先确认项目、工程与 Runner 已配置。</p>
+      <p>创建提测单前，请先确认项目、工程与 Agent 已配置。</p>
       <div className="collab-empty-stage__actions">
         <button className="collab-primary" onClick={onCreate} type="button">
           创建第一张提测单

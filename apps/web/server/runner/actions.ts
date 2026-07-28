@@ -33,20 +33,26 @@ export async function issueRunnerPairingCodeAction(): Promise<PairingCodeState> 
 export async function revokeRunnerAction(formData: FormData): Promise<never> {
   const user = await requireCurrentUser();
   try {
+    if (formData.get('confirmed') !== 'yes')
+      redirect(
+        messageRedirectPath(
+          '/cooking/agents',
+          'error',
+          '请先确认已经了解停用 Agent 的影响',
+        ),
+      );
     runnerService().revokeRunner(
       user.id,
       String(formData.get('runnerId') ?? ''),
       Number(formData.get('expectedVersion')),
     );
-    revalidatePath('/cooking/runners');
-    redirect(
-      messageRedirectPath('/cooking/runners', 'success', 'Runner 已撤销'),
-    );
+    revalidatePath('/cooking/agents');
+    redirect(messageRedirectPath('/cooking/agents', 'success', 'Agent 已停用'));
   } catch (error) {
     rethrowRedirectError(error);
     redirect(
       messageRedirectPath(
-        '/cooking/runners',
+        '/cooking/agents',
         'error',
         publicError(error).message,
       ),
