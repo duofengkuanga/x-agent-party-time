@@ -86,11 +86,17 @@ bun run runner -- pair \
   --name "我的 Runner"
 ```
 
-3. 在网页为工程创建 Binding 后，把 Binding 标识绑定到本机仓库绝对路径：
+3. 在网页为工程创建 Binding 后，把 Binding 标识绑定到本机仓库绝对路径。Runner 会读取 `remote.origin.url`，首次绑定时确认工程仓库身份，后续绑定必须匹配：
 
 ```bash
 bun run runner -- bind <bindingId> /absolute/path/to/repository
 bun run runner -- bindings
+```
+
+如果仓库没有 `origin`，可只在命令末尾手工补充远程仓库地址：
+
+```bash
+bun run runner -- bind <bindingId> /absolute/path/to/repository git@example.com:team/repository.git
 ```
 
 Runner 私有状态默认位于 `~/.agent-party-time/runner/`，文件权限为仅当前用户可读写。

@@ -1,21 +1,12 @@
 import { z } from 'zod';
+import { RepositoryUrlSchema } from '@agent-party-time/runner-contract';
 import { UserIdSchema, UserSchema } from '@/server/auth/contract';
 import { ProjectIdSchema } from '@/features/cooking/projects/contract';
 
+export { RepositoryUrlSchema } from '@agent-party-time/runner-contract';
+
 export const EngineeringIdSchema = z.uuid();
 export const EngineeringNameSchema = z.string().trim().min(1).max(120);
-export const RepositoryUrlSchema = z
-  .string()
-  .trim()
-  .min(1)
-  .max(500)
-  .refine(
-    (value) =>
-      /^(https?:\/\/|ssh:\/\/|git:\/\/)/iu.test(value) ||
-      /^[^\s@]+@[^\s:]+:.+$/u.test(value),
-    '仓库地址必须是 HTTP(S)、SSH、Git URL 或 SCP 风格地址',
-  );
-
 export const DeploymentMethodSchema = z.discriminatedUnion('kind', [
   z
     .object({
@@ -26,16 +17,23 @@ export const DeploymentMethodSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('CI_CD') }).strict(),
 ]);
 
-export const EngineeringSchema = z.object({
+const EngineeringBaseSchema = z.object({
   id: EngineeringIdSchema,
   projectId: ProjectIdSchema,
   name: EngineeringNameSchema,
-  repositoryUrl: RepositoryUrlSchema,
   version: z.number().int().positive(),
   archivedAt: z.iso.datetime().nullable(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
+
+export const EngineeringSchema = z.discriminatedUnion('repositoryState', [
+  EngineeringBaseSchema.extend({ repositoryState: z.literal('PENDING') }),
+  EngineeringBaseSchema.extend({
+    repositoryState: z.literal('CONFIRMED'),
+    repositoryUrl: RepositoryUrlSchema,
+  }),
+]);
 
 export const EngineeringMembershipSchema = z.object({
   engineeringId: EngineeringIdSchema,

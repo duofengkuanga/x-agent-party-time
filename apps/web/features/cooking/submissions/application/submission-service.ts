@@ -503,6 +503,7 @@ export class SubmissionService {
           AND environment.engineering_id = engineering.id
          WHERE engineering.id = ?
            AND engineering.project_id = ?
+           AND engineering.repository_state = 'CONFIRMED'
            AND engineering.archived_at IS NULL`,
       )
       .get(
@@ -516,7 +517,7 @@ export class SubmissionService {
     if (!source)
       throw new PlatformError(
         'VALIDATION_FAILED',
-        '提测项负责人、绑定、Runner 或环境配置无效',
+        '提测项仓库、负责人、绑定、Runner 或环境配置无效',
       );
     return source;
   }

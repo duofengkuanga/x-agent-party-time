@@ -21,7 +21,7 @@ import { SubmissionService } from './submission-service';
 const directories: string[] = [];
 const databases: AppDatabase[] = [];
 
-async function setup() {
+async function setup(options: { confirmRepositories?: boolean } = {}) {
   const directory = await mkdtemp(
     join(tmpdir(), 'agent-party-time-submission-'),
   );
@@ -68,7 +68,6 @@ async function setup() {
     {
       mutationId: randomUUID(),
       name: '前端工程',
-      repositoryUrl: 'https://example.com/front.git',
     },
   );
   const back = engineeringService.createEngineering(
@@ -77,7 +76,6 @@ async function setup() {
     {
       mutationId: randomUUID(),
       name: '后端工程',
-      repositoryUrl: 'https://example.com/back.git',
     },
   );
   for (const [engineeringId, developerId] of [
@@ -125,6 +123,23 @@ async function setup() {
       randomUUID(),
     ),
   };
+  if (options.confirmRepositories !== false) {
+    bindings.confirmRepository(
+      runnerA.runner.id,
+      bindingValues.frontA.id,
+      'https://example.com/front.git',
+    );
+    bindings.confirmRepository(
+      runnerA.runner.id,
+      bindingValues.backA.id,
+      'https://example.com/back.git',
+    );
+    bindings.confirmRepository(
+      runnerB.runner.id,
+      bindingValues.backB.id,
+      'https://example.com/back.git',
+    );
+  }
   const events: Array<{ submissionId: string; revision: number }> = [];
   const service = new SubmissionService(
     database,
@@ -155,6 +170,16 @@ afterEach(async () => {
 });
 
 describe('SubmissionService create', () => {
+  test('首次本机 Binding 尚未确认仓库时不能创建提测', async () => {
+    const fixture = await setup({ confirmRepositories: false });
+    expect(() =>
+      createSubmission(fixture, [
+        item(fixture, 'front', 'developerA', 'frontA', 'feature/pending'),
+      ]),
+    ).toThrow('提测项仓库、负责人、绑定、Runner 或环境配置无效');
+    expect(countRows(fixture.database, 'cooking_test_submission')).toBe(0);
+  });
+
   test('支持同一人多工程、不同人多工程和单个全栈工程', async () => {
     {
       const fixture = await setup();
@@ -333,7 +358,7 @@ describe('Submission workspace', () => {
     expect(developer.submission.items[0]?.technical).toEqual({
       bindingId: fixture.bindings.frontA.id,
       targetBranch: 'feature/front',
-      repositoryUrl: fixture.engineering.front.repositoryUrl,
+      repositoryUrl: 'https://example.com/front.git',
       deployment: fixture.environments.front.deployment,
     });
     expect(developer.submission.items[1]?.technical).toBeNull();
@@ -377,9 +402,11 @@ describe('Submission workspace', () => {
         fixture.engineering.front.id,
         {
           mutationId: randomUUID(),
-          expectedVersion: fixture.engineering.front.version,
+          expectedVersion: engineering.getEngineering(
+            fixture.users.owner.id,
+            fixture.engineering.front.id,
+          ).version,
           name: fixture.engineering.front.name,
-          repositoryUrl: 'https://example.com/changed.git',
         },
       ),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));

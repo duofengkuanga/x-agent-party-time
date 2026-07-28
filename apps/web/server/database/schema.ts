@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { PlatformError } from '@/server/errors';
 
-export const SERVER_SCHEMA_VERSION = 11;
+export const SERVER_SCHEMA_VERSION = 12;
 
 const SCHEMA = `
 CREATE TABLE platform_user (
@@ -207,11 +207,16 @@ CREATE TABLE cooking_engineering (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL REFERENCES cooking_project(id) ON DELETE CASCADE,
   name TEXT NOT NULL COLLATE NOCASE,
-  repository_url TEXT NOT NULL,
+  repository_state TEXT NOT NULL CHECK (repository_state IN ('PENDING', 'CONFIRMED')),
+  repository_url TEXT,
   version INTEGER NOT NULL CHECK (version > 0),
   archived_at TEXT,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  CHECK (
+    (repository_state = 'PENDING' AND repository_url IS NULL) OR
+    (repository_state = 'CONFIRMED' AND repository_url IS NOT NULL)
+  )
 ) STRICT;
 CREATE UNIQUE INDEX cooking_engineering_active_name
   ON cooking_engineering(project_id, name)

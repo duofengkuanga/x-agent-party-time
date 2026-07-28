@@ -354,7 +354,7 @@ function EngineeringDialog({
                 className="repair-primary"
                 href={engineeringCreateHref(projectId)}
               >
-                新增工程
+                新建工程
               </Link>
             ) : null}
           </div>
@@ -372,7 +372,11 @@ function EngineeringDialog({
                 >
                   <span>{item.archivedAt ? '已归档' : '代码工程'}</span>
                   <strong>{item.name}</strong>
-                  <small>{item.repositoryUrl}</small>
+                  <small>
+                    {item.repositoryState === 'CONFIRMED'
+                      ? item.repositoryUrl
+                      : '等待首次本机 Binding 确认仓库'}
+                  </small>
                 </Link>
               ))}
             </div>
@@ -388,7 +392,7 @@ function EngineeringCreateForm({ projectId }: { projectId: string }) {
     <form action={createEngineeringAction} className="engineering-editor">
       <div className="engineering-editor__heading">
         <div>
-          <strong>新增工程</strong>
+          <strong>新建工程</strong>
           <small>工程创建后再配置成员、环境与 Runner Binding。</small>
         </div>
         <Link href={settingsHref(projectId, 'engineering')}>取消</Link>
@@ -398,10 +402,6 @@ function EngineeringCreateForm({ projectId }: { projectId: string }) {
         <label>
           <span>工程名称</span>
           <input maxLength={120} name="name" required />
-        </label>
-        <label>
-          <span>远程仓库地址</span>
-          <input maxLength={500} name="repositoryUrl" required />
         </label>
       </div>
       <div className="dialog-actions">
@@ -447,7 +447,11 @@ function EngineeringDetail({
             {workspace.engineering.archivedAt ? '已归档工程' : '代码工程'}
           </span>
           <h3>{workspace.engineering.name}</h3>
-          <small>{workspace.engineering.repositoryUrl}</small>
+          <small>
+            {workspace.engineering.repositoryState === 'CONFIRMED'
+              ? workspace.engineering.repositoryUrl
+              : '等待首次本机 Binding 确认仓库'}
+          </small>
         </div>
         <Link href={settingsHref(projectId, 'engineering')}>返回工程列表</Link>
       </div>
@@ -469,14 +473,6 @@ function EngineeringDetail({
               <input
                 defaultValue={workspace.engineering.name}
                 name="name"
-                required
-              />
-            </label>
-            <label>
-              <span>远程仓库地址</span>
-              <input
-                defaultValue={workspace.engineering.repositoryUrl}
-                name="repositoryUrl"
                 required
               />
             </label>
