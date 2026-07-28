@@ -34,6 +34,21 @@ describe('项目与工程交互基线', () => {
     expect(controls).toContain('showCreate ? null');
   });
 
+  test('项目名称修改使用独立项目设置弹窗，不混入成员与邀请', async () => {
+    const page = await readFile(pagePath, 'utf8');
+    const actions = await readFile(actionsPath, 'utf8');
+    const collaboration = page
+      .split('function CollaborationDialog')[1]
+      .split('function ProjectSettingsDialog')[0];
+    expect(page).toContain("settingsHref(project.id, 'project')");
+    expect(page).toContain("panel === 'project'");
+    expect(page).toContain('function ProjectSettingsDialog');
+    expect(page).toContain('保存项目名称');
+    expect(collaboration).not.toContain('updateProjectAction');
+    expect(collaboration).not.toContain('<span>项目名称</span>');
+    expect(actions).toContain("projectSettingsPath(projectId, 'project')");
+  });
+
   test('邀请通知恢复到账户区域并保留独立邀请弹窗深链', async () => {
     const page = await readFile(pagePath, 'utf8');
     const controls = await readFile(controlsPath, 'utf8');

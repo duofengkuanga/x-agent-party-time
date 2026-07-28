@@ -80,6 +80,15 @@ export default async function ProjectSettingsPage({
                 <h2>{project.name}</h2>
               </div>
               <div className="project-settings__row-actions">
+                {membership.role === 'OWNER' ? (
+                  <Link
+                    aria-label={`设置项目 ${project.name}`}
+                    className="project-settings__row-settings"
+                    href={settingsHref(project.id, 'project')}
+                  >
+                    设置
+                  </Link>
+                ) : null}
                 <Link href={settingsHref(project.id, 'collaboration')}>
                   成员
                 </Link>
@@ -101,6 +110,14 @@ export default async function ProjectSettingsPage({
           error={query.error}
           invitations={invitations}
           success={query.success}
+        />
+      ) : null}
+      {selected && panel === 'project' ? (
+        <ProjectSettingsDialog
+          error={query.error}
+          projectId={selected.project.id}
+          success={query.success}
+          userId={user.id}
         />
       ) : null}
       {selected && panel === 'collaboration' ? (
@@ -248,28 +265,57 @@ function CollaborationDialog({
             <p className="collaboration-empty">没有待处理邀请。</p>
           )}
         </section>
-
-        {owner ? (
-          <section>
-            <div className="collaboration-section-title">
-              <span>项目名称</span>
-            </div>
-            <form
-              action={updateProjectAction}
-              className="collaboration-invite-form"
-            >
-              <ProjectFields projectId={projectId} />
-              <input
-                name="expectedVersion"
-                type="hidden"
-                value={summary.project.version}
-              />
-              <input defaultValue={summary.project.name} name="name" required />
-              <button type="submit">保存名称</button>
-            </form>
-          </section>
-        ) : null}
       </div>
+    </Dialog>
+  );
+}
+
+function ProjectSettingsDialog({
+  error,
+  projectId,
+  success,
+  userId,
+}: {
+  error?: string;
+  projectId: string;
+  success?: string;
+  userId: string;
+}) {
+  const summary = projectService().getProject(userId, projectId);
+  if (summary.membership.role !== 'OWNER') return null;
+  return (
+    <Dialog
+      className="project-name-dialog"
+      kicker="项目基础信息"
+      overlayClassName=""
+      title={`${summary.project.name} · 项目设置`}
+    >
+      <DialogFeedback error={error} success={success} />
+      <form action={updateProjectAction}>
+        <ProjectFields projectId={projectId} />
+        <input
+          name="expectedVersion"
+          type="hidden"
+          value={summary.project.version}
+        />
+        <label>
+          <span>项目名称</span>
+          <input
+            autoComplete="off"
+            defaultValue={summary.project.name}
+            maxLength={120}
+            name="name"
+            required
+          />
+          <small>项目名称会展示在项目列表、成员协作和工程目录中。</small>
+        </label>
+        <div className="dialog-actions">
+          <Link href="/cooking/projects">取消</Link>
+          <button className="repair-primary" type="submit">
+            保存项目名称
+          </button>
+        </div>
+      </form>
     </Dialog>
   );
 }
@@ -1042,7 +1088,7 @@ function EngineeringFields({
 
 function settingsHref(
   projectId: string,
-  panel: 'collaboration' | 'engineering',
+  panel: 'project' | 'collaboration' | 'engineering',
 ): string {
   return `/cooking/projects?project=${encodeURIComponent(projectId)}&panel=${panel}`;
 }

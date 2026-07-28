@@ -120,14 +120,14 @@ export async function updateProjectAction(formData: FormData): Promise<never> {
     refreshProject(projectId);
     redirect(
       messageRedirectPath(
-        projectSettingsPath(projectId, 'collaboration'),
+        projectSettingsPath(projectId, 'project'),
         'success',
         '项目名称已更新',
       ),
     );
   } catch (error) {
     rethrowRedirectError(error);
-    redirectWithError(projectSettingsPath(projectId, 'collaboration'), error);
+    redirectWithError(projectSettingsPath(projectId, 'project'), error);
   }
 }
 
@@ -185,7 +185,7 @@ function redirectWithError(path: string, error: unknown): never {
 
 function projectSettingsPath(
   projectId: string,
-  panel: 'collaboration' | 'engineering',
+  panel: 'project' | 'collaboration' | 'engineering',
 ): string {
   return `/cooking/projects?project=${encodeURIComponent(projectId)}&panel=${panel}`;
 }

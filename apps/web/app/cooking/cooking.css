@@ -4625,3 +4625,19 @@
     width: 24px;
   }
 }
+
+.project-name-dialog label > small {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.6;
+}
+
+.project-name-dialog .dialog-actions {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 620px) {
+  .project-settings__row-actions:has(.project-settings__row-settings) {
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+  }
+}
