@@ -158,11 +158,13 @@ function CollaborationDialog({
   const projects = projectService();
   const summary = projects.getProject(userId, projectId);
   const members = projects.listMembers(userId, projectId);
-  const invitations = projects.listProjectInvitations(userId, projectId);
+  const owner = summary.membership.role === 'OWNER';
+  const invitations = owner
+    ? projects.listProjectInvitations(userId, projectId)
+    : [];
   const pendingInvitations = invitations.filter(
     ({ invitation }) => invitation.status === 'PENDING',
   );
-  const owner = summary.membership.role === 'OWNER';
   return (
     <Dialog
       className="project-collaboration-dialog"
@@ -230,21 +232,21 @@ function CollaborationDialog({
           </section>
         ) : null}
 
-        <section>
-          <div className="collaboration-section-title">
-            <span>待处理邀请</span>
-            <small>{pendingInvitations.length} 条</small>
-          </div>
-          {pendingInvitations.length ? (
-            <div className="collaboration-invitation-list">
-              {pendingInvitations.map(({ invitation, invitedUser }) => (
-                <article key={invitation.id}>
-                  <div>
-                    <strong>{invitedUser.displayName}</strong>
-                    <small>@{invitedUser.username}</small>
-                  </div>
-                  <span>等待接受</span>
-                  {owner ? (
+        {owner ? (
+          <section>
+            <div className="collaboration-section-title">
+              <span>待处理邀请</span>
+              <small>{pendingInvitations.length} 条</small>
+            </div>
+            {pendingInvitations.length ? (
+              <div className="collaboration-invitation-list">
+                {pendingInvitations.map(({ invitation, invitedUser }) => (
+                  <article key={invitation.id}>
+                    <div>
+                      <strong>{invitedUser.displayName}</strong>
+                      <small>@{invitedUser.username}</small>
+                    </div>
+                    <span>等待接受</span>
                     <form action={revokeProjectInvitationAction}>
                       <ProjectFields projectId={projectId} />
                       <input
@@ -259,14 +261,14 @@ function CollaborationDialog({
                       />
                       <button type="submit">撤销</button>
                     </form>
-                  ) : null}
-                </article>
-              ))}
-            </div>
-          ) : (
-            <p className="collaboration-empty">没有待处理邀请。</p>
-          )}
-        </section>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="collaboration-empty">没有待处理邀请。</p>
+            )}
+          </section>
+        ) : null}
       </div>
     </Dialog>
   );

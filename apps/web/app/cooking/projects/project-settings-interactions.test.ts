@@ -59,6 +59,22 @@ describe('项目与工程交互基线', () => {
     expect(actions).toContain("projectSettingsPath(projectId, 'project')");
   });
 
+  test('普通项目成员打开成员面板时不读取或展示负责人邀请信息', async () => {
+    const page = await readFile(pagePath, 'utf8');
+    const collaboration = page
+      .split('function CollaborationDialog')[1]
+      .split('function ProjectSettingsDialog')[0];
+    expect(collaboration).toContain(
+      "const owner = summary.membership.role === 'OWNER';",
+    );
+    expect(collaboration).toContain(
+      'const invitations = owner\n    ? projects.listProjectInvitations(userId, projectId)\n    : [];',
+    );
+    expect(collaboration).toMatch(
+      /\{owner \? \(\s*<section>\s*<div className="collaboration-section-title">\s*<span>待处理邀请<\/span>/u,
+    );
+  });
+
   test('项目页不改造共享账号区域并保留邀请弹窗深链', async () => {
     const page = await readFile(pagePath, 'utf8');
     const controls = await readFile(controlsPath, 'utf8');
