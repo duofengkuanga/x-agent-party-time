@@ -1824,12 +1824,96 @@
 }
 
 .collab-bug-card {
-  background: var(--panel);
-  border: 1px solid var(--strong-line);
-  box-shadow: 3px 3px 0 color-mix(in srgb, var(--strong-line), transparent 72%);
+  --bug-stage-color: var(--line);
+  align-items: start;
+  background: color-mix(in srgb, var(--bug-stage-color) 7%, var(--panel));
+  border: 1px solid
+    color-mix(in srgb, var(--bug-stage-color) 58%, var(--strong-line));
+  box-shadow: 3px 3px 0
+    color-mix(in srgb, var(--bug-stage-color), transparent 68%);
+  cursor: pointer;
   display: grid;
   gap: 10px;
+  grid-template-columns: 10px minmax(0, 1fr);
+  min-height: 62px;
   padding: 12px;
+  position: relative;
+  transition:
+    background-color 180ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+
+.collab-bug-card:hover,
+.collab-bug-card:focus-visible {
+  background: color-mix(in srgb, var(--bug-stage-color) 12%, var(--panel));
+  border-color: var(--bug-stage-color);
+  box-shadow: 4px 4px 0
+    color-mix(in srgb, var(--bug-stage-color), transparent 48%);
+  outline: none;
+  transform: translate(-1px, -1px);
+}
+
+.collab-bug-card__state {
+  align-self: stretch;
+  background: var(--bug-stage-color);
+  border-radius: 999px;
+  display: block;
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  min-height: 34px;
+  width: 4px;
+}
+
+.collab-bug-card > small,
+.collab-bug-card > h3 {
+  grid-column: 2;
+}
+
+.collab-bug-card > small {
+  color: var(--muted);
+}
+
+.collab-bug-card[data-stage='WAITING_FOR_REPAIR'] {
+  --bug-stage-color: var(--accent-dark);
+}
+
+.collab-bug-card[data-stage='REPAIRING'] {
+  --bug-stage-color: var(--accent);
+  animation: collab-bug-card-breathe 1.6s ease-in-out infinite;
+}
+
+.collab-bug-card[data-stage='WAITING_FOR_UPDATE'] {
+  --bug-stage-color: var(--olive);
+}
+
+.collab-bug-card[data-stage='UPDATING'] {
+  --bug-stage-color: var(--blue);
+  animation: collab-bug-card-breathe 1.6s ease-in-out infinite;
+}
+
+.collab-bug-card[data-stage='WAITING_FOR_VERIFICATION'] {
+  --bug-stage-color: var(--warning);
+}
+
+.collab-bug-card[data-stage='DONE'] {
+  --bug-stage-color: var(--success);
+}
+
+@keyframes collab-bug-card-breathe {
+  0%,
+  100% {
+    background: color-mix(in srgb, var(--bug-stage-color) 7%, var(--panel));
+    box-shadow: 3px 3px 0
+      color-mix(in srgb, var(--bug-stage-color), transparent 68%);
+  }
+
+  50% {
+    background: color-mix(in srgb, var(--bug-stage-color) 17%, var(--panel));
+    box-shadow: 4px 4px 0
+      color-mix(in srgb, var(--bug-stage-color), transparent 38%);
+  }
 }
 
 .collab-bug-card--draggable {
@@ -1955,6 +2039,13 @@
   font-size: 8px;
   padding: 7px;
   resize: vertical;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .collab-bug-card[data-stage='REPAIRING'],
+  .collab-bug-card[data-stage='UPDATING'] {
+    animation: none;
+  }
 }
 
 .collab-attachments,

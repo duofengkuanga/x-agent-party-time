@@ -380,7 +380,7 @@ function BugCard({
       aria-label={`${bugLabel(bug)}，${bug.presentation.stageLabel}`}
       className={`collab-bug-card${draggable ? ' collab-bug-card--draggable' : ''}`}
       data-dragging={dragging ? 'true' : undefined}
-      data-visual-state={bug.stage === 'REPAIRING' ? 'queued' : 'default'}
+      data-stage={bug.stage}
       draggable={draggable}
       onClick={onOpen}
       onDragEnd={onDragEnd}
