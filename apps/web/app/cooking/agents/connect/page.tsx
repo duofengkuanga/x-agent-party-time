@@ -8,6 +8,7 @@ import {
   approveAgentAuthorizationAction,
   rejectAgentAuthorizationAction,
 } from './actions';
+import { AgentAuthorizationRefresh } from './agent-authorization-refresh';
 
 export const metadata: Metadata = {
   title: '连接 Agent — Agent Party Time',
@@ -41,6 +42,7 @@ export default async function AgentConnectPage({
 
   return (
     <main className="agent-connect">
+      <AgentAuthorizationRefresh active={approval?.state === 'APPROVED'} />
       <header>
         <span>本机连接请求</span>
         <h1>连接 Agent</h1>

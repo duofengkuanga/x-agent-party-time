@@ -59,3 +59,33 @@ export async function revokeRunnerAction(formData: FormData): Promise<never> {
     );
   }
 }
+
+export async function reactivateRunnerAction(
+  formData: FormData,
+): Promise<never> {
+  const user = await requireCurrentUser();
+  try {
+    runnerService().reactivateRunner(
+      user.id,
+      String(formData.get('runnerId') ?? ''),
+      Number(formData.get('expectedVersion')),
+    );
+    revalidatePath('/cooking/agents');
+    redirect(
+      messageRedirectPath(
+        '/cooking/agents',
+        'success',
+        'Agent 已重新启用，等待本机重新连接',
+      ),
+    );
+  } catch (error) {
+    rethrowRedirectError(error);
+    redirect(
+      messageRedirectPath(
+        '/cooking/agents',
+        'error',
+        publicError(error).message,
+      ),
+    );
+  }
+}
