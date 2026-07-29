@@ -22,8 +22,6 @@ import {
 import type {
   AssignBugInput,
   BugMutationResult,
-  RepairQueueMutationResult,
-  ReorderRepairQueueInput,
   RequestRepairInput,
   WithdrawRepairInput,
 } from '../contract';
@@ -35,9 +33,6 @@ type ActionFailure = {
 
 export type BugActionResult =
   { ok: true; result: BugMutationResult } | ActionFailure;
-
-export type RepairQueueActionResult =
-  { ok: true; result: RepairQueueMutationResult } | ActionFailure;
 
 export async function createBugAction(
   submissionId: string,
@@ -114,20 +109,6 @@ export async function withdrawRepairAction(
   return simpleBugAction((userId) =>
     bugService().withdrawRepair(userId, bugId, input),
   );
-}
-
-export async function reorderRepairQueueAction(
-  submissionId: string,
-  input: ReorderRepairQueueInput,
-): Promise<RepairQueueActionResult> {
-  const user = await requireCurrentUser();
-  try {
-    const result = bugService().reorderQueue(user.id, submissionId, input);
-    refreshWorkspace(submissionId);
-    return { ok: true, result };
-  } catch (error) {
-    return actionError(error);
-  }
 }
 
 export async function addBugFeedbackAction(

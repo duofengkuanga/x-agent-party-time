@@ -111,15 +111,15 @@ export async function handleWaitInteraction(
     const runner = runners.authenticateCredential(bearerCredential(request));
     const body = WaitInteractionRequestSchema.parse(await request.json());
     return jsonResponse(
-      WaitInteractionResponseSchema.parse({
-        interaction: await executions.waitInteraction(
+      WaitInteractionResponseSchema.parse(
+        await executions.waitInteraction(
           runner.id,
           body.executionId,
           interactionId,
           body.leaseToken,
           body.waitMs,
         ),
-      }),
+      ),
     );
   } catch (error) {
     return errorResponse(normalizeRequestError(error));

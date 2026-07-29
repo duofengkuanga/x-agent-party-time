@@ -36,13 +36,12 @@ describe('Repair prompt contract', () => {
     expect(prompt.renderedPromptHash).toMatch(/^[a-f0-9]{64}$/u);
   });
 
-  test('继续 Prompt 只包含增量信息并复用同一结果 Schema', () => {
+  test('重新执行 Prompt 不接受用户补充文本并复用同一结果 Schema', () => {
     const prompt = buildContinuationRepairPrompt({
-      content: '仍需修复键盘回车提交',
       pendingCommits: ['aaaaaaa'],
     });
-    expect(prompt.renderedPrompt).toContain('只处理以下增量信息');
-    expect(prompt.renderedPrompt).toContain('仍需修复键盘回车提交');
+    expect(prompt.renderedPrompt).toContain('不要求用户补充文本');
+    expect(prompt.renderedPrompt).toContain('重新检查未完成原因');
     expect(prompt.renderedPrompt).not.toContain('需求：');
     expect(prompt.outputJsonSchema).toEqual(RepairOutputJsonSchema);
   });
@@ -52,6 +51,9 @@ describe('Repair prompt contract', () => {
       RepairExecutionResultSchema.safeParse({
         outcome: 'COMPLETED',
         summary: '完成',
+        changes: ['修复按钮事件'],
+        validations: [],
+        warnings: [],
         commits: [],
       }).success,
     ).toBe(false);
@@ -59,24 +61,76 @@ describe('Repair prompt contract', () => {
       RepairExecutionResultSchema.safeParse({
         outcome: 'COMPLETED',
         summary: '完成',
+        changes: ['修复按钮事件'],
+        validations: [],
+        warnings: [],
+        commits: ['aaaaaaa'],
+        failedStep: '伪造失败阶段',
+        reason: null,
+        completedActions: [],
+        pendingActions: [],
+      }).success,
+    ).toBe(false);
+    expect(
+      RepairExecutionResultSchema.safeParse({
+        outcome: 'COMPLETED',
+        summary: '完成',
+        changes: ['修复按钮事件'],
+        validations: [],
+        warnings: [],
         commits: ['aaaaaaa'],
         deployed: true,
       }).success,
     ).toBe(false);
   });
 
-  test('Codex 输出 Schema 使用根对象且失败结果可用空 Commit 数组传输', () => {
+  test('Codex 输出 Schema 使用根对象并强制成功失败结构化字段', () => {
     expect(RepairOutputJsonSchema).toMatchObject({
       type: 'object',
       additionalProperties: false,
-      required: ['outcome', 'summary', 'commits'],
+      required: [
+        'outcome',
+        'summary',
+        'changes',
+        'validations',
+        'warnings',
+        'commits',
+        'failedStep',
+        'reason',
+        'completedActions',
+        'pendingActions',
+      ],
     });
     expect(JSON.stringify(RepairOutputJsonSchema)).not.toContain('"oneOf"');
+    expect(RepairOutputJsonSchema.anyOf).toEqual([
+      {
+        type: 'object',
+        properties: {
+          outcome: { type: 'string', enum: ['COMPLETED'] },
+          commits: { type: 'array', minItems: 1 },
+        },
+        required: ['outcome', 'commits'],
+      },
+      {
+        type: 'object',
+        properties: {
+          outcome: { type: 'string', enum: ['FAILED'] },
+        },
+        required: ['outcome'],
+      },
+    ]);
     expect(
       RepairExecutionResultSchema.safeParse({
         outcome: 'FAILED',
         summary: '无法安全完成',
+        changes: [],
+        validations: [],
+        warnings: [],
         commits: [],
+        failedStep: '运行测试',
+        reason: '测试环境不可用',
+        completedActions: ['完成代码修改'],
+        pendingActions: ['运行测试'],
       }).success,
     ).toBe(true);
   });

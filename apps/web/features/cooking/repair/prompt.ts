@@ -3,7 +3,7 @@ import type { JsonObject } from '@agent-party-time/execution-contract';
 import { RepairOutputJsonSchema } from './contract';
 
 export const REPAIR_PROMPT_KIND = 'cooking.repair';
-export const REPAIR_PROMPT_VERSION = 1;
+export const REPAIR_PROMPT_VERSION = 2;
 
 const STABLE_PREFIX = `你是本机仓库中的修复执行者。请只处理本次给出的缺陷，遵守仓库内 AGENTS.md 等规则。
 
@@ -13,7 +13,9 @@ const STABLE_PREFIX = `你是本机仓库中的修复执行者。请只处理本
 - 不得 push、部署、改写历史、squash、amend、rebase 或清理无关内容。
 - 不得伪造测试、Commit 或执行结果。
 - 成功时不得留下属于本缺陷的未提交修改，必须返回按创建顺序排列的非空 Commit SHA。
-- 无法安全完成时返回 FAILED 和安全摘要，不得编造 Commit。
+- 成功时还要逐项返回修改内容、检查结果和警告；没有警告时返回空数组。
+- 无法安全完成时返回 FAILED，并明确失败阶段、原因、已完成事项和未执行事项，不得编造 Commit。
+- 输出始终包含 Schema 中的全部字段。COMPLETED 时 failedStep、reason 为 null，completedActions、pendingActions 为空数组；FAILED 时 changes、validations、warnings、commits 为空数组。
 - 最终只返回符合输出 Schema 的 JSON。`;
 
 export type InitialRepairPromptInput = {
@@ -65,15 +67,15 @@ ${optionalLine('补充说明', input.notes)}
 }
 
 export function buildContinuationRepairPrompt(input: {
-  content: string;
+  lifecycleContext?: string;
   pendingCommits: string[];
 }): RepairPromptSnapshot {
-  return snapshot(`继续当前修复 Session。只处理以下增量信息，不重复复述旧报告或旧历史：
+  return snapshot(`重新执行当前修复 Session。沿用原缺陷报告、历史上下文和已经解决的 Interaction，不要求用户补充文本。
 
-- 新增信息：${input.content}
+${input.lifecycleContext ? `- 生命周期上下文：${input.lifecycleContext}\n` : ''}
 - 当前待更新候选 Commit：${input.pendingCommits.join(', ') || '无'}
 
-继续修复、验证并创建新的普通本地 Commit；最终只返回符合既定 Schema 的 JSON。`);
+请重新检查未完成原因，继续修复、验证并创建新的普通本地 Commit；最终只返回符合既定 Schema 的 JSON。`);
 }
 
 function snapshot(renderedPrompt: string): RepairPromptSnapshot {

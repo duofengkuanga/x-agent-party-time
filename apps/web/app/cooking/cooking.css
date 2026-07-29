@@ -1496,10 +1496,19 @@
   padding: 0 9px;
 }
 
-.collab-engineering-card button:hover,
-.collab-bug-card button:hover,
-.collab-dialog button:hover {
-  border-color: var(--strong-line);
+.collab-engineering-card button:hover:not(:disabled),
+.collab-bug-card button:hover:not(:disabled),
+.collab-dialog button:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.collab-engineering-card button:focus-visible,
+.collab-bug-card button:focus-visible,
+.collab-dialog button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .collab-operation-owner {
@@ -1693,7 +1702,159 @@
   font-size: 8px;
 }
 
-.collab-repair-queue,
+.collab-interaction-record {
+  background: color-mix(in srgb, var(--warning) 8%, var(--paper));
+  border: 1px solid var(--warning);
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px;
+}
+
+.collab-interaction-record[data-state='RESOLVED'] {
+  background: color-mix(in srgb, var(--muted) 6%, var(--paper));
+  border-color: var(--line);
+}
+
+.collab-interaction-record > header {
+  align-items: baseline;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.collab-interaction-record > header time,
+.collab-interaction-record > p,
+.collab-interaction-record > small {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.collab-interaction-record code {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.collab-permission-summary {
+  display: grid;
+  gap: 4px;
+  list-style: square;
+  margin: 0;
+  padding-left: 16px;
+}
+
+.collab-permission-summary li {
+  color: var(--ink);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.collab-interaction-actions {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.collab-interaction-actions button[data-primary='true'] {
+  border-width: 2px;
+  font-weight: 900;
+}
+
+.collab-interaction-actions small {
+  color: var(--muted);
+  flex-basis: 100%;
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.collab-interaction-resolution {
+  border-left: 2px solid var(--ink);
+  color: var(--ink) !important;
+  font-weight: 900;
+  padding-left: 8px;
+}
+
+.collab-interaction-questions {
+  display: grid;
+  gap: 12px;
+}
+
+.collab-interaction-questions fieldset {
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  min-width: 0;
+  padding: 10px;
+}
+
+.collab-interaction-questions legend {
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 900;
+  padding: 0 5px;
+}
+
+.collab-interaction-questions fieldset > p {
+  font-size: 10px;
+  line-height: 1.55;
+  margin: 0 0 2px;
+}
+
+.collab-interaction-questions label {
+  align-items: start;
+  cursor: pointer;
+  display: grid;
+  gap: 2px 7px;
+  grid-template-columns: 16px minmax(0, 1fr);
+  padding: 5px;
+}
+
+.collab-interaction-questions label:hover {
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+
+.collab-interaction-questions input[type='radio'] {
+  accent-color: var(--accent);
+  grid-row: 1 / span 2;
+  margin: 2px 0 0;
+}
+
+.collab-interaction-questions input[type='radio']:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.collab-interaction-questions label > span {
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.collab-interaction-questions label > small {
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.collab-interaction-questions textarea {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font: inherit;
+  min-height: 72px;
+  padding: 8px;
+  resize: vertical;
+}
+
+.collab-update-interactions {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
 .collab-batch-status {
   border-top: 1px solid var(--line);
   display: grid;
@@ -1702,7 +1863,6 @@
   padding-top: 10px;
 }
 
-.collab-repair-queue > span,
 .collab-batch-status > span {
   color: var(--muted);
   font-size: 8px;
@@ -1710,7 +1870,6 @@
   letter-spacing: 0.08em;
 }
 
-.collab-repair-queue > small,
 .collab-batch-status > small {
   color: var(--faint);
   font-size: 8px;
@@ -1719,38 +1878,6 @@
 .collab-batch-status strong {
   color: var(--blue);
   font-size: 9px;
-}
-
-.collab-queue-item {
-  align-items: center;
-  border: 1px solid var(--line);
-  display: grid;
-  gap: 5px;
-  grid-template-columns: 28px minmax(0, 1fr) 25px 25px;
-  min-height: 32px;
-  padding: 3px 4px 3px 7px;
-}
-
-.collab-queue-item--running {
-  border-color: var(--accent);
-  grid-template-columns: 28px minmax(0, 1fr);
-}
-
-.collab-queue-item b {
-  color: var(--accent);
-  font-size: 8px;
-}
-
-.collab-queue-item span {
-  font-size: 8px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.collab-queue-item button {
-  min-height: 23px;
-  padding: 0;
 }
 
 .collab-board {
@@ -1859,13 +1986,15 @@
 
 .collab-bug-card__state {
   align-self: stretch;
-  background: var(--bug-stage-color);
-  border-radius: 999px;
+  border-left: 3px solid var(--bug-stage-color);
+  color: var(--bug-stage-color);
   display: block;
+  font-size: 10px;
   grid-column: 1;
   grid-row: 1 / span 3;
   min-height: 34px;
-  width: 4px;
+  padding-left: 3px;
+  width: 10px;
 }
 
 .collab-bug-card > small,
@@ -1884,7 +2013,6 @@
 
 .collab-bug-card[data-stage='REPAIRING'] {
   --bug-stage-color: var(--accent);
-  animation: collab-bug-card-breathe 1.6s ease-in-out infinite;
 }
 
 .collab-bug-card[data-stage='WAITING_FOR_UPDATE'] {
@@ -1893,7 +2021,6 @@
 
 .collab-bug-card[data-stage='UPDATING'] {
   --bug-stage-color: var(--blue);
-  animation: collab-bug-card-breathe 1.6s ease-in-out infinite;
 }
 
 .collab-bug-card[data-stage='WAITING_FOR_VERIFICATION'] {
@@ -1904,7 +2031,19 @@
   --bug-stage-color: var(--success);
 }
 
-.collab-bug-card[data-visual-state='attention'] {
+.collab-bug-card[data-visual-state='RUNNING'] {
+  animation: collab-bug-card-breathe 1.6s ease-in-out infinite;
+}
+
+.collab-bug-card[data-visual-state='NEEDS_APPROVAL'] {
+  --bug-stage-color: var(--accent);
+  animation: none;
+  background: color-mix(in srgb, var(--accent) 17%, var(--panel));
+  border-color: var(--accent);
+  box-shadow: 4px 4px 0 color-mix(in srgb, var(--accent), transparent 42%);
+}
+
+.collab-bug-card[data-visual-state='NEEDS_INPUT'] {
   --bug-stage-color: var(--warning);
   animation: none;
   background: color-mix(in srgb, var(--warning) 19%, var(--panel));
@@ -1912,12 +2051,57 @@
   box-shadow: 4px 4px 0 color-mix(in srgb, var(--warning), transparent 42%);
 }
 
-.collab-bug-card[data-visual-state='failed'] {
+.collab-bug-card[data-visual-state='FAILED'] {
   --bug-stage-color: var(--danger);
   animation: none;
   background: color-mix(in srgb, var(--danger) 16%, var(--panel));
   border-color: var(--danger);
   box-shadow: 4px 4px 0 color-mix(in srgb, var(--danger), transparent 38%);
+}
+
+.collab-bug-card[data-visual-state='WAITING_TO_RESUME'],
+.collab-bug-card[data-visual-state='QUEUED_FOR_ENGINEERING'] {
+  --bug-stage-color: var(--muted);
+  animation: none;
+  background: color-mix(in srgb, var(--muted) 9%, var(--panel));
+  border-color: var(--line);
+  box-shadow: 3px 3px 0 color-mix(in srgb, var(--ink), transparent 82%);
+}
+
+.collab-bug-card[data-visual-state='IDLE'] {
+  --bug-stage-color: var(--ink);
+  animation: none;
+}
+
+.collab-current-visual {
+  align-items: center;
+  border-left: 2px solid currentColor;
+  display: inline-flex;
+  font-weight: 900;
+  gap: 6px;
+  padding-left: 7px;
+}
+
+.collab-current-visual[data-visual-state='IDLE'] {
+  color: var(--ink);
+}
+
+.collab-current-visual[data-visual-state='RUNNING'],
+.collab-current-visual[data-visual-state='NEEDS_APPROVAL'] {
+  color: var(--accent);
+}
+
+.collab-current-visual[data-visual-state='NEEDS_INPUT'] {
+  color: var(--warning);
+}
+
+.collab-current-visual[data-visual-state='FAILED'] {
+  color: var(--danger);
+}
+
+.collab-current-visual[data-visual-state='WAITING_TO_RESUME'],
+.collab-current-visual[data-visual-state='QUEUED_FOR_ENGINEERING'] {
+  color: var(--muted);
 }
 
 .collab-bug-card__attention {
@@ -2497,8 +2681,7 @@
 .collab-rail--detail .collab-engineering-card > header > b,
 .collab-rail--detail .collab-engineering-card dt,
 .collab-rail--detail .collab-engineering-card__toolbar small,
-.collab-rail--detail .collab-engineering-fields dt,
-.collab-rail--detail .collab-repair-queue > small {
+.collab-rail--detail .collab-engineering-fields dt {
   font-size: 9px;
 }
 
@@ -2510,8 +2693,6 @@
 
 .collab-rail--detail .collab-engineering-field__stack > small,
 .collab-rail--detail .collab-engineering-field__list li,
-.collab-rail--detail .collab-queue-item b,
-.collab-rail--detail .collab-queue-item span,
 .collab-rail--detail .collab-engineering-field__feedback,
 .collab-rail--detail .collab-update-continue textarea {
   font-size: 9px;
@@ -2703,13 +2884,6 @@
   white-space: pre-wrap;
 }
 
-.collab-engineering-fields .collab-repair-queue {
-  border: 0;
-  gap: 5px;
-  margin: 0;
-  padding: 0;
-}
-
 .collab-engineering-card__toolbar {
   border-top: 1px solid var(--strong-line);
   display: grid;
@@ -2816,13 +2990,6 @@
   font-size: 9px;
   margin: 0;
   min-width: 0;
-}
-
-.collab-board-status__facts .collab-repair-queue {
-  border: 0;
-  gap: 5px;
-  margin: 0;
-  padding: 0;
 }
 
 .collab-board-status__actions {
@@ -5280,6 +5447,336 @@
 
 .collab-trash-list small {
   color: var(--muted);
+}
+
+.collab-bug-drawer {
+  width: min(940px, 100%);
+}
+
+.collab-dialog > .collab-bug-drawer__chrome {
+  align-items: center;
+  min-height: 43px;
+  padding: 7px 12px 7px 20px;
+}
+
+.collab-bug-drawer__chrome > small {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.collab-bug-drawer__body {
+  padding: 0;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+}
+
+.collab-bug-drawer__body::-webkit-scrollbar {
+  display: none;
+}
+
+.collab-bug-drawer__body[data-detail-view='progress'] > .collab-bug-report {
+  display: none;
+}
+
+.collab-bug-drawer__body[data-detail-view='report']
+  > :not(.collab-bug-detail-hero):not(.collab-bug-report):not(
+    .collab-form__error
+  ) {
+  display: none;
+}
+
+.collab-bug-detail-hero {
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--accent), transparent 92%),
+      transparent 38%
+    ),
+    var(--paper);
+  border-bottom: 1px solid var(--strong-line);
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(340px, 1fr);
+  padding: 18px 20px 0;
+  position: sticky;
+  top: 0;
+  z-index: 4;
+}
+
+.collab-bug-detail-hero > div {
+  min-width: 0;
+}
+
+.collab-bug-detail-hero > div > small {
+  color: var(--accent-dark);
+  display: block;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  margin-bottom: 7px;
+  text-transform: uppercase;
+}
+
+.collab-bug-detail-hero h2 {
+  font-family: inherit;
+  font-size: clamp(18px, 2.2vw, 27px);
+  line-height: 1.2;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.collab-bug-detail-hero > dl {
+  align-self: start;
+  display: grid;
+  gap: 8px 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.collab-bug-detail-hero > dl > div {
+  border-left: 2px solid var(--line);
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding-left: 8px;
+}
+
+.collab-bug-detail-hero dt,
+.collab-bug-detail-list dt {
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 900;
+}
+
+.collab-bug-detail-hero dd,
+.collab-bug-detail-list dd {
+  font-size: 10px;
+  line-height: 1.55;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.collab-bug-detail-tabs {
+  display: flex;
+  gap: 0;
+  grid-column: 1 / -1;
+}
+
+.collab-bug-detail-tabs button {
+  border-bottom: 0;
+  min-width: 112px;
+  transform: translateY(1px);
+}
+
+.collab-bug-detail-tabs button[aria-current='page'] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+
+.collab-bug-detail-section {
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 13px;
+  padding: 20px;
+}
+
+.collab-bug-detail-section > header {
+  align-items: start;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+}
+
+.collab-bug-detail-section h3,
+.collab-bug-detail-section h4 {
+  margin: 0;
+}
+
+.collab-bug-detail-section h3 {
+  font-size: 14px;
+}
+
+.collab-bug-detail-section h4 {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.collab-bug-detail-section p {
+  font-size: 10px;
+  line-height: 1.65;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.collab-bug-detail-list {
+  display: grid;
+  gap: 10px 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.collab-bug-detail-list > div {
+  display: grid;
+  gap: 4px;
+}
+
+.collab-repair-timeline {
+  display: grid;
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 22px;
+}
+
+.collab-repair-timeline > li {
+  border-left: 1px solid var(--strong-line);
+  padding: 0 0 24px 22px;
+  position: relative;
+}
+
+.collab-repair-timeline > li:last-child {
+  border-left-color: transparent;
+  padding-bottom: 0;
+}
+
+.collab-repair-timeline__mark {
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  height: 11px;
+  left: -6px;
+  position: absolute;
+  top: 3px;
+  transform: rotate(45deg);
+  width: 11px;
+}
+
+.collab-repair-timeline
+  > li[data-node-kind='REPAIR_ATTEMPT']
+  .collab-repair-timeline__mark {
+  border-color: var(--accent);
+}
+
+.collab-repair-timeline article {
+  display: grid;
+  gap: 13px;
+}
+
+.collab-repair-timeline article > header {
+  align-items: baseline;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+}
+
+.collab-repair-timeline article > header strong {
+  font-size: 11px;
+}
+
+.collab-repair-timeline time {
+  color: var(--faint);
+  flex: 0 0 auto;
+  font-size: 8px;
+}
+
+.collab-repair-result-list,
+.collab-repair-validations {
+  border-left: 2px solid var(--line);
+  display: grid;
+  gap: 7px;
+  padding-left: 10px;
+}
+
+.collab-repair-result-list ul,
+.collab-repair-validations ul,
+.collab-repair-timeline details ol {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.collab-repair-result-list li,
+.collab-repair-validations li {
+  font-size: 9px;
+  line-height: 1.6;
+}
+
+.collab-repair-validations li {
+  align-items: baseline;
+  display: grid;
+  gap: 7px;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.collab-repair-validations li strong {
+  border: 1px solid currentColor;
+  font-size: 8px;
+  padding: 1px 4px;
+}
+
+.collab-repair-validations li small {
+  color: var(--muted);
+  grid-column: 2;
+}
+
+.collab-repair-validations li[data-validation-status='PASSED'] {
+  color: var(--success);
+}
+
+.collab-repair-validations li[data-validation-status='FAILED'] {
+  color: var(--danger);
+}
+
+.collab-repair-validations li[data-validation-status='SKIPPED'] {
+  color: var(--muted);
+}
+
+.collab-repair-commit-count {
+  color: var(--accent-dark);
+  font-weight: 900;
+}
+
+.collab-repair-timeline details {
+  border-top: 1px dashed var(--line);
+  padding-top: 10px;
+}
+
+.collab-repair-timeline summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 9px;
+}
+
+.collab-repair-timeline details p,
+.collab-repair-timeline details code,
+.collab-repair-timeline details ol {
+  margin-top: 9px;
+}
+
+.collab-bug-report > .collab-bug-detail-section:first-child > header p {
+  color: var(--muted);
+  margin-top: 5px;
+  max-width: 620px;
+}
+
+.collab-bug-detail-empty {
+  color: var(--muted);
+}
+
+@media (max-width: 760px) {
+  .collab-bug-detail-hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .collab-bug-detail-hero > dl {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .collab-bug-detail-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .collab-submission-projects td > span,

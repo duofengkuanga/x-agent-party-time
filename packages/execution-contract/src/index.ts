@@ -15,6 +15,7 @@ export const ExecutionStateSchema = z.enum([
   'CLAIMED',
   'RUNNING',
   'WAITING_FOR_INTERACTION',
+  'WAITING_TO_RESUME',
   'CANCEL_REQUESTED',
   'SUCCEEDED',
   'FAILED',
@@ -44,6 +45,32 @@ export const ExecutionAttachmentSchema = z.object({
 export const ExecutionLeaseSchema = z.object({
   expiresAt: z.iso.datetime(),
 });
+
+export const ExecutionWorkspaceSchema = z.discriminatedUnion('isolation', [
+  z
+    .object({
+      key: z.string().trim().min(1).max(240),
+      isolation: z.literal('BRANCH_WORKTREE'),
+      baseRef: z.string().trim().min(1).max(240),
+      branch: z.string().trim().min(1).max(240),
+    })
+    .strict(),
+  z
+    .object({
+      key: z.string().trim().min(1).max(240),
+      isolation: z.literal('DETACHED_WORKTREE'),
+      baseRef: z.string().trim().min(1).max(240),
+    })
+    .strict(),
+  z
+    .object({
+      key: z.string().trim().min(1).max(240),
+      isolation: z.literal('CLEANUP_WORKTREES'),
+      workspaceKeys: z.array(z.string().trim().min(1).max(240)).min(1).max(100),
+      completionResult: JsonValueSchema,
+    })
+    .strict(),
+]);
 
 export const ExecutionFailureCodeSchema = z.enum([
   'BINDING_NOT_FOUND',
@@ -89,6 +116,7 @@ export const ExecutionSchema = z.object({
   renderedPrompt: z.string().min(1).max(200_000),
   renderedPromptHash: z.string().regex(/^[a-f0-9]{64}$/u),
   outputJsonSchema: JsonObjectSchema,
+  workspace: ExecutionWorkspaceSchema.nullable(),
   attachments: z.array(ExecutionAttachmentSchema).max(25),
   resumeSessionId: SessionIdSchema.nullable(),
   sessionId: SessionIdSchema.nullable(),
@@ -114,6 +142,7 @@ export const EnqueueExecutionInputSchema = z.object({
   renderedPrompt: z.string().min(1).max(200_000),
   renderedPromptHash: z.string().regex(/^[a-f0-9]{64}$/u),
   outputJsonSchema: JsonObjectSchema,
+  workspace: ExecutionWorkspaceSchema.nullable().default(null),
   attachmentIds: z.array(FileIdSchema).max(25),
   resumeSessionId: SessionIdSchema.nullable().default(null),
 });
@@ -123,6 +152,14 @@ export const ClaimedExecutionSchema = ExecutionSchema.extend({
     token: LeaseTokenSchema,
   }),
   outcome: z.null(),
+  recoveredInteraction: z
+    .object({
+      method: z.string().trim().min(1).max(160),
+      payload: JsonValueSchema,
+      resolution: JsonValueSchema,
+    })
+    .strict()
+    .nullable(),
 });
 
 export const ExecutionClaimRequestSchema = z.object({
@@ -198,6 +235,7 @@ export const WaitInteractionRequestSchema = z.object({
 
 export const WaitInteractionResponseSchema = z.object({
   interaction: ExecutionInteractionSchema,
+  laneAcquired: z.boolean(),
 });
 
 export const CompleteExecutionRequestSchema = z.object({
@@ -217,6 +255,7 @@ export type Execution = z.infer<typeof ExecutionSchema>;
 export type ExecutionState = z.infer<typeof ExecutionStateSchema>;
 export type ExecutionOwnerRef = z.infer<typeof ExecutionOwnerRefSchema>;
 export type ExecutionAttachment = z.infer<typeof ExecutionAttachmentSchema>;
+export type ExecutionWorkspace = z.infer<typeof ExecutionWorkspaceSchema>;
 export type ExecutionFailure = z.infer<typeof ExecutionFailureSchema>;
 export type ExecutionOutcome = z.infer<typeof ExecutionOutcomeSchema>;
 export type EnqueueExecutionInput = z.infer<typeof EnqueueExecutionInputSchema>;
@@ -237,10 +276,106 @@ export type OpenInteractionRequest = z.infer<
 export type WaitInteractionRequest = z.infer<
   typeof WaitInteractionRequestSchema
 >;
+export type WaitInteractionResponse = z.infer<
+  typeof WaitInteractionResponseSchema
+>;
 export type CompleteExecutionRequest = z.infer<
   typeof CompleteExecutionRequestSchema
 >;
 export type RunnerActivity = z.infer<typeof RunnerActivitySchema>;
+
+const ApprovalResolutionSchema = z
+  .object({
+    decision: z.enum(['decline', 'accept', 'acceptForSession']),
+  })
+  .strict();
+
+const PermissionResolutionSchema = z
+  .object({
+    permissions: JsonObjectSchema,
+    scope: z.enum(['turn', 'session']),
+  })
+  .strict();
+
+const UserInputResolutionSchema = z
+  .object({
+    answers: z.record(
+      z.string().trim().min(1),
+      z
+        .object({
+          answers: z.array(z.string().trim().min(1)).min(1),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+
+export function parseExecutionInteractionResolution(
+  method: string,
+  payloadValue: JsonValue,
+  resolutionValue: JsonValue,
+): JsonValue {
+  if (
+    method === 'item/commandExecution/requestApproval' ||
+    method === 'item/fileChange/requestApproval'
+  )
+    return ApprovalResolutionSchema.parse(resolutionValue);
+  if (method === 'item/permissions/requestApproval') {
+    const resolution = PermissionResolutionSchema.parse(resolutionValue);
+    const requested = jsonRecord(payloadValue).permissions;
+    if (!isJsonSubset(resolution.permissions, requested))
+      throw new z.ZodError([
+        {
+          code: 'custom',
+          path: ['permissions'],
+          message: '只能提交 Codex 实际请求的权限',
+        },
+      ]);
+    if (
+      Object.keys(resolution.permissions).length === 0 &&
+      resolution.scope !== 'turn'
+    )
+      throw new z.ZodError([
+        {
+          code: 'custom',
+          path: ['scope'],
+          message: '拒绝权限请求只能使用 turn scope',
+        },
+      ]);
+    return resolution;
+  }
+  if (method === 'item/tool/requestUserInput') {
+    const resolution = UserInputResolutionSchema.parse(resolutionValue);
+    const questions = jsonRecord(payloadValue).questions;
+    const questionIds = Array.isArray(questions)
+      ? questions.flatMap((question) => {
+          const id = jsonRecord(question).id;
+          return typeof id === 'string' ? [id] : [];
+        })
+      : [];
+    const answerIds = Object.keys(resolution.answers);
+    if (
+      questionIds.length === 0 ||
+      questionIds.length !== answerIds.length ||
+      questionIds.some((id) => !answerIds.includes(id))
+    )
+      throw new z.ZodError([
+        {
+          code: 'custom',
+          path: ['answers'],
+          message: '必须一次提交全部 Codex questions 的回答',
+        },
+      ]);
+    return resolution;
+  }
+  throw new z.ZodError([
+    {
+      code: 'custom',
+      path: ['method'],
+      message: '不支持的 Codex Interaction method',
+    },
+  ]);
+}
 
 export function sanitizeExecutionInteractionPayload(
   method: string,
@@ -264,6 +399,33 @@ export function sanitizeExecutionInteractionPayload(
         : [[key, sanitizeInteractionValue(payload[key], key)]],
     ),
   );
+}
+
+function isJsonSubset(candidate: unknown, requested: unknown): boolean {
+  if (
+    candidate === null ||
+    typeof candidate === 'string' ||
+    typeof candidate === 'number' ||
+    typeof candidate === 'boolean'
+  )
+    return candidate === requested;
+  if (Array.isArray(candidate))
+    return (
+      Array.isArray(requested) &&
+      candidate.every((value) =>
+        requested.some((requestedValue) => isJsonSubset(value, requestedValue)),
+      )
+    );
+  if (candidate && typeof candidate === 'object') {
+    if (!requested || typeof requested !== 'object' || Array.isArray(requested))
+      return false;
+    const requestedRecord = requested as Record<string, unknown>;
+    return Object.entries(candidate).every(
+      ([key, value]) =>
+        key in requestedRecord && isJsonSubset(value, requestedRecord[key]),
+    );
+  }
+  return false;
 }
 
 function sanitizeInteractionValue(value: unknown, key = ''): JsonValue {

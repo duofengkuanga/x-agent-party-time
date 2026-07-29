@@ -427,7 +427,8 @@ export class SubmissionService {
         `SELECT 1 active
          FROM platform_execution execution
          WHERE execution.state IN (
-           'QUEUED', 'CLAIMED', 'RUNNING', 'WAITING_FOR_INTERACTION', 'CANCEL_REQUESTED'
+           'QUEUED', 'CLAIMED', 'RUNNING', 'WAITING_FOR_INTERACTION',
+           'WAITING_TO_RESUME', 'CANCEL_REQUESTED'
          ) AND (
            execution.id IN (
              SELECT attempt.execution_id FROM cooking_repair_attempt attempt

@@ -99,13 +99,19 @@ describe('Execution lifecycle', () => {
       leaseToken: token,
       kind: 'USER_INPUT',
       method: 'item/tool/requestUserInput',
-      payload: { question: '继续吗？' },
+      payload: {
+        questions: [
+          { id: 'continue', header: '继续处理', question: '继续吗？' },
+        ],
+      },
     });
     expect(executions.activityForRunner(runnerId)).toEqual({
       activeExecutionCount: 1,
       waitingInteractionCount: 1,
     });
-    executions.resolveInteraction(interaction.id, { answer: '继续' });
+    executions.resolveInteraction(interaction.id, {
+      answers: { continue: { answers: ['继续'] } },
+    });
     expect(
       await executions.waitInteraction(
         runnerId,
@@ -115,8 +121,11 @@ describe('Execution lifecycle', () => {
         0,
       ),
     ).toMatchObject({
-      state: 'RESOLVED',
-      resolution: { answer: '继续' },
+      laneAcquired: true,
+      interaction: {
+        state: 'RESOLVED',
+        resolution: { answers: { continue: { answers: ['继续'] } } },
+      },
     });
 
     const completion = {
@@ -139,7 +148,81 @@ describe('Execution lifecycle', () => {
     expect(executions.activityForRunner(runnerId).activeExecutionCount).toBe(0);
   });
 
-  test('Lease 过期会使 Interaction 失效、保留 Session 并拒绝旧 Token', async () => {
+  test('Interaction 挂起释放同工程通道，处理后优先于普通 FIFO 恢复', async () => {
+    const { executions, runnerId, setNow } = await setup();
+    const binding = bindingId(6);
+    const first = executions.enqueue(input(runnerId, binding, 'first'));
+    const second = executions.enqueue(input(runnerId, binding, 'second'));
+    const third = executions.enqueue(input(runnerId, binding, 'third'));
+    const firstClaim = (await executions.claim(runnerId, 1, 0))[0]!;
+    executions.start(runnerId, first.id, {
+      kind: 'STARTED',
+      leaseToken: firstClaim.lease.token,
+      sessionId: 'session-first',
+    });
+    const interaction = executions.openInteraction(runnerId, first.id, {
+      leaseToken: firstClaim.lease.token,
+      kind: 'APPROVAL',
+      method: 'item/commandExecution/requestApproval',
+      payload: { command: 'bun test' },
+    });
+
+    const secondClaim = (await executions.claim(runnerId, 1, 0))[0]!;
+    expect(secondClaim.id).toBe(second.id);
+    executions.start(runnerId, second.id, {
+      kind: 'STARTED',
+      leaseToken: secondClaim.lease.token,
+      sessionId: 'session-second',
+    });
+
+    setNow('2026-07-27T08:00:02.000Z');
+    executions.resolveInteraction(interaction.id, { decision: 'accept' });
+    expect(executions.get(first.id).state).toBe('WAITING_TO_RESUME');
+    expect(
+      await executions.waitInteraction(
+        runnerId,
+        first.id,
+        interaction.id,
+        firstClaim.lease.token,
+        0,
+      ),
+    ).toMatchObject({ laneAcquired: false });
+    expect(executions.queueStatus(first.id)).toEqual({
+      state: 'WAITING_TO_RESUME',
+      aheadCount: 1,
+    });
+    expect(executions.queueStatus(third.id)).toEqual({
+      state: 'QUEUED',
+      aheadCount: 2,
+    });
+    expect(await executions.claim(runnerId, 1, 0)).toEqual([]);
+
+    executions.complete(runnerId, second.id, {
+      leaseToken: secondClaim.lease.token,
+      sessionId: 'session-second',
+      outcome: { kind: 'SUCCEEDED', result: { ok: true } },
+    });
+    expect(
+      await executions.waitInteraction(
+        runnerId,
+        first.id,
+        interaction.id,
+        firstClaim.lease.token,
+        0,
+      ),
+    ).toMatchObject({ laneAcquired: true });
+    expect(executions.get(first.id).state).toBe('RUNNING');
+    expect(await executions.claim(runnerId, 1, 0)).toEqual([]);
+
+    executions.complete(runnerId, first.id, {
+      leaseToken: firstClaim.lease.token,
+      sessionId: 'session-first',
+      outcome: { kind: 'SUCCEEDED', result: { ok: true } },
+    });
+    expect((await executions.claim(runnerId, 1, 0))[0]?.id).toBe(third.id);
+  });
+
+  test('Lease 过期保留待处理 Interaction，处理后由新 Agent 明确接管', async () => {
     const { database, executions, runnerId, setNow } = await setup();
     const queued = executions.enqueue(input(runnerId, bindingId(4), 'lease'));
     const firstClaim = (await executions.claim(runnerId, 1, 0))[0]!;
@@ -156,17 +239,29 @@ describe('Execution lifecycle', () => {
     });
 
     setNow('2026-07-27T08:00:11.000Z');
-    const reclaimed = (await executions.claim(runnerId, 1, 0))[0]!;
-    expect(reclaimed.id).toBe(queued.id);
-    expect(reclaimed.resumeSessionId).toBe('session-resume');
-    expect(reclaimed.lease.token).not.toBe(firstClaim.lease.token);
+    expect(await executions.claim(runnerId, 1, 0)).toEqual([]);
+    expect(executions.get(queued.id)).toMatchObject({
+      state: 'WAITING_FOR_INTERACTION',
+      lease: null,
+      resumeSessionId: 'session-resume',
+    });
     expect(
       database
         .query<{ state: string }, [string]>(
           'SELECT state FROM platform_execution_interaction WHERE id = ?',
         )
         .get(interaction.id)?.state,
-    ).toBe('INVALIDATED');
+    ).toBe('PENDING');
+    executions.resolveInteraction(interaction.id, { decision: 'accept' });
+    const reclaimed = (await executions.claim(runnerId, 1, 0))[0]!;
+    expect(reclaimed.id).toBe(queued.id);
+    expect(reclaimed.resumeSessionId).toBe('session-resume');
+    expect(reclaimed.lease.token).not.toBe(firstClaim.lease.token);
+    expect(reclaimed.recoveredInteraction).toEqual({
+      method: 'item/commandExecution/requestApproval',
+      payload: { command: 'safe-tool' },
+      resolution: { decision: 'accept' },
+    });
     expect(() =>
       executions.complete(runnerId, queued.id, {
         leaseToken: firstClaim.lease.token,
@@ -174,6 +269,195 @@ describe('Execution lifecycle', () => {
         outcome: { kind: 'SUCCEEDED', result: null },
       }),
     ).toThrow(expect.objectContaining({ code: 'LEASE_EXPIRED' }));
+  });
+
+  test('取消中的 Execution 在 Lease 过期后终止并释放工程通道', async () => {
+    const { executions, runnerId, setNow } = await setup();
+    const binding = bindingId(8);
+    const cancelled = executions.enqueue(input(runnerId, binding, 'cancelled'));
+    const next = executions.enqueue(input(runnerId, binding, 'next'));
+    const claim = (await executions.claim(runnerId, 1, 0))[0]!;
+    executions.start(runnerId, cancelled.id, {
+      kind: 'STARTED',
+      leaseToken: claim.lease.token,
+      sessionId: 'session-cancelled',
+    });
+    expect(executions.requestCancellation(cancelled.id).state).toBe(
+      'CANCEL_REQUESTED',
+    );
+
+    setNow('2026-07-27T08:00:11.000Z');
+    expect((await executions.claim(runnerId, 1, 0))[0]?.id).toBe(next.id);
+    expect(executions.get(cancelled.id)).toMatchObject({
+      state: 'CANCELLED',
+      outcome: {
+        kind: 'CANCELLED',
+        reason: '取消中的 Execution 因 Agent 失联而终止',
+      },
+    });
+  });
+
+  test('等待交互或等待恢复的 Execution 取消后立即终止并释放工程通道', async () => {
+    const { database, executions, runnerId } = await setup();
+    const binding = bindingId(9);
+    const waitingInteraction = executions.enqueue(
+      input(runnerId, binding, 'waiting-interaction'),
+    );
+    const next = executions.enqueue(input(runnerId, binding, 'next'));
+    const interactionClaim = (await executions.claim(runnerId, 1, 0))[0]!;
+    executions.start(runnerId, waitingInteraction.id, {
+      kind: 'STARTED',
+      leaseToken: interactionClaim.lease.token,
+      sessionId: 'session-waiting-interaction',
+    });
+    const interaction = executions.openInteraction(
+      runnerId,
+      waitingInteraction.id,
+      {
+        leaseToken: interactionClaim.lease.token,
+        kind: 'APPROVAL',
+        method: 'item/commandExecution/requestApproval',
+        payload: { command: 'bun test' },
+      },
+    );
+
+    expect(executions.requestCancellation(waitingInteraction.id)).toMatchObject(
+      {
+        state: 'CANCELLED',
+        lease: null,
+        cancellationRequested: true,
+      },
+    );
+    expect(
+      database
+        .query<{ state: string }, [string]>(
+          'SELECT state FROM platform_execution_interaction WHERE id = ?',
+        )
+        .get(interaction.id)?.state,
+    ).toBe('INVALIDATED');
+    expect((await executions.claim(runnerId, 1, 0))[0]?.id).toBe(next.id);
+
+    const resumeBinding = bindingId(10);
+    const waitingResume = executions.enqueue(
+      input(runnerId, resumeBinding, 'waiting-resume'),
+    );
+    const blocker = executions.enqueue(
+      input(runnerId, resumeBinding, 'blocker'),
+    );
+    const following = executions.enqueue(
+      input(runnerId, resumeBinding, 'following'),
+    );
+    const resumeClaim = (await executions.claim(runnerId, 1, 0))[0]!;
+    executions.start(runnerId, waitingResume.id, {
+      kind: 'STARTED',
+      leaseToken: resumeClaim.lease.token,
+      sessionId: 'session-waiting-resume',
+    });
+    const resolved = executions.openInteraction(runnerId, waitingResume.id, {
+      leaseToken: resumeClaim.lease.token,
+      kind: 'APPROVAL',
+      method: 'item/commandExecution/requestApproval',
+      payload: { command: 'bun test' },
+    });
+    const blockerClaim = (await executions.claim(runnerId, 1, 0))[0]!;
+    expect(blockerClaim.id).toBe(blocker.id);
+    executions.start(runnerId, blocker.id, {
+      kind: 'STARTED',
+      leaseToken: blockerClaim.lease.token,
+      sessionId: 'session-blocker',
+    });
+    executions.resolveInteraction(resolved.id, { decision: 'accept' });
+
+    expect(executions.requestCancellation(waitingResume.id)).toMatchObject({
+      state: 'CANCELLED',
+      lease: null,
+      cancellationRequested: true,
+    });
+    expect(executions.get(waitingResume.id).outcome).toEqual({
+      kind: 'CANCELLED',
+      reason: '服务端已请求取消',
+    });
+    executions.complete(runnerId, blocker.id, {
+      leaseToken: blockerClaim.lease.token,
+      sessionId: 'session-blocker',
+      outcome: { kind: 'SUCCEEDED', result: null },
+    });
+    expect((await executions.claim(runnerId, 1, 0))[0]?.id).toBe(following.id);
+  });
+
+  test('领取候选显式排除 cancellation_requested Execution', async () => {
+    const { database, executions, runnerId } = await setup();
+    const binding = bindingId(11);
+    const cancelled = executions.enqueue(
+      input(runnerId, binding, 'cancelled-candidate'),
+    );
+    const available = executions.enqueue(
+      input(runnerId, binding, 'available-candidate'),
+    );
+    database
+      .prepare(
+        `UPDATE platform_execution
+         SET cancellation_requested = 1
+         WHERE id = ?`,
+      )
+      .run(cancelled.id);
+
+    const claimed = await executions.claim(runnerId, 2, 0);
+    expect(claimed.map(({ id }) => id)).toEqual([available.id]);
+    expect(executions.get(cancelled.id).state).toBe('QUEUED');
+  });
+
+  test('等待恢复状态在 Lease 过期后持久保留并在普通 FIFO 前重新领取', async () => {
+    const { executions, runnerId, setNow } = await setup();
+    const binding = bindingId(7);
+    const first = executions.enqueue(input(runnerId, binding, 'resume-first'));
+    const second = executions.enqueue(
+      input(runnerId, binding, 'resume-second'),
+    );
+    const third = executions.enqueue(input(runnerId, binding, 'resume-third'));
+    const firstClaim = (await executions.claim(runnerId, 1, 0))[0]!;
+    executions.start(runnerId, first.id, {
+      kind: 'STARTED',
+      leaseToken: firstClaim.lease.token,
+      sessionId: 'session-persisted-resume',
+    });
+    const interaction = executions.openInteraction(runnerId, first.id, {
+      leaseToken: firstClaim.lease.token,
+      kind: 'APPROVAL',
+      method: 'item/commandExecution/requestApproval',
+      payload: { command: 'bun test' },
+    });
+    const secondClaim = (await executions.claim(runnerId, 1, 0))[0]!;
+    executions.start(runnerId, second.id, {
+      kind: 'STARTED',
+      leaseToken: secondClaim.lease.token,
+      sessionId: 'session-second-running',
+    });
+    setNow('2026-07-27T08:00:02.000Z');
+    executions.resolveInteraction(interaction.id, { decision: 'accept' });
+    setNow('2026-07-27T08:00:09.000Z');
+    executions.renew(runnerId, second.id, secondClaim.lease.token);
+    setNow('2026-07-27T08:00:11.000Z');
+    expect(await executions.claim(runnerId, 1, 0)).toEqual([]);
+    expect(executions.get(first.id)).toMatchObject({
+      state: 'WAITING_TO_RESUME',
+      lease: null,
+      resumeSessionId: 'session-persisted-resume',
+    });
+    executions.complete(runnerId, second.id, {
+      leaseToken: secondClaim.lease.token,
+      sessionId: 'session-second-running',
+      outcome: { kind: 'SUCCEEDED', result: { ok: true } },
+    });
+    const reclaimed = (await executions.claim(runnerId, 1, 0))[0]!;
+    expect(reclaimed.id).toBe(first.id);
+    expect(reclaimed.resumeSessionId).toBe('session-persisted-resume');
+    expect(reclaimed.recoveredInteraction).toEqual({
+      method: 'item/commandExecution/requestApproval',
+      payload: { command: 'bun test' },
+      resolution: { decision: 'accept' },
+    });
+    expect(executions.get(third.id).state).toBe('QUEUED');
   });
 
   test('Start Failure 明确终结 Execution，附件仅活动 Lease 可授权', async () => {
@@ -241,6 +525,7 @@ function input(
     renderedPrompt: prompt,
     renderedPromptHash: createHash('sha256').update(prompt).digest('hex'),
     outputJsonSchema: { type: 'object' },
+    workspace: null,
     attachmentIds: [],
     resumeSessionId: null,
   };

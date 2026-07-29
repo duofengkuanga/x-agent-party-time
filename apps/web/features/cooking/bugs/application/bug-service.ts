@@ -14,8 +14,6 @@ import {
   BugSchema,
   BugWorkspaceProjectionSchema,
   CreateBugInputSchema,
-  ReorderRepairQueueInputSchema,
-  RepairQueueMutationResultSchema,
   RequestRepairInputSchema,
   UpdateBugReportInputSchema,
   WithdrawRepairInputSchema,
@@ -25,8 +23,6 @@ import {
   type BugMutationResult,
   type BugWorkspaceProjection,
   type CreateBugInput,
-  type ReorderRepairQueueInput,
-  type RepairQueueMutationResult,
   type RequestRepairInput,
   type UpdateBugReportInput,
   type WithdrawRepairInput,
@@ -90,15 +86,13 @@ const STAGE_LABELS: Record<Bug['stage'], string> = {
 };
 
 export type BugRepairHooks = {
-  requested: (bugId: string, priority: number) => void;
+  requested: (bugId: string) => void;
   withdrawn: (bugId: string) => void;
-  reordered: (submissionId: string) => void;
 };
 
 const NOOP_REPAIR_HOOKS: BugRepairHooks = {
   requested: () => {},
   withdrawn: () => {},
-  reordered: () => {},
 };
 
 export class BugService {
@@ -309,7 +303,7 @@ export class BugService {
         if (bug.stage !== 'WAITING_FOR_REPAIR')
           throw new PlatformError(
             'INVALID_TRANSITION',
-            '只有待修复缺陷可以进入修复队列',
+            '只有待修复缺陷可以开始自动修复',
           );
         if (!bug.submissionItemId)
           throw new PlatformError('VALIDATION_FAILED', '请先确定缺陷所属工程');
@@ -322,33 +316,6 @@ export class BugService {
             'PERMISSION_DENIED',
             '只有测试负责人或该工程负责人可以发起修复',
           );
-        this.ensureQueue(bug.submissionId, now);
-        this.db
-          .prepare(
-            `UPDATE cooking_repair_queue_entry
-             SET position = position + 1 WHERE submission_id = ?`,
-          )
-          .run(bug.submissionId);
-        this.db
-          .prepare(
-            `INSERT INTO cooking_repair_queue_entry(
-               bug_id, submission_id, submission_item_id, binding_id,
-               position, queued_at
-             ) VALUES (?, ?, ?, ?, 0, ?)`,
-          )
-          .run(
-            bug.id,
-            bug.submissionId,
-            bug.submissionItemId,
-            item.binding_id,
-            now,
-          );
-        this.db
-          .prepare(
-            `UPDATE cooking_repair_queue
-             SET version = version + 1, updated_at = ? WHERE submission_id = ?`,
-          )
-          .run(now, bug.submissionId);
         const update = this.db
           .prepare(
             `UPDATE cooking_bug
@@ -358,10 +325,10 @@ export class BugService {
           )
           .run(now, now, bug.id, parsed.expectedVersion);
         if (update.changes !== 1) throw staleBug();
-        this.repairHooks.requested(bug.id, 0);
+        this.repairHooks.requested(bug.id);
         return {
           action: 'BUG_REPAIR_REQUESTED',
-          details: { submissionItemId: bug.submissionItemId, position: 0 },
+          details: { submissionItemId: bug.submissionItemId },
         };
       },
     );
@@ -391,34 +358,7 @@ export class BugService {
             'PERMISSION_DENIED',
             '只有测试负责人或该工程负责人可以撤回修复',
           );
-        const entry = this.db
-          .prepare(
-            `SELECT position FROM cooking_repair_queue_entry
-             WHERE bug_id = ? AND submission_id = ?`,
-          )
-          .get(bug.id, bug.submissionId) as { position: number } | undefined;
-        if (!entry)
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '修复已开始，不能直接撤回',
-          );
         this.repairHooks.withdrawn(bug.id);
-        this.db
-          .prepare('DELETE FROM cooking_repair_queue_entry WHERE bug_id = ?')
-          .run(bug.id);
-        this.db
-          .prepare(
-            `UPDATE cooking_repair_queue_entry
-             SET position = position - 1
-             WHERE submission_id = ? AND position > ?`,
-          )
-          .run(bug.submissionId, entry.position);
-        this.db
-          .prepare(
-            `UPDATE cooking_repair_queue
-             SET version = version + 1, updated_at = ? WHERE submission_id = ?`,
-          )
-          .run(now, bug.submissionId);
         const update = this.db
           .prepare(
             `UPDATE cooking_bug
@@ -429,103 +369,10 @@ export class BugService {
         if (update.changes !== 1) throw staleBug();
         return {
           action: 'BUG_REPAIR_WITHDRAWN',
-          details: { previousPosition: entry.position },
+          details: {},
         };
       },
     );
-  }
-
-  reorderQueue(
-    actorUserId: string,
-    submissionId: string,
-    input: ReorderRepairQueueInput,
-  ): RepairQueueMutationResult {
-    const parsed = ReorderRepairQueueInputSchema.parse(input);
-    const replay = this.hasRecordedMutation(parsed.mutationId);
-    const result = this.writes.run({
-      mutationId: parsed.mutationId,
-      actorUserId,
-      operation: 'REPAIR_QUEUE_REORDER',
-      resourceType: 'REPAIR_QUEUE',
-      resultSchema: RepairQueueMutationResultSchema,
-      perform: () => {
-        const access = this.requireAccess(actorUserId, submissionId);
-        this.requireActive(access);
-        if (
-          actorUserId !== access.tester_user_id &&
-          !this.isAnyResponsible(actorUserId, submissionId)
-        )
-          throw new PlatformError(
-            'PERMISSION_DENIED',
-            '当前成员不能调整修复队列',
-          );
-        const now = this.now().toISOString();
-        this.ensureQueue(submissionId, now);
-        const queue = this.db
-          .prepare(
-            'SELECT version FROM cooking_repair_queue WHERE submission_id = ?',
-          )
-          .get(submissionId) as { version: number };
-        if (queue.version !== parsed.expectedVersion)
-          throw new PlatformError(
-            'STALE_STATE',
-            '修复队列已更新，请刷新后重试',
-          );
-        const current = this.queueEntries(submissionId).map(
-          ({ bug_id }) => bug_id,
-        );
-        if (
-          new Set(parsed.bugIds).size !== parsed.bugIds.length ||
-          current.length !== parsed.bugIds.length ||
-          current.some((id) => !parsed.bugIds.includes(id))
-        )
-          throw new PlatformError(
-            'VALIDATION_FAILED',
-            '修复队列顺序与当前等待项不一致',
-          );
-        this.db
-          .prepare(
-            `UPDATE cooking_repair_queue_entry
-             SET position = position + 1000000 WHERE submission_id = ?`,
-          )
-          .run(submissionId);
-        parsed.bugIds.forEach((bugId, position) =>
-          this.db
-            .prepare(
-              `UPDATE cooking_repair_queue_entry
-               SET position = ? WHERE submission_id = ? AND bug_id = ?`,
-            )
-            .run(position, submissionId, bugId),
-        );
-        this.db
-          .prepare(
-            `UPDATE cooking_repair_queue
-             SET version = version + 1, updated_at = ? WHERE submission_id = ?`,
-          )
-          .run(now, submissionId);
-        this.repairHooks.reordered(submissionId);
-        const revision = this.bumpRevision(submissionId, now);
-        return {
-          result: {
-            submissionId,
-            version: queue.version + 1,
-            revision,
-          },
-          resourceId: submissionId,
-          audits: [
-            {
-              projectId: access.project_id,
-              action: 'REPAIR_QUEUE_REORDERED',
-              targetType: 'REPAIR_QUEUE',
-              targetId: submissionId,
-              details: { bugIds: parsed.bugIds },
-            },
-          ],
-        };
-      },
-    });
-    if (!replay) this.onInvalidated(result.submissionId, result.revision);
-    return result;
   }
 
   addFeedback(
@@ -593,15 +440,6 @@ export class BugService {
 
   workspace(userId: string, submissionId: string): BugWorkspaceProjection {
     const access = this.requireAccess(userId, submissionId);
-    const queueRow = this.db
-      .prepare(
-        'SELECT version FROM cooking_repair_queue WHERE submission_id = ?',
-      )
-      .get(submissionId) as { version: number } | undefined;
-    const entries = this.queueEntries(submissionId);
-    const queuePosition = new Map(
-      entries.map(({ bug_id, position }) => [bug_id, position]),
-    );
     const bugs = (
       this.db
         .prepare(
@@ -648,19 +486,12 @@ export class BugService {
           attachments: this.attachments(row.id, entry.id),
           createdAt: entry.created_at,
         })),
-        availableActions: this.availableActions(
-          userId,
-          access,
-          bug,
-          item,
-          queuePosition.has(bug.id),
-        ),
+        availableActions: this.availableActions(userId, access, bug, item),
         presentation: {
           stageLabel: STAGE_LABELS[bug.stage],
           assignmentLabel: item
             ? `${item.engineering_name}（${item.engineering_identifier}）`
             : '暂未确定工程',
-          queuePosition: queuePosition.get(bug.id) ?? null,
         },
       };
     });
@@ -670,22 +501,6 @@ export class BugService {
         userId === access.tester_user_id
           ? ['CREATE_BUG']
           : [],
-      repairQueue: {
-        submissionId,
-        version: queueRow?.version ?? 1,
-        entries: entries.map((entry) => ({
-          bugId: entry.bug_id,
-          submissionItemId: entry.submission_item_id,
-          position: entry.position,
-          queuedAt: entry.queued_at,
-        })),
-        availableActions:
-          access.submission_status === 'ACTIVE' &&
-          (userId === access.tester_user_id ||
-            this.isAnyResponsible(userId, submissionId))
-            ? ['REORDER']
-            : [],
-      },
       bugs,
     });
   }
@@ -976,37 +791,6 @@ export class BugService {
       .all(bugId) as FeedbackRow[];
   }
 
-  private ensureQueue(submissionId: string, now: string): void {
-    this.db
-      .prepare(
-        `INSERT OR IGNORE INTO cooking_repair_queue(
-           submission_id, version, updated_at
-         ) VALUES (?, 1, ?)`,
-      )
-      .run(submissionId, now);
-  }
-
-  private queueEntries(submissionId: string): Array<{
-    bug_id: string;
-    submission_item_id: string;
-    position: number;
-    queued_at: string;
-  }> {
-    return this.db
-      .prepare(
-        `SELECT bug_id, submission_item_id, position, queued_at
-         FROM cooking_repair_queue_entry
-         WHERE submission_id = ?
-         ORDER BY position, queued_at, bug_id`,
-      )
-      .all(submissionId) as Array<{
-      bug_id: string;
-      submission_item_id: string;
-      position: number;
-      queued_at: string;
-    }>;
-  }
-
   private bumpRevision(submissionId: string, now: string): number {
     const update = this.db
       .prepare(
@@ -1032,7 +816,6 @@ export class BugService {
     access: AccessRow,
     bug: Bug,
     item: ItemRow | null,
-    queued: boolean,
   ) {
     if (access.submission_status !== 'ACTIVE') return [];
     const tester = userId === access.tester_user_id;
@@ -1063,7 +846,7 @@ export class BugService {
       if (tester || assignedResponsible) actions.push('ADD_FEEDBACK');
       if (
         bug.stage === 'REPAIRING' &&
-        queued &&
+        !this.hasStartedRepairExecution(bug.id) &&
         (tester || assignedResponsible)
       )
         actions.push('WITHDRAW_REPAIR');
@@ -1083,6 +866,18 @@ export class BugService {
     )
       actions.push('CANCEL');
     return actions;
+  }
+
+  private hasStartedRepairExecution(bugId: string): boolean {
+    const row = this.db
+      .prepare(
+        `SELECT execution.state
+         FROM cooking_repair_attempt attempt
+         JOIN platform_execution execution ON execution.id = attempt.execution_id
+         WHERE attempt.bug_id = ? ORDER BY attempt.attempt DESC LIMIT 1`,
+      )
+      .get(bugId) as { state: string } | undefined;
+    return row?.state !== 'QUEUED';
   }
 
   private hasActiveRepairExecution(bugId: string): boolean {

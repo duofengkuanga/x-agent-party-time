@@ -1,12 +1,15 @@
 import { z } from 'zod';
 import {
-  ExecutionInteractionSchema,
   ExecutionStateSchema,
   type JsonObject,
 } from '@agent-party-time/execution-contract';
 import { BugIdSchema } from '@/features/cooking/bugs/contract';
 import { CommitShaSchema } from '@/features/cooking/repair/contract';
-import { CookingMutationIdSchema } from '@/features/cooking/shared/contract';
+import {
+  CookingInteractionViewSchema,
+  CookingMutationIdSchema,
+  CookingVisualPresentationSchema,
+} from '@/features/cooking/shared/contract';
 import {
   SubmissionIdSchema,
   SubmissionItemIdSchema,
@@ -135,6 +138,7 @@ export const UpdateBatchViewSchema = z.object({
   deploymentKind: z.enum(['LOCAL_SCRIPT', 'CI_CD']),
   entries: z.array(UpdateBatchEntryViewSchema).min(1),
   attempts: z.array(UpdateAttemptViewSchema),
+  interactions: z.array(CookingInteractionViewSchema),
   externalReports: z.array(ExternalDeploymentReportViewSchema),
   availableActions: z.array(
     z.enum([
@@ -144,27 +148,15 @@ export const UpdateBatchViewSchema = z.object({
       'REPORT_EXTERNAL',
     ]),
   ),
-  presentation: z.object({ statusLabel: z.string().trim().min(1) }),
-});
-
-export const UpdateInteractionViewSchema = ExecutionInteractionSchema.pick({
-  id: true,
-  executionId: true,
-  kind: true,
-  state: true,
-  createdAt: true,
-}).extend({
-  batchId: UpdateBatchIdSchema,
-  submissionItemId: SubmissionItemIdSchema,
-  method: z.string().nullable(),
-  payload: z.json().nullable(),
-  canResolve: z.boolean(),
+  presentation: z.object({
+    statusLabel: z.string().trim().min(1),
+    visual: CookingVisualPresentationSchema,
+  }),
 });
 
 export const UpdateWorkspaceProjectionSchema = z.object({
   pendingDeliveries: z.array(PendingDeliveryViewSchema),
   updateBatches: z.array(UpdateBatchViewSchema),
-  updateInteractions: z.array(UpdateInteractionViewSchema),
 });
 
 export const FreezeUpdateInputSchema = z.object({
@@ -223,7 +215,6 @@ export type CiCdUpdateExecutionResult = z.infer<
 >;
 export type PendingDeliveryView = z.infer<typeof PendingDeliveryViewSchema>;
 export type UpdateBatchView = z.infer<typeof UpdateBatchViewSchema>;
-export type UpdateInteractionView = z.infer<typeof UpdateInteractionViewSchema>;
 export type UpdateWorkspaceProjection = z.infer<
   typeof UpdateWorkspaceProjectionSchema
 >;

@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { PlatformError } from '@/server/errors';
 
-export const SERVER_SCHEMA_VERSION = 14;
+export const SERVER_SCHEMA_VERSION = 15;
 
 const SCHEMA = `
 CREATE TABLE platform_user (
@@ -102,6 +102,7 @@ CREATE TABLE platform_execution (
     'CLAIMED',
     'RUNNING',
     'WAITING_FOR_INTERACTION',
+    'WAITING_TO_RESUME',
     'CANCEL_REQUESTED',
     'SUCCEEDED',
     'FAILED',
@@ -112,6 +113,9 @@ CREATE TABLE platform_execution (
   rendered_prompt TEXT NOT NULL,
   rendered_prompt_hash TEXT NOT NULL CHECK (length(rendered_prompt_hash) = 64),
   output_json_schema TEXT NOT NULL,
+  workspace_json TEXT CHECK (
+    workspace_json IS NULL OR json_valid(workspace_json)
+  ),
   resume_session_id TEXT,
   session_id TEXT,
   lease_token_hash TEXT,
@@ -120,6 +124,7 @@ CREATE TABLE platform_execution (
   reported_outcome_json TEXT,
   cancellation_requested INTEGER NOT NULL DEFAULT 0
     CHECK (cancellation_requested IN (0, 1)),
+  resume_requested_at TEXT,
   created_at TEXT NOT NULL,
   claimed_at TEXT,
   started_at TEXT,
@@ -130,11 +135,10 @@ CREATE UNIQUE INDEX platform_execution_binding_reservation
   WHERE state IN (
     'CLAIMED',
     'RUNNING',
-    'WAITING_FOR_INTERACTION',
     'CANCEL_REQUESTED'
   );
 CREATE INDEX platform_execution_runner_claim
-  ON platform_execution(runner_id, state, priority, created_at, id);
+  ON platform_execution(runner_id, state, created_at, id);
 CREATE INDEX platform_execution_lease_expiry
   ON platform_execution(state, lease_expires_at);
 CREATE INDEX platform_execution_owner
@@ -432,25 +436,6 @@ CREATE TABLE cooking_bug_attachment (
 ) STRICT;
 CREATE INDEX cooking_bug_attachment_bug
   ON cooking_bug_attachment(bug_id, feedback_id, position);
-
-CREATE TABLE cooking_repair_queue (
-  submission_id TEXT PRIMARY KEY REFERENCES cooking_test_submission(id) ON DELETE CASCADE,
-  version INTEGER NOT NULL CHECK (version > 0),
-  updated_at TEXT NOT NULL
-) STRICT;
-
-CREATE TABLE cooking_repair_queue_entry (
-  bug_id TEXT PRIMARY KEY REFERENCES cooking_bug(id) ON DELETE CASCADE,
-  submission_id TEXT NOT NULL REFERENCES cooking_repair_queue(submission_id) ON DELETE CASCADE,
-  submission_item_id TEXT NOT NULL REFERENCES cooking_submission_item(id) ON DELETE RESTRICT,
-  binding_id TEXT NOT NULL,
-  position INTEGER NOT NULL CHECK (position >= 0),
-  queued_at TEXT NOT NULL
-) STRICT;
-CREATE INDEX cooking_repair_queue_entry_order
-  ON cooking_repair_queue_entry(submission_id, position, queued_at, bug_id);
-CREATE INDEX cooking_repair_queue_entry_binding
-  ON cooking_repair_queue_entry(binding_id, position, queued_at, bug_id);
 
 CREATE TABLE cooking_bug_repair_context (
   bug_id TEXT PRIMARY KEY REFERENCES cooking_bug(id) ON DELETE CASCADE,

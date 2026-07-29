@@ -3,6 +3,7 @@ import {
   ClaimedExecutionSchema,
   EnqueueExecutionInputSchema,
   ExecutionInteractionSchema,
+  parseExecutionInteractionResolution,
   ExecutionSchema,
   RunnerActivitySchema,
   type ClaimedExecution,
@@ -15,6 +16,7 @@ import {
   type JsonValue,
   type OpenInteractionRequest,
   type RunnerActivity,
+  type WaitInteractionResponse,
 } from '@agent-party-time/execution-contract';
 import type { AppDatabase } from '@/server/database';
 import { PlatformError } from '@/server/errors';
@@ -35,6 +37,7 @@ type ExecutionRow = {
   rendered_prompt: string;
   rendered_prompt_hash: string;
   output_json_schema: string;
+  workspace_json: string | null;
   resume_session_id: string | null;
   session_id: string | null;
   lease_token_hash: string | null;
@@ -42,6 +45,7 @@ type ExecutionRow = {
   outcome_json: string | null;
   reported_outcome_json: string | null;
   cancellation_requested: number;
+  resume_requested_at: string | null;
   created_at: string;
   claimed_at: string | null;
   started_at: string | null;
@@ -77,12 +81,14 @@ const ACTIVE_STATES = [
   'CLAIMED',
   'RUNNING',
   'WAITING_FOR_INTERACTION',
+  'WAITING_TO_RESUME',
   'CANCEL_REQUESTED',
 ] as const;
 const LEASED_STATES = [
   'CLAIMED',
   'RUNNING',
   'WAITING_FOR_INTERACTION',
+  'WAITING_TO_RESUME',
   'CANCEL_REQUESTED',
 ] as const;
 const DEFAULT_LEASE_DURATION_MS = 15_000;
@@ -141,12 +147,13 @@ export class ExecutionService {
                previous_execution_id, runner_id, binding_id, priority, state,
                prompt_kind, prompt_version, rendered_prompt,
                rendered_prompt_hash, output_json_schema, resume_session_id,
-               session_id, lease_token_hash, lease_expires_at, outcome_json,
-               reported_outcome_json, cancellation_requested, created_at,
-               claimed_at, started_at, finished_at
+               workspace_json, session_id, lease_token_hash, lease_expires_at,
+               outcome_json, reported_outcome_json, cancellation_requested,
+               resume_requested_at, created_at, claimed_at, started_at,
+               finished_at
              ) VALUES (
                ?, ?, ?, ?, ?, ?, ?, ?, ?, 'QUEUED', ?, ?, ?, ?, ?, ?,
-               NULL, NULL, NULL, NULL, NULL, 0, ?, NULL, NULL, NULL
+               ?, NULL, NULL, NULL, NULL, NULL, 0, NULL, ?, NULL, NULL, NULL
              )`,
           )
           .run(
@@ -165,6 +172,7 @@ export class ExecutionService {
             input.renderedPromptHash,
             JSON.stringify(input.outputJsonSchema),
             input.resumeSessionId,
+            input.workspace ? JSON.stringify(input.workspace) : null,
             createdAt,
           );
         const insertAttachment = this.db.prepare(
@@ -254,10 +262,10 @@ export class ExecutionService {
           )
           .run(request.sessionId, now, executionId);
       }
-      const execution = this.mapExecution({ ...row, id: executionId });
+      const execution = this.get(executionId);
       if (request.kind === 'START_FAILED') this.hooks.applyTerminal(execution);
       else this.hooks.applyStarted(execution);
-      return this.get(executionId);
+      return execution;
     })();
     if (request.kind === 'START_FAILED') this.hooks.afterTerminal(result);
     else this.hooks.afterStarted(result);
@@ -352,19 +360,32 @@ export class ExecutionService {
     interactionId: string,
     leaseToken: string,
     waitMs: number,
-  ): Promise<ExecutionInteraction> {
+  ): Promise<WaitInteractionResponse> {
     const deadline = Date.now() + waitMs;
     do {
       this.requireLeasedExecution(runnerId, executionId, leaseToken, [
         'WAITING_FOR_INTERACTION',
+        'WAITING_TO_RESUME',
         'RUNNING',
         'CANCEL_REQUESTED',
       ]);
       const interaction = this.latestInteraction(executionId);
       if (!interaction || interaction.id !== interactionId)
         throw new PlatformError('NOT_FOUND', 'Execution Interaction 不存在');
-      if (interaction.state !== 'PENDING' || Date.now() >= deadline)
-        return mapInteraction(interaction);
+      if (interaction.state === 'RESOLVED') {
+        const laneAcquired = this.tryAcquireResumeLane(executionId);
+        if (laneAcquired || Date.now() >= deadline)
+          return { interaction: mapInteraction(interaction), laneAcquired };
+      } else if (interaction.state === 'INVALIDATED')
+        return {
+          interaction: mapInteraction(interaction),
+          laneAcquired: false,
+        };
+      else if (Date.now() >= deadline)
+        return {
+          interaction: mapInteraction(interaction),
+          laneAcquired: false,
+        };
       await sleep(
         Math.min(POLL_INTERVAL_MS, Math.max(0, deadline - Date.now())),
       );
@@ -372,13 +393,19 @@ export class ExecutionService {
     const interaction = this.latestInteraction(executionId);
     if (!interaction || interaction.id !== interactionId)
       throw new PlatformError('NOT_FOUND', 'Execution Interaction 不存在');
-    return mapInteraction(interaction);
+    return {
+      interaction: mapInteraction(interaction),
+      laneAcquired:
+        interaction.state === 'RESOLVED' &&
+        this.tryAcquireResumeLane(executionId),
+    };
   }
 
   resolveInteraction(
     interactionId: string,
     resolution: JsonValue,
   ): ExecutionInteraction {
+    this.expireLeases();
     return this.db.transaction(() => {
       const interaction = this.getInteractionRow(interactionId);
       if (interaction.state !== 'PENDING')
@@ -388,15 +415,18 @@ export class ExecutionService {
         );
       const execution = this.getRow(interaction.execution_id);
       if (
-        !LEASED_STATES.includes(
-          execution.state as (typeof LEASED_STATES)[number],
-        ) ||
-        !execution.lease_expires_at ||
-        Date.parse(execution.lease_expires_at) <= this.now().getTime()
-      ) {
-        this.expireLeases();
-        throw new PlatformError('LEASE_EXPIRED', 'Execution Lease 已失效');
-      }
+        execution.state !== 'WAITING_FOR_INTERACTION' ||
+        execution.cancellation_requested === 1
+      )
+        throw new PlatformError(
+          'STALE_STATE',
+          'Execution 已不再等待该 Interaction',
+        );
+      const parsedResolution = parseExecutionInteractionResolution(
+        interaction.method,
+        JSON.parse(interaction.payload_json) as JsonValue,
+        resolution,
+      );
       const resolvedAt = this.now().toISOString();
       this.db
         .prepare(
@@ -404,17 +434,14 @@ export class ExecutionService {
            SET state = 'RESOLVED', resolution_json = ?, resolved_at = ?
            WHERE id = ? AND state = 'PENDING'`,
         )
-        .run(JSON.stringify(resolution), resolvedAt, interactionId);
+        .run(JSON.stringify(parsedResolution), resolvedAt, interactionId);
       this.db
         .prepare(
           `UPDATE platform_execution
-           SET state = CASE
-                 WHEN cancellation_requested = 1 THEN 'CANCEL_REQUESTED'
-                 ELSE 'RUNNING'
-               END
+           SET state = 'WAITING_TO_RESUME', resume_requested_at = ?
            WHERE id = ?`,
         )
-        .run(interaction.execution_id);
+        .run(resolvedAt, interaction.execution_id);
       return this.getInteraction(interactionId);
     })();
   }
@@ -444,8 +471,19 @@ export class ExecutionService {
       }
       this.requireLeasedRow(row, request.leaseToken, [
         'RUNNING',
+        'WAITING_FOR_INTERACTION',
+        'WAITING_TO_RESUME',
         'CANCEL_REQUESTED',
       ]);
+      if (
+        (row.state === 'WAITING_FOR_INTERACTION' ||
+          row.state === 'WAITING_TO_RESUME') &&
+        request.outcome.kind !== 'CANCELLED'
+      )
+        throw new PlatformError(
+          'INVALID_TRANSITION',
+          '等待中的 Execution 只能以取消结束',
+        );
       if (row.session_id !== request.sessionId)
         throw new PlatformError('STALE_STATE', 'Execution Session 不匹配');
       const finishedAt = this.now().toISOString();
@@ -473,21 +511,6 @@ export class ExecutionService {
     return result;
   }
 
-  setQueuedPriority(executionId: string, priority: number): Execution {
-    const update = this.db
-      .prepare(
-        `UPDATE platform_execution SET priority = ?
-         WHERE id = ? AND state = 'QUEUED'`,
-      )
-      .run(priority, executionId);
-    if (update.changes !== 1)
-      throw new PlatformError(
-        'INVALID_TRANSITION',
-        '只有排队中的 Execution 可以调整优先级',
-      );
-    return this.get(executionId);
-  }
-
   cancelQueued(executionId: string, reason: string): Execution {
     const finishedAt = this.now().toISOString();
     const outcome: ExecutionOutcome = { kind: 'CANCELLED', reason };
@@ -511,23 +534,46 @@ export class ExecutionService {
   }
 
   requestCancellation(executionId: string): Execution {
-    return this.db.transaction(() => {
+    let newlyTerminal = false;
+    const result = this.db.transaction(() => {
       const row = this.getRow(executionId);
       if (isTerminal(row.state)) return this.mapExecution(row);
+      const cancelledAt = this.now().toISOString();
+      if (
+        row.state === 'QUEUED' ||
+        row.state === 'WAITING_FOR_INTERACTION' ||
+        row.state === 'WAITING_TO_RESUME'
+      ) {
+        const outcome: ExecutionOutcome = {
+          kind: 'CANCELLED',
+          reason: '服务端已请求取消',
+        };
+        this.db
+          .prepare(
+            `UPDATE platform_execution
+             SET cancellation_requested = 1, state = 'CANCELLED',
+                 outcome_json = ?, finished_at = ?,
+                 lease_token_hash = NULL, lease_expires_at = NULL
+             WHERE id = ?`,
+          )
+          .run(JSON.stringify(outcome), cancelledAt, executionId);
+        this.invalidatePendingInteractions(executionId, cancelledAt);
+        const execution = this.get(executionId);
+        this.hooks.applyTerminal(execution);
+        newlyTerminal = true;
+        return execution;
+      }
       this.db
         .prepare(
           `UPDATE platform_execution
-           SET cancellation_requested = 1,
-               state = CASE
-                 WHEN state IN ('CLAIMED', 'RUNNING', 'WAITING_FOR_INTERACTION')
-                   THEN 'CANCEL_REQUESTED'
-                 ELSE state
-               END
+           SET cancellation_requested = 1, state = 'CANCEL_REQUESTED'
            WHERE id = ?`,
         )
         .run(executionId);
       return this.get(executionId);
     })();
+    if (newlyTerminal) this.hooks.afterTerminal(result);
+    return result;
   }
 
   authorizeFile(
@@ -563,6 +609,7 @@ export class ExecutionService {
         `SELECT
            SUM(CASE WHEN state IN (
              'CLAIMED', 'RUNNING', 'WAITING_FOR_INTERACTION', 'CANCEL_REQUESTED'
+             , 'WAITING_TO_RESUME'
            ) THEN 1 ELSE 0 END) active_count,
            SUM(CASE WHEN state = 'WAITING_FOR_INTERACTION'
              THEN 1 ELSE 0 END) waiting_count
@@ -580,11 +627,112 @@ export class ExecutionService {
     const row = this.db
       .prepare(
         `SELECT 1 active FROM platform_execution
-         WHERE runner_id = ? AND state IN (?, ?, ?, ?, ?)
+         WHERE runner_id = ? AND state IN (?, ?, ?, ?, ?, ?)
          LIMIT 1`,
       )
       .get(runnerId, ...ACTIVE_STATES) as { active: number } | undefined;
     return Boolean(row);
+  }
+
+  queueStatus(executionId: string): {
+    state: Execution['state'];
+    aheadCount: number;
+  } {
+    this.expireLeases();
+    const execution = this.getRow(executionId);
+    if (execution.state !== 'QUEUED' && execution.state !== 'WAITING_TO_RESUME')
+      return { state: execution.state, aheadCount: 0 };
+    const row = this.db
+      .prepare(
+        `SELECT COUNT(*) count
+         FROM platform_execution earlier
+         WHERE earlier.binding_id = ?
+           AND earlier.id <> ?
+           AND (
+             earlier.state IN ('CLAIMED', 'RUNNING', 'CANCEL_REQUESTED')
+             OR (
+               earlier.state = 'WAITING_TO_RESUME'
+               AND (
+                 ? = 'QUEUED'
+                 OR COALESCE(
+                   earlier.resume_requested_at, earlier.created_at
+                 ) < COALESCE(?, ?)
+               )
+             )
+             OR (
+               earlier.state = 'QUEUED'
+               AND ? = 'QUEUED'
+               AND (
+                 earlier.created_at < ?
+                 OR (
+                   earlier.created_at = ?
+                   AND earlier.rowid < (
+                     SELECT rowid FROM platform_execution WHERE id = ?
+                   )
+                 )
+               )
+             )
+           )`,
+      )
+      .get(
+        execution.binding_id,
+        execution.id,
+        execution.state,
+        execution.resume_requested_at,
+        execution.created_at,
+        execution.state,
+        execution.created_at,
+        execution.created_at,
+        execution.id,
+      ) as { count: number };
+    return { state: execution.state, aheadCount: row.count };
+  }
+
+  private tryAcquireResumeLane(executionId: string): boolean {
+    this.expireLeases();
+    return this.db.transaction(() => {
+      const execution = this.getRow(executionId);
+      if (execution.state === 'RUNNING') return true;
+      if (execution.state !== 'WAITING_TO_RESUME') return false;
+      const update = this.db
+        .prepare(
+          `UPDATE platform_execution AS candidate
+           SET state = 'RUNNING', resume_requested_at = NULL
+           WHERE candidate.id = ?
+             AND candidate.state = 'WAITING_TO_RESUME'
+             AND candidate.lease_token_hash IS NOT NULL
+             AND candidate.lease_expires_at > ?
+             AND NOT EXISTS (
+               SELECT 1 FROM platform_execution active
+               WHERE active.binding_id = candidate.binding_id
+                 AND active.id <> candidate.id
+                 AND active.state IN ('CLAIMED', 'RUNNING', 'CANCEL_REQUESTED')
+             )
+             AND NOT EXISTS (
+               SELECT 1 FROM platform_execution earlier
+               WHERE earlier.binding_id = candidate.binding_id
+                 AND earlier.id <> candidate.id
+                 AND earlier.state = 'WAITING_TO_RESUME'
+                 AND (
+                   COALESCE(
+                     earlier.resume_requested_at, earlier.created_at
+                   ) < COALESCE(
+                     candidate.resume_requested_at, candidate.created_at
+                   )
+                   OR (
+                     COALESCE(
+                       earlier.resume_requested_at, earlier.created_at
+                     ) = COALESCE(
+                       candidate.resume_requested_at, candidate.created_at
+                     )
+                     AND earlier.rowid < candidate.rowid
+                   )
+                 )
+             )`,
+        )
+        .run(executionId, this.now().toISOString());
+      return update.changes === 1;
+    })();
   }
 
   private claimAvailable(
@@ -592,43 +740,77 @@ export class ExecutionService {
     availableSlots: number,
   ): ClaimedExecution[] {
     if (availableSlots === 0) return [];
+    this.expireLeases();
     return this.db.transaction(() => {
-      this.expireLeases();
       const rows = this.db
         .prepare(
           `SELECT candidate.* FROM platform_execution candidate
            WHERE candidate.runner_id = ?
-             AND candidate.state = 'QUEUED'
+             AND candidate.cancellation_requested = 0
+             AND (
+               candidate.state = 'QUEUED'
+               OR (
+                 candidate.state = 'WAITING_TO_RESUME'
+                 AND candidate.lease_token_hash IS NULL
+               )
+             )
              AND NOT EXISTS (
                SELECT 1 FROM platform_execution active
                WHERE active.binding_id = candidate.binding_id
                  AND active.state IN (
-                   'CLAIMED', 'RUNNING', 'WAITING_FOR_INTERACTION',
-                   'CANCEL_REQUESTED'
+                   'CLAIMED', 'RUNNING', 'CANCEL_REQUESTED'
                  )
              )
              AND NOT EXISTS (
                SELECT 1 FROM platform_execution earlier
                WHERE earlier.binding_id = candidate.binding_id
-                 AND earlier.state = 'QUEUED'
+                 AND earlier.cancellation_requested = 0
                  AND (
-                   earlier.priority < candidate.priority
+                   earlier.state = 'QUEUED'
+                   OR earlier.state = 'WAITING_TO_RESUME'
+                 )
+                 AND (
+                   CASE WHEN earlier.state = 'WAITING_TO_RESUME'
+                     THEN 0 ELSE 1 END
+                     < CASE WHEN candidate.state = 'WAITING_TO_RESUME'
+                       THEN 0 ELSE 1 END
                    OR (
-                     earlier.priority = candidate.priority
-                     AND earlier.created_at < candidate.created_at
+                     CASE WHEN earlier.state = 'WAITING_TO_RESUME'
+                       THEN 0 ELSE 1 END
+                       = CASE WHEN candidate.state = 'WAITING_TO_RESUME'
+                         THEN 0 ELSE 1 END
+                     AND COALESCE(
+                       earlier.resume_requested_at, earlier.created_at
+                     ) < COALESCE(
+                       candidate.resume_requested_at, candidate.created_at
+                     )
                    )
                    OR (
-                     earlier.priority = candidate.priority
-                     AND earlier.created_at = candidate.created_at
+                     CASE WHEN earlier.state = 'WAITING_TO_RESUME'
+                       THEN 0 ELSE 1 END
+                       = CASE WHEN candidate.state = 'WAITING_TO_RESUME'
+                         THEN 0 ELSE 1 END
+                     AND COALESCE(
+                       earlier.resume_requested_at, earlier.created_at
+                     ) = COALESCE(
+                       candidate.resume_requested_at, candidate.created_at
+                     )
                      AND earlier.rowid < candidate.rowid
                    )
                  )
              )
-           ORDER BY candidate.priority, candidate.created_at, candidate.rowid
+           ORDER BY
+             CASE WHEN candidate.state = 'WAITING_TO_RESUME' THEN 0 ELSE 1 END,
+             COALESCE(candidate.resume_requested_at, candidate.created_at),
+             candidate.rowid
            LIMIT ?`,
         )
         .all(runnerId, availableSlots) as ExecutionRow[];
       return rows.map((row) => {
+        const recoveredInteraction =
+          row.state === 'WAITING_TO_RESUME'
+            ? this.latestInteraction(row.id)
+            : undefined;
         const leaseToken = this.createLeaseToken();
         const expiresAt = this.newLeaseExpiry();
         const claimedAt = this.now().toISOString();
@@ -636,14 +818,26 @@ export class ExecutionService {
           .prepare(
             `UPDATE platform_execution
              SET state = 'CLAIMED', lease_token_hash = ?,
-                 lease_expires_at = ?, claimed_at = COALESCE(claimed_at, ?)
-             WHERE id = ? AND state = 'QUEUED'`,
+                 lease_expires_at = ?, claimed_at = COALESCE(claimed_at, ?),
+                 resume_requested_at = NULL
+             WHERE id = ?
+               AND cancellation_requested = 0
+               AND state IN ('QUEUED', 'WAITING_TO_RESUME')`,
           )
           .run(hashSecret(leaseToken), expiresAt, claimedAt, row.id);
         return ClaimedExecutionSchema.parse({
           ...this.get(row.id),
           lease: { token: leaseToken, expiresAt },
           outcome: null,
+          recoveredInteraction:
+            recoveredInteraction?.state === 'RESOLVED' &&
+            recoveredInteraction.resolution_json
+              ? {
+                  method: recoveredInteraction.method,
+                  payload: JSON.parse(recoveredInteraction.payload_json),
+                  resolution: JSON.parse(recoveredInteraction.resolution_json),
+                }
+              : null,
         });
       });
     })();
@@ -651,29 +845,62 @@ export class ExecutionService {
 
   private expireLeases(): void {
     const now = this.now().toISOString();
-    const expired = this.db
-      .prepare(
-        `SELECT id FROM platform_execution
-         WHERE state IN (?, ?, ?, ?)
-           AND lease_expires_at IS NOT NULL
-           AND lease_expires_at <= ?`,
-      )
-      .all(...LEASED_STATES, now) as Array<{ id: string }>;
-    const invalidate = this.db.prepare(
-      `UPDATE platform_execution_interaction
-       SET state = 'INVALIDATED', resolved_at = ?
-       WHERE execution_id = ? AND state = 'PENDING'`,
-    );
-    const requeue = this.db.prepare(
-      `UPDATE platform_execution
-       SET state = 'QUEUED', resume_session_id = COALESCE(session_id, resume_session_id),
-           lease_token_hash = NULL, lease_expires_at = NULL
-       WHERE id = ?`,
-    );
-    for (const { id } of expired) {
-      invalidate.run(now, id);
-      requeue.run(id);
-    }
+    const terminal = this.db.transaction(() => {
+      const expired = this.db
+        .prepare(
+          `SELECT id, state, cancellation_requested
+           FROM platform_execution
+           WHERE state IN (?, ?, ?, ?, ?)
+             AND lease_expires_at IS NOT NULL
+             AND lease_expires_at <= ?`,
+        )
+        .all(...LEASED_STATES, now) as Array<{
+        id: string;
+        state: Execution['state'];
+        cancellation_requested: number;
+      }>;
+      const invalidate = this.db.prepare(
+        `UPDATE platform_execution_interaction
+         SET state = 'INVALIDATED', resolved_at = ?
+         WHERE execution_id = ? AND state = 'PENDING'`,
+      );
+      const release = this.db.prepare(
+        `UPDATE platform_execution
+         SET state = CASE
+               WHEN state IN (
+                 'WAITING_FOR_INTERACTION', 'WAITING_TO_RESUME'
+               ) THEN state
+               ELSE 'QUEUED'
+             END,
+             resume_session_id = COALESCE(session_id, resume_session_id),
+             lease_token_hash = NULL, lease_expires_at = NULL
+         WHERE id = ?`,
+      );
+      const cancelled = this.db.prepare(
+        `UPDATE platform_execution
+         SET state = 'CANCELLED', outcome_json = ?, finished_at = ?,
+             lease_token_hash = NULL, lease_expires_at = NULL
+         WHERE id = ?`,
+      );
+      const completed: Execution[] = [];
+      for (const row of expired) {
+        if (row.cancellation_requested === 1) {
+          const outcome: ExecutionOutcome = {
+            kind: 'CANCELLED',
+            reason: '取消中的 Execution 因 Agent 失联而终止',
+          };
+          invalidate.run(now, row.id);
+          cancelled.run(JSON.stringify(outcome), now, row.id);
+          const execution = this.get(row.id);
+          this.hooks.applyTerminal(execution);
+          completed.push(execution);
+          continue;
+        }
+        release.run(row.id);
+      }
+      return completed;
+    })();
+    for (const execution of terminal) this.hooks.afterTerminal(execution);
   }
 
   private requireLeasedExecution(
@@ -701,10 +928,8 @@ export class ExecutionService {
       !row.lease_expires_at
     )
       throw new PlatformError('LEASE_EXPIRED', 'Execution Lease 已失效');
-    if (Date.parse(row.lease_expires_at) <= this.now().getTime()) {
-      this.expireLeases();
+    if (Date.parse(row.lease_expires_at) <= this.now().getTime())
       throw new PlatformError('LEASE_EXPIRED', 'Execution Lease 已失效');
-    }
   }
 
   private getRow(executionId: string): ExecutionRow {
@@ -752,6 +977,9 @@ export class ExecutionService {
       renderedPrompt: current.rendered_prompt,
       renderedPromptHash: current.rendered_prompt_hash,
       outputJsonSchema: JSON.parse(current.output_json_schema),
+      workspace: current.workspace_json
+        ? JSON.parse(current.workspace_json)
+        : null,
       attachments,
       resumeSessionId: current.resume_session_id,
       sessionId: current.session_id,

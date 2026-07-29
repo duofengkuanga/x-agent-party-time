@@ -78,4 +78,98 @@ describe('Codex Interaction 安全投影', () => {
       scope: 'session',
     });
   });
+
+  test('只恢复用户实际选中的权限子集', () => {
+    expect(
+      restorePrivateInteractionResolution(
+        'item/permissions/requestApproval',
+        {
+          permissions: {
+            network: {
+              hosts: ['registry.npmjs.org'],
+            },
+          },
+          scope: 'turn',
+        },
+        {
+          permissions: {
+            fileSystem: {
+              root: '/Users/example/private-repository',
+              mode: 'write',
+            },
+            network: {
+              hosts: ['registry.npmjs.org', 'api.example.com'],
+            },
+          },
+        },
+      ),
+    ).toEqual({
+      permissions: {
+        network: {
+          hosts: ['registry.npmjs.org'],
+        },
+      },
+      scope: 'turn',
+    });
+
+    expect(
+      restorePrivateInteractionResolution(
+        'item/permissions/requestApproval',
+        {
+          permissions: {
+            mounts: [{ mode: 'write' }],
+          },
+          scope: 'turn',
+        },
+        {
+          permissions: {
+            mounts: [
+              {
+                mode: 'write',
+                root: '/Users/example/private-repository',
+              },
+            ],
+          },
+        },
+      ),
+    ).toEqual({
+      permissions: {
+        mounts: [{ mode: 'write' }],
+      },
+      scope: 'turn',
+    });
+  });
+
+  test('Turn 与 Session 权限都会在 Runner 本机恢复，拒绝保持空权限', () => {
+    const privatePayload = {
+      permissions: {
+        fileSystem: {
+          root: '/Users/example/private-repository',
+          mode: 'write',
+        },
+      },
+    };
+    expect(
+      restorePrivateInteractionResolution(
+        'item/permissions/requestApproval',
+        {
+          permissions: {
+            fileSystem: { root: '本机路径已隐藏', mode: 'write' },
+          },
+          scope: 'turn',
+        },
+        privatePayload,
+      ),
+    ).toEqual({
+      permissions: privatePayload.permissions,
+      scope: 'turn',
+    });
+    expect(
+      restorePrivateInteractionResolution(
+        'item/permissions/requestApproval',
+        { permissions: {}, scope: 'turn' },
+        privatePayload,
+      ),
+    ).toEqual({ permissions: {}, scope: 'turn' });
+  });
 });

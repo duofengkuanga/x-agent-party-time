@@ -157,11 +157,8 @@ async function setup(options: { repairCreateId?: () => string } = {}) {
     undefined,
     (submissionId, revision) => events.push({ submissionId, revision }),
     {
-      requested: (bugId, priority) =>
-        repairs.createInitialExecution(bugId, priority),
+      requested: (bugId) => repairs.createInitialExecution(bugId),
       withdrawn: (bugId) => repairs.withdrawQueuedExecution(bugId),
-      reordered: (submissionId) =>
-        repairs.synchronizeQueuePriorities(submissionId),
     },
   );
   const created = bugs.createBug(users.tester.id, submission.id, {
@@ -205,7 +202,7 @@ afterEach(async () => {
 });
 
 describe('RepairService', () => {
-  test('首次请求创建绑定正确且带业务优先级的通用 Execution', async () => {
+  test('首次请求创建绑定正确且带隔离 Worktree 的通用 Execution', async () => {
     const fixture = await setup();
     const attempt = latestAttempt(fixture.database, fixture.requested.bug.id);
     const execution = fixture.executions.get(attempt.execution_id);
@@ -217,10 +214,27 @@ describe('RepairService', () => {
       bindingId: fixture.binding.id,
       priority: 0,
       promptKind: 'cooking.repair',
-      promptVersion: 1,
+      promptVersion: 2,
       resumeSessionId: null,
+      workspace: {
+        key: `bug-repair:${fixture.requested.bug.id}`,
+        isolation: 'BRANCH_WORKTREE',
+        baseRef: 'origin/feature/payment',
+        branch: `apt/repair/${fixture.requested.bug.id}`,
+      },
     });
     expect(execution.renderedPrompt).toContain('支付按钮无响应');
+    expect(
+      fixture.repairs.repairView(
+        fixture.users.developer.id,
+        fixture.requested.bug.id,
+      )?.presentation.visual,
+    ).toEqual({
+      state: 'QUEUED_FOR_ENGINEERING',
+      label: '等待工程执行通道（前方 0 项）',
+      symbol: '…',
+      aheadCount: 0,
+    });
     expect(
       await fixture.executions.claim(fixture.otherRunner.id, 1, 0),
     ).toEqual([]);
@@ -259,7 +273,7 @@ describe('RepairService', () => {
     });
   });
 
-  test('多次成功 Repair 在原 Session 追加有序候选 Commit 链', async () => {
+  test('成功 Repair 冻结候选提交且不能重新执行', async () => {
     const fixture = await setup();
     const first = await startLatest(fixture, 'repair-session');
     expect(
@@ -271,6 +285,11 @@ describe('RepairService', () => {
           result: {
             outcome: 'COMPLETED',
             summary: '已修复支付按钮',
+            changes: ['修复支付按钮事件绑定'],
+            validations: [
+              { name: '支付服务单测', status: 'PASSED', detail: '12 项通过' },
+            ],
+            warnings: [],
             commits: ['aaaaaaa', 'bbbbbbb'],
           },
         },
@@ -279,49 +298,62 @@ describe('RepairService', () => {
     expect(
       currentBug(fixture.database, fixture.requested.bug.id),
     ).toMatchObject({ stage: 'WAITING_FOR_UPDATE', version: 3 });
-
-    const continued = fixture.repairs.continueRepair(
+    const testerTimeline = fixture.repairs.repairView(
+      fixture.users.tester.id,
+      fixture.requested.bug.id,
+    )!.timeline;
+    const developerTimeline = fixture.repairs.repairView(
       fixture.users.developer.id,
       fixture.requested.bug.id,
-      {
-        mutationId: randomUUID(),
-        expectedVersion: 3,
-        content: '继续补充键盘回车提交',
+    )!.timeline;
+    expect(testerTimeline.map(({ kind }) => kind)).toEqual([
+      'BUG_REGISTERED',
+      'REPAIR_ATTEMPT',
+    ]);
+    expect(testerTimeline.at(-1)).toMatchObject({
+      kind: 'REPAIR_ATTEMPT',
+      result: {
+        outcome: 'COMPLETED',
+        changes: ['修复支付按钮事件绑定'],
+        commitCount: 2,
+        commits: null,
+        rawSummary: null,
       },
-    );
-    const second = fixture.executions.get(continued.executionId);
-    expect(second).toMatchObject({
-      attempt: 2,
-      previousExecutionId: first.executionId,
-      resumeSessionId: 'repair-session',
-      priority: -1_000_000,
     });
-    expect(second.renderedPrompt).toContain('只处理以下增量信息');
-    expect(second.renderedPrompt).toContain('继续补充键盘回车提交');
-    expect(second.renderedPrompt).not.toContain('点击后没有反应');
+    expect(developerTimeline.at(-1)).toMatchObject({
+      kind: 'REPAIR_ATTEMPT',
+      result: {
+        outcome: 'COMPLETED',
+        commits: ['aaaaaaa', 'bbbbbbb'],
+        rawSummary: '已修复支付按钮',
+      },
+    });
 
-    const resumed = await startLatest(fixture, 'repair-session');
-    fixture.executions.complete(fixture.runner.id, resumed.executionId, {
-      leaseToken: resumed.leaseToken,
-      sessionId: 'repair-session',
-      outcome: {
-        kind: 'SUCCEEDED',
-        result: {
-          outcome: 'COMPLETED',
-          summary: '已补充键盘提交',
-          commits: ['ccccccc'],
+    expect(
+      fixture.repairs.repairView(
+        fixture.users.developer.id,
+        fixture.requested.bug.id,
+      )?.availableActions,
+    ).not.toContain('RETRY_REPAIR');
+    expect(() =>
+      fixture.repairs.continueRepair(
+        fixture.users.developer.id,
+        fixture.requested.bug.id,
+        {
+          mutationId: randomUUID(),
+          expectedVersion: 3,
         },
-      },
-    });
+      ),
+    ).toThrow(expect.objectContaining({ code: 'INVALID_TRANSITION' }));
     expect(
       fixture.repairs.repairView(
         fixture.users.developer.id,
         fixture.requested.bug.id,
       )?.pendingCommits,
-    ).toEqual(['aaaaaaa', 'bbbbbbb', 'ccccccc']);
+    ).toEqual(['aaaaaaa', 'bbbbbbb']);
   });
 
-  test('真实 Runner、测试 Git 仓库与 Fake Codex 完成继续修复链路', async () => {
+  test('真实 Runner、测试 Git 仓库与 Fake Codex 完成无输入重新执行链路', async () => {
     const fixture = await setup();
     const repository = join(fixture.directory, 'repair-repository');
     await initializeGitRepository(repository);
@@ -337,7 +369,7 @@ describe('RepairService', () => {
     await state.bind(fixture.binding.id, repository);
     const client = new RunnerClient(state, repairProtocolFetch(fixture));
     const outbox = new ExecutionOutbox(paths);
-    const executor = new RecordingRepairExecutor();
+    const executor = new RecordingRepairExecutor(true);
     const worker = new RunnerWorker(
       client,
       state,
@@ -346,13 +378,19 @@ describe('RepairService', () => {
       new AttachmentMaterializer(client, paths),
       1,
       quietOutput,
+      {
+        prepare: async (repositoryPath) => ({
+          kind: 'EXECUTE' as const,
+          cwd: repositoryPath,
+        }),
+      },
     );
 
     expect(await worker.cycle(0)).toBe(1);
     await worker.waitForIdle();
     expect(
       currentBug(fixture.database, fixture.requested.bug.id),
-    ).toMatchObject({ stage: 'WAITING_FOR_UPDATE', version: 3 });
+    ).toMatchObject({ stage: 'REPAIRING', version: 3 });
 
     const continued = fixture.repairs.continueRepair(
       fixture.users.developer.id,
@@ -360,7 +398,6 @@ describe('RepairService', () => {
       {
         mutationId: randomUUID(),
         expectedVersion: 3,
-        content: '继续补充键盘回车提交',
       },
     );
     expect(await worker.cycle(0)).toBe(1);
@@ -372,7 +409,7 @@ describe('RepairService', () => {
       executionId: continued.executionId,
       resumeSessionId: executor.sessionId,
     });
-    expect(executor.inputs[1]?.prompt).toContain('只处理以下增量信息');
+    expect(executor.inputs[1]?.prompt).toContain('不要求用户补充文本');
     expect(executor.inputs[1]?.prompt).not.toContain('点击后没有反应');
     expect(
       fixture.repairs.repairView(
@@ -382,21 +419,115 @@ describe('RepairService', () => {
     ).toEqual(executor.commits);
     expect(
       (await runGit(repository, ['rev-list', '--count', 'HEAD'])).trim(),
-    ).toBe('3');
+    ).toBe('2');
     expect(await outbox.list()).toEqual([]);
+  });
+
+  test('Execution 失败使用真实 code/message 且仅向工程负责人投影技术码', async () => {
+    const fixture = await setup();
+    const started = await startLatest(fixture, 'failed-session');
+    fixture.executions.complete(fixture.runner.id, started.executionId, {
+      leaseToken: started.leaseToken,
+      sessionId: started.sessionId,
+      outcome: {
+        kind: 'FAILED',
+        failure: {
+          code: 'CODEX_EXECUTION_FAILED',
+          message: '测试命令退出码为 1',
+          retryable: true,
+        },
+      },
+    });
+    const testerAttempt = fixture.repairs
+      .repairView(fixture.users.tester.id, fixture.requested.bug.id)!
+      .timeline.at(-1);
+    const developerAttempt = fixture.repairs
+      .repairView(fixture.users.developer.id, fixture.requested.bug.id)!
+      .timeline.at(-1);
+    expect(testerAttempt).toMatchObject({
+      kind: 'REPAIR_ATTEMPT',
+      result: {
+        outcome: 'FAILED',
+        failedStep: '修复执行',
+        reason: '自动修复执行未完成，工程负责人可查看详细原因。',
+        failureCode: null,
+        rawSummary: null,
+      },
+    });
+    expect(developerAttempt).toMatchObject({
+      kind: 'REPAIR_ATTEMPT',
+      result: {
+        outcome: 'FAILED',
+        reason: '测试命令退出码为 1',
+        failureCode: 'CODEX_EXECUTION_FAILED',
+        rawSummary: '测试命令退出码为 1',
+      },
+    });
+  });
+
+  test('启动失败使用更新后的 Execution 向 Repair 投影真实失败信息', async () => {
+    const fixture = await setup();
+    const claim = (await fixture.executions.claim(fixture.runner.id, 1, 0))[0]!;
+
+    const failed = fixture.executions.start(fixture.runner.id, claim.id, {
+      kind: 'START_FAILED',
+      leaseToken: claim.lease.token,
+      failure: {
+        code: 'CODEX_START_FAILED',
+        message: 'Agent 重启后原生 Codex Interaction Turn 已不可恢复',
+        retryable: true,
+      },
+    });
+
+    expect(failed).toMatchObject({
+      state: 'FAILED',
+      outcome: {
+        kind: 'FAILED',
+        failure: {
+          code: 'CODEX_START_FAILED',
+          message: 'Agent 重启后原生 Codex Interaction Turn 已不可恢复',
+        },
+      },
+    });
+    expect(
+      fixture.repairs
+        .repairView(fixture.users.developer.id, fixture.requested.bug.id)!
+        .timeline.at(-1),
+    ).toMatchObject({
+      kind: 'REPAIR_ATTEMPT',
+      result: {
+        outcome: 'FAILED',
+        reason: 'Agent 重启后原生 Codex Interaction Turn 已不可恢复',
+        failureCode: 'CODEX_START_FAILED',
+        rawSummary: 'Agent 重启后原生 Codex Interaction Turn 已不可恢复',
+      },
+    });
   });
 
   test('Schema 非法、缺失或重复 Commit 时 Execution FAILED 且 Bug 保持修复中', async () => {
     const invalidResults = [
-      { outcome: 'COMPLETED', summary: '缺少提交', commits: [] },
+      {
+        outcome: 'COMPLETED',
+        summary: '缺少提交',
+        changes: [],
+        validations: [],
+        warnings: [],
+        commits: [],
+      },
       {
         outcome: 'COMPLETED',
         summary: '重复提交',
+        changes: ['修改'],
+        validations: [],
+        warnings: [],
         commits: ['aaaaaaa', 'aaaaaaa'],
       },
       {
         outcome: 'COMPLETED',
         summary: '伪造字段',
+        changes: ['修改'],
+        validations: [],
+        warnings: [],
         commits: ['aaaaaaa'],
         pushed: true,
       },
@@ -434,11 +565,25 @@ describe('RepairService', () => {
         fixture.users.developer.id,
         fixture.requested.bug.id,
       )!;
-      expect(tester.attempts.at(-1)?.summary).toBe(
-        '修复执行未完成，可由工程负责人继续处理。',
-      );
-      expect(tester.attempts.at(-1)?.technicalFailure).toBeNull();
-      expect(developer.attempts.at(-1)?.technicalFailure).not.toBeNull();
+      const testerAttempt = tester.timeline.at(-1);
+      const developerAttempt = developer.timeline.at(-1);
+      expect(testerAttempt?.kind).toBe('REPAIR_ATTEMPT');
+      expect(developerAttempt?.kind).toBe('REPAIR_ATTEMPT');
+      if (
+        testerAttempt?.kind !== 'REPAIR_ATTEMPT' ||
+        developerAttempt?.kind !== 'REPAIR_ATTEMPT'
+      )
+        throw new Error('缺少修复时间线节点');
+      expect(testerAttempt.result).toMatchObject({
+        outcome: 'FAILED',
+        failedStep: '结构化结果校验',
+        failureCode: null,
+        rawSummary: null,
+      });
+      expect(developerAttempt.result).toMatchObject({
+        outcome: 'FAILED',
+        failureCode: 'RESULT_SCHEMA_INVALID',
+      });
     }
   });
 
@@ -464,6 +609,9 @@ describe('RepairService', () => {
           result: {
             outcome: 'COMPLETED',
             summary: '本次提交应整体回滚',
+            changes: ['修改支付按钮'],
+            validations: [],
+            warnings: [],
             commits: ['ddddddd'],
           },
         },
@@ -506,28 +654,56 @@ describe('RepairService', () => {
         },
       },
     );
-    const testerView = fixture.repairs.workspace(
+    const testerRepair = fixture.repairs.repairView(
       fixture.users.tester.id,
-      fixture.submission.id,
-    ).pendingInteractions[0]!;
-    const developerView = fixture.repairs.workspace(
+      fixture.requested.bug.id,
+    )!;
+    const developerRepair = fixture.repairs.repairView(
       fixture.users.developer.id,
-      fixture.submission.id,
-    ).pendingInteractions[0]!;
+      fixture.requested.bug.id,
+    )!;
+    const testerView = testerRepair.timeline
+      .find((node) => node.kind === 'REPAIR_ATTEMPT')!
+      .interactions.at(-1)!;
+    const developerView = developerRepair.timeline
+      .find((node) => node.kind === 'REPAIR_ATTEMPT')!
+      .interactions.at(-1)!;
     expect(testerView).toMatchObject({
-      method: null,
-      payload: null,
+      kind: 'APPROVAL',
+      request: null,
       canResolve: false,
     });
     expect(developerView).toMatchObject({
-      method: 'item/commandExecution/requestApproval',
-      payload: {
+      kind: 'APPROVAL',
+      request: {
+        type: 'COMMAND',
         command: 'cat 本机路径已隐藏',
-        reason: '验证修复',
+        purpose: '验证修复',
       },
       canResolve: true,
     });
+    expect(testerRepair.presentation.visual).toEqual({
+      state: 'NEEDS_APPROVAL',
+      label: '等待工程负责人审批',
+      symbol: '!',
+    });
+    expect(developerRepair.presentation.visual).toEqual({
+      state: 'NEEDS_APPROVAL',
+      label: '需要你审批',
+      symbol: '!',
+    });
     expect(JSON.stringify(developerView)).not.toContain('/Users/example');
+    expect(() =>
+      fixture.repairs.resolveInteraction(
+        fixture.users.developer.id,
+        interaction.id,
+        {
+          mutationId: randomUUID(),
+          expectedVersion: 1,
+          resolution: { decision: 'accept' },
+        },
+      ),
+    ).toThrow(expect.objectContaining({ code: 'STALE_STATE' }));
     expect(() =>
       fixture.repairs.resolveInteraction(
         fixture.users.owner.id,
@@ -556,6 +732,27 @@ describe('RepairService', () => {
         )
         .get(interaction.id),
     ).toEqual({ state: 'RESOLVED' });
+    expect(
+      fixture.repairs
+        .repairView(fixture.users.developer.id, fixture.requested.bug.id)!
+        .timeline.find((node) => node.kind === 'REPAIR_ATTEMPT')
+        ?.interactions.at(-1),
+    ).toMatchObject({
+      state: 'RESOLVED',
+      resolution: 'ACCEPTED_FOR_SESSION',
+      canResolve: false,
+    });
+    expect(() =>
+      fixture.repairs.resolveInteraction(
+        fixture.users.developer.id,
+        interaction.id,
+        {
+          mutationId: randomUUID(),
+          expectedVersion: 3,
+          resolution: { decision: 'accept' },
+        },
+      ),
+    ).toThrow(expect.objectContaining({ code: 'STALE_STATE' }));
 
     const stoppedFixture = await setup();
     const running = await startLatest(stoppedFixture, 'stop-session');
@@ -566,7 +763,22 @@ describe('RepairService', () => {
         leaseToken: running.leaseToken,
         kind: 'USER_INPUT',
         method: 'item/tool/requestUserInput',
-        payload: { questions: [{ id: 'reason', question: '继续吗？' }] },
+        payload: {
+          questions: [
+            {
+              id: 'reason',
+              header: '继续处理',
+              question: '继续吗？',
+              options: [
+                {
+                  value: 'continue',
+                  label: '继续',
+                  description: '继续当前自动修复',
+                },
+              ],
+            },
+          ],
+        },
       },
     );
     const stopped = stoppedFixture.repairs.stopExecution(
@@ -575,23 +787,21 @@ describe('RepairService', () => {
       { mutationId: randomUUID(), expectedVersion: 2 },
     );
     expect(stopped.executionId).toBe(running.executionId);
+    expect(
+      stoppedFixture.database
+        .prepare(
+          'SELECT state FROM platform_execution_interaction WHERE id = ?',
+        )
+        .get(stoppedInteraction.id),
+    ).toEqual({ state: 'INVALIDATED' });
     expect(stoppedFixture.executions.get(running.executionId)).toMatchObject({
-      state: 'CANCEL_REQUESTED',
+      state: 'CANCELLED',
       cancellationRequested: true,
     });
     expect(
       currentBug(stoppedFixture.database, stoppedFixture.requested.bug.id)
         .stage,
     ).toBe('REPAIRING');
-    stoppedFixture.executions.complete(
-      stoppedFixture.runner.id,
-      running.executionId,
-      {
-        leaseToken: running.leaseToken,
-        sessionId: running.sessionId,
-        outcome: { kind: 'CANCELLED', reason: '用户请求停止' },
-      },
-    );
     expect(
       stoppedFixture.database
         .prepare(
@@ -611,6 +821,8 @@ class RecordingRepairExecutor implements CodexExecutor {
   readonly inputs: CodexExecutionInput[] = [];
   readonly commits: string[] = [];
 
+  constructor(private readonly failFirst = false) {}
+
   async begin(
     input: CodexExecutionInput,
     _signal: AbortSignal,
@@ -624,6 +836,15 @@ class RecordingRepairExecutor implements CodexExecutor {
 
   private async commit(input: CodexExecutionInput): Promise<JsonValue> {
     const attempt = this.inputs.length;
+    if (this.failFirst && attempt === 1)
+      return {
+        outcome: 'FAILED',
+        summary: '首次修复未完成',
+        failedStep: '定向测试',
+        reason: '仍有一项回归测试失败',
+        completedActions: ['定位失败测试'],
+        pendingActions: ['修复回归并重新验证'],
+      };
     await appendFile(
       join(input.repositoryPath, 'repair.txt'),
       `第 ${attempt} 次修复\n`,
@@ -642,6 +863,9 @@ class RecordingRepairExecutor implements CodexExecutor {
     return {
       outcome: 'COMPLETED',
       summary: `第 ${attempt} 次修复完成`,
+      changes: [`完成第 ${attempt} 次修复`],
+      validations: [{ name: 'Git 工作区检查', status: 'PASSED' }],
+      warnings: [],
       commits: [commit],
     };
   }

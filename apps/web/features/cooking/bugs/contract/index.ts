@@ -94,12 +94,6 @@ export const RequestRepairInputSchema = z.object({
 
 export const WithdrawRepairInputSchema = RequestRepairInputSchema;
 
-export const ReorderRepairQueueInputSchema = z.object({
-  mutationId: CookingMutationIdSchema,
-  expectedVersion: z.number().int().positive(),
-  bugIds: z.array(BugIdSchema).max(500),
-});
-
 export const AddBugFeedbackInputSchema = z.object({
   mutationId: CookingMutationIdSchema,
   expectedVersion: z.number().int().positive(),
@@ -158,27 +152,11 @@ export const BugViewSchema = BugSchema.omit({
   presentation: z.object({
     stageLabel: z.string().trim().min(1),
     assignmentLabel: z.string().trim().min(1),
-    queuePosition: z.number().int().nonnegative().nullable(),
   }),
-});
-
-export const RepairQueueViewSchema = z.object({
-  submissionId: SubmissionIdSchema,
-  version: z.number().int().positive(),
-  entries: z.array(
-    z.object({
-      bugId: BugIdSchema,
-      submissionItemId: SubmissionItemIdSchema,
-      position: z.number().int().nonnegative(),
-      queuedAt: z.iso.datetime(),
-    }),
-  ),
-  availableActions: z.array(z.literal('REORDER')),
 });
 
 export const BugWorkspaceProjectionSchema = z.object({
   availableActions: z.array(z.literal('CREATE_BUG')),
-  repairQueue: RepairQueueViewSchema,
   bugs: z.array(BugViewSchema),
 });
 
@@ -189,12 +167,6 @@ export const BugMutationResultSchema = z.object({
   unboundAttachmentIds: BugAttachmentIdsSchema,
 });
 
-export const RepairQueueMutationResultSchema = z.object({
-  submissionId: SubmissionIdSchema,
-  version: z.number().int().positive(),
-  revision: z.number().int().positive(),
-});
-
 export type Bug = z.infer<typeof BugSchema>;
 export type BugView = z.infer<typeof BugViewSchema>;
 export type BugFeedback = z.infer<typeof BugFeedbackSchema>;
@@ -203,14 +175,8 @@ export type UpdateBugReportInput = z.infer<typeof UpdateBugReportInputSchema>;
 export type AssignBugInput = z.infer<typeof AssignBugInputSchema>;
 export type RequestRepairInput = z.infer<typeof RequestRepairInputSchema>;
 export type WithdrawRepairInput = z.infer<typeof WithdrawRepairInputSchema>;
-export type ReorderRepairQueueInput = z.infer<
-  typeof ReorderRepairQueueInputSchema
->;
 export type AddBugFeedbackInput = z.infer<typeof AddBugFeedbackInputSchema>;
 export type BugWorkspaceProjection = z.infer<
   typeof BugWorkspaceProjectionSchema
 >;
 export type BugMutationResult = z.infer<typeof BugMutationResultSchema>;
-export type RepairQueueMutationResult = z.infer<
-  typeof RepairQueueMutationResultSchema
->;

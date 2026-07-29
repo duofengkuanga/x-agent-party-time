@@ -15,6 +15,10 @@ import {
 } from './codex-app-server';
 import { RunnerClient, RunnerProtocolError } from './client';
 import { ExecutionOutbox, type OutboxEntry } from './outbox';
+import {
+  GitExecutionWorkspaceManager,
+  type ExecutionWorkspaceManager,
+} from './execution-workspaces';
 import { RunnerStateStore } from './state';
 
 type WorkerOutput = Pick<Console, 'log' | 'error'>;
@@ -34,6 +38,7 @@ export class RunnerWorker {
     ),
     concurrency = 1,
     private readonly output: WorkerOutput = console,
+    private readonly workspaces: ExecutionWorkspaceManager = new GitExecutionWorkspaceManager(),
   ) {
     this.slots = new SlotPool(concurrency);
   }
@@ -103,8 +108,24 @@ export class RunnerWorker {
   }
 
   private async execute(execution: ClaimedExecution): Promise<void> {
-    const repositoryPath = await this.state.resolveBinding(execution.bindingId);
-    if (!repositoryPath) {
+    if (execution.cancellationRequested) {
+      await this.reportStartFailure(execution, {
+        code: 'CANCELLED_BY_REQUEST',
+        message: 'Execution 已被取消，不再启动本机任务',
+        retryable: false,
+      });
+      return;
+    }
+    if (execution.recoveredInteraction) {
+      await this.reportStartFailure(execution, {
+        code: 'CODEX_START_FAILED',
+        message: 'Agent 重启后原生 Codex Interaction Turn 已不可恢复',
+        retryable: true,
+      });
+      return;
+    }
+    const bindingPath = await this.state.resolveBinding(execution.bindingId);
+    if (!bindingPath) {
       await this.reportStartFailure(execution, {
         code: 'BINDING_NOT_FOUND',
         message: '本机未登记该 Binding',
@@ -112,8 +133,9 @@ export class RunnerWorker {
       });
       return;
     }
+    let repositoryPath = bindingPath;
     try {
-      const repository = await stat(repositoryPath);
+      const repository = await stat(bindingPath);
       if (!repository.isDirectory()) throw new Error('not-directory');
     } catch {
       await this.reportStartFailure(execution, {
@@ -123,6 +145,25 @@ export class RunnerWorker {
       });
       return;
     }
+    if (execution.workspace)
+      try {
+        const prepared = await this.workspaces.prepare(
+          bindingPath,
+          execution.workspace,
+        );
+        if (prepared.kind === 'COMPLETED') {
+          await this.completePreparedWorkspace(execution, prepared.result);
+          return;
+        }
+        repositoryPath = prepared.cwd;
+      } catch {
+        await this.reportStartFailure(execution, {
+          code: 'REPOSITORY_NOT_FOUND',
+          message: '无法准备隔离的本机 Git 工作区',
+          retryable: true,
+        });
+        return;
+      }
 
     let attachments;
     try {
@@ -243,6 +284,23 @@ export class RunnerWorker {
     });
   }
 
+  private async completePreparedWorkspace(
+    execution: ClaimedExecution,
+    result: JsonValue,
+  ): Promise<void> {
+    const sessionId = `runner-workspace:${execution.id}`;
+    await this.persistAndDeliver('START', execution.id, {
+      kind: 'STARTED',
+      leaseToken: execution.lease.token,
+      sessionId,
+    });
+    await this.persistAndDeliver('OUTCOME', execution.id, {
+      leaseToken: execution.lease.token,
+      sessionId,
+      outcome: { kind: 'SUCCEEDED', result },
+    });
+  }
+
   private async handleInteraction(
     execution: ClaimedExecution,
     interaction: CodexInteraction,
@@ -259,7 +317,7 @@ export class RunnerWorker {
     this.slots.release();
     try {
       while (true) {
-        const current = await this.client.waitInteraction(
+        const waited = await this.client.waitInteraction(
           execution.id,
           opened.id,
           execution.lease.token,
@@ -270,8 +328,9 @@ export class RunnerWorker {
           execution.lease.token,
         );
         if (renewed.cancellationRequested) throw new CancellationRequested();
-        if (current.state === 'RESOLVED') return current.resolution;
-        if (current.state === 'INVALIDATED')
+        if (waited.interaction.state === 'RESOLVED' && waited.laneAcquired)
+          return waited.interaction.resolution;
+        if (waited.interaction.state === 'INVALIDATED')
           throw new RunnerProtocolError(
             'LEASE_EXPIRED',
             'Execution Interaction 已失效',
