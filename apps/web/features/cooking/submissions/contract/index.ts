@@ -85,7 +85,6 @@ export const SubmissionSummarySchema = z.object({
 
 export const SubmissionItemViewSchema = SubmissionItemSchema.omit({
   bindingId: true,
-  targetBranch: true,
 }).extend({
   engineering: SubmissionItemSchema.shape.engineering.omit({
     repositoryUrl: true,
@@ -96,7 +95,6 @@ export const SubmissionItemViewSchema = SubmissionItemSchema.omit({
   technical: z
     .object({
       bindingId: BindingIdSchema,
-      targetBranch: TargetBranchSchema,
       repositoryUrl: RepositoryUrlSchema,
       deployment: DeploymentMethodSchema,
     })
