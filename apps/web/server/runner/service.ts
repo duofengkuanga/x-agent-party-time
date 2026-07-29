@@ -513,6 +513,43 @@ export class RunnerService {
     })();
   }
 
+  reactivateRunner(
+    ownerUserId: string,
+    runnerId: string,
+    expectedVersion: number,
+  ): Runner {
+    return this.db.transaction(() => {
+      const row = this.db
+        .prepare(
+          `SELECT id, owner_user_id, name, credential_hash, version,
+                  last_seen_at, revoked_at, created_at
+           FROM platform_runner
+           WHERE id = ? AND owner_user_id = ?`,
+        )
+        .get(runnerId, ownerUserId) as RunnerRow | undefined;
+      if (!row) throw new PlatformError('NOT_FOUND', 'Agent 不存在或无权访问');
+      if (!row.revoked_at) return mapRunner(row);
+      if (row.version !== expectedVersion)
+        throw new PlatformError('STALE_STATE', 'Agent 已更新，请刷新后重试');
+      const update = this.db
+        .prepare(
+          `UPDATE platform_runner
+           SET revoked_at = NULL, last_seen_at = NULL, version = version + 1
+           WHERE id = ? AND owner_user_id = ? AND version = ?
+             AND revoked_at IS NOT NULL`,
+        )
+        .run(runnerId, ownerUserId, expectedVersion);
+      if (update.changes !== 1)
+        throw new PlatformError('STALE_STATE', 'Agent 已更新，请刷新后重试');
+      return RunnerSchema.parse({
+        ...mapRunner(row),
+        lastSeenAt: null,
+        revokedAt: null,
+        version: row.version + 1,
+      });
+    })();
+  }
+
   private authorizationRequest(requestId: string): AuthorizationRequestRow {
     const row = this.db
       .prepare(

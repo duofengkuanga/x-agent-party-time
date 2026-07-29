@@ -256,4 +256,35 @@ describe('Runner credential and heartbeat', () => {
       expect.objectContaining({ code: 'NOT_AUTHENTICATED' }),
     );
   });
+
+  test('停用后可重新启用原 Agent、Credential 和工程绑定关系', async () => {
+    const { service, users } = await setup();
+    const paired = service.pair(
+      service.issuePairingCode(users.owner.id).code,
+      '可恢复 Agent',
+    );
+    service.heartbeat(paired.credential);
+    const revoked = service.revokeRunner(
+      users.owner.id,
+      paired.runner.id,
+      paired.runner.version,
+    );
+
+    expect(() =>
+      service.reactivateRunner(users.other.id, revoked.id, revoked.version),
+    ).toThrow(expect.objectContaining({ code: 'NOT_FOUND' }));
+
+    const reactivated = service.reactivateRunner(
+      users.owner.id,
+      revoked.id,
+      revoked.version,
+    );
+    expect(reactivated).toMatchObject({
+      id: paired.runner.id,
+      lastSeenAt: null,
+      revokedAt: null,
+      version: revoked.version + 1,
+    });
+    expect(service.heartbeat(paired.credential).id).toBe(paired.runner.id);
+  });
 });
