@@ -3,7 +3,6 @@
 import { revalidatePath } from 'next/cache';
 import { redirect, RedirectType } from 'next/navigation';
 import { requireCurrentUser } from '@/server/auth/server';
-import { publicError } from '@/server/errors';
 import {
   messageRedirectPath,
   rethrowRedirectError,
@@ -14,6 +13,7 @@ import {
   EngineeringTypeSchema,
   type DeploymentMethod,
 } from '../contract';
+import { engineeringActionError } from './action-error';
 
 export async function createEngineeringAction(
   formData: FormData,
@@ -340,7 +340,7 @@ function refreshEngineering(projectId: string, engineeringId: string): void {
 
 function redirectWithError(path: string, error: unknown): never {
   redirectReplacingHistory(
-    messageRedirectPath(path, 'error', publicError(error).message),
+    messageRedirectPath(path, 'error', engineeringActionError(error).message),
   );
 }
 

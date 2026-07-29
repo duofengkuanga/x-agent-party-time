@@ -640,12 +640,17 @@ function EngineeringCreateForm({
         <label>
           <span>稳定标识</span>
           <input
+            aria-describedby="engineering-create-identifier-format"
             autoComplete="off"
             maxLength={40}
             name="identifier"
-            placeholder="例如：web"
+            pattern="[a-z\p{Script=Han}][a-z0-9\p{Script=Han}]*(?:-[a-z0-9\p{Script=Han}]+)*"
+            placeholder="例如：大屏或 soil-dashboard"
             required
           />
+          <small id="engineering-create-identifier-format">
+            支持中文、小写字母、数字和单个连字符，需以中文或小写字母开头。
+          </small>
         </label>
         <div className="engineering-editor__setup-note field-wide">
           <span>仓库识别</span>
@@ -927,12 +932,14 @@ function EngineeringInformationManagement({
             <span>稳定标识</span>
             <input
               aria-describedby={
-                identifierLocked ? 'engineering-identifier-lock' : undefined
+                identifierLocked
+                  ? 'engineering-identifier-lock'
+                  : 'engineering-identifier-format'
               }
               defaultValue={workspace.engineering.identifier}
               maxLength={40}
               name="identifier"
-              pattern="[a-z][a-z0-9]*(?:-[a-z0-9]+)*"
+              pattern="[a-z\p{Script=Han}][a-z0-9\p{Script=Han}]*(?:-[a-z0-9\p{Script=Han}]+)*"
               readOnly={identifierLocked}
               required
             />
@@ -940,7 +947,11 @@ function EngineeringInformationManagement({
               <small id="engineering-identifier-lock">
                 已被提测引用，不可修改。
               </small>
-            ) : null}
+            ) : (
+              <small id="engineering-identifier-format">
+                支持中文、小写字母、数字和单个连字符，需以中文或小写字母开头。
+              </small>
+            )}
           </label>
           <button type="submit">保存工程信息</button>
         </form>

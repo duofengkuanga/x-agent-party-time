@@ -149,6 +149,10 @@ describe('项目与工程交互基线', () => {
   test('工程操作提交后返回各自的聚焦管理上下文', async () => {
     const actions = await readFile(engineeringActionsPath, 'utf8');
     expect(actions).toContain(
+      "import { engineeringActionError } from './action-error';",
+    );
+    expect(actions).toContain('engineeringActionError(error).message');
+    expect(actions).toContain(
       'redirectWithError(engineeringCreatePath(projectId), error)',
     );
     expect(actions).toContain('engineeringPath(projectId, engineering.id)');
