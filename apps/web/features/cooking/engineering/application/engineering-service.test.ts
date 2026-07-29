@@ -108,7 +108,7 @@ describe('EngineeringService', () => {
         mutationId: randomUUID(),
         name: '完整初始化工程',
         type: 'FRONTEND',
-        identifier: 'full-web',
+        identifier: '大屏',
         creatorMembershipMutationId: randomUUID(),
         members: [{ userId: users.member.id, mutationId: randomUUID() }],
         environments: [
@@ -129,6 +129,7 @@ describe('EngineeringService', () => {
       },
     );
     const workspace = service.getWorkspace(users.owner.id, engineering.id);
+    expect(workspace.engineering.identifier).toBe('大屏');
     expect(workspace.members.map(({ user }) => user.id).sort()).toEqual(
       [users.owner.id, users.member.id].sort(),
     );

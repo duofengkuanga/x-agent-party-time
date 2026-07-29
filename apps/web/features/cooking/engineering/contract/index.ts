@@ -14,8 +14,8 @@ export const EngineeringIdentifierSchema = z
   .min(1)
   .max(40)
   .regex(
-    /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/,
-    '工程标识只能使用小写字母、数字和连字符，并以小写字母开头',
+    /^[a-z\p{Script=Han}][a-z0-9\p{Script=Han}]*(?:-[a-z0-9\p{Script=Han}]+)*$/u,
+    '工程标识只能使用中文、小写字母、数字和连字符，并以中文或小写字母开头',
   );
 export const DeploymentMethodSchema = z.discriminatedUnion('kind', [
   z
