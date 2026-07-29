@@ -45,4 +45,18 @@ describe('缺陷看板展示', () => {
     expect(css).toContain("[data-stage='UPDATING']");
     expect(css).toContain('@media (prefers-reduced-motion: reduce)');
   });
+
+  test('等待用户和执行异常覆盖阶段呼吸色并引导查看详情', async () => {
+    const [source, css] = await Promise.all([
+      readFile(bugBoardPath, 'utf8'),
+      readFile(cookingCssPath, 'utf8'),
+    ]);
+    expect(source).toContain('data-visual-state={visual.state ?? undefined}');
+    expect(source).toContain('collab-bug-card__attention');
+    expect(css).toContain("[data-visual-state='attention']");
+    expect(css).toContain("[data-visual-state='failed']");
+    expect(css).toContain('--bug-stage-color: var(--warning)');
+    expect(css).toContain('--bug-stage-color: var(--danger)');
+    expect(css).toContain('animation: none');
+  });
 });

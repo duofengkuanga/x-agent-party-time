@@ -818,6 +818,7 @@
   --blue: #507991;
   --success: #4e7958;
   --warning: #bd7a2e;
+  --danger: #b64040;
   --shadow: 5px 5px 0 rgba(26, 27, 28, 0.18);
   background: var(--paper);
   color: var(--ink);
@@ -853,6 +854,7 @@
   --blue: #7198ab;
   --success: #739d7c;
   --warning: #d0934d;
+  --danger: #e06c67;
   --shadow: 5px 5px 0 rgba(0, 0, 0, 0.48);
   color-scheme: dark;
 }
@@ -1861,13 +1863,14 @@
   border-radius: 999px;
   display: block;
   grid-column: 1;
-  grid-row: 1 / span 2;
+  grid-row: 1 / span 3;
   min-height: 34px;
   width: 4px;
 }
 
 .collab-bug-card > small,
-.collab-bug-card > h3 {
+.collab-bug-card > h3,
+.collab-bug-card__attention {
   grid-column: 2;
 }
 
@@ -1899,6 +1902,29 @@
 
 .collab-bug-card[data-stage='DONE'] {
   --bug-stage-color: var(--success);
+}
+
+.collab-bug-card[data-visual-state='attention'] {
+  --bug-stage-color: var(--warning);
+  animation: none;
+  background: color-mix(in srgb, var(--warning) 19%, var(--panel));
+  border-color: var(--warning);
+  box-shadow: 4px 4px 0 color-mix(in srgb, var(--warning), transparent 42%);
+}
+
+.collab-bug-card[data-visual-state='failed'] {
+  --bug-stage-color: var(--danger);
+  animation: none;
+  background: color-mix(in srgb, var(--danger) 16%, var(--panel));
+  border-color: var(--danger);
+  box-shadow: 4px 4px 0 color-mix(in srgb, var(--danger), transparent 38%);
+}
+
+.collab-bug-card__attention {
+  color: var(--bug-stage-color);
+  font-size: 9px;
+  font-style: normal;
+  line-height: 1.45;
 }
 
 @keyframes collab-bug-card-breathe {

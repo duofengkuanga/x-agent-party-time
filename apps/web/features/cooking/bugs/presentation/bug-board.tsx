@@ -52,6 +52,10 @@ import {
   withdrawRepairAction,
   type BugActionResult,
 } from './actions';
+import {
+  bugCardVisualPresentation,
+  type BugCardVisualPresentation,
+} from './bug-card-visual';
 
 const STATUS_COLUMNS = [
   { status: 'WAITING_FOR_REPAIR', label: '待修复', note: '录入' },
@@ -247,6 +251,32 @@ export function BugBoard({
                     dragTransition(bug, 'REPAIRING') ||
                     bug.availableActions.includes('CANCEL'),
                   );
+                  const repairExecutionState =
+                    snapshot.repairByBug[bug.id]?.attempts.at(
+                      -1,
+                    )?.executionState;
+                  const updateBatch = [...snapshot.updateBatches]
+                    .reverse()
+                    .find((candidate) =>
+                      candidate.entries.some((entry) => entry.bugId === bug.id),
+                    );
+                  const visual = bugCardVisualPresentation({
+                    repairExecutionState,
+                    updateBatchState: updateBatch?.state,
+                    updateExecutionState:
+                      updateBatch?.attempts.at(-1)?.executionState,
+                    waitingForInteraction:
+                      snapshot.pendingInteractions.some(
+                        (interaction) => interaction.bugId === bug.id,
+                      ) ||
+                      Boolean(
+                        updateBatch &&
+                        snapshot.updateInteractions.some(
+                          (interaction) =>
+                            interaction.batchId === updateBatch.id,
+                        ),
+                      ),
+                  });
                   return (
                     <BugCard
                       bug={bug}
@@ -267,6 +297,7 @@ export function BugBoard({
                         );
                       }}
                       onOpen={() => setDrawer({ mode: 'view', bugId: bug.id })}
+                      visual={visual}
                     />
                   );
                 })}
@@ -367,6 +398,7 @@ function BugCard({
   onDragEnd,
   onDragStart,
   onOpen,
+  visual,
 }: {
   bug: BugView;
   draggable: boolean;
@@ -374,13 +406,15 @@ function BugCard({
   onDragEnd: () => void;
   onDragStart: (event: ReactDragEvent<HTMLElement>) => void;
   onOpen: () => void;
+  visual: BugCardVisualPresentation;
 }) {
   return (
     <article
-      aria-label={`${bugLabel(bug)}，${bug.presentation.stageLabel}`}
+      aria-label={`${bugLabel(bug)}，${bug.presentation.stageLabel}${visual.label ? `，${visual.label}` : ''}`}
       className={`collab-bug-card${draggable ? ' collab-bug-card--draggable' : ''}`}
       data-dragging={dragging ? 'true' : undefined}
       data-stage={bug.stage}
+      data-visual-state={visual.state ?? undefined}
       draggable={draggable}
       onClick={onOpen}
       onDragEnd={onDragEnd}
@@ -399,6 +433,9 @@ function BugCard({
         {bugLabel(bug)} · {bug.presentation.assignmentLabel}
       </small>
       <h3>{bug.report.title}</h3>
+      {visual.label ? (
+        <strong className="collab-bug-card__attention">{visual.label}</strong>
+      ) : null}
     </article>
   );
 }
