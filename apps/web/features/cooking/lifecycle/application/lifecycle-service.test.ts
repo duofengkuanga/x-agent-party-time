@@ -224,11 +224,8 @@ async function setup() {
     undefined,
     (submissionId, revision) => events.push({ submissionId, revision }),
     {
-      requested: (bugId, priority) =>
-        repairs.createInitialExecution(bugId, priority),
+      requested: (bugId) => repairs.createInitialExecution(bugId),
       withdrawn: (bugId) => repairs.withdrawQueuedExecution(bugId),
-      reordered: (submissionId) =>
-        repairs.synchronizeQueuePriorities(submissionId),
     },
   );
   return {
@@ -341,7 +338,7 @@ describe('LifecycleService', () => {
     expect(currentBug(fixture.database, localBug.id).stage).toBe('REPAIRING');
     const continued = fixture.executions.get(failed.executionId!);
     expect(continued.resumeSessionId).toBe('repair-local');
-    expect(continued.priority).toBe(-1_500_000);
+    expect(continued.priority).toBe(0);
     expect(continued.renderedPrompt).toContain('第 1 轮验证失败');
     expect(
       fixture.database
@@ -513,6 +510,15 @@ describe('LifecycleService', () => {
         )
         .get(cleanupInteraction.id),
     ).toEqual({ state: 'RESOLVED' });
+    expect(
+      await fixture.executions.waitInteraction(
+        fixture.runner.id,
+        claimedCleanup.id,
+        cleanupInteraction.id,
+        claimedCleanup.lease.token,
+        0,
+      ),
+    ).toMatchObject({ laneAcquired: true });
     fixture.executions.complete(fixture.runner.id, claimedCleanup.id, {
       leaseToken: claimedCleanup.lease.token,
       sessionId: 'cleanup-session',
@@ -725,7 +731,14 @@ async function completeClaimedRepair(
     sessionId,
     outcome: {
       kind: 'SUCCEEDED',
-      result: { outcome: 'COMPLETED', summary: '修复完成', commits },
+      result: {
+        outcome: 'COMPLETED',
+        summary: '修复完成',
+        changes: ['完成缺陷修复'],
+        validations: [{ name: '定向测试', status: 'PASSED' }],
+        warnings: [],
+        commits,
+      },
     },
   });
 }

@@ -1,12 +1,17 @@
 import { randomUUID } from 'node:crypto';
-import {
-  sanitizeExecutionInteractionPayload,
-  type Execution,
-} from '@agent-party-time/execution-contract';
+import type { Execution } from '@agent-party-time/execution-contract';
 import type { AppDatabase } from '@/server/database';
 import { PlatformError } from '@/server/errors';
 import { ExecutionService } from '@/server/execution/service';
 import { DeploymentMethodSchema } from '@/features/cooking/engineering/contract';
+import type {
+  CookingInteractionView,
+  CookingVisualPresentation,
+} from '@/features/cooking/shared/contract';
+import {
+  projectCookingInteraction,
+  type CookingInteractionRow,
+} from '@/features/cooking/shared/interaction-projection';
 import { CookingWriteStore } from '@/features/cooking/shared/write-store';
 import {
   CiCdUpdateExecutionResultSchema,
@@ -17,7 +22,6 @@ import {
   ResolveUpdateInteractionInputSchema,
   UpdateBatchCommandInputSchema,
   UpdateBatchViewSchema,
-  UpdateInteractionViewSchema,
   UpdateMutationResultSchema,
   UpdateWorkspaceProjectionSchema,
   type ContinueUpdateInput,
@@ -25,7 +29,6 @@ import {
   type ResolveUpdateInteractionInput,
   type UpdateBatchCommandInput,
   type UpdateBatchView,
-  type UpdateInteractionView,
   type UpdateMutationResult,
   type UpdateWorkspaceProjection,
 } from '../contract';
@@ -38,7 +41,6 @@ import {
 } from '../prompt';
 
 const QUIET_WINDOW_MS = 2 * 60 * 1_000;
-const UPDATE_PRIORITY = -2_000_000;
 
 type ItemSourceRow = {
   submission_id: string;
@@ -312,12 +314,17 @@ export class UpdateService {
           previousExecutionId: latest.execution_id,
           runnerId: source.runner_id,
           bindingId: source.binding_id,
-          priority: UPDATE_PRIORITY,
+          priority: 0,
           promptKind: prompt.kind,
           promptVersion: prompt.version,
           renderedPrompt: prompt.renderedPrompt,
           renderedPromptHash: prompt.renderedPromptHash,
           outputJsonSchema: prompt.outputJsonSchema,
+          workspace: {
+            key: `update-batch:${batchId}`,
+            isolation: 'DETACHED_WORKTREE',
+            baseRef: `origin/${source.target_branch}`,
+          },
           attachmentIds,
           resumeSessionId: batch.session_id,
         });
@@ -591,9 +598,12 @@ export class UpdateService {
           );
         const execution = this.executions.get(batch.active_execution_id);
         if (
-          !['CLAIMED', 'RUNNING', 'WAITING_FOR_INTERACTION'].includes(
-            execution.state,
-          )
+          ![
+            'CLAIMED',
+            'RUNNING',
+            'WAITING_FOR_INTERACTION',
+            'WAITING_TO_RESUME',
+          ].includes(execution.state)
         )
           throw new PlatformError(
             'INVALID_TRANSITION',
@@ -848,7 +858,6 @@ export class UpdateService {
     return UpdateWorkspaceProjectionSchema.parse({
       pendingDeliveries,
       updateBatches: batchIds.map((id) => this.batchView(userId, id)),
-      updateInteractions: this.interactions(userId, submissionId),
     });
   }
 
@@ -866,6 +875,10 @@ export class UpdateService {
     const deployment = DeploymentMethodSchema.parse(
       JSON.parse(batch.deployment_json),
     );
+    const interactions = this.interactionsForBatch(batchId).map((row) =>
+      projectCookingInteraction(row, technical),
+    );
+    const statusLabel = batchStateLabel(batch.state);
     return UpdateBatchViewSchema.parse({
       id: batch.id,
       submissionId: batch.submission_id,
@@ -904,6 +917,7 @@ export class UpdateService {
             };
           })
         : [],
+      interactions,
       externalReports: this.externalReports(batchId).map((report) => ({
         id: report.id,
         round: report.round,
@@ -930,9 +944,12 @@ export class UpdateService {
               : []),
             ...(batch.state === 'RUNNING' &&
             active &&
-            ['CLAIMED', 'RUNNING', 'WAITING_FOR_INTERACTION'].includes(
-              active.state,
-            )
+            [
+              'CLAIMED',
+              'RUNNING',
+              'WAITING_FOR_INTERACTION',
+              'WAITING_TO_RESUME',
+            ].includes(active.state)
               ? (['STOP_EXECUTION'] as const)
               : []),
             ...(batch.state === 'WAITING_EXTERNAL' &&
@@ -941,56 +958,32 @@ export class UpdateService {
               : []),
           ]
         : [],
-      presentation: { statusLabel: batchStateLabel(batch.state) },
+      presentation: {
+        statusLabel,
+        visual: updateVisual(
+          batch,
+          latest,
+          interactions,
+          technical,
+          statusLabel,
+          latest ? this.executions.queueStatus(latest.execution_id) : undefined,
+        ),
+      },
     });
   }
 
-  interactions(userId: string, submissionId: string): UpdateInteractionView[] {
-    this.requireSubmissionAccess(userId, submissionId);
-    const rows = this.db
+  private interactionsForBatch(batchId: string): CookingInteractionRow[] {
+    return this.db
       .prepare(
-        `SELECT interaction.*, batch.id batch_id, batch.submission_item_id,
-                item.responsible_user_id
+        `SELECT interaction.*
          FROM platform_execution_interaction interaction
          JOIN cooking_update_attempt attempt
            ON attempt.execution_id = interaction.execution_id
-         JOIN cooking_update_batch batch ON batch.id = attempt.batch_id
-         JOIN cooking_submission_item item ON item.id = batch.submission_item_id
-         WHERE batch.submission_id = ? AND interaction.state = 'PENDING'
+         WHERE attempt.batch_id = ?
+           AND interaction.state IN ('PENDING', 'RESOLVED')
          ORDER BY interaction.created_at, interaction.id`,
       )
-      .all(submissionId) as Array<{
-      id: string;
-      execution_id: string;
-      batch_id: string;
-      submission_item_id: string;
-      responsible_user_id: string;
-      kind: 'APPROVAL' | 'USER_INPUT';
-      state: 'PENDING';
-      method: string;
-      payload_json: string;
-      created_at: string;
-    }>;
-    return rows.map((row) => {
-      const responsible = row.responsible_user_id === userId;
-      return UpdateInteractionViewSchema.parse({
-        id: row.id,
-        executionId: row.execution_id,
-        batchId: row.batch_id,
-        submissionItemId: row.submission_item_id,
-        kind: row.kind,
-        state: row.state,
-        method: responsible ? row.method : null,
-        payload: responsible
-          ? sanitizeExecutionInteractionPayload(
-              row.method,
-              JSON.parse(row.payload_json),
-            )
-          : null,
-        canResolve: responsible,
-        createdAt: row.created_at,
-      });
-    });
+      .all(batchId) as CookingInteractionRow[];
   }
 
   requireExternalAttachmentAccess(userId: string, fileId: string): void {
@@ -1101,12 +1094,17 @@ export class UpdateService {
       previousExecutionId: null,
       runnerId: source.runner_id,
       bindingId: source.binding_id,
-      priority: UPDATE_PRIORITY,
+      priority: 0,
       promptKind: prompt.kind,
       promptVersion: prompt.version,
       renderedPrompt: prompt.renderedPrompt,
       renderedPromptHash: prompt.renderedPromptHash,
       outputJsonSchema: prompt.outputJsonSchema,
+      workspace: {
+        key: promptInput.workspaceKey,
+        isolation: 'DETACHED_WORKTREE',
+        baseRef: `origin/${source.target_branch}`,
+      },
       attachmentIds: [],
       resumeSessionId: null,
     });
@@ -1628,6 +1626,73 @@ function batchStateLabel(state: BatchRow['state']): string {
     COMPLETED: '统一更新已完成',
     CANCELLED: '更新批次已取消',
   }[state];
+}
+
+function updateVisual(
+  batch: BatchRow,
+  latest: AttemptRow | undefined,
+  interactions: CookingInteractionView[],
+  responsible: boolean,
+  idleLabel: string,
+  queue: { state: Execution['state']; aheadCount: number } | undefined,
+): CookingVisualPresentation {
+  const pending = interactions.filter(
+    (interaction) => interaction.state === 'PENDING',
+  );
+  if (pending.length > 1)
+    throw new PlatformError(
+      'INTERNAL_ERROR',
+      '同一 Update Attempt 存在多个待处理 Interaction',
+    );
+  const interaction = pending[0];
+  if (interaction) {
+    if (!latest || latest.state !== 'WAITING_FOR_INTERACTION')
+      throw new PlatformError(
+        'INTERNAL_ERROR',
+        'Update Interaction 与 Execution state 不一致',
+      );
+    return interaction.kind === 'APPROVAL'
+      ? {
+          state: 'NEEDS_APPROVAL',
+          label: responsible ? '需要你审批' : '等待工程负责人审批',
+          symbol: '!',
+        }
+      : {
+          state: 'NEEDS_INPUT',
+          label: responsible ? '需要你回答' : '等待工程负责人回答',
+          symbol: '?',
+        };
+  }
+  if (latest?.state === 'WAITING_FOR_INTERACTION')
+    throw new PlatformError(
+      'INTERNAL_ERROR',
+      '等待 Interaction 的 Update Execution 缺少待处理记录',
+    );
+  if (batch.state === 'FAILED' || latest?.state === 'FAILED')
+    return { state: 'FAILED', label: '统一更新未完成', symbol: '×' };
+  if (batch.state === 'READY' || latest?.state === 'QUEUED')
+    return {
+      state: 'QUEUED_FOR_ENGINEERING',
+      label: `等待工程执行通道（前方 ${queue?.aheadCount ?? 0} 项）`,
+      symbol: '…',
+      aheadCount: queue?.aheadCount ?? 0,
+    };
+  if (latest?.state === 'WAITING_TO_RESUME')
+    return { state: 'WAITING_TO_RESUME', label: '等待继续', symbol: 'Ⅱ' };
+  if (latest && ['CLAIMED', 'RUNNING'].includes(latest.state))
+    return { state: 'RUNNING', label: '正在自动处理', symbol: '●' };
+  if (
+    batch.state === 'WAITING_EXTERNAL' ||
+    batch.state === 'CANCELLED' ||
+    (latest && ['CANCEL_REQUESTED', 'CANCELLED'].includes(latest.state))
+  )
+    return {
+      state: 'WAITING_TO_RESUME',
+      label:
+        batch.state === 'WAITING_EXTERNAL' ? '等待部署结果' : '等待重新处理',
+      symbol: 'Ⅱ',
+    };
+  return { state: 'IDLE', label: idleLabel, symbol: '·' };
 }
 
 function staleBatch(): PlatformError {

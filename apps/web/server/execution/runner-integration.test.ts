@@ -31,6 +31,7 @@ import type {
 } from '../../../../packages/runner/src/codex-app-server';
 import { RunnerClient } from '../../../../packages/runner/src/client';
 import { ExecutionOutbox } from '../../../../packages/runner/src/outbox';
+import type { ExecutionWorkspaceManager } from '../../../../packages/runner/src/execution-workspaces';
 import {
   RunnerStateStore,
   runnerLocalPaths,
@@ -180,28 +181,42 @@ describe('generic Runner worker', () => {
     expect(fixture.executions.get(execution.id).state).toBe('SUCCEEDED');
   });
 
-  test('等待 Interaction 释放本机 Slot，同时 Server 保留原 Binding', async () => {
+  test('同 Binding 等待 Interaction 释放工程通道，处理后等待当前任务结束再恢复', async () => {
     const fixture = await setup();
-    const firstBinding = bindingId(3);
-    const secondBinding = bindingId(4);
-    await fixture.state.bind(firstBinding, fixture.repository);
-    await fixture.state.bind(secondBinding, fixture.repository);
+    const sharedBinding = bindingId(3);
+    await fixture.state.bind(sharedBinding, fixture.repository);
     const first = fixture.executions.enqueue(
-      input(fixture.paired.runner.id, firstBinding, 'interaction'),
+      input(fixture.paired.runner.id, sharedBinding, 'interaction'),
     );
     await Bun.sleep(2);
     const second = fixture.executions.enqueue(
-      input(fixture.paired.runner.id, secondBinding, 'parallel'),
+      input(fixture.paired.runner.id, sharedBinding, 'parallel'),
     );
     let openedInteraction: string | undefined;
+    let secondStarted = false;
+    let releaseSecond!: () => void;
+    const secondGate = new Promise<void>((resolve) => {
+      releaseSecond = resolve;
+    });
     const executor = new FakeCodexExecutor(async (codexInput) => {
       if (codexInput.prompt.includes('interaction')) {
         const resolution = await codexInput.onInteraction({
           method: 'item/tool/requestUserInput',
-          payload: { question: '继续吗？' },
+          payload: {
+            questions: [
+              {
+                id: 'continue',
+                header: '继续处理',
+                question: '继续吗？',
+                options: [],
+              },
+            ],
+          },
         });
         return { resolution };
       }
+      secondStarted = true;
+      await secondGate;
       return { parallel: true };
     });
     const originalOpen = fixture.client.openInteraction.bind(fixture.client);
@@ -218,16 +233,199 @@ describe('generic Runner worker', () => {
       'WAITING_FOR_INTERACTION',
     );
     expect(await worker.cycle(0)).toBe(1);
+    await waitUntil(() => secondStarted);
+    fixture.executions.resolveInteraction(openedInteraction!, {
+      answers: { continue: { answers: ['继续'] } },
+    });
+    await waitUntil(
+      () => fixture.executions.get(first.id).state === 'WAITING_TO_RESUME',
+    );
+    expect(fixture.executions.get(second.id).state).toBe('RUNNING');
+    releaseSecond();
     await waitUntil(
       () => fixture.executions.get(second.id).state === 'SUCCEEDED',
     );
-    fixture.executions.resolveInteraction(openedInteraction!, {
-      answer: '继续',
-    });
     await worker.waitForIdle();
 
     expect(fixture.executions.get(first.id).state).toBe('SUCCEEDED');
     expect(fixture.executions.get(second.id).state).toBe('SUCCEEDED');
+  });
+
+  test('Runner 内部完成 Worktree Cleanup，不在主绑定仓库启动 Codex', async () => {
+    const fixture = await setup();
+    const binding = bindingId(4);
+    await fixture.state.bind(binding, fixture.repository);
+    const execution = fixture.executions.enqueue({
+      ...input(fixture.paired.runner.id, binding, 'cleanup'),
+      workspace: {
+        key: 'cleanup:fixture',
+        isolation: 'CLEANUP_WORKTREES',
+        workspaceKeys: ['bug-repair:fixture'],
+        completionResult: {
+          outcome: 'COMPLETED',
+          summary: '本机临时工作区已安全清理。',
+        },
+      },
+    });
+    let executorCalls = 0;
+    const worker = workerFor(
+      fixture,
+      new FakeCodexExecutor(async () => {
+        executorCalls += 1;
+        return { unexpected: true };
+      }),
+      {
+        prepare: async () => ({
+          kind: 'COMPLETED',
+          result: {
+            outcome: 'COMPLETED',
+            summary: '本机临时工作区已安全清理。',
+          },
+        }),
+      },
+    );
+
+    expect(await worker.cycle(0)).toBe(1);
+    await worker.waitForIdle();
+
+    expect(executorCalls).toBe(0);
+    expect(fixture.executions.get(execution.id)).toMatchObject({
+      state: 'SUCCEEDED',
+      sessionId: `runner-workspace:${execution.id}`,
+      outcome: {
+        kind: 'SUCCEEDED',
+        result: {
+          outcome: 'COMPLETED',
+          summary: '本机临时工作区已安全清理。',
+        },
+      },
+    });
+  });
+
+  test('Agent 重启后不以新 Prompt 模拟恢复已中断的原生 Interaction', async () => {
+    const fixture = await setup();
+    const binding = bindingId(5);
+    const execution = fixture.executions.enqueue(
+      input(fixture.paired.runner.id, binding, 'orphaned-interaction'),
+    );
+    const firstClaim = (
+      await fixture.executions.claim(fixture.paired.runner.id, 1, 0)
+    )[0]!;
+    fixture.executions.start(fixture.paired.runner.id, execution.id, {
+      kind: 'STARTED',
+      leaseToken: firstClaim.lease.token,
+      sessionId: 'interrupted-native-turn',
+    });
+    const interaction = fixture.executions.openInteraction(
+      fixture.paired.runner.id,
+      execution.id,
+      {
+        leaseToken: firstClaim.lease.token,
+        kind: 'APPROVAL',
+        method: 'item/commandExecution/requestApproval',
+        payload: { command: 'bun test' },
+      },
+    );
+    fixture.database
+      .prepare(
+        `UPDATE platform_execution
+         SET lease_expires_at = '2000-01-01T00:00:00.000Z'
+         WHERE id = ?`,
+      )
+      .run(execution.id);
+    fixture.executions.activityForRunner(fixture.paired.runner.id);
+    fixture.executions.resolveInteraction(interaction.id, {
+      decision: 'accept',
+    });
+
+    let executorCalls = 0;
+    const worker = workerFor(
+      fixture,
+      new FakeCodexExecutor(async () => {
+        executorCalls += 1;
+        return { unexpected: true };
+      }),
+    );
+    expect(await worker.cycle(0)).toBe(1);
+    await worker.waitForIdle();
+
+    expect(executorCalls).toBe(0);
+    expect(fixture.executions.get(execution.id)).toMatchObject({
+      state: 'FAILED',
+      outcome: {
+        kind: 'FAILED',
+        failure: {
+          code: 'CODEX_START_FAILED',
+          retryable: true,
+        },
+      },
+    });
+  });
+
+  test('防御性 cancelled claim 不准备工作区、物化附件或启动 Codex', async () => {
+    const fixture = await setup();
+    const binding = bindingId(6);
+    const execution = fixture.executions.enqueue({
+      ...input(fixture.paired.runner.id, binding, 'defensive-cancel'),
+      workspace: {
+        key: 'bug-repair:defensive-cancel',
+        isolation: 'BRANCH_WORKTREE',
+        baseRef: 'origin/main',
+        branch: 'apt/repair/defensive-cancel',
+      },
+    });
+    const originalClaim = fixture.client.claimExecutions.bind(fixture.client);
+    fixture.client.claimExecutions = async (...args) =>
+      (await originalClaim(...args)).map((claimed) => ({
+        ...claimed,
+        cancellationRequested: true,
+      }));
+    let workspaceCalls = 0;
+    let materializerCalls = 0;
+    let executorCalls = 0;
+    const materializer = new AttachmentMaterializer(
+      fixture.client,
+      fixture.paths,
+    );
+    materializer.materialize = async () => {
+      materializerCalls += 1;
+      return [];
+    };
+    const worker = new RunnerWorker(
+      fixture.client,
+      fixture.state,
+      fixture.outbox,
+      new FakeCodexExecutor(async () => {
+        executorCalls += 1;
+        return { unexpected: true };
+      }),
+      materializer,
+      1,
+      quietOutput,
+      {
+        prepare: async () => {
+          workspaceCalls += 1;
+          throw new Error('不应准备工作区');
+        },
+      },
+    );
+
+    expect(await worker.cycle(0)).toBe(1);
+    await worker.waitForIdle();
+
+    expect(workspaceCalls).toBe(0);
+    expect(materializerCalls).toBe(0);
+    expect(executorCalls).toBe(0);
+    expect(fixture.executions.get(execution.id)).toMatchObject({
+      state: 'FAILED',
+      outcome: {
+        kind: 'FAILED',
+        failure: {
+          code: 'CANCELLED_BY_REQUEST',
+          retryable: false,
+        },
+      },
+    });
   });
 });
 
@@ -250,6 +448,7 @@ class FakeCodexExecutor implements CodexExecutor {
 function workerFor(
   fixture: Awaited<ReturnType<typeof setup>>,
   executor: CodexExecutor,
+  workspaces?: ExecutionWorkspaceManager,
 ): RunnerWorker {
   return new RunnerWorker(
     fixture.client,
@@ -259,6 +458,7 @@ function workerFor(
     new AttachmentMaterializer(fixture.client, fixture.paths),
     1,
     quietOutput,
+    workspaces,
   );
 }
 

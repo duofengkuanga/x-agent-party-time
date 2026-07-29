@@ -34,9 +34,6 @@ import {
   buildInitialCleanupPrompt,
 } from '../prompt';
 
-const VERIFICATION_REPAIR_PRIORITY = -1_500_000;
-const CLEANUP_PRIORITY = 1_000_000;
-
 type BugSourceRow = {
   id: string;
   submission_id: string;
@@ -305,41 +302,18 @@ export class LifecycleService {
           )
           .run(now, bugId, input.expectedVersion, source.stage);
         if (update.changes !== 1) throw staleLifecycle('缺陷');
-        this.db
-          .prepare('DELETE FROM cooking_repair_queue_entry WHERE bug_id = ?')
-          .run(bugId);
         this.hooks.bugCancelled(bugId);
-        const workspaceKey = this.db
-          .prepare(
-            `SELECT workspace_key FROM cooking_bug_repair_context WHERE bug_id = ?`,
-          )
-          .get(bugId) as { workspace_key: string } | undefined;
-        const cleanup =
-          workspaceKey && source.submission_item_id
-            ? this.createCleanup({
-                reason: 'BUG_CANCELLED',
-                subjectId: bugId,
-                submissionId: source.submission_id,
-                submissionItemId: source.submission_item_id,
-                workspaceKeys: [workspaceKey.workspace_key],
-                now,
-              })
-            : null;
         const revision = this.bumpRevision(source.submission_id, now);
         return {
           result: {
             bugId,
             bugVersion: input.expectedVersion + 1,
-            executionId: cleanup?.executionId ?? null,
-            cleanupId: cleanup?.cleanupId ?? null,
+            executionId: null,
+            cleanupId: null,
             revision,
           },
           resourceId: bugId,
-          audits: [
-            this.audit(source, 'BUG_CANCELLED', {
-              cleanupId: cleanup?.cleanupId ?? null,
-            }),
-          ],
+          audits: [this.audit(source, 'BUG_CANCELLED', { cleanupId: null })],
         };
       },
     });
@@ -490,12 +464,21 @@ export class LifecycleService {
           previousExecutionId: latest.execution_id,
           runnerId: cleanup.runner_id,
           bindingId: cleanup.binding_id,
-          priority: CLEANUP_PRIORITY,
+          priority: 0,
           promptKind: prompt.kind,
           promptVersion: prompt.version,
           renderedPrompt: prompt.renderedPrompt,
           renderedPromptHash: prompt.renderedPromptHash,
           outputJsonSchema: prompt.outputJsonSchema,
+          workspace: {
+            key: `cleanup:${cleanup.id}`,
+            isolation: 'CLEANUP_WORKTREES',
+            workspaceKeys: parseWorkspaceKeys(cleanup.scope_json),
+            completionResult: {
+              outcome: 'COMPLETED',
+              summary: '本机临时工作区已安全清理。',
+            },
+          },
           attachmentIds: [],
           resumeSessionId: cleanup.session_id,
         });
@@ -837,7 +820,6 @@ export class LifecycleService {
     const executionId = this.repairs.createContinuationExecution(
       source.id,
       `测试负责人第 ${round} 轮验证失败：${feedback.trim()}`,
-      VERIFICATION_REPAIR_PRIORITY,
       attachmentIds,
     );
     return {
@@ -888,12 +870,21 @@ export class LifecycleService {
       previousExecutionId: null,
       runnerId: source.runner_id,
       bindingId: source.binding_id,
-      priority: CLEANUP_PRIORITY,
+      priority: 0,
       promptKind: prompt.kind,
       promptVersion: prompt.version,
       renderedPrompt: prompt.renderedPrompt,
       renderedPromptHash: prompt.renderedPromptHash,
       outputJsonSchema: prompt.outputJsonSchema,
+      workspace: {
+        key: `cleanup:${cleanupId}`,
+        isolation: 'CLEANUP_WORKTREES',
+        workspaceKeys: [...new Set(input.workspaceKeys)],
+        completionResult: {
+          outcome: 'COMPLETED',
+          summary: '本机临时工作区已安全清理。',
+        },
+      },
       attachmentIds: [],
       resumeSessionId: null,
     });
@@ -1286,7 +1277,8 @@ export class LifecycleService {
         `SELECT 1 active
          FROM platform_execution execution
          WHERE execution.state IN (
-           'QUEUED', 'CLAIMED', 'RUNNING', 'WAITING_FOR_INTERACTION', 'CANCEL_REQUESTED'
+           'QUEUED', 'CLAIMED', 'RUNNING', 'WAITING_FOR_INTERACTION',
+           'WAITING_TO_RESUME', 'CANCEL_REQUESTED'
          ) AND (
            execution.id IN (
              SELECT attempt.execution_id FROM cooking_repair_attempt attempt
@@ -1473,6 +1465,20 @@ function isCleanupExecution(execution: Execution): boolean {
 
 function isTerminal(state: Execution['state']): boolean {
   return state === 'SUCCEEDED' || state === 'FAILED' || state === 'CANCELLED';
+}
+
+function parseWorkspaceKeys(value: string): string[] {
+  const parsed: unknown = JSON.parse(value);
+  if (
+    !Array.isArray(parsed) ||
+    parsed.length === 0 ||
+    parsed.some((item) => typeof item !== 'string' || !item.trim())
+  )
+    throw new PlatformError(
+      'INVALID_TRANSITION',
+      '清理任务缺少有效的逻辑工作区范围',
+    );
+  return [...new Set(parsed)];
 }
 
 function interpretCleanup(execution: Execution): {

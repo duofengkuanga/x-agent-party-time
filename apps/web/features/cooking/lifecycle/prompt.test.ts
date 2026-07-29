@@ -32,7 +32,8 @@ describe('Cleanup Prompt', () => {
 
   test('继续清理不重复完整业务上下文，结果拒绝伪造字段', () => {
     const prompt = buildContinuationCleanupPrompt();
-    expect(prompt.renderedPrompt).toContain('继续原 Cleanup Session');
+    expect(prompt.renderedPrompt).toContain('重试原 Cleanup 范围');
+    expect(prompt.renderedPrompt).toContain('不启动 Codex 会话');
     expect(prompt.renderedPrompt).not.toContain('提测单：');
     expect(
       CleanupExecutionResultSchema.safeParse({

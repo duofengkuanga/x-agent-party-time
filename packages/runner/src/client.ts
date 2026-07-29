@@ -17,6 +17,7 @@ import {
   type ExecutionRenewResponse,
   type ExecutionStartRequest,
   type OpenInteractionRequest,
+  type WaitInteractionResponse,
 } from '@agent-party-time/execution-contract';
 import {
   PairingCodeSchema,
@@ -242,7 +243,7 @@ export class RunnerClient {
     interactionId: string,
     leaseToken: string,
     waitMs = 5_000,
-  ): Promise<ExecutionInteraction> {
+  ): Promise<WaitInteractionResponse> {
     const body = WaitInteractionRequestSchema.parse({
       executionId,
       leaseToken,
@@ -253,7 +254,7 @@ export class RunnerClient {
         `/api/runner/interactions/${interactionId}/wait`,
         { method: 'POST', body: JSON.stringify(body) },
       ),
-    ).interaction;
+    );
   }
 
   async completeExecution(

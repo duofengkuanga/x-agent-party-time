@@ -338,12 +338,11 @@ describe('BugService', () => {
       }),
     ).toThrow(expect.objectContaining({ code: 'INVALID_TRANSITION' }));
     expect(
-      fixture.service.workspace(fixture.users.tester.id, fixture.submission.id)
-        .repairQueue.entries,
-    ).toEqual([]);
+      fixture.service.workspace(fixture.users.tester.id, fixture.submission.id),
+    ).not.toHaveProperty('repairQueue');
   });
 
-  test('全局队列跨工程插队、重排并用 Queue Version 阻止并发覆盖', async () => {
+  test('不同工程直接提交自动修复且不再暴露全局队列或人工顺序', async () => {
     const fixture = await setup();
     const first = createAssignedBug(fixture, '前端问题', fixture.items.front);
     const second = createAssignedBug(fixture, '后端问题', fixture.items.back);
@@ -357,56 +356,18 @@ describe('BugService', () => {
       second.id,
       mutation(second.version),
     );
-    const queue = fixture.service.workspace(
+    const workspace = fixture.service.workspace(
       fixture.users.developerA.id,
       fixture.submission.id,
-    ).repairQueue;
-    expect(queue.entries.map(({ bugId }) => bugId)).toEqual([
-      second.id,
-      first.id,
-    ]);
-    expect(queue.availableActions).toEqual(['REORDER']);
-    expect(
-      fixture.service.workspace(fixture.users.member.id, fixture.submission.id)
-        .repairQueue.availableActions,
-    ).toEqual([]);
-    expect(() =>
-      fixture.service.reorderQueue(
-        fixture.users.member.id,
-        fixture.submission.id,
-        {
-          mutationId: randomUUID(),
-          expectedVersion: queue.version,
-          bugIds: [first.id, second.id],
-        },
-      ),
-    ).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
-    const reordered = fixture.service.reorderQueue(
-      fixture.users.developerA.id,
-      fixture.submission.id,
-      {
-        mutationId: randomUUID(),
-        expectedVersion: queue.version,
-        bugIds: [first.id, second.id],
-      },
     );
-    expect(reordered.version).toBe(queue.version + 1);
-    expect(() =>
-      fixture.service.reorderQueue(
-        fixture.users.developerB.id,
-        fixture.submission.id,
-        {
-          mutationId: randomUUID(),
-          expectedVersion: queue.version,
-          bugIds: [second.id, first.id],
-        },
-      ),
-    ).toThrow(expect.objectContaining({ code: 'STALE_STATE' }));
-    expect(
-      fixture.service
-        .workspace(fixture.users.tester.id, fixture.submission.id)
-        .repairQueue.entries.map(({ bugId }) => bugId),
-    ).toEqual([first.id, second.id]);
+    expect(workspace).not.toHaveProperty('repairQueue');
+    expect(workspace.bugs.map(({ id, stage }) => ({ id, stage }))).toEqual([
+      { id: first.id, stage: 'REPAIRING' },
+      { id: second.id, stage: 'REPAIRING' },
+    ]);
+    expect(JSON.stringify(workspace)).not.toMatch(
+      /queuePosition|REORDER|全局修复队列/u,
+    );
     expect(firstQueued.reportLockedAt).not.toBeNull();
   });
 
@@ -443,10 +404,7 @@ describe('BugService', () => {
       fixture.submission.id,
     );
     expect(developerView.bugs[0]?.feedback).toHaveLength(1);
-    expect(developerView.bugs[0]?.availableActions).toEqual([
-      'ADD_FEEDBACK',
-      'WITHDRAW_REPAIR',
-    ]);
+    expect(developerView.bugs[0]?.availableActions).toEqual(['ADD_FEEDBACK']);
     expect(JSON.stringify(developerView)).not.toMatch(
       /binding|runner|repository|branch|commit|prompt/iu,
     );

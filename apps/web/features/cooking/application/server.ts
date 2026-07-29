@@ -91,11 +91,8 @@ export function bugService(): BugService {
     (submissionId, revision) =>
       workspaceEvents().publish({ submissionId, revision }),
     {
-      requested: (bugId, priority) =>
-        repairs.createInitialExecution(bugId, priority),
+      requested: (bugId) => repairs.createInitialExecution(bugId),
       withdrawn: (bugId) => repairs.withdrawQueuedExecution(bugId),
-      reordered: (submissionId) =>
-        repairs.synchronizeQueuePriorities(submissionId),
     },
   );
 }

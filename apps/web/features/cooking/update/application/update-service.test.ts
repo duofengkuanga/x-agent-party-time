@@ -243,11 +243,8 @@ async function setup(
     undefined,
     (submissionId, revision) => events.push({ submissionId, revision }),
     {
-      requested: (bugId, priority) =>
-        repairs.createInitialExecution(bugId, priority),
+      requested: (bugId) => repairs.createInitialExecution(bugId),
       withdrawn: (bugId) => repairs.withdrawQueuedExecution(bugId),
-      reordered: (submissionId) =>
-        repairs.synchronizeQueuePriorities(submissionId),
     },
   );
 
@@ -341,7 +338,7 @@ describe('UpdateService', () => {
     expect(pending(fixture.database, fixture.item.id)).toBeNull();
   });
 
-  test('待更新 Bug 继续 Repair 会移出并在新候选后重算静默截止', async () => {
+  test('待更新 Bug 的成功 Repair 已冻结，不能移出候选批次', async () => {
     const fixture = await setup();
     const first = fixture.createBug('保留候选');
     await completeNextRepair(fixture, 'repair-one', ['aaaaaaa']);
@@ -352,30 +349,27 @@ describe('UpdateService', () => {
       '2026-07-27T10:03:00.000Z',
     );
 
-    fixture.repairs.continueRepair(fixture.users.developer.id, second.id, {
-      mutationId: randomUUID(),
-      expectedVersion: currentBug(fixture.database, second.id).version,
-      content: '候选仍需补充处理',
-    });
+    expect(() =>
+      fixture.repairs.continueRepair(fixture.users.developer.id, second.id, {
+        mutationId: randomUUID(),
+        expectedVersion: currentBug(fixture.database, second.id).version,
+      }),
+    ).toThrow(expect.objectContaining({ code: 'INVALID_TRANSITION' }));
     expect(pending(fixture.database, fixture.item.id)).toEqual({
-      last_candidate_at: '2026-07-27T10:00:00.000Z',
-      eligible_at: '2026-07-27T10:02:00.000Z',
+      last_candidate_at: '2026-07-27T10:01:00.000Z',
+      eligible_at: '2026-07-27T10:03:00.000Z',
     });
     expect(currentBug(fixture.database, first.id).stage).toBe(
       'WAITING_FOR_UPDATE',
     );
-
-    fixture.clock.set('2026-07-27T10:01:30.000Z');
-    await completeNextRepair(fixture, 'repair-two', ['ccccccc']);
-    expect(pending(fixture.database, fixture.item.id)).toEqual({
-      last_candidate_at: '2026-07-27T10:01:30.000Z',
-      eligible_at: '2026-07-27T10:03:30.000Z',
-    });
+    expect(currentBug(fixture.database, second.id).stage).toBe(
+      'WAITING_FOR_UPDATE',
+    );
   });
 
   test('Workspace Query 会在读取前准备到期 Batch', async () => {
     const fixture = await setup();
-    fixture.createBug('Workspace 到期候选');
+    const bug = fixture.createBug('Workspace 到期候选');
     await completeNextRepair(fixture, 'repair-one', ['aaaaaaa']);
     fixture.clock.set('2026-07-27T10:02:00.000Z');
     const workspace = new CookingWorkspaceService(
@@ -387,6 +381,12 @@ describe('UpdateService', () => {
     expect(workspace.pendingDeliveries).toEqual([]);
     expect(workspace.updateBatches).toHaveLength(1);
     expect(workspace.updateBatches[0]?.state).toBe('READY');
+    expect(workspace.visualByBug[bug.id]).toEqual({
+      state: 'QUEUED_FOR_ENGINEERING',
+      label: '等待工程执行通道（前方 0 项）',
+      symbol: '…',
+      aheadCount: 0,
+    });
   });
 
   test('无权访问的 Workspace Query 不会触发到期冻结', async () => {
@@ -439,7 +439,7 @@ describe('UpdateService', () => {
       executions: Array<{ id: string; priority: number }>;
     };
     expect(body.executions).toHaveLength(1);
-    expect(body.executions[0]?.priority).toBe(-2_000_000);
+    expect(body.executions[0]?.priority).toBe(0);
     expect(latestBatch(fixture.database, fixture.item.id).state).toBe('READY');
   });
 
@@ -470,7 +470,7 @@ describe('UpdateService', () => {
     );
   });
 
-  test('立即冻结仅允许负责人，Update 优先于同 Binding 普通 Repair', async () => {
+  test('立即冻结仅允许负责人，同 Binding 普通任务按创建时间 FIFO', async () => {
     const fixture = await setup();
     const first = fixture.createBug('首个候选');
     await completeNextRepair(fixture, 'repair-one', ['aaaaaaa']);
@@ -489,7 +489,7 @@ describe('UpdateService', () => {
       await fixture.executions.claim(fixture.runner.id, 1, 0)
     )[0]!;
     expect(claimed.id).toBe(frozen.executionId);
-    expect(claimed.priority).toBe(-2_000_000);
+    expect(claimed.priority).toBe(0);
     expect(currentBug(fixture.database, first.id).stage).toBe('UPDATING');
     expect(currentBug(fixture.database, nextBug.id).stage).toBe('REPAIRING');
   });
@@ -536,7 +536,7 @@ describe('UpdateService', () => {
     expect(continuation).toMatchObject({
       previousExecutionId: failed.executionId,
       resumeSessionId: 'update-session',
-      priority: -2_000_000,
+      priority: 0,
     });
     expect(continuation.renderedPrompt).toContain('只处理以下增量信息');
     const resumed = await startExecution(
@@ -988,21 +988,34 @@ describe('UpdateService', () => {
         },
       },
     );
-    const tester = fixture.updates.workspace(
+    const testerBatch = fixture.updates.workspace(
       fixture.users.tester.id,
       fixture.submission.id,
-    ).updateInteractions[0]!;
-    const developer = fixture.updates.workspace(
+    ).updateBatches[0]!;
+    const developerBatch = fixture.updates.workspace(
       fixture.users.developer.id,
       fixture.submission.id,
-    ).updateInteractions[0]!;
-    expect(tester).toMatchObject({ payload: null, canResolve: false });
+    ).updateBatches[0]!;
+    const tester = testerBatch.interactions[0]!;
+    const developer = developerBatch.interactions[0]!;
+    expect(tester).toMatchObject({ request: null, canResolve: false });
     expect(developer).toMatchObject({
-      payload: {
+      request: {
+        type: 'COMMAND',
         command: 'git push origin main',
-        reason: '普通 Push 冻结批次',
+        purpose: '普通 Push 冻结批次',
       },
       canResolve: true,
+    });
+    expect(testerBatch.presentation.visual).toEqual({
+      state: 'NEEDS_APPROVAL',
+      label: '等待工程负责人审批',
+      symbol: '!',
+    });
+    expect(developerBatch.presentation.visual).toEqual({
+      state: 'NEEDS_APPROVAL',
+      label: '需要你审批',
+      symbol: '!',
     });
     expect(JSON.stringify(developer)).not.toContain('/Users/example');
     expect(
@@ -1016,6 +1029,17 @@ describe('UpdateService', () => {
       ).updateBatches[0]?.attempts,
     ).toHaveLength(1);
     const batch = latestBatch(fixture.database, fixture.item.id);
+    expect(() =>
+      fixture.updates.resolveInteraction(
+        fixture.users.developer.id,
+        interaction.id,
+        {
+          mutationId: randomUUID(),
+          expectedVersion: batch.version - 1,
+          resolution: { decision: 'accept' },
+        },
+      ),
+    ).toThrow(expect.objectContaining({ code: 'STALE_STATE' }));
     fixture.updates.resolveInteraction(
       fixture.users.developer.id,
       interaction.id,
@@ -1032,6 +1056,27 @@ describe('UpdateService', () => {
         )
         .get(interaction.id),
     ).toEqual({ state: 'RESOLVED' });
+    expect(
+      fixture.updates.workspace(
+        fixture.users.developer.id,
+        fixture.submission.id,
+      ).updateBatches[0]?.interactions[0],
+    ).toMatchObject({
+      state: 'RESOLVED',
+      resolution: 'ACCEPTED_FOR_SESSION',
+      canResolve: false,
+    });
+    expect(() =>
+      fixture.updates.resolveInteraction(
+        fixture.users.developer.id,
+        interaction.id,
+        {
+          mutationId: randomUUID(),
+          expectedVersion: batch.version + 1,
+          resolution: { decision: 'accept' },
+        },
+      ),
+    ).toThrow(expect.objectContaining({ code: 'STALE_STATE' }));
   });
 
   test('真实 Runner 在测试 Git 仓库按冻结顺序 Push 并执行 LOCAL_SCRIPT', async () => {
@@ -1075,6 +1120,12 @@ describe('UpdateService', () => {
       new AttachmentMaterializer(client, paths),
       1,
       quietOutput,
+      {
+        prepare: async (repositoryPath) => ({
+          kind: 'EXECUTE' as const,
+          cwd: repositoryPath,
+        }),
+      },
     );
 
     expect(await worker.cycle(0)).toBe(1);
@@ -1147,7 +1198,14 @@ async function completeNextRepair(
     sessionId,
     outcome: {
       kind: 'SUCCEEDED',
-      result: { outcome: 'COMPLETED', summary: '修复完成', commits },
+      result: {
+        outcome: 'COMPLETED',
+        summary: '修复完成',
+        changes: ['完成缺陷修复'],
+        validations: [{ name: '定向测试', status: 'PASSED' }],
+        warnings: [],
+        commits,
+      },
     },
   });
 }

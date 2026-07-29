@@ -1,23 +1,26 @@
 import { randomUUID } from 'node:crypto';
-import {
-  sanitizeExecutionInteractionPayload,
-  type Execution,
-} from '@agent-party-time/execution-contract';
+import type { Execution } from '@agent-party-time/execution-contract';
 import type { AppDatabase } from '@/server/database';
 import { PlatformError } from '@/server/errors';
 import { ExecutionService } from '@/server/execution/service';
+import {
+  projectCookingInteraction,
+  type CookingInteractionRow,
+} from '@/features/cooking/shared/interaction-projection';
+import type {
+  CookingInteractionView,
+  CookingVisualPresentation,
+} from '@/features/cooking/shared/contract';
 import { CookingWriteStore } from '@/features/cooking/shared/write-store';
 import {
   BugRepairViewSchema,
   ContinueRepairInputSchema,
   RepairExecutionResultSchema,
-  RepairInteractionViewSchema,
   RepairMutationResultSchema,
   RepairWorkspaceProjectionSchema,
   ResolveRepairInteractionInputSchema,
   StopRepairInputSchema,
   type BugRepairView,
-  type RepairInteractionView,
   type RepairMutationResult,
   type RepairWorkspaceProjection,
   type ResolveRepairInteractionInput,
@@ -66,10 +69,12 @@ type AttemptRow = {
   attempt: number;
   outcome_json: string | null;
   created_at: string;
+  started_at: string | null;
   finished_at: string | null;
   state: Execution['state'];
   session_id: string | null;
   outcome: string | null;
+  runner_name: string;
 };
 
 type ContextRow = {
@@ -108,7 +113,7 @@ export class RepairService {
     this.writes = new CookingWriteStore(db, now, createId);
   }
 
-  createInitialExecution(bugId: string, priority: number): string {
+  createInitialExecution(bugId: string): string {
     const source = this.source(bugId);
     const existingContext = this.context(bugId);
     const latest = existingContext ? this.latestAttempt(bugId) : undefined;
@@ -153,12 +158,18 @@ export class RepairService {
       previousExecutionId: latest?.execution_id ?? null,
       runnerId: source.runner_id,
       bindingId: source.binding_id,
-      priority,
+      priority: 0,
       promptKind: prompt.kind,
       promptVersion: prompt.version,
       renderedPrompt: prompt.renderedPrompt,
       renderedPromptHash: prompt.renderedPromptHash,
       outputJsonSchema: prompt.outputJsonSchema,
+      workspace: {
+        key: workspaceKey,
+        isolation: 'BRANCH_WORKTREE',
+        baseRef: `origin/${source.target_branch}`,
+        branch: `apt/repair/${bugId}`,
+      },
       attachmentIds: this.attachmentIds(bugId),
       resumeSessionId: null,
     });
@@ -169,14 +180,12 @@ export class RepairService {
          ) VALUES (?, ?, ?, ?, NULL, ?, NULL)`,
       )
       .run(attemptId, bugId, execution.id, attempt, now);
-    this.synchronizeQueuePriorities(source.submission_id);
     return execution.id;
   }
 
   createContinuationExecution(
     bugId: string,
-    content: string,
-    priority = -1_000_000,
+    lifecycleContext = '',
     attachmentIds: string[] = [],
   ): string {
     const source = this.source(bugId);
@@ -187,7 +196,7 @@ export class RepairService {
     const attempt = latest.attempt + 1;
     const attemptId = this.createId();
     const prompt = buildContinuationRepairPrompt({
-      content,
+      lifecycleContext: lifecycleContext || undefined,
       pendingCommits: parseCommits(context.pending_commits_json),
     });
     const execution = this.executions.enqueue({
@@ -196,12 +205,18 @@ export class RepairService {
       previousExecutionId: latest.execution_id,
       runnerId: source.runner_id,
       bindingId: source.binding_id,
-      priority,
+      priority: 0,
       promptKind: prompt.kind,
       promptVersion: prompt.version,
       renderedPrompt: prompt.renderedPrompt,
       renderedPromptHash: prompt.renderedPromptHash,
       outputJsonSchema: prompt.outputJsonSchema,
+      workspace: {
+        key: context.workspace_key,
+        isolation: 'BRANCH_WORKTREE',
+        baseRef: `origin/${source.target_branch}`,
+        branch: `apt/repair/${bugId}`,
+      },
       attachmentIds,
       resumeSessionId: context.session_id,
     });
@@ -234,35 +249,15 @@ export class RepairService {
         JSON.stringify({
           outcome: 'FAILED',
           summary: '修复请求在 Agent 领取前撤回。',
-          technicalFailure: execution.outcome?.kind,
+          failedStep: '等待 Agent 领取',
+          reason: '测试负责人撤回了修复请求。',
+          completedActions: [],
+          pendingActions: ['重新开始自动修复'],
+          technicalFailure: execution.outcome?.kind ?? null,
         }),
         now,
         latest.id,
       );
-  }
-
-  synchronizeQueuePriorities(submissionId: string): void {
-    const rows = this.db
-      .prepare(
-        `SELECT entry.position, attempt.execution_id, execution.state
-         FROM cooking_repair_queue_entry entry
-         JOIN cooking_repair_attempt attempt ON attempt.bug_id = entry.bug_id
-         JOIN platform_execution execution ON execution.id = attempt.execution_id
-         WHERE entry.submission_id = ?
-           AND attempt.attempt = (
-             SELECT MAX(latest.attempt) FROM cooking_repair_attempt latest
-             WHERE latest.bug_id = entry.bug_id
-           )
-         ORDER BY entry.position`,
-      )
-      .all(submissionId) as Array<{
-      position: number;
-      execution_id: string;
-      state: Execution['state'];
-    }>;
-    for (const row of rows)
-      if (row.state === 'QUEUED')
-        this.executions.setQueuedPriority(row.execution_id, row.position);
   }
 
   applyTerminalExecution(execution: Execution): void {
@@ -275,10 +270,12 @@ export class RepairService {
       .prepare(
         `SELECT attempt.id, attempt.bug_id, attempt.execution_id,
                 attempt.attempt, attempt.outcome_json, attempt.created_at,
-                attempt.finished_at, execution.state, execution.session_id,
-                execution.outcome_json outcome
+                execution.started_at, attempt.finished_at, execution.state,
+                execution.session_id, execution.outcome_json outcome,
+                runner.name runner_name
          FROM cooking_repair_attempt attempt
          JOIN platform_execution execution ON execution.id = attempt.execution_id
+         JOIN platform_runner runner ON runner.id = execution.runner_id
          WHERE attempt.execution_id = ?`,
       )
       .get(execution.id) as AttemptRow | undefined;
@@ -286,7 +283,6 @@ export class RepairService {
     const context = this.requireContext(attempt.bug_id);
     const now = this.now().toISOString();
     const interpreted = this.interpret(execution, context);
-    this.removeQueueEntry(attempt.bug_id, now);
     if (interpreted.kind === 'COMPLETED') {
       this.db
         .prepare(
@@ -321,18 +317,6 @@ export class RepairService {
         .run(execution.sessionId, now, attempt.bug_id);
       this.db
         .prepare(
-          `INSERT INTO cooking_bug_feedback(
-             id, bug_id, kind, author_user_id, content, created_at
-           ) VALUES (?, ?, 'EXECUTION_FAILURE', NULL, ?, ?)`,
-        )
-        .run(
-          this.createId(),
-          attempt.bug_id,
-          '修复执行未完成，可由工程负责人补充信息后继续。',
-          now,
-        );
-      this.db
-        .prepare(
           `UPDATE cooking_bug
            SET version = version + 1, updated_at = ?
            WHERE id = ? AND stage = 'REPAIRING'`,
@@ -364,7 +348,7 @@ export class RepairService {
     if (!isRepairExecution(execution)) return;
     const now = this.now().toISOString();
     const attempt = this.attemptForExecution(execution.id);
-    if (!attempt || !this.removeQueueEntry(attempt.bug_id, now)) return;
+    if (!attempt) return;
     this.auditForBug(
       attempt.bug_id,
       'REPAIR_ATTEMPT_STARTED',
@@ -417,33 +401,30 @@ export class RepairService {
       perform: () => {
         const source = this.requireResponsible(actorUserId, bugId);
         this.requireActiveVersion(source, input.expectedVersion);
-        if (!['REPAIRING', 'WAITING_FOR_UPDATE'].includes(source.stage))
-          throw new PlatformError('INVALID_TRANSITION', '当前缺陷不能继续修复');
-        const latest = this.latestAttempt(bugId);
-        if (!latest || !isTerminal(latest.state))
+        if (source.stage !== 'REPAIRING')
           throw new PlatformError(
             'INVALID_TRANSITION',
-            '当前修复尚未结束，不能继续创建新 Attempt',
+            '仅未完成的修复可以重新执行',
+          );
+        const latest = this.latestAttempt(bugId);
+        if (
+          !latest ||
+          !isTerminal(latest.state) ||
+          !latest.outcome_json ||
+          !isFailedAttemptOutcome(latest.outcome_json)
+        )
+          throw new PlatformError(
+            'INVALID_TRANSITION',
+            '当前没有可重新执行的失败修复',
           );
         const now = this.now().toISOString();
-        const feedbackId = this.createId();
-        this.db
-          .prepare(
-            `INSERT INTO cooking_bug_feedback(
-               id, bug_id, kind, author_user_id, content, created_at
-             ) VALUES (?, ?, 'DEVELOPER_NOTE', ?, ?, ?)`,
-          )
-          .run(feedbackId, bugId, actorUserId, input.content, now);
-        const executionId = this.createContinuationExecution(
-          bugId,
-          input.content,
-        );
+        const executionId = this.createContinuationExecution(bugId);
         const update = this.db
           .prepare(
             `UPDATE cooking_bug
              SET stage = 'REPAIRING', version = version + 1, updated_at = ?
              WHERE id = ? AND version = ?
-               AND stage IN ('REPAIRING', 'WAITING_FOR_UPDATE')`,
+               AND stage = 'REPAIRING'`,
           )
           .run(now, bugId, input.expectedVersion);
         if (update.changes !== 1) throw staleRepair();
@@ -463,7 +444,7 @@ export class RepairService {
               action: 'REPAIR_CONTINUED',
               targetType: 'BUG',
               targetId: bugId,
-              details: { executionId, feedbackId },
+              details: { executionId },
             },
           ],
         };
@@ -495,9 +476,12 @@ export class RepairService {
         const latest = this.latestAttempt(bugId);
         if (
           !latest ||
-          !['CLAIMED', 'RUNNING', 'WAITING_FOR_INTERACTION'].includes(
-            latest.state,
-          )
+          ![
+            'CLAIMED',
+            'RUNNING',
+            'WAITING_FOR_INTERACTION',
+            'WAITING_TO_RESUME',
+          ].includes(latest.state)
         )
           throw new PlatformError(
             'INVALID_TRANSITION',
@@ -600,10 +584,8 @@ export class RepairService {
     const bugIds = (
       this.db
         .prepare(
-          `SELECT context.bug_id
-           FROM cooking_bug_repair_context context
-           JOIN cooking_bug bug ON bug.id = context.bug_id
-           WHERE bug.submission_id = ? ORDER BY bug.short_id`,
+          `SELECT id bug_id FROM cooking_bug
+           WHERE submission_id = ? ORDER BY short_id`,
         )
         .all(submissionId) as Array<{ bug_id: string }>
     ).map(({ bug_id }) => bug_id);
@@ -611,7 +593,6 @@ export class RepairService {
       repairByBug: Object.fromEntries(
         bugIds.map((bugId) => [bugId, this.repairView(userId, bugId)]),
       ),
-      pendingInteractions: this.interactions(userId, submissionId),
     });
   }
 
@@ -633,109 +614,93 @@ export class RepairService {
     const source = this.source(bugId);
     this.requireSubmissionAccess(userId, source.submission_id);
     const context = this.context(bugId);
-    if (!context) return null;
     const technical = userId === source.responsible_user_id;
     const attempts = this.attempts(bugId);
     const latest = attempts.at(-1);
-    return BugRepairViewSchema.parse({
-      pendingCommits: technical
-        ? parseCommits(context.pending_commits_json)
+    const interactions = this.interactionsForBug(bugId).map((row) => ({
+      executionId: row.execution_id,
+      interaction: projectCookingInteraction(row, technical),
+    }));
+    const statusLabel = latest ? repairStateLabel(latest.state) : '等待修复';
+    const attemptNodes = attempts.map((attempt) => ({
+      id: attempt.id,
+      kind: 'REPAIR_ATTEMPT' as const,
+      executionId: attempt.execution_id,
+      attempt: attempt.attempt,
+      executionState: attempt.state,
+      agentName: attempt.runner_name,
+      queuedAt: attempt.created_at,
+      startedAt: attempt.started_at,
+      finishedAt: attempt.finished_at,
+      interactions: interactions
+        .filter(({ executionId }) => executionId === attempt.execution_id)
+        .map(({ interaction }) => interaction),
+      result: attempt.outcome_json
+        ? projectAttemptResult(attempt.outcome_json, technical)
         : null,
-      sessionAvailable: Boolean(context.session_id),
-      attempts: attempts.map((attempt) => {
-        const outcome = attempt.outcome_json
-          ? (JSON.parse(attempt.outcome_json) as {
-              outcome?: string;
-              summary?: string;
-              technicalFailure?: string;
-            })
-          : null;
-        const failed = outcome?.outcome === 'FAILED';
-        return {
-          id: attempt.id,
-          executionId: attempt.execution_id,
-          attempt: attempt.attempt,
-          executionState: attempt.state,
-          summary:
-            failed && !technical
-              ? '修复执行未完成，可由工程负责人继续处理。'
-              : (outcome?.summary ?? null),
-          technicalFailure: technical
-            ? (outcome?.technicalFailure ?? (failed ? outcome?.summary : null))
-            : null,
-          createdAt: attempt.created_at,
-          finishedAt: attempt.finished_at,
-        };
-      }),
+    }));
+    return BugRepairViewSchema.parse({
+      pendingCommits:
+        technical && context
+          ? parseCommits(context.pending_commits_json)
+          : null,
+      sessionAvailable: Boolean(context?.session_id),
+      timeline: [
+        {
+          id: `registered:${bugId}`,
+          kind: 'BUG_REGISTERED' as const,
+          occurredAt: this.bugRegisteredAt(bugId),
+        },
+        ...attemptNodes,
+      ],
       availableActions:
         technical && source.submission_status === 'ACTIVE'
           ? [
-              ...(['REPAIRING', 'WAITING_FOR_UPDATE'].includes(source.stage) &&
+              ...(source.stage === 'REPAIRING' &&
               latest &&
-              isTerminal(latest.state)
-                ? (['CONTINUE_REPAIR'] as const)
+              latest.outcome_json &&
+              isFailedAttemptOutcome(latest.outcome_json)
+                ? (['RETRY_REPAIR'] as const)
                 : []),
               ...(source.stage === 'REPAIRING' &&
               latest &&
-              ['CLAIMED', 'RUNNING', 'WAITING_FOR_INTERACTION'].includes(
-                latest.state,
-              )
+              [
+                'CLAIMED',
+                'RUNNING',
+                'WAITING_FOR_INTERACTION',
+                'WAITING_TO_RESUME',
+              ].includes(latest.state)
                 ? (['STOP_EXECUTION'] as const)
                 : []),
             ]
           : [],
       presentation: {
-        statusLabel: latest ? repairStateLabel(latest.state) : '等待修复',
+        statusLabel,
+        visual: repairVisual(
+          latest,
+          interactions.map(({ interaction }) => interaction),
+          technical,
+          statusLabel,
+          latest ? this.executions.queueStatus(latest.execution_id) : undefined,
+        ),
       },
     });
   }
 
-  interactions(userId: string, submissionId: string): RepairInteractionView[] {
-    this.requireSubmissionAccess(userId, submissionId);
-    const rows = this.db
+  private interactionsForBug(
+    bugId: string,
+  ): Array<CookingInteractionRow & { attempt: number }> {
+    return this.db
       .prepare(
-        `SELECT interaction.*, bug.id bug_id, bug.short_id,
-                item.responsible_user_id
+        `SELECT interaction.*, attempt.attempt
          FROM platform_execution_interaction interaction
          JOIN cooking_repair_attempt attempt
            ON attempt.execution_id = interaction.execution_id
-         JOIN cooking_bug bug ON bug.id = attempt.bug_id
-         JOIN cooking_submission_item item ON item.id = bug.submission_item_id
-         WHERE bug.submission_id = ? AND interaction.state = 'PENDING'
+         WHERE attempt.bug_id = ?
+           AND interaction.state IN ('PENDING', 'RESOLVED')
          ORDER BY interaction.created_at, interaction.id`,
       )
-      .all(submissionId) as Array<{
-      id: string;
-      execution_id: string;
-      bug_id: string;
-      short_id: number;
-      responsible_user_id: string;
-      kind: 'APPROVAL' | 'USER_INPUT';
-      state: 'PENDING';
-      method: string;
-      payload_json: string;
-      created_at: string;
-    }>;
-    return rows.map((row) => {
-      const responsible = row.responsible_user_id === userId;
-      return RepairInteractionViewSchema.parse({
-        id: row.id,
-        executionId: row.execution_id,
-        bugId: row.bug_id,
-        bugShortId: row.short_id,
-        kind: row.kind,
-        state: row.state,
-        method: responsible ? row.method : null,
-        payload: responsible
-          ? sanitizeExecutionInteractionPayload(
-              row.method,
-              JSON.parse(row.payload_json),
-            )
-          : null,
-        canResolve: responsible,
-        createdAt: row.created_at,
-      });
-    });
+      .all(bugId) as Array<CookingInteractionRow & { attempt: number }>;
   }
 
   private interpret(
@@ -749,7 +714,6 @@ export class RepairService {
       }
     | {
         kind: 'FAILED';
-        summary: string;
         attemptOutcome: unknown;
       } {
     if (execution.outcome?.kind === 'SUCCEEDED') {
@@ -771,34 +735,40 @@ export class RepairService {
       if (parsed.success && parsed.data.outcome === 'FAILED')
         return {
           kind: 'FAILED',
-          summary: parsed.data.summary,
           attemptOutcome: parsed.data,
         };
       this.markExecutionResultInvalid(execution.id);
       return {
         kind: 'FAILED',
-        summary: '修复执行未返回有效的候选 Commit。',
         attemptOutcome: {
           outcome: 'FAILED',
-          summary: '修复结果格式或候选 Commit 链无效',
+          summary: '修复结果格式或候选 Commit 链无效。',
+          failedStep: '结构化结果校验',
+          reason: 'Codex 返回的结构化结果不符合 Repair Contract。',
+          completedActions: [],
+          pendingActions: ['修复缺陷并返回有效的结构化结果'],
           technicalFailure: 'RESULT_SCHEMA_INVALID',
         },
       };
     }
-    const summary =
-      execution.outcome?.kind === 'CANCELLED'
-        ? '修复执行已停止，可由工程负责人继续。'
-        : '修复执行未完成，可由工程负责人补充信息后继续。';
+    const failure =
+      execution.outcome?.kind === 'FAILED' ? execution.outcome.failure : null;
+    const cancelled = execution.outcome?.kind === 'CANCELLED';
+    const cancelledReason =
+      execution.outcome?.kind === 'CANCELLED' ? execution.outcome.reason : null;
+    const summary = cancelled
+      ? '修复执行已停止。'
+      : (failure?.message ?? '修复执行未完成。');
     return {
       kind: 'FAILED',
-      summary,
       attemptOutcome: {
         outcome: 'FAILED',
         summary,
-        technicalFailure:
-          execution.outcome?.kind === 'FAILED'
-            ? execution.outcome.failure.code
-            : execution.outcome?.kind,
+        failedStep: '修复执行',
+        reason: failure?.message ?? cancelledReason ?? '未返回更具体的失败原因',
+        completedActions: [],
+        pendingActions: ['重新执行修复'],
+        technicalFailure: failure?.code ?? (cancelled ? 'CANCELLED' : null),
       },
     };
   }
@@ -867,10 +837,12 @@ export class RepairService {
       .prepare(
         `SELECT attempt.id, attempt.bug_id, attempt.execution_id,
                 attempt.attempt, attempt.outcome_json, attempt.created_at,
-                attempt.finished_at, execution.state, execution.session_id,
-                execution.outcome_json outcome
+                execution.started_at, attempt.finished_at, execution.state,
+                execution.session_id, execution.outcome_json outcome,
+                runner.name runner_name
          FROM cooking_repair_attempt attempt
          JOIN platform_execution execution ON execution.id = attempt.execution_id
+         JOIN platform_runner runner ON runner.id = execution.runner_id
          WHERE attempt.execution_id = ?`,
       )
       .get(executionId) as AttemptRow | undefined;
@@ -881,13 +853,23 @@ export class RepairService {
       .prepare(
         `SELECT attempt.id, attempt.bug_id, attempt.execution_id,
                 attempt.attempt, attempt.outcome_json, attempt.created_at,
-                attempt.finished_at, execution.state, execution.session_id,
-                execution.outcome_json outcome
+                execution.started_at, attempt.finished_at, execution.state,
+                execution.session_id, execution.outcome_json outcome,
+                runner.name runner_name
          FROM cooking_repair_attempt attempt
          JOIN platform_execution execution ON execution.id = attempt.execution_id
+         JOIN platform_runner runner ON runner.id = execution.runner_id
          WHERE attempt.bug_id = ? ORDER BY attempt.attempt`,
       )
       .all(bugId) as AttemptRow[];
+  }
+
+  private bugRegisteredAt(bugId: string): string {
+    const row = this.db
+      .prepare('SELECT created_at FROM cooking_bug WHERE id = ?')
+      .get(bugId) as { created_at: string } | undefined;
+    if (!row) throw new PlatformError('NOT_FOUND', 'Repair Bug 不存在');
+    return row.created_at;
   }
 
   private feedbackContents(bugId: string): string[] {
@@ -910,32 +892,6 @@ export class RepairService {
         )
         .all(bugId) as Array<{ file_id: string }>
     ).map(({ file_id }) => file_id);
-  }
-
-  private removeQueueEntry(bugId: string, now: string): boolean {
-    const entry = this.db
-      .prepare(
-        `SELECT submission_id, position FROM cooking_repair_queue_entry
-         WHERE bug_id = ?`,
-      )
-      .get(bugId) as { submission_id: string; position: number } | undefined;
-    if (!entry) return false;
-    this.db
-      .prepare('DELETE FROM cooking_repair_queue_entry WHERE bug_id = ?')
-      .run(bugId);
-    this.db
-      .prepare(
-        `UPDATE cooking_repair_queue_entry SET position = position - 1
-         WHERE submission_id = ? AND position > ?`,
-      )
-      .run(entry.submission_id, entry.position);
-    this.db
-      .prepare(
-        `UPDATE cooking_repair_queue
-         SET version = version + 1, updated_at = ? WHERE submission_id = ?`,
-      )
-      .run(now, entry.submission_id);
-    return true;
   }
 
   private requireSubmissionAccess(userId: string, submissionId: string): void {
@@ -1035,6 +991,113 @@ export class RepairService {
   }
 }
 
+function projectAttemptResult(outcomeJson: string, technical: boolean) {
+  const raw = JSON.parse(outcomeJson) as Record<string, unknown>;
+  const { technicalFailure: _technicalFailure, ...contractResult } = raw;
+  const parsed = RepairExecutionResultSchema.safeParse(contractResult);
+  if (!parsed.success)
+    throw new PlatformError(
+      'INTERNAL_ERROR',
+      '已存储的 Repair Attempt 结构化结果无效',
+    );
+  if (parsed.data.outcome === 'COMPLETED')
+    return {
+      outcome: parsed.data.outcome,
+      changes: parsed.data.changes,
+      validations: parsed.data.validations,
+      warnings: parsed.data.warnings,
+      commitCount: parsed.data.commits.length,
+      commits: technical ? parsed.data.commits : null,
+      rawSummary: technical ? parsed.data.summary : null,
+    };
+  return {
+    outcome: parsed.data.outcome,
+    failedStep: parsed.data.failedStep,
+    reason:
+      !technical &&
+      typeof raw.technicalFailure === 'string' &&
+      raw.technicalFailure !== 'CANCELLED'
+        ? '自动修复执行未完成，工程负责人可查看详细原因。'
+        : parsed.data.reason,
+    completedActions: parsed.data.completedActions,
+    pendingActions: parsed.data.pendingActions,
+    failureCode:
+      technical && typeof raw.technicalFailure === 'string'
+        ? raw.technicalFailure
+        : null,
+    rawSummary: technical ? parsed.data.summary : null,
+  };
+}
+
+function repairVisual(
+  latest: AttemptRow | undefined,
+  interactions: CookingInteractionView[],
+  responsible: boolean,
+  idleLabel: string,
+  queue: { state: Execution['state']; aheadCount: number } | undefined,
+): CookingVisualPresentation {
+  const pending = interactions.filter(
+    (interaction) => interaction.state === 'PENDING',
+  );
+  if (pending.length > 1)
+    throw new PlatformError(
+      'INTERNAL_ERROR',
+      '同一 Repair Attempt 存在多个待处理 Interaction',
+    );
+  const interaction = pending[0];
+  if (interaction) {
+    if (!latest || latest.state !== 'WAITING_FOR_INTERACTION')
+      throw new PlatformError(
+        'INTERNAL_ERROR',
+        'Repair Interaction 与 Execution state 不一致',
+      );
+    return interaction.kind === 'APPROVAL'
+      ? {
+          state: 'NEEDS_APPROVAL',
+          label: responsible ? '需要你审批' : '等待工程负责人审批',
+          symbol: '!',
+        }
+      : {
+          state: 'NEEDS_INPUT',
+          label: responsible ? '需要你回答' : '等待工程负责人回答',
+          symbol: '?',
+        };
+  }
+  if (latest?.state === 'WAITING_FOR_INTERACTION')
+    throw new PlatformError(
+      'INTERNAL_ERROR',
+      '等待 Interaction 的 Repair Execution 缺少待处理记录',
+    );
+  if (
+    latest?.state === 'FAILED' ||
+    (latest?.outcome_json && isFailedAttemptOutcome(latest.outcome_json))
+  )
+    return { state: 'FAILED', label: '自动修复未完成', symbol: '×' };
+  if (latest?.state === 'QUEUED')
+    return {
+      state: 'QUEUED_FOR_ENGINEERING',
+      label: `等待工程执行通道（前方 ${queue?.aheadCount ?? 0} 项）`,
+      symbol: '…',
+      aheadCount: queue?.aheadCount ?? 0,
+    };
+  if (latest?.state === 'WAITING_TO_RESUME')
+    return { state: 'WAITING_TO_RESUME', label: '等待继续', symbol: 'Ⅱ' };
+  if (latest && ['CLAIMED', 'RUNNING'].includes(latest.state))
+    return { state: 'RUNNING', label: '正在自动处理', symbol: '●' };
+  if (latest && ['CANCEL_REQUESTED', 'CANCELLED'].includes(latest.state))
+    return {
+      state: 'WAITING_TO_RESUME',
+      label: '等待重新处理',
+      symbol: 'Ⅱ',
+    };
+  return { state: 'IDLE', label: idleLabel, symbol: '·' };
+}
+
+function isFailedAttemptOutcome(outcomeJson: string): boolean {
+  const raw = JSON.parse(outcomeJson) as Record<string, unknown>;
+  return raw.outcome === 'FAILED';
+}
+
 function parseCommits(value: string): string[] {
   const parsed = JSON.parse(value);
   if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== 'string'))
@@ -1059,6 +1122,7 @@ function repairStateLabel(state: Execution['state']): string {
     CLAIMED: '正在准备修复',
     RUNNING: '正在修复',
     WAITING_FOR_INTERACTION: '等待工程负责人处理',
+    WAITING_TO_RESUME: '等待继续',
     CANCEL_REQUESTED: '正在停止',
     SUCCEEDED: '修复已完成',
     FAILED: '修复未完成',

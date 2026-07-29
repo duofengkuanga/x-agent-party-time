@@ -76,12 +76,7 @@ describe('Server SQLite schema', () => {
           )
           .all()
           .map(({ name }) => name),
-      ).toEqual([
-        'cooking_bug_repair_context',
-        'cooking_repair_attempt',
-        'cooking_repair_queue',
-        'cooking_repair_queue_entry',
-      ]);
+      ).toEqual(['cooking_bug_repair_context', 'cooking_repair_attempt']);
       expect(
         database
           .query<{ name: string }, []>(
