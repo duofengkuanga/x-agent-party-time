@@ -371,6 +371,7 @@ export class SubmissionService {
             identifier: item.engineering.identifier,
           },
           responsibleUser: item.responsibleUser,
+          targetBranch: item.targetBranch,
           environment: {
             id: item.environment.id,
             name: item.environment.name,
@@ -379,7 +380,6 @@ export class SubmissionService {
             item.responsibleUser.id === userId
               ? {
                   bindingId: item.bindingId,
-                  targetBranch: item.targetBranch,
                   repositoryUrl: item.engineering.repositoryUrl,
                   deployment: item.environment.deployment,
                 }

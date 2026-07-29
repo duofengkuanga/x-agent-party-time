@@ -835,7 +835,7 @@ function SubmissionDetails({
                 <tr key={item.id}>
                   <td>{item.engineering.name}</td>
                   <td>{item.responsibleUser.displayName}</td>
-                  <td>{item.technical?.targetBranch ?? '仅负责人可见'}</td>
+                  <td>{item.targetBranch}</td>
                   <td>
                     <span>
                       {item.environment.name}

@@ -385,7 +385,7 @@ describe('SubmissionService create', () => {
 });
 
 describe('Submission workspace', () => {
-  test('项目成员可直接读取一致快照，但只有对应负责人看到技术配置', async () => {
+  test('项目成员可见目标分支，但只有对应负责人看到技术配置', async () => {
     const fixture = await setup();
     const submission = createSubmission(fixture, [
       item(fixture, 'front', 'developerA', 'frontA', 'feature/front'),
@@ -396,17 +396,21 @@ describe('Submission workspace', () => {
       submission.id,
     );
     expect(developer.revision).toBe(1);
+    expect(developer.submission.items[0]?.targetBranch).toBe('feature/front');
     expect(developer.submission.items[0]?.technical).toEqual({
       bindingId: fixture.bindings.frontA.id,
-      targetBranch: 'feature/front',
       repositoryUrl: 'https://example.com/front.git',
       deployment: fixture.environments.front.deployment,
     });
+    expect(developer.submission.items[1]?.targetBranch).toBe('feature/back');
     expect(developer.submission.items[1]?.technical).toBeNull();
     const tester = fixture.service.getWorkspace(
       fixture.users.tester.id,
       submission.id,
     );
+    expect(
+      tester.submission.items.map(({ targetBranch }) => targetBranch),
+    ).toEqual(['feature/front', 'feature/back']);
     expect(tester.submission.items.every(({ technical }) => !technical)).toBe(
       true,
     );
