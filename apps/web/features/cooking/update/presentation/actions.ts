@@ -16,9 +16,8 @@ import { logger } from '@/server/logging';
 import { cookingFileStore } from '@/features/cooking/application/server';
 import { updateService } from '../application/server';
 import type {
-  ContinueUpdateInput,
+  RetryUpdateInput,
   ResolveUpdateInteractionInput,
-  UpdateBatchCommandInput,
   UpdateMutationResult,
 } from '../contract';
 
@@ -39,12 +38,12 @@ export async function freezeUpdateNowAction(
   );
 }
 
-export async function continueUpdateAction(
+export async function retryUpdateAction(
   batchId: string,
-  input: ContinueUpdateInput,
+  input: RetryUpdateInput,
 ): Promise<UpdateActionResult> {
   return runUpdateAction((userId) =>
-    updateService().continueUpdate(userId, batchId, input),
+    updateService().retryUpdate(userId, batchId, input),
   );
 }
 
@@ -102,24 +101,6 @@ export async function reportExternalDeploymentAction(
     );
     return updateActionError(error);
   }
-}
-
-export async function cancelUpdateBatchAction(
-  batchId: string,
-  input: UpdateBatchCommandInput,
-): Promise<UpdateActionResult> {
-  return runUpdateAction((userId) =>
-    updateService().cancelBatch(userId, batchId, input),
-  );
-}
-
-export async function stopUpdateExecutionAction(
-  batchId: string,
-  input: UpdateBatchCommandInput,
-): Promise<UpdateActionResult> {
-  return runUpdateAction((userId) =>
-    updateService().stopExecution(userId, batchId, input),
-  );
 }
 
 export async function resolveUpdateInteractionAction(

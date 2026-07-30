@@ -5421,15 +5421,15 @@
   }
 }
 
-/* Accepted Cooking garbage-bin interaction, restored on the new data flow. */
-.collab-trash-button[data-drop-target='true'] {
+/* Lifecycle storage drop targets. */
+.collab-storage-button[data-drop-target='true'] {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
   transform: translateY(-2px);
 }
 
-.collab-trash-list {
+.collab-stored-bug-list {
   display: grid;
   gap: 0.65rem;
   list-style: none;
@@ -5437,7 +5437,7 @@
   padding: 0;
 }
 
-.collab-trash-list button {
+.collab-stored-bug-list button {
   display: grid;
   gap: 0.3rem;
   padding: 0.8rem;
@@ -5445,7 +5445,7 @@
   width: 100%;
 }
 
-.collab-trash-list small {
+.collab-stored-bug-list small {
   color: var(--muted);
 }
 
@@ -5656,6 +5656,40 @@
   > li[data-node-kind='REPAIR_ATTEMPT']
   .collab-repair-timeline__mark {
   border-color: var(--accent);
+}
+
+.collab-repair-timeline
+  > li[data-node-kind='UPDATE_BATCH']
+  .collab-repair-timeline__mark {
+  border-color: var(--blue);
+}
+
+.collab-repair-timeline
+  > li[data-node-kind='VERIFICATION']
+  .collab-repair-timeline__mark {
+  border-color: var(--warning);
+}
+
+.collab-repair-timeline
+  > li[data-node-kind='REOPEN']
+  .collab-repair-timeline__mark {
+  border-color: var(--accent);
+}
+
+.collab-repair-timeline
+  > li[data-node-kind='CANCELLED']
+  .collab-repair-timeline__mark {
+  border-color: var(--danger);
+}
+
+.collab-repair-timeline
+  > li[data-node-kind='RESTORED']
+  .collab-repair-timeline__mark {
+  border-color: var(--success);
+}
+
+.collab-progress-visual {
+  justify-self: start;
 }
 
 .collab-repair-timeline article {
@@ -6575,4 +6609,74 @@
     justify-self: start;
     margin-top: 7px;
   }
+}
+
+/* 共享统一更新批次 */
+.collab-update-batch-card > p {
+  color: var(--muted);
+  font-size: 9px;
+  grid-column: 2;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.collab-update-batch-summary {
+  align-items: center;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+}
+
+.collab-update-batch-summary > div {
+  min-width: 0;
+}
+
+.collab-update-batch-summary > button {
+  flex: 0 0 auto;
+}
+
+.collab-update-batch-detail {
+  padding-bottom: 24px;
+}
+
+.collab-update-timeline .collab-structured-failure {
+  border-left: 3px solid var(--danger);
+  margin-top: 10px;
+  padding-left: 10px;
+}
+
+.collab-update-timeline .collab-structured-failure > strong {
+  color: var(--danger);
+}
+
+.collab-technical-details {
+  border-top: 1px dashed var(--line);
+  margin-top: 12px;
+  padding-top: 10px;
+}
+
+.collab-technical-details > summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.collab-technical-details > div,
+.collab-technical-details > p,
+.collab-technical-details > code {
+  margin-top: 10px;
+}
+
+.collab-bug-card > .collab-bug-card__actions {
+  display: flex;
+  gap: 6px;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+
+.collab-bug-card > .collab-bug-card__actions button {
+  min-height: 28px;
+  padding: 5px 8px;
 }

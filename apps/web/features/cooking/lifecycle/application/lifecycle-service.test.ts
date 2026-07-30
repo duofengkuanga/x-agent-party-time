@@ -16,6 +16,7 @@ import { ProjectService } from '@/features/cooking/projects/application/project-
 import { RepairService } from '@/features/cooking/repair/application/repair-service';
 import { SubmissionService } from '@/features/cooking/submissions/application/submission-service';
 import { UpdateService } from '@/features/cooking/update/application/update-service';
+import { CookingWorkspaceService } from '@/features/cooking/workspace/application/workspace-service';
 import { LifecycleService } from './lifecycle-service';
 
 const directories: string[] = [];
@@ -177,9 +178,6 @@ async function setup() {
     clock.now,
     undefined,
     (submissionId, revision) => events.push({ submissionId, revision }),
-    {
-      bugCancelled: (bugId) => updates.recalculatePendingDeliveryForBug(bugId),
-    },
   );
   let leaseIndex = 0;
   const executions = new ExecutionService(
@@ -225,7 +223,6 @@ async function setup() {
     (submissionId, revision) => events.push({ submissionId, revision }),
     {
       requested: (bugId) => repairs.createInitialExecution(bugId),
-      withdrawn: (bugId) => repairs.withdrawQueuedExecution(bugId),
     },
   );
   return {
@@ -263,6 +260,87 @@ afterEach(async () => {
 });
 
 describe('LifecycleService', () => {
+  test('Workspace 将修复、批次、验证和取消恢复投影为同一条旧到新时间线', async () => {
+    const fixture = await setup();
+    const bug = createAndRequestBug(
+      fixture,
+      fixture.items[0]!.id,
+      '统一时间线缺陷',
+    );
+    await completeNextRepair(fixture, 'timeline-repair', ['1111111']);
+    fixture.clock.set('2026-07-27T12:01:00.000Z');
+    await completeUpdate(fixture, fixture.items[0]!.id, {
+      outcome: 'COMPLETED',
+      summary: '统一更新完成',
+    });
+    fixture.clock.set('2026-07-27T12:02:00.000Z');
+    fixture.lifecycle.verifyBug(fixture.users.tester.id, bug.id, {
+      mutationId: randomUUID(),
+      expectedVersion: currentBug(fixture.database, bug.id).version,
+      result: 'FAILED',
+      feedback: '边界条件仍可复现',
+      attachmentIds: [],
+    });
+
+    const workspace = new CookingWorkspaceService(
+      fixture.submissions,
+      fixture.bugs,
+      fixture.repairs,
+      fixture.updates,
+      fixture.lifecycle,
+    ).getWorkspace(fixture.users.tester.id, fixture.submission.id);
+    expect(workspace.progressByBug[bug.id]?.map(({ kind }) => kind)).toEqual([
+      'BUG_REGISTERED',
+      'REPAIR_ATTEMPT',
+      'UPDATE_BATCH',
+      'VERIFICATION',
+      'REPAIR_ATTEMPT',
+    ]);
+    expect(
+      workspace.progressByBug[bug.id]?.find(
+        (node) => node.kind === 'VERIFICATION',
+      ),
+    ).toMatchObject({
+      result: 'FAILED',
+      comment: '边界条件仍可复现',
+      repairAttempt: 2,
+    });
+
+    fixture.clock.set('2026-07-27T12:03:00.000Z');
+    const stored = fixture.bugs.createBug(
+      fixture.users.tester.id,
+      fixture.submission.id,
+      {
+        mutationId: randomUUID(),
+        submissionItemId: fixture.items[1]!.id,
+        title: '取消恢复时间线',
+        attachmentIds: [],
+      },
+    ).bug;
+    fixture.clock.set('2026-07-27T12:04:00.000Z');
+    const cancelled = fixture.lifecycle.cancelBug(
+      fixture.users.tester.id,
+      stored.id,
+      mutation(stored.version),
+    );
+    fixture.clock.set('2026-07-27T12:05:00.000Z');
+    fixture.lifecycle.restoreBug(
+      fixture.users.tester.id,
+      stored.id,
+      mutation(cancelled.bugVersion),
+    );
+    const restoredWorkspace = new CookingWorkspaceService(
+      fixture.submissions,
+      fixture.bugs,
+      fixture.repairs,
+      fixture.updates,
+      fixture.lifecycle,
+    ).getWorkspace(fixture.users.tester.id, fixture.submission.id);
+    expect(
+      restoredWorkspace.progressByBug[stored.id]?.map(({ kind }) => kind),
+    ).toEqual(['BUG_REGISTERED', 'CANCELLED', 'RESTORED']);
+  });
+
   test('验证失败自动沿用 Repair Session，再次更新通过后关闭并异步清理', async () => {
     const fixture = await setup();
     const localBug = createAndRequestBug(
@@ -339,7 +417,7 @@ describe('LifecycleService', () => {
     const continued = fixture.executions.get(failed.executionId!);
     expect(continued.resumeSessionId).toBe('repair-local');
     expect(continued.priority).toBe(0);
-    expect(continued.renderedPrompt).toContain('第 1 轮验证失败');
+    expect(continued.renderedPrompt).toContain('第 1 轮验证未通过');
     expect(
       fixture.database
         .prepare(
@@ -348,6 +426,17 @@ describe('LifecycleService', () => {
         )
         .all(failed.executionId!),
     ).toEqual([{ file_id: evidence.id }]);
+    expect(
+      fixture.lifecycle.workspace(
+        fixture.users.tester.id,
+        fixture.submission.id,
+      ).verificationsByBug[localBug.id]?.[0],
+    ).toMatchObject({
+      result: 'FAILED',
+      comment: '仍可复现，请检查边界条件',
+      repairAttempt: 2,
+      attachments: [{ id: evidence.id }],
+    });
 
     await completeClaimedRepair(fixture, failed.executionId!, 'repair-local', [
       '3333333',
@@ -584,6 +673,98 @@ describe('LifecycleService', () => {
     );
   });
 
+  test('仅测试负责人可取消恢复与归档，且取消只允许待修复', async () => {
+    const fixture = await setup();
+    const waiting = fixture.bugs.createBug(
+      fixture.users.tester.id,
+      fixture.submission.id,
+      {
+        mutationId: randomUUID(),
+        submissionItemId: fixture.items[0]!.id,
+        title: '可取消缺陷',
+        attachmentIds: [],
+      },
+    ).bug;
+    expect(() =>
+      fixture.lifecycle.cancelBug(fixture.users.developer.id, waiting.id, {
+        mutationId: randomUUID(),
+        expectedVersion: waiting.version,
+      }),
+    ).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
+    const cancelled = fixture.lifecycle.cancelBug(
+      fixture.users.tester.id,
+      waiting.id,
+      {
+        mutationId: randomUUID(),
+        expectedVersion: waiting.version,
+      },
+    );
+    expect(currentBug(fixture.database, waiting.id).stage).toBe('CANCELLED');
+    const restored = fixture.lifecycle.restoreBug(
+      fixture.users.tester.id,
+      waiting.id,
+      {
+        mutationId: randomUUID(),
+        expectedVersion: cancelled.bugVersion,
+      },
+    );
+    expect(currentBug(fixture.database, waiting.id).stage).toBe(
+      'WAITING_FOR_REPAIR',
+    );
+    expect(
+      fixture.lifecycle.workspace(
+        fixture.users.tester.id,
+        fixture.submission.id,
+      ).transitionsByBug[waiting.id],
+    ).toMatchObject([{ kind: 'CANCELLED' }, { kind: 'RESTORED' }]);
+
+    const repairing = fixture.bugs.requestRepair(
+      fixture.users.tester.id,
+      waiting.id,
+      {
+        mutationId: randomUUID(),
+        expectedVersion: restored.bugVersion,
+      },
+    ).bug;
+    expect(() =>
+      fixture.lifecycle.cancelBug(fixture.users.tester.id, waiting.id, {
+        mutationId: randomUUID(),
+        expectedVersion: repairing.version,
+      }),
+    ).toThrow(expect.objectContaining({ code: 'INVALID_TRANSITION' }));
+    await completeNextRepair(fixture, 'repair-archive', ['6666666']);
+    await completeUpdate(fixture, fixture.items[0]!.id, {
+      outcome: 'COMPLETED',
+      summary: '归档前部署完成',
+    });
+    fixture.lifecycle.verifyBug(fixture.users.tester.id, waiting.id, {
+      mutationId: randomUUID(),
+      expectedVersion: currentBug(fixture.database, waiting.id).version,
+      result: 'PASSED',
+      attachmentIds: [],
+    });
+    const archived = fixture.lifecycle.archiveBug(
+      fixture.users.tester.id,
+      waiting.id,
+      {
+        mutationId: randomUUID(),
+        expectedVersion: currentBug(fixture.database, waiting.id).version,
+      },
+    );
+    expect(currentBug(fixture.database, waiting.id)).toMatchObject({
+      stage: 'DONE',
+      archived_at: '2026-07-27T12:00:00.000Z',
+    });
+    fixture.lifecycle.unarchiveBug(fixture.users.tester.id, waiting.id, {
+      mutationId: randomUUID(),
+      expectedVersion: archived.bugVersion,
+    });
+    expect(currentBug(fixture.database, waiting.id)).toMatchObject({
+      stage: 'DONE',
+      archived_at: null,
+    });
+  });
+
   test('DONE 可在活动期重开，关闭后所有 Lifecycle 写操作只读', async () => {
     const fixture = await setup();
     const bug = createAndRequestBug(fixture, fixture.items[0]!.id, '重开缺陷');
@@ -612,6 +793,15 @@ describe('LifecycleService', () => {
     expect(fixture.executions.get(reopened.executionId!).resumeSessionId).toBe(
       'repair-reopen',
     );
+    expect(
+      fixture.lifecycle.workspace(
+        fixture.users.tester.id,
+        fixture.submission.id,
+      ).reopensByBug[bug.id]?.[0],
+    ).toMatchObject({
+      feedback: '回归时发现新证据',
+      repairAttempt: 2,
+    });
     await completeClaimedRepair(
       fixture,
       reopened.executionId!,
@@ -763,7 +953,15 @@ async function completeUpdate(
   fixture.executions.complete(fixture.runner.id, claimed.id, {
     leaseToken: claimed.lease.token,
     sessionId: `update-${submissionItemId}`,
-    outcome: { kind: 'SUCCEEDED', result },
+    outcome: {
+      kind: 'SUCCEEDED',
+      result: {
+        ...result,
+        completedActions: ['集成候选并完成更新'],
+        validations: [{ name: '定向检查', status: 'PASSED' }],
+        warnings: [],
+      },
+    },
   });
   return latestBatch(fixture.database, submissionItemId);
 }
@@ -809,8 +1007,12 @@ function latestBatch(database: AppDatabase, submissionItemId: string) {
 
 function currentBug(database: AppDatabase, bugId: string) {
   return database
-    .prepare('SELECT stage, version FROM cooking_bug WHERE id = ?')
-    .get(bugId) as { stage: string; version: number };
+    .prepare('SELECT stage, version, archived_at FROM cooking_bug WHERE id = ?')
+    .get(bugId) as {
+    stage: string;
+    version: number;
+    archived_at: string | null;
+  };
 }
 
 function submissionRow(database: AppDatabase, submissionId: string) {

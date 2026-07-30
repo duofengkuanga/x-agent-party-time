@@ -11,6 +11,7 @@ import type { CookingVisualPresentation } from '@/features/cooking/shared/contra
 import { PlatformError } from '@/server/errors';
 import {
   CookingWorkspaceSnapshotSchema,
+  type BugProgressTimelineNode,
   type CookingWorkspaceSnapshot,
 } from '../contract';
 
@@ -41,12 +42,93 @@ export class CookingWorkspaceService {
       ...updates,
       ...lifecycle,
       visualByBug: deriveBugVisuals(bugs, repairs, updates),
+      progressByBug: deriveBugProgress(bugs, repairs, updates, lifecycle),
     });
   }
 
   canAccessSubmission(userId: string, submissionId: string): boolean {
     return this.submissions.canAccessSubmission(userId, submissionId);
   }
+}
+
+function deriveBugProgress(
+  bugs: BugWorkspaceProjection,
+  repairs: RepairWorkspaceProjection,
+  updates: UpdateWorkspaceProjection,
+  lifecycle: LifecycleWorkspaceProjection,
+): Record<string, BugProgressTimelineNode[]> {
+  return Object.fromEntries(
+    bugs.bugs.map((bug) => {
+      const repairTimeline = repairs.repairByBug[bug.id]?.timeline ?? [
+        {
+          id: `registered:${bug.id}`,
+          kind: 'BUG_REGISTERED' as const,
+          occurredAt: bug.createdAt,
+        },
+      ];
+      const updateNodes = updates.updateBatches
+        .filter((batch) =>
+          batch.entries.some((entry) => entry.bugId === bug.id),
+        )
+        .map((batch) => ({
+          id: `update-batch:${batch.id}:${bug.id}`,
+          kind: 'UPDATE_BATCH' as const,
+          batchId: batch.id,
+          batchState: batch.state,
+          bugCount: batch.entries.length,
+          statusLabel: batch.presentation.statusLabel,
+          visual: batch.presentation.visual,
+          occurredAt: batch.frozenAt,
+        }));
+      const verificationNodes = (
+        lifecycle.verificationsByBug[bug.id] ?? []
+      ).map((verification) => ({
+        ...verification,
+        kind: 'VERIFICATION' as const,
+      }));
+      const reopenNodes = (lifecycle.reopensByBug[bug.id] ?? []).map(
+        (reopen) => ({ ...reopen, kind: 'REOPEN' as const }),
+      );
+      const transitionNodes = lifecycle.transitionsByBug[bug.id] ?? [];
+      const timeline: BugProgressTimelineNode[] = [
+        ...repairTimeline,
+        ...updateNodes,
+        ...verificationNodes,
+        ...reopenNodes,
+        ...transitionNodes,
+      ];
+      return [bug.id, [...timeline].sort(compareBugProgressNodes)];
+    }),
+  );
+}
+
+function compareBugProgressNodes(
+  left: BugProgressTimelineNode,
+  right: BugProgressTimelineNode,
+): number {
+  return (
+    progressOccurredAt(left).localeCompare(progressOccurredAt(right)) ||
+    progressOrder(left) - progressOrder(right) ||
+    left.id.localeCompare(right.id)
+  );
+}
+
+function progressOccurredAt(node: BugProgressTimelineNode): string {
+  if (node.kind === 'REPAIR_ATTEMPT') return node.queuedAt;
+  if ('createdAt' in node) return node.createdAt;
+  return node.occurredAt;
+}
+
+function progressOrder(node: BugProgressTimelineNode): number {
+  return {
+    BUG_REGISTERED: 0,
+    UPDATE_BATCH: 10,
+    VERIFICATION: 20,
+    REOPEN: 20,
+    CANCELLED: 20,
+    RESTORED: 20,
+    REPAIR_ATTEMPT: 30,
+  }[node.kind];
 }
 
 function deriveBugVisuals(
@@ -103,6 +185,8 @@ function deriveBugVisuals(
 function emptyLifecycleProjection(): LifecycleWorkspaceProjection {
   return {
     verificationsByBug: {},
+    reopensByBug: {},
+    transitionsByBug: {},
     cleanups: [],
     cleanupInteractions: [],
     timeline: [],

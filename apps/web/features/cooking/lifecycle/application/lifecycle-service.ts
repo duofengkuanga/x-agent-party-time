@@ -51,13 +51,15 @@ type BugSourceRow = {
   runner_id: string | null;
   engineering_name: string | null;
   target_branch: string | null;
+  archived_at: string | null;
+  archived_by_user_id: string | null;
 };
 
 type CleanupSourceRow = {
   id: string;
   submission_id: string;
   submission_item_id: string;
-  reason: 'BUG_CANCELLED' | 'SUBMISSION_CLOSED';
+  reason: 'SUBMISSION_CLOSED';
   subject_id: string;
   state: 'READY' | 'RUNNING' | 'FAILED' | 'COMPLETED';
   version: number;
@@ -87,12 +89,6 @@ type CleanupAttemptRow = {
   session_id: string | null;
 };
 
-type LifecycleHooks = {
-  bugCancelled: (bugId: string) => void;
-};
-
-const NOOP_HOOKS: LifecycleHooks = { bugCancelled: () => {} };
-
 export class LifecycleService {
   private readonly writes: CookingWriteStore;
 
@@ -106,7 +102,6 @@ export class LifecycleService {
       submissionId: string,
       revision: number,
     ) => void = () => {},
-    private readonly hooks: LifecycleHooks = NOOP_HOOKS,
   ) {
     this.writes = new CookingWriteStore(db, now, createId);
   }
@@ -144,7 +139,7 @@ export class LifecycleService {
           this.db
             .prepare(
               `INSERT INTO cooking_verification_record(
-                 id, bug_id, round, result, comment, feedback_id,
+                 id, bug_id, round, result, comment, repair_attempt,
                  verified_by_user_id, created_at
                ) VALUES (?, ?, ?, 'PASSED', ?, NULL, ?, ?)`,
             )
@@ -175,7 +170,7 @@ export class LifecycleService {
             ],
           };
         }
-        const failure = this.recordFailureAndContinue(
+        const failure = this.recordVerificationFailureAndContinue(
           actorUserId,
           source,
           round,
@@ -231,29 +226,62 @@ export class LifecycleService {
             '只有已完成缺陷可以重开',
           );
         const now = this.now().toISOString();
-        const round = this.nextVerificationRound(bugId);
-        const failure = this.recordFailureAndContinue(
-          actorUserId,
-          source,
-          round,
-          input.feedback,
+        const round = this.nextReopenRound(bugId);
+        const repairAttempt = this.nextRepairAttempt(bugId);
+        const reopenId = this.createId();
+        this.requireBindableFiles(actorUserId, input.attachmentIds);
+        this.db
+          .prepare(
+            `INSERT INTO cooking_reopen_record(
+               id, bug_id, round, feedback, repair_attempt,
+               reopened_by_user_id, created_at
+             ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            reopenId,
+            bugId,
+            round,
+            input.feedback.trim(),
+            repairAttempt,
+            actorUserId,
+            now,
+          );
+        this.bindLifecycleAttachments(
+          'cooking_reopen_attachment',
+          'reopen_id',
+          reopenId,
           input.attachmentIds,
           now,
         );
+        const update = this.db
+          .prepare(
+            `UPDATE cooking_bug
+             SET stage = 'REPAIRING', version = version + 1, updated_at = ?
+             WHERE id = ? AND version = ? AND stage = 'DONE'`,
+          )
+          .run(now, source.id, source.version);
+        if (update.changes !== 1) throw staleLifecycle('缺陷');
+        const executionId = this.repairs.createContinuationExecution(
+          source.id,
+          `第 ${round} 次重新打开：${input.feedback.trim()}`,
+          input.attachmentIds,
+        );
+        const revision = this.bumpRevision(source.submission_id, now);
         return {
           result: {
             bugId,
             bugVersion: input.expectedVersion + 1,
-            executionId: failure.executionId,
+            executionId,
             cleanupId: null,
-            revision: failure.revision,
+            revision,
           },
           resourceId: bugId,
           audits: [
             this.audit(source, 'BUG_REOPENED', {
               round,
+              repairAttempt,
               attachmentCount: input.attachmentIds.length,
-              executionId: failure.executionId,
+              executionId,
             }),
           ],
         };
@@ -282,16 +310,10 @@ export class LifecycleService {
       perform: () => {
         const source = this.requireTester(actorUserId, bugId);
         this.requireBugVersion(source, input.expectedVersion);
-        if (
-          !['WAITING_FOR_REPAIR', 'WAITING_FOR_UPDATE', 'REPAIRING'].includes(
-            source.stage,
-          )
-        )
-          throw new PlatformError('INVALID_TRANSITION', '当前缺陷不能取消');
-        if (source.stage === 'REPAIRING' && this.hasActiveRepair(bugId))
+        if (source.stage !== 'WAITING_FOR_REPAIR')
           throw new PlatformError(
             'INVALID_TRANSITION',
-            '请先停止当前修复执行，再确认取消缺陷',
+            '只有待修复缺陷可以取消',
           );
         const now = this.now().toISOString();
         const update = this.db
@@ -300,9 +322,9 @@ export class LifecycleService {
              SET stage = 'CANCELLED', version = version + 1, updated_at = ?
              WHERE id = ? AND version = ? AND stage = ?`,
           )
-          .run(now, bugId, input.expectedVersion, source.stage);
+          .run(now, bugId, input.expectedVersion, 'WAITING_FOR_REPAIR');
         if (update.changes !== 1) throw staleLifecycle('缺陷');
-        this.hooks.bugCancelled(bugId);
+        this.recordBugTransition(bugId, 'CANCELLED', actorUserId, now);
         const revision = this.bumpRevision(source.submission_id, now);
         return {
           result: {
@@ -313,7 +335,7 @@ export class LifecycleService {
             revision,
           },
           resourceId: bugId,
-          audits: [this.audit(source, 'BUG_CANCELLED', { cleanupId: null })],
+          audits: [this.audit(source, 'BUG_CANCELLED', {})],
         };
       },
     });
@@ -322,6 +344,39 @@ export class LifecycleService {
       this.onInvalidated(source.submission_id, result.revision);
     }
     return result;
+  }
+
+  restoreBug(
+    actorUserId: string,
+    bugId: string,
+    inputValue: LifecycleCommandInput,
+  ): BugLifecycleMutationResult {
+    return this.changeStoredBugState(
+      actorUserId,
+      bugId,
+      inputValue,
+      'BUG_RESTORE',
+      'CANCELLED',
+      'WAITING_FOR_REPAIR',
+      'RESTORED',
+      'BUG_RESTORED',
+    );
+  }
+
+  archiveBug(
+    actorUserId: string,
+    bugId: string,
+    inputValue: LifecycleCommandInput,
+  ): BugLifecycleMutationResult {
+    return this.changeArchiveState(actorUserId, bugId, inputValue, true);
+  }
+
+  unarchiveBug(
+    actorUserId: string,
+    bugId: string,
+    inputValue: LifecycleCommandInput,
+  ): BugLifecycleMutationResult {
+    return this.changeArchiveState(actorUserId, bugId, inputValue, false);
   }
 
   closeSubmission(
@@ -363,7 +418,7 @@ export class LifecycleService {
         const unfinishedBatch = this.db
           .prepare(
             `SELECT 1 blocked FROM cooking_update_batch
-             WHERE submission_id = ? AND state NOT IN ('COMPLETED', 'CANCELLED')
+             WHERE submission_id = ? AND state != 'COMPLETED'
              LIMIT 1`,
           )
           .get(submissionId);
@@ -699,6 +754,12 @@ export class LifecycleService {
     const verificationsByBug = Object.fromEntries(
       bugIds.map((bugId) => [bugId, this.verificationViews(bugId)]),
     );
+    const reopensByBug = Object.fromEntries(
+      bugIds.map((bugId) => [bugId, this.reopenViews(bugId)]),
+    );
+    const transitionsByBug = Object.fromEntries(
+      bugIds.map((bugId) => [bugId, this.bugTransitionViews(bugId)]),
+    );
     const cleanupIds = (
       this.db
         .prepare(
@@ -709,6 +770,8 @@ export class LifecycleService {
     ).map(({ id }) => id);
     return LifecycleWorkspaceProjectionSchema.parse({
       verificationsByBug,
+      reopensByBug,
+      transitionsByBug,
       cleanups: cleanupIds.map((id) => this.cleanupView(userId, id)),
       cleanupInteractions: this.cleanupInteractions(userId, submissionId),
       timeline: this.timeline(submissionId),
@@ -767,7 +830,145 @@ export class LifecycleService {
     });
   }
 
-  private recordFailureAndContinue(
+  private changeStoredBugState(
+    actorUserId: string,
+    bugId: string,
+    inputValue: LifecycleCommandInput,
+    operation: string,
+    from: 'CANCELLED',
+    to: 'WAITING_FOR_REPAIR',
+    transition: 'RESTORED',
+    auditAction: string,
+  ): BugLifecycleMutationResult {
+    const input = LifecycleCommandInputSchema.parse(inputValue);
+    const replay = this.hasRecordedMutation(input.mutationId);
+    const result = this.writes.run({
+      mutationId: input.mutationId,
+      actorUserId,
+      operation,
+      resourceType: 'BUG',
+      resultSchema: BugLifecycleMutationResultSchema,
+      perform: () => {
+        const source = this.requireTester(actorUserId, bugId);
+        this.requireBugVersion(source, input.expectedVersion);
+        const now = this.now().toISOString();
+        const update = this.db
+          .prepare(
+            `UPDATE cooking_bug
+             SET stage = ?, version = version + 1, updated_at = ?
+             WHERE id = ? AND version = ? AND stage = ?`,
+          )
+          .run(to, now, bugId, input.expectedVersion, from);
+        if (update.changes !== 1)
+          throw new PlatformError(
+            'INVALID_TRANSITION',
+            '当前缺陷不能恢复到待修复',
+          );
+        this.recordBugTransition(bugId, transition, actorUserId, now);
+        const revision = this.bumpRevision(source.submission_id, now);
+        return {
+          result: {
+            bugId,
+            bugVersion: input.expectedVersion + 1,
+            executionId: null,
+            cleanupId: null,
+            revision,
+          },
+          resourceId: bugId,
+          audits: [this.audit(source, auditAction, {})],
+        };
+      },
+    });
+    if (!replay)
+      this.onInvalidated(this.bugSource(bugId).submission_id, result.revision);
+    return result;
+  }
+
+  private changeArchiveState(
+    actorUserId: string,
+    bugId: string,
+    inputValue: LifecycleCommandInput,
+    archived: boolean,
+  ): BugLifecycleMutationResult {
+    const input = LifecycleCommandInputSchema.parse(inputValue);
+    const replay = this.hasRecordedMutation(input.mutationId);
+    const result = this.writes.run({
+      mutationId: input.mutationId,
+      actorUserId,
+      operation: archived ? 'BUG_ARCHIVE' : 'BUG_UNARCHIVE',
+      resourceType: 'BUG',
+      resultSchema: BugLifecycleMutationResultSchema,
+      perform: () => {
+        const source = this.requireTester(actorUserId, bugId);
+        this.requireBugVersion(source, input.expectedVersion);
+        if (source.stage !== 'DONE')
+          throw new PlatformError(
+            'INVALID_TRANSITION',
+            '只有已完成缺陷可以整理归档',
+          );
+        if (archived === Boolean(source.archived_at))
+          throw new PlatformError(
+            'INVALID_TRANSITION',
+            archived ? '缺陷已经归档' : '缺陷尚未归档',
+          );
+        const now = this.now().toISOString();
+        const update = this.db
+          .prepare(
+            `UPDATE cooking_bug
+             SET archived_at = ?, archived_by_user_id = ?,
+                 version = version + 1, updated_at = ?
+             WHERE id = ? AND version = ? AND stage = 'DONE'
+               AND archived_at IS ${archived ? 'NULL' : 'NOT NULL'}`,
+          )
+          .run(
+            archived ? now : null,
+            archived ? actorUserId : null,
+            now,
+            bugId,
+            input.expectedVersion,
+          );
+        if (update.changes !== 1) throw staleLifecycle('缺陷');
+        const revision = this.bumpRevision(source.submission_id, now);
+        return {
+          result: {
+            bugId,
+            bugVersion: input.expectedVersion + 1,
+            executionId: null,
+            cleanupId: null,
+            revision,
+          },
+          resourceId: bugId,
+          audits: [
+            this.audit(
+              source,
+              archived ? 'BUG_ARCHIVED' : 'BUG_UNARCHIVED',
+              {},
+            ),
+          ],
+        };
+      },
+    });
+    if (!replay)
+      this.onInvalidated(this.bugSource(bugId).submission_id, result.revision);
+    return result;
+  }
+
+  private recordBugTransition(
+    bugId: string,
+    kind: 'CANCELLED' | 'RESTORED',
+    actorUserId: string,
+    now: string,
+  ): void {
+    this.db
+      .prepare(
+        `INSERT INTO cooking_bug_lifecycle_event(
+           id, bug_id, kind, actor_user_id, created_at
+         ) VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(this.createId(), bugId, kind, actorUserId, now);
+  }
+
+  private recordVerificationFailureAndContinue(
     actorUserId: string,
     source: BugSourceRow,
     round: number,
@@ -776,50 +977,42 @@ export class LifecycleService {
     now: string,
   ): { executionId: string; revision: number } {
     this.requireBindableFiles(actorUserId, attachmentIds);
-    const feedbackId = this.createId();
-    this.db
-      .prepare(
-        `INSERT INTO cooking_bug_feedback(
-           id, bug_id, kind, author_user_id, content, created_at
-         ) VALUES (?, ?, 'TESTER_FEEDBACK', ?, ?, ?)`,
-      )
-      .run(feedbackId, source.id, actorUserId, feedback.trim(), now);
-    attachmentIds.forEach((fileId, position) =>
-      this.db
-        .prepare(
-          `INSERT INTO cooking_bug_attachment(
-             file_id, bug_id, feedback_id, position, created_at
-           ) VALUES (?, ?, ?, ?, ?)`,
-        )
-        .run(fileId, source.id, feedbackId, position, now),
-    );
+    const verificationId = this.createId();
+    const repairAttempt = this.nextRepairAttempt(source.id);
     this.db
       .prepare(
         `INSERT INTO cooking_verification_record(
-           id, bug_id, round, result, comment, feedback_id,
+           id, bug_id, round, result, comment, repair_attempt,
            verified_by_user_id, created_at
          ) VALUES (?, ?, ?, 'FAILED', ?, ?, ?, ?)`,
       )
       .run(
-        this.createId(),
+        verificationId,
         source.id,
         round,
         feedback.trim(),
-        feedbackId,
+        repairAttempt,
         actorUserId,
         now,
       );
+    this.bindLifecycleAttachments(
+      'cooking_verification_attachment',
+      'verification_id',
+      verificationId,
+      attachmentIds,
+      now,
+    );
     const update = this.db
       .prepare(
         `UPDATE cooking_bug
          SET stage = 'REPAIRING', version = version + 1, updated_at = ?
-         WHERE id = ? AND version = ? AND stage IN ('WAITING_FOR_VERIFICATION', 'DONE')`,
+         WHERE id = ? AND version = ? AND stage = 'WAITING_FOR_VERIFICATION'`,
       )
       .run(now, source.id, source.version);
     if (update.changes !== 1) throw staleLifecycle('缺陷');
     const executionId = this.repairs.createContinuationExecution(
       source.id,
-      `测试负责人第 ${round} 轮验证失败：${feedback.trim()}`,
+      `测试负责人第 ${round} 轮验证未通过：${feedback.trim()}`,
       attachmentIds,
     );
     return {
@@ -828,8 +1021,24 @@ export class LifecycleService {
     };
   }
 
+  private bindLifecycleAttachments(
+    table: 'cooking_verification_attachment' | 'cooking_reopen_attachment',
+    ownerColumn: 'verification_id' | 'reopen_id',
+    ownerId: string,
+    fileIds: string[],
+    now: string,
+  ): void {
+    const statement = this.db.prepare(
+      `INSERT INTO ${table}(${ownerColumn}, file_id, position, created_at)
+       VALUES (?, ?, ?, ?)`,
+    );
+    fileIds.forEach((fileId, position) =>
+      statement.run(ownerId, fileId, position, now),
+    );
+  }
+
   private createCleanup(input: {
-    reason: 'BUG_CANCELLED' | 'SUBMISSION_CLOSED';
+    reason: 'SUBMISSION_CLOSED';
     subjectId: string;
     submissionId: string;
     submissionItemId: string;
@@ -922,10 +1131,30 @@ export class LifecycleService {
     return [...new Set([...repairs, ...updates].map(({ key }) => key))];
   }
 
+  private bugTransitionViews(bugId: string) {
+    return (
+      this.db
+        .prepare(
+          `SELECT id, kind, created_at FROM cooking_bug_lifecycle_event
+           WHERE bug_id = ? ORDER BY created_at, rowid`,
+        )
+        .all(bugId) as Array<{
+        id: string;
+        kind: 'CANCELLED' | 'RESTORED';
+        created_at: string;
+      }>
+    ).map((row) => ({
+      id: row.id,
+      bugId,
+      kind: row.kind,
+      createdAt: row.created_at,
+    }));
+  }
+
   private verificationViews(bugId: string) {
     const records = this.db
       .prepare(
-        `SELECT id, round, result, comment, feedback_id, created_at
+        `SELECT id, round, result, comment, repair_attempt, created_at
          FROM cooking_verification_record
          WHERE bug_id = ? ORDER BY round`,
       )
@@ -934,7 +1163,7 @@ export class LifecycleService {
       round: number;
       result: 'PASSED' | 'FAILED';
       comment: string | null;
-      feedback_id: string | null;
+      repair_attempt: number | null;
       created_at: string;
     }>;
     return records.map((record) => ({
@@ -943,24 +1172,59 @@ export class LifecycleService {
       round: record.round,
       result: record.result,
       comment: record.comment,
-      attachments: record.feedback_id
-        ? this.feedbackAttachments(record.feedback_id)
-        : [],
+      repairAttempt: record.repair_attempt,
+      attachments: this.lifecycleAttachments(
+        'cooking_verification_attachment',
+        'verification_id',
+        record.id,
+      ),
       createdAt: record.created_at,
     }));
   }
 
-  private feedbackAttachments(feedbackId: string) {
+  private reopenViews(bugId: string) {
+    const records = this.db
+      .prepare(
+        `SELECT id, round, feedback, repair_attempt, created_at
+         FROM cooking_reopen_record WHERE bug_id = ? ORDER BY round`,
+      )
+      .all(bugId) as Array<{
+      id: string;
+      round: number;
+      feedback: string;
+      repair_attempt: number;
+      created_at: string;
+    }>;
+    return records.map((record) => ({
+      id: record.id,
+      bugId,
+      round: record.round,
+      feedback: record.feedback,
+      repairAttempt: record.repair_attempt,
+      attachments: this.lifecycleAttachments(
+        'cooking_reopen_attachment',
+        'reopen_id',
+        record.id,
+      ),
+      createdAt: record.created_at,
+    }));
+  }
+
+  private lifecycleAttachments(
+    table: 'cooking_verification_attachment' | 'cooking_reopen_attachment',
+    ownerColumn: 'verification_id' | 'reopen_id',
+    ownerId: string,
+  ) {
     return (
       this.db
         .prepare(
           `SELECT file.id, file.original_name, file.media_type,
                   file.size_bytes, file.created_at
-           FROM cooking_bug_attachment attachment
+           FROM ${table} attachment
            JOIN platform_file file ON file.id = attachment.file_id
-           WHERE attachment.feedback_id = ? ORDER BY attachment.position`,
+           WHERE attachment.${ownerColumn} = ? ORDER BY attachment.position`,
         )
-        .all(feedbackId) as Array<{
+        .all(ownerId) as Array<{
         id: string;
         original_name: string;
         media_type: string;
@@ -1019,7 +1283,7 @@ export class LifecycleService {
       id: string;
       kind:
         | 'VERIFICATION'
-        | 'FEEDBACK'
+        | 'REOPEN'
         | 'REPAIR'
         | 'UPDATE'
         | 'EXTERNAL_DEPLOYMENT'
@@ -1045,6 +1309,7 @@ export class LifecycleService {
       round: number;
       result: 'PASSED' | 'FAILED';
       comment: string | null;
+      repair_attempt: number | null;
       created_at: string;
       short_id: number;
     }>;
@@ -1057,7 +1322,33 @@ export class LifecycleService {
         summary:
           row.result === 'PASSED'
             ? row.comment || '测试负责人已确认验证通过。'
-            : row.comment || '验证失败，已自动继续修复。',
+            : `${row.comment || '验证未通过'}；已进入第 ${row.repair_attempt} 轮修复。`,
+        createdAt: row.created_at,
+      });
+    const reopens = this.db
+      .prepare(
+        `SELECT reopen.id, reopen.bug_id, reopen.round, reopen.feedback,
+                reopen.repair_attempt, reopen.created_at, bug.short_id
+         FROM cooking_reopen_record reopen
+         JOIN cooking_bug bug ON bug.id = reopen.bug_id
+         WHERE bug.submission_id = ?`,
+      )
+      .all(submissionId) as Array<{
+      id: string;
+      bug_id: string;
+      round: number;
+      feedback: string;
+      repair_attempt: number;
+      created_at: string;
+      short_id: number;
+    }>;
+    for (const row of reopens)
+      entries.push({
+        id: `reopen:${row.id}`,
+        kind: 'REOPEN',
+        bugId: row.bug_id,
+        title: `缺陷-${String(row.short_id).padStart(3, '0')} 第 ${row.round} 次重新打开`,
+        summary: `${row.feedback}；已进入第 ${row.repair_attempt} 轮修复。`,
         createdAt: row.created_at,
       });
     const reports = this.db
@@ -1094,7 +1385,7 @@ export class LifecycleService {
       )
       .all(submissionId) as Array<{
       id: string;
-      reason: 'BUG_CANCELLED' | 'SUBMISSION_CLOSED';
+      reason: 'SUBMISSION_CLOSED';
       state: 'READY' | 'RUNNING' | 'FAILED' | 'COMPLETED';
       created_at: string;
     }>;
@@ -1103,10 +1394,7 @@ export class LifecycleService {
         id: `cleanup:${row.id}`,
         kind: 'CLEANUP',
         bugId: null,
-        title:
-          row.reason === 'SUBMISSION_CLOSED'
-            ? '关闭后资源清理'
-            : '取消后资源清理',
+        title: '关闭后资源清理',
         summary: cleanupStateLabel(row.state),
         createdAt: row.created_at,
       });
@@ -1186,7 +1474,8 @@ export class LifecycleService {
                 submission.title submission_title,
                 submission.tester_user_id, item.responsible_user_id,
                 item.binding_id, binding.runner_id, item.engineering_name,
-                item.target_branch
+                item.target_branch, bug.archived_at,
+                bug.archived_by_user_id
          FROM cooking_bug bug
          JOIN cooking_test_submission submission ON submission.id = bug.submission_id
          LEFT JOIN cooking_submission_item item ON item.id = bug.submission_item_id
@@ -1225,18 +1514,46 @@ export class LifecycleService {
     ).round;
   }
 
+  private nextReopenRound(bugId: string): number {
+    return (
+      this.db
+        .prepare(
+          `SELECT COALESCE(MAX(round), 0) + 1 round
+           FROM cooking_reopen_record WHERE bug_id = ?`,
+        )
+        .get(bugId) as { round: number }
+    ).round;
+  }
+
+  private nextRepairAttempt(bugId: string): number {
+    return (
+      this.db
+        .prepare(
+          `SELECT COALESCE(MAX(attempt), 0) + 1 attempt
+           FROM cooking_repair_attempt WHERE bug_id = ?`,
+        )
+        .get(bugId) as { attempt: number }
+    ).attempt;
+  }
+
   private requireBindableFiles(userId: string, fileIds: string[]): void {
     for (const fileId of fileIds) {
       const row = this.db
         .prepare(
           `SELECT file.uploaded_by_user_id,
                   bug_attachment.file_id bug_file_id,
-                  report_attachment.file_id report_file_id
+                  report_attachment.file_id report_file_id,
+                  verification_attachment.file_id verification_file_id,
+                  reopen_attachment.file_id reopen_file_id
            FROM platform_file file
            LEFT JOIN cooking_bug_attachment bug_attachment
              ON bug_attachment.file_id = file.id
            LEFT JOIN cooking_external_deployment_report_attachment report_attachment
              ON report_attachment.file_id = file.id
+           LEFT JOIN cooking_verification_attachment verification_attachment
+             ON verification_attachment.file_id = file.id
+           LEFT JOIN cooking_reopen_attachment reopen_attachment
+             ON reopen_attachment.file_id = file.id
            WHERE file.id = ?`,
         )
         .get(fileId) as
@@ -1244,13 +1561,17 @@ export class LifecycleService {
             uploaded_by_user_id: string;
             bug_file_id: string | null;
             report_file_id: string | null;
+            verification_file_id: string | null;
+            reopen_file_id: string | null;
           }
         | undefined;
       if (
         !row ||
         row.uploaded_by_user_id !== userId ||
         row.bug_file_id ||
-        row.report_file_id
+        row.report_file_id ||
+        row.verification_file_id ||
+        row.reopen_file_id
       )
         throw new PlatformError(
           'VALIDATION_FAILED',

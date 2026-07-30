@@ -22,7 +22,7 @@ export type CleanupPromptSnapshot = {
 };
 
 export function buildInitialCleanupPrompt(input: {
-  reason: 'BUG_CANCELLED' | 'SUBMISSION_CLOSED';
+  reason: 'SUBMISSION_CLOSED';
   submissionTitle: string;
   engineeringName: string;
   targetBranch: string;
@@ -31,7 +31,7 @@ export function buildInitialCleanupPrompt(input: {
   return snapshot(`${PREFIX}
 
 本次清理：
-- 原因：${input.reason === 'SUBMISSION_CLOSED' ? '提测单关闭' : '缺陷取消'}
+- 原因：提测单关闭
 - 提测单：${input.submissionTitle}
 - 工程：${input.engineeringName}
 - 目标分支：${input.targetBranch}

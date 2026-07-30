@@ -11,13 +11,14 @@ import {
   LOCAL_SCRIPT_UPDATE_PROMPT_KIND,
   LOCAL_SCRIPT_UPDATE_PROMPT_VERSION,
   buildContinuationCiCdUpdatePrompt,
-  buildContinuationLocalScriptUpdatePrompt,
   buildInitialCiCdUpdatePrompt,
   buildInitialLocalScriptUpdatePrompt,
+  buildRetryCiCdUpdatePrompt,
+  buildRetryLocalScriptUpdatePrompt,
 } from './prompt';
 
-describe('LOCAL_SCRIPT Update Prompt', () => {
-  test('初始 Prompt 固定冻结顺序并包含安全边界', () => {
+describe('Update Prompt', () => {
+  test('初始 LOCAL_SCRIPT Prompt 固定冻结顺序并要求结构化结果', () => {
     const prompt = buildInitialLocalScriptUpdatePrompt({
       workspaceKey: 'update-batch:fixture',
       submissionTitle: '支付提测',
@@ -36,38 +37,74 @@ describe('LOCAL_SCRIPT Update Prompt', () => {
       version: LOCAL_SCRIPT_UPDATE_PROMPT_VERSION,
       outputJsonSchema: LocalScriptUpdateOutputJsonSchema,
     });
-    expect(prompt.renderedPrompt).toContain('禁止 force push');
+    expect(prompt.renderedPrompt).toContain(
+      'Detached HEAD Integration Worktree',
+    );
+    expect(prompt.renderedPrompt).toContain('completedActions');
     expect(prompt.renderedPrompt.indexOf('bbbbbbb')).toBeLessThan(
       prompt.renderedPrompt.indexOf('aaaaaaa'),
     );
     expect(prompt.renderedPromptHash).toMatch(/^[a-f0-9]{64}$/u);
   });
 
-  test('继续 Prompt 只发送增量信息', () => {
-    const prompt = buildContinuationLocalScriptUpdatePrompt({
-      content: '冲突文件已确认采用支付工程实现',
-    });
-    expect(prompt.renderedPrompt).toContain('只处理以下增量信息');
-    expect(prompt.renderedPrompt).not.toContain('仓库逻辑地址');
+  test('失败后无输入重试并继续原 Session 语义', () => {
+    const local = buildRetryLocalScriptUpdatePrompt();
+    const ci = buildRetryCiCdUpdatePrompt();
+    for (const prompt of [local, ci]) {
+      expect(prompt.renderedPrompt).toContain('上一轮结构化失败结果');
+      expect(prompt.renderedPrompt).toContain(
+        '冻结的缺陷、Commit、顺序、分支和环境保持不变',
+      );
+      expect(prompt.renderedPrompt).not.toContain('只处理以下增量信息');
+    }
   });
 
-  test('结果 Schema 拒绝多余部署字段和空摘要', () => {
+  test('结构化结果覆盖成功、Push、失败和格式无效', () => {
     expect(
       LocalScriptUpdateExecutionResultSchema.safeParse({
         outcome: 'COMPLETED',
         summary: '完成',
-        provider: 'custom',
+        completedActions: ['普通 Push', '运行部署脚本'],
+        validations: [{ name: '类型检查', status: 'PASSED', detail: null }],
+        warnings: [],
+        failedStep: null,
+        reason: null,
+        pendingActions: [],
       }).success,
-    ).toBe(false);
+    ).toBe(true);
+    expect(
+      CiCdUpdateExecutionResultSchema.safeParse({
+        outcome: 'PUSHED',
+        summary: '已推送',
+        completedActions: ['普通 Push'],
+        validations: [],
+        warnings: ['等待流水线'],
+        failedStep: null,
+        reason: null,
+        pendingActions: [],
+      }).success,
+    ).toBe(true);
     expect(
       LocalScriptUpdateExecutionResultSchema.safeParse({
         outcome: 'FAILED',
-        summary: '',
+        summary: '部署失败',
+        completedActions: ['完成集成'],
+        validations: [],
+        warnings: [],
+        failedStep: '运行部署脚本',
+        reason: '退出码为 1',
+        pendingActions: ['修复部署配置'],
+      }).success,
+    ).toBe(true);
+    expect(
+      LocalScriptUpdateExecutionResultSchema.safeParse({
+        outcome: 'FAILED',
+        summary: '缺少结构化字段',
       }).success,
     ).toBe(false);
   });
 
-  test('LOCAL_SCRIPT 与 CI/CD 输出 Schema 都是无 oneOf 的根对象', () => {
+  test('输出 Schema 使用单一根对象并强制所有结构化槽位', () => {
     for (const schema of [
       LocalScriptUpdateOutputJsonSchema,
       CiCdUpdateOutputJsonSchema,
@@ -75,13 +112,22 @@ describe('LOCAL_SCRIPT Update Prompt', () => {
       expect(schema).toMatchObject({
         type: 'object',
         additionalProperties: false,
-        required: ['outcome', 'summary'],
+        required: [
+          'outcome',
+          'summary',
+          'completedActions',
+          'validations',
+          'warnings',
+          'failedStep',
+          'reason',
+          'pendingActions',
+        ],
       });
       expect(JSON.stringify(schema)).not.toContain('"oneOf"');
     }
   });
 
-  test('CI/CD Prompt 只把普通 Push 解释为 PUSHED，并以失败报告增量继续', () => {
+  test('CI/CD 只把普通 Push 解释为 PUSHED，并携带外部失败证据继续', () => {
     const initial = buildInitialCiCdUpdatePrompt({
       workspaceKey: 'update-batch:ci',
       submissionTitle: '支付提测',
@@ -99,7 +145,6 @@ describe('LOCAL_SCRIPT Update Prompt', () => {
       outputJsonSchema: CiCdUpdateOutputJsonSchema,
     });
     expect(initial.renderedPrompt).toContain('PUSHED 不代表 Pipeline');
-    expect(initial.renderedPrompt).not.toContain('LOCAL_SCRIPT：');
     const continuation = buildContinuationCiCdUpdatePrompt({
       reportRound: 2,
       summary: '部署健康检查失败',
@@ -108,11 +153,5 @@ describe('LOCAL_SCRIPT Update Prompt', () => {
     expect(continuation.renderedPrompt).toContain('第 2 轮外部部署失败');
     expect(continuation.renderedPrompt).toContain('pipeline.txt');
     expect(continuation.renderedPrompt).not.toContain('仓库逻辑地址');
-    expect(
-      CiCdUpdateExecutionResultSchema.safeParse({
-        outcome: 'COMPLETED',
-        summary: '不能伪装部署完成',
-      }).success,
-    ).toBe(false);
   });
 });

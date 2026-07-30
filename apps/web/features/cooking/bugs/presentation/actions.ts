@@ -23,7 +23,6 @@ import type {
   AssignBugInput,
   BugMutationResult,
   RequestRepairInput,
-  WithdrawRepairInput,
 } from '../contract';
 
 type ActionFailure = {
@@ -99,30 +98,6 @@ export async function requestRepairAction(
 ): Promise<BugActionResult> {
   return simpleBugAction((userId) =>
     bugService().requestRepair(userId, bugId, input),
-  );
-}
-
-export async function withdrawRepairAction(
-  bugId: string,
-  input: WithdrawRepairInput,
-): Promise<BugActionResult> {
-  return simpleBugAction((userId) =>
-    bugService().withdrawRepair(userId, bugId, input),
-  );
-}
-
-export async function addBugFeedbackAction(
-  bugId: string,
-  formData: FormData,
-): Promise<BugActionResult> {
-  const user = await requireCurrentUser();
-  return withUploadedFiles(user.id, formData, async (attachmentIds) =>
-    bugService().addFeedback(user.id, bugId, {
-      mutationId: field(formData, 'mutationId'),
-      expectedVersion: integerField(formData, 'expectedVersion'),
-      content: field(formData, 'content'),
-      attachmentIds,
-    }),
   );
 }
 

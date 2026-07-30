@@ -10,7 +10,6 @@ import type {
   ContinueRepairInput,
   RepairMutationResult,
   ResolveRepairInteractionInput,
-  StopRepairInput,
 } from '../contract';
 
 type RepairActionFailure = {
@@ -27,15 +26,6 @@ export async function continueRepairAction(
 ): Promise<RepairActionResult> {
   return runRepairAction((userId) =>
     repairService().continueRepair(userId, bugId, input),
-  );
-}
-
-export async function stopRepairExecutionAction(
-  bugId: string,
-  input: StopRepairInput,
-): Promise<RepairActionResult> {
-  return runRepairAction((userId) =>
-    repairService().stopExecution(userId, bugId, input),
   );
 }
 

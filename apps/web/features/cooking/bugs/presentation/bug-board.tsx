@@ -10,43 +10,43 @@ import {
   type ReactNode,
 } from 'react';
 import type { JsonValue } from '@agent-party-time/execution-contract';
-import type { CookingWorkspaceSnapshot } from '@/features/cooking/workspace/contract';
+import type {
+  BugProgressTimelineNode,
+  CookingWorkspaceSnapshot,
+} from '@/features/cooking/workspace/contract';
 import type {
   CookingInteractionView,
   CookingVisualPresentation,
 } from '@/features/cooking/shared/contract';
 import {
+  archiveBugAction,
   cancelBugAction,
   reopenBugAction,
-  retryCleanupAction,
+  restoreBugAction,
+  unarchiveBugAction,
   verifyBugAction,
   type BugLifecycleActionResult,
-  type CleanupActionResult,
 } from '@/features/cooking/lifecycle/presentation/actions';
 import type { BugRepairView } from '@/features/cooking/repair/contract';
 import {
   continueRepairAction,
   resolveRepairInteractionAction,
-  stopRepairExecutionAction,
   type RepairActionResult,
 } from '@/features/cooking/repair/presentation/actions';
 import type { UpdateBatchView } from '@/features/cooking/update/contract';
 import {
-  cancelUpdateBatchAction,
   freezeUpdateNowAction,
   reportExternalDeploymentAction,
+  retryUpdateAction,
   resolveUpdateInteractionAction,
-  stopUpdateExecutionAction,
   type UpdateActionResult,
 } from '@/features/cooking/update/presentation/actions';
 import type { BugView } from '../contract';
 import {
-  addBugFeedbackAction,
   assignBugAction,
   createBugAction,
   requestRepairAction,
   updateBugReportAction,
-  withdrawRepairAction,
   type BugActionResult,
 } from './actions';
 
@@ -60,13 +60,21 @@ const STATUS_COLUMNS = [
 ] as const;
 
 type MainStage = (typeof STATUS_COLUMNS)[number]['status'];
-type Drawer = { mode: 'create' } | { mode: 'view' | 'edit'; bugId: string };
+type Drawer =
+  | { mode: 'create' }
+  | { mode: 'view' | 'edit'; bugId: string }
+  | { mode: 'batch'; batchId: string };
 type WorkspaceActionResult =
   | BugActionResult
   | RepairActionResult
   | UpdateActionResult
-  | BugLifecycleActionResult
-  | CleanupActionResult;
+  | BugLifecycleActionResult;
+
+type UndoAction = {
+  message: string;
+  successMessage: string;
+  command: () => Promise<WorkspaceActionResult>;
+};
 
 export function BugBoard({
   onChanged,
@@ -78,22 +86,28 @@ export function BugBoard({
   syncLabel: string;
 }) {
   const [drawer, setDrawer] = useState<Drawer | null>(null);
-  const [showTrash, setShowTrash] = useState(false);
+  const [showCancelled, setShowCancelled] = useState(false);
+  const [showArchive, setShowArchive] = useState(false);
   const [draggingBugId, setDraggingBugId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<MainStage | null>(null);
-  const [trashDropActive, setTrashDropActive] = useState(false);
+  const [cancelDropActive, setCancelDropActive] = useState(false);
+  const [archiveDropActive, setArchiveDropActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [undoAction, setUndoAction] = useState<UndoAction | null>(null);
   const [pending, startTransition] = useTransition();
-  const activeBugs = snapshot.bugs.filter(({ stage }) => stage !== 'CANCELLED');
+  const activeBugs = snapshot.bugs.filter(
+    ({ stage, archivedAt }) => stage !== 'CANCELLED' && !archivedAt,
+  );
   const cancelledBugs = snapshot.bugs.filter(
     ({ stage }) => stage === 'CANCELLED',
   );
+  const archivedBugs = snapshot.bugs.filter(({ archivedAt }) => archivedAt);
   const draggingBug = snapshot.bugs.find(({ id }) => id === draggingBugId);
 
   function run(
     command: () => Promise<WorkspaceActionResult>,
     message: string,
-    onSuccess?: () => void,
+    onSuccess?: (result: WorkspaceActionResult) => void,
   ): void {
     startTransition(async () => {
       try {
@@ -103,12 +117,60 @@ export function BugBoard({
           return;
         }
         setError(null);
-        onSuccess?.();
+        onSuccess?.(result);
         onChanged(result.result.revision, message);
       } catch (actionError) {
         setError(messageOf(actionError, '操作失败，请稍后重试。'));
       }
     });
+  }
+
+  function cancelBug(bug: BugView) {
+    run(
+      () =>
+        cancelBugAction(bug.id, {
+          mutationId: crypto.randomUUID(),
+          expectedVersion: bug.version,
+        }),
+      `${bugLabel(bug)} 已取消。`,
+      (result) => {
+        const version = bugVersionOf(result);
+        if (!version) return;
+        setUndoAction({
+          message: `${bugLabel(bug)} 已取消。`,
+          successMessage: `${bugLabel(bug)} 已恢复到待修复。`,
+          command: () =>
+            restoreBugAction(bug.id, {
+              mutationId: crypto.randomUUID(),
+              expectedVersion: version,
+            }),
+        });
+      },
+    );
+  }
+
+  function archiveBug(bug: BugView) {
+    run(
+      () =>
+        archiveBugAction(bug.id, {
+          mutationId: crypto.randomUUID(),
+          expectedVersion: bug.version,
+        }),
+      `${bugLabel(bug)} 已归档。`,
+      (result) => {
+        const version = bugVersionOf(result);
+        if (!version) return;
+        setUndoAction({
+          message: `${bugLabel(bug)} 已归档。`,
+          successMessage: `${bugLabel(bug)} 已移出归档。`,
+          command: () =>
+            unarchiveBugAction(bug.id, {
+              mutationId: crypto.randomUUID(),
+              expectedVersion: version,
+            }),
+        });
+      },
+    );
   }
 
   function dropBug(event: ReactDragEvent<HTMLElement>, stage: MainStage) {
@@ -122,11 +184,11 @@ export function BugBoard({
     event.preventDefault();
     setDraggingBugId(null);
     setDropTarget(null);
-    setTrashDropActive(false);
+    setCancelDropActive(false);
     run(transition.command, transition.message);
   }
 
-  function dropIntoTrash(event: ReactDragEvent<HTMLElement>) {
+  function dropIntoCancelled(event: ReactDragEvent<HTMLElement>) {
     const bugId =
       event.dataTransfer.getData('application/x-cooking-bug-id') ||
       draggingBugId;
@@ -135,15 +197,21 @@ export function BugBoard({
     event.preventDefault();
     setDraggingBugId(null);
     setDropTarget(null);
-    setTrashDropActive(false);
-    run(
-      () =>
-        cancelBugAction(bug.id, {
-          mutationId: crypto.randomUUID(),
-          expectedVersion: bug.version,
-        }),
-      `${bugLabel(bug)} 已移入垃圾桶。`,
-    );
+    setCancelDropActive(false);
+    cancelBug(bug);
+  }
+
+  function dropIntoArchive(event: ReactDragEvent<HTMLElement>) {
+    const bugId =
+      event.dataTransfer.getData('application/x-cooking-bug-id') ||
+      draggingBugId;
+    const bug = snapshot.bugs.find(({ id }) => id === bugId);
+    if (!bug?.availableActions.includes('ARCHIVE')) return;
+    event.preventDefault();
+    setDraggingBugId(null);
+    setDropTarget(null);
+    setArchiveDropActive(false);
+    archiveBug(bug);
   }
 
   return (
@@ -153,24 +221,44 @@ export function BugBoard({
         <div className="collab-board-heading__actions">
           <small>{syncLabel}</small>
           <button
-            aria-label="查看已取消 Bug"
-            className="collab-trash-button"
-            data-drop-target={trashDropActive ? 'true' : undefined}
-            onClick={() => setShowTrash(true)}
+            aria-label="查看已取消缺陷"
+            className="collab-storage-button"
+            data-drop-target={cancelDropActive ? 'true' : undefined}
+            onClick={() => setShowCancelled(true)}
             onDragEnter={() => {
               if (draggingBug?.availableActions.includes('CANCEL'))
-                setTrashDropActive(true);
+                setCancelDropActive(true);
             }}
-            onDragLeave={() => setTrashDropActive(false)}
+            onDragLeave={() => setCancelDropActive(false)}
             onDragOver={(event) => {
               if (!draggingBug?.availableActions.includes('CANCEL')) return;
               event.preventDefault();
               event.dataTransfer.dropEffect = 'move';
             }}
-            onDrop={dropIntoTrash}
+            onDrop={dropIntoCancelled}
             type="button"
           >
-            🗑 {cancelledBugs.length}
+            已取消 {cancelledBugs.length}
+          </button>
+          <button
+            aria-label="查看归档缺陷"
+            className="collab-storage-button"
+            data-drop-target={archiveDropActive ? 'true' : undefined}
+            onClick={() => setShowArchive(true)}
+            onDragEnter={() => {
+              if (draggingBug?.availableActions.includes('ARCHIVE'))
+                setArchiveDropActive(true);
+            }}
+            onDragLeave={() => setArchiveDropActive(false)}
+            onDragOver={(event) => {
+              if (!draggingBug?.availableActions.includes('ARCHIVE')) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = 'move';
+            }}
+            onDrop={dropIntoArchive}
+            type="button"
+          >
+            归档 {archivedBugs.length}
           </button>
           {snapshot.availableActions.includes('CREATE_BUG') ? (
             <button
@@ -191,11 +279,39 @@ export function BugBoard({
           </button>
         </div>
       ) : null}
+      {undoAction ? (
+        <div className="collab-banner" role="status">
+          <span>{undoAction.message}</span>
+          <button
+            disabled={pending}
+            onClick={() =>
+              run(undoAction.command, undoAction.successMessage, () =>
+                setUndoAction(null),
+              )
+            }
+            type="button"
+          >
+            撤销
+          </button>
+        </div>
+      ) : null}
       <div className="collab-board">
         {STATUS_COLUMNS.map((column) => {
           const bugs = activeBugs.filter(
             ({ stage }) => stage === column.status,
           );
+          const batches =
+            column.status === 'UPDATING'
+              ? snapshot.updateBatches.filter(
+                  (batch) =>
+                    ['READY', 'RUNNING', 'WAITING_EXTERNAL', 'FAILED'].includes(
+                      batch.state,
+                    ) &&
+                    batch.entries.some((entry) =>
+                      bugs.some((bug) => bug.id === entry.bugId),
+                    ),
+                )
+              : [];
           const acceptsDrop = Boolean(
             draggingBug && dragTransition(draggingBug, column.status),
           );
@@ -227,41 +343,86 @@ export function BugBoard({
               <header>
                 <span>{column.note}</span>
                 <h2>{column.label}</h2>
-                <b>{bugs.length.toString().padStart(2, '0')}</b>
+                <b>
+                  {column.status === 'UPDATING'
+                    ? `${batches.length} 个批次 · ${bugs.length} 条缺陷`
+                    : bugs.length.toString().padStart(2, '0')}
+                </b>
               </header>
               <div className="collab-column__cards">
-                {bugs.map((bug) => {
-                  const draggable = Boolean(
-                    dragTransition(bug, 'WAITING_FOR_REPAIR') ||
-                    dragTransition(bug, 'REPAIRING') ||
-                    bug.availableActions.includes('CANCEL'),
-                  );
-                  const visual = snapshot.visualByBug[bug.id]!;
-                  return (
-                    <BugCard
-                      bug={bug}
-                      draggable={!pending && draggable}
-                      dragging={draggingBugId === bug.id}
-                      key={bug.id}
-                      onDragEnd={() => {
-                        setDraggingBugId(null);
-                        setDropTarget(null);
-                        setTrashDropActive(false);
-                      }}
-                      onDragStart={(event) => {
-                        setDraggingBugId(bug.id);
-                        event.dataTransfer.effectAllowed = 'move';
-                        event.dataTransfer.setData(
-                          'application/x-cooking-bug-id',
-                          bug.id,
-                        );
-                      }}
-                      onOpen={() => setDrawer({ mode: 'view', bugId: bug.id })}
-                      visual={visual}
-                    />
-                  );
-                })}
-                {bugs.length === 0 ? (
+                {column.status === 'UPDATING'
+                  ? batches.map((batch) => (
+                      <UpdateBatchCard
+                        batch={batch}
+                        key={batch.id}
+                        onOpen={() =>
+                          setDrawer({ mode: 'batch', batchId: batch.id })
+                        }
+                      />
+                    ))
+                  : bugs.map((bug) => {
+                      const draggable = Boolean(
+                        dragTransition(bug, 'REPAIRING') ||
+                        dragTransition(bug, 'DONE') ||
+                        bug.availableActions.includes('CANCEL') ||
+                        bug.availableActions.includes('ARCHIVE'),
+                      );
+                      const visual = snapshot.visualByBug[bug.id]!;
+                      return (
+                        <BugCard
+                          bug={bug}
+                          draggable={!pending && draggable}
+                          dragging={draggingBugId === bug.id}
+                          key={bug.id}
+                          onDragEnd={() => {
+                            setDraggingBugId(null);
+                            setDropTarget(null);
+                            setCancelDropActive(false);
+                            setArchiveDropActive(false);
+                          }}
+                          onDragStart={(event) => {
+                            setDraggingBugId(bug.id);
+                            event.dataTransfer.effectAllowed = 'move';
+                            event.dataTransfer.setData(
+                              'application/x-cooking-bug-id',
+                              bug.id,
+                            );
+                          }}
+                          onArchive={() => archiveBug(bug)}
+                          onCancel={() => cancelBug(bug)}
+                          onOpen={() =>
+                            setDrawer({ mode: 'view', bugId: bug.id })
+                          }
+                          onStartRepair={() =>
+                            run(
+                              () =>
+                                requestRepairAction(bug.id, {
+                                  mutationId: crypto.randomUUID(),
+                                  expectedVersion: bug.version,
+                                }),
+                              `${bugLabel(bug)} 已提交自动修复。`,
+                            )
+                          }
+                          onVerifyPass={() => {
+                            const formData = new FormData();
+                            formData.set('mutationId', crypto.randomUUID());
+                            formData.set(
+                              'expectedVersion',
+                              String(bug.version),
+                            );
+                            formData.set('result', 'PASSED');
+                            run(
+                              () => verifyBugAction(bug.id, formData),
+                              `${bugLabel(bug)} 已验证完成。`,
+                            );
+                          }}
+                          visual={visual}
+                        />
+                      );
+                    })}
+                {(column.status === 'UPDATING'
+                  ? batches.length
+                  : bugs.length) === 0 ? (
                   <p className="collab-column__empty">暂无卡片</p>
                 ) : null}
               </div>
@@ -270,25 +431,25 @@ export function BugBoard({
         })}
       </div>
 
-      {showTrash ? (
+      {showCancelled ? (
         <div
           className="collab-dialog-backdrop collab-drawer-scrim"
           role="presentation"
         >
           <section
-            aria-label="已取消 Bug"
+            aria-label="已取消缺陷"
             aria-modal="true"
             className="collab-dialog collab-bug-drawer"
             role="dialog"
           >
             <header>
               <div>
-                <small>垃圾桶</small>
-                <h2>已取消 Bug</h2>
+                <small>生命周期收纳</small>
+                <h2>已取消缺陷</h2>
               </div>
               <button
-                aria-label="关闭已取消 Bug 列表"
-                onClick={() => setShowTrash(false)}
+                aria-label="关闭已取消缺陷列表"
+                onClick={() => setShowCancelled(false)}
                 type="button"
               >
                 ×
@@ -296,12 +457,12 @@ export function BugBoard({
             </header>
             <div className="collab-dialog__body collab-bug-drawer__body">
               {cancelledBugs.length ? (
-                <ul className="collab-trash-list">
+                <ul className="collab-stored-bug-list">
                   {cancelledBugs.map((bug) => (
                     <li key={bug.id}>
                       <button
                         onClick={() => {
-                          setShowTrash(false);
+                          setShowCancelled(false);
                           setDrawer({ mode: 'view', bugId: bug.id });
                         }}
                         type="button"
@@ -318,7 +479,63 @@ export function BugBoard({
                   ))}
                 </ul>
               ) : (
-                <p className="collab-bug-detail-empty">垃圾桶为空</p>
+                <p className="collab-bug-detail-empty">暂无已取消缺陷</p>
+              )}
+            </div>
+          </section>
+        </div>
+      ) : null}
+      {showArchive ? (
+        <div
+          className="collab-dialog-backdrop collab-drawer-scrim"
+          role="presentation"
+        >
+          <section
+            aria-label="归档缺陷"
+            aria-modal="true"
+            className="collab-dialog collab-bug-drawer"
+            role="dialog"
+          >
+            <header>
+              <div>
+                <small>完成整理</small>
+                <h2>归档缺陷</h2>
+              </div>
+              <button
+                aria-label="关闭归档缺陷列表"
+                onClick={() => setShowArchive(false)}
+                type="button"
+              >
+                ×
+              </button>
+            </header>
+            <div className="collab-dialog__body collab-bug-drawer__body">
+              {archivedBugs.length ? (
+                <ul className="collab-stored-bug-list">
+                  {archivedBugs.map((bug) => (
+                    <li key={bug.id}>
+                      <button
+                        onClick={() => {
+                          setShowArchive(false);
+                          setDrawer({ mode: 'view', bugId: bug.id });
+                        }}
+                        type="button"
+                      >
+                        <strong>
+                          {bugLabel(bug)} · {bug.report.title}
+                        </strong>
+                        <small>
+                          {bug.presentation.assignmentLabel} · 已归档
+                        </small>
+                        <small>
+                          {formatDateTime(bug.archivedAt ?? bug.updatedAt)}
+                        </small>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="collab-bug-detail-empty">暂无归档缺陷</p>
               )}
             </div>
           </section>
@@ -331,12 +548,15 @@ export function BugBoard({
             setDrawer(
               drawer.mode === 'create'
                 ? null
-                : { mode: 'view', bugId: drawer.bugId },
+                : drawer.mode === 'edit'
+                  ? { mode: 'view', bugId: drawer.bugId }
+                  : drawer,
             );
             onChanged(revision, message);
           }}
           onClose={() => setDrawer(null)}
           onEdit={(bugId) => setDrawer({ mode: 'edit', bugId })}
+          onOpenBatch={(batchId) => setDrawer({ mode: 'batch', batchId })}
           snapshot={snapshot}
         />
       ) : null}
@@ -348,17 +568,25 @@ function BugCard({
   bug,
   draggable,
   dragging,
+  onArchive,
+  onCancel,
   onDragEnd,
   onDragStart,
   onOpen,
+  onStartRepair,
+  onVerifyPass,
   visual,
 }: {
   bug: BugView;
   draggable: boolean;
   dragging: boolean;
+  onArchive: () => void;
+  onCancel: () => void;
   onDragEnd: () => void;
   onDragStart: (event: ReactDragEvent<HTMLElement>) => void;
   onOpen: () => void;
+  onStartRepair: () => void;
+  onVerifyPass: () => void;
   visual: CookingVisualPresentation;
 }) {
   return (
@@ -391,6 +619,71 @@ function BugCard({
       {visual.state !== 'IDLE' ? (
         <strong className="collab-bug-card__attention">{visual.label}</strong>
       ) : null}
+      {bug.availableActions.some((action) =>
+        ['CANCEL', 'REQUEST_REPAIR', 'VERIFY_PASS', 'ARCHIVE'].includes(action),
+      ) ? (
+        <footer className="collab-bug-card__actions">
+          {bug.availableActions.includes('CANCEL') ? (
+            <button onClick={stopCardAction(onCancel)} type="button">
+              取消
+            </button>
+          ) : null}
+          {bug.availableActions.includes('REQUEST_REPAIR') ? (
+            <button onClick={stopCardAction(onStartRepair)} type="button">
+              开始修复
+            </button>
+          ) : null}
+          {bug.availableActions.includes('VERIFY_PASS') ? (
+            <button onClick={stopCardAction(onVerifyPass)} type="button">
+              验证通过
+            </button>
+          ) : null}
+          {bug.availableActions.includes('ARCHIVE') ? (
+            <button onClick={stopCardAction(onArchive)} type="button">
+              归档
+            </button>
+          ) : null}
+        </footer>
+      ) : null}
+    </article>
+  );
+}
+
+function UpdateBatchCard({
+  batch,
+  onOpen,
+}: {
+  batch: UpdateBatchView;
+  onOpen: () => void;
+}) {
+  const visual = batch.presentation.visual;
+  return (
+    <article
+      aria-label={`统一更新批次，${batch.engineeringName}，${visual.label}`}
+      className="collab-bug-card collab-update-batch-card"
+      data-stage="UPDATING"
+      data-visual-state={visual.state}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onOpen();
+        }
+      }}
+      role="button"
+      tabIndex={0}
+    >
+      <span aria-hidden="true" className="collab-bug-card__state">
+        {visual.symbol}
+      </span>
+      <small>
+        {batch.engineeringName} · {batch.targetBranch}
+      </small>
+      <h3>统一更新批次 · {batch.entries.length} 条缺陷</h3>
+      <p>
+        {deploymentLabel(batch.deploymentKind)} · {batch.environmentName}
+      </p>
+      <strong className="collab-bug-card__attention">{visual.label}</strong>
     </article>
   );
 }
@@ -400,48 +693,60 @@ function BugDrawer({
   onChanged,
   onClose,
   onEdit,
+  onOpenBatch,
   snapshot,
 }: {
   drawer: Drawer;
   onChanged: (revision: number, message: string) => void;
   onClose: () => void;
   onEdit: (bugId: string) => void;
+  onOpenBatch: (batchId: string) => void;
   snapshot: CookingWorkspaceSnapshot;
 }) {
   const bug =
-    drawer.mode === 'create'
+    drawer.mode === 'create' || drawer.mode === 'batch'
       ? null
       : (snapshot.bugs.find(({ id }) => id === drawer.bugId) ?? null);
-  if (drawer.mode !== 'create' && !bug) return null;
+  const batch =
+    drawer.mode === 'batch'
+      ? (snapshot.updateBatches.find(({ id }) => id === drawer.batchId) ?? null)
+      : null;
+  if (drawer.mode !== 'create' && drawer.mode !== 'batch' && !bug) return null;
+  if (drawer.mode === 'batch' && !batch) return null;
+  const viewing = drawer.mode === 'view' || drawer.mode === 'batch';
   return (
     <div
       className="collab-dialog-backdrop collab-drawer-scrim"
       role="presentation"
     >
       <section
-        aria-label={drawerTitle(drawer.mode, bug)}
+        aria-label={
+          drawer.mode === 'batch'
+            ? '统一更新批次详情'
+            : drawerTitle(drawer.mode, bug)
+        }
         aria-modal="true"
         className="collab-dialog collab-bug-drawer"
         role="dialog"
       >
-        <header
-          className={
-            drawer.mode === 'view' ? 'collab-bug-drawer__chrome' : undefined
-          }
-        >
-          {drawer.mode === 'view' ? (
-            <small>缺陷详情</small>
+        <header className={viewing ? 'collab-bug-drawer__chrome' : undefined}>
+          {viewing ? (
+            <small>
+              {drawer.mode === 'batch' ? '统一更新批次详情' : '缺陷详情'}
+            </small>
           ) : (
             <div>
               <small>{bug ? bugLabel(bug) : '新缺陷'}</small>
               <h2>{drawerTitle(drawer.mode, bug)}</h2>
             </div>
           )}
-          <button aria-label="关闭缺陷抽屉" onClick={onClose} type="button">
+          <button aria-label="关闭详情抽屉" onClick={onClose} type="button">
             ×
           </button>
         </header>
-        {drawer.mode === 'view' ? (
+        {drawer.mode === 'batch' ? (
+          <UpdateBatchDetails batch={batch!} onChanged={onChanged} />
+        ) : drawer.mode === 'view' ? (
           <BugDetail
             bug={bug!}
             onChanged={onChanged}
@@ -452,6 +757,7 @@ function BugDrawer({
                 ? () => onEdit(bug!.id)
                 : null
             }
+            onOpenBatch={onOpenBatch}
             snapshot={snapshot}
           />
         ) : (
@@ -698,32 +1004,26 @@ function BugDetail({
   bug,
   onChanged,
   onEdit,
+  onOpenBatch,
   snapshot,
 }: {
   bug: BugView;
   onChanged: (revision: number, message: string) => void;
   onEdit: (() => void) | null;
+  onOpenBatch: (batchId: string) => void;
   snapshot: CookingWorkspaceSnapshot;
 }) {
   const [detailView, setDetailView] = useState<'progress' | 'report'>(
     'progress',
   );
-  const [feedback, setFeedback] = useState('');
-  const [externalOutcome, setExternalOutcome] = useState<
-    'SUCCEEDED' | 'FAILED'
-  >('SUCCEEDED');
-  const [externalSummary, setExternalSummary] = useState('');
-  const [externalFiles, setExternalFiles] = useState<File[]>([]);
   const [verificationComment, setVerificationComment] = useState('');
   const [verificationFeedback, setVerificationFeedback] = useState('');
   const [verificationFiles, setVerificationFiles] = useState<File[]>([]);
-  const [feedbackFiles, setFeedbackFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const feedbackFileInput = useRef<HTMLInputElement>(null);
-  const externalFileInput = useRef<HTMLInputElement>(null);
   const verificationFileInput = useRef<HTMLInputElement>(null);
   const repair = snapshot.repairByBug[bug.id] ?? null;
+  const progress = snapshot.progressByBug[bug.id] ?? [];
   const visual = snapshot.visualByBug[bug.id]!;
   const submissionItemId = bug.assignment?.submissionItemId ?? null;
   const pendingDelivery = submissionItemId
@@ -736,11 +1036,6 @@ function BugDetail({
     .find((candidate) =>
       candidate.entries.some((entry) => entry.bugId === bug.id),
     );
-  const verifications = snapshot.verificationsByBug[bug.id] ?? [];
-  const cleanup = snapshot.cleanups.find(
-    (candidate) =>
-      candidate.reason === 'BUG_CANCELLED' && candidate.subjectId === bug.id,
-  );
   const canResolveInteraction = Boolean(
     repair?.timeline.some(
       (node) =>
@@ -750,9 +1045,13 @@ function BugDetail({
             interaction.state === 'PENDING' && interaction.canResolve,
         ),
     ) ||
-    updateBatch?.interactions.some(
-      (interaction) =>
-        interaction.state === 'PENDING' && interaction.canResolve,
+    updateBatch?.timeline.some(
+      (node) =>
+        node.kind === 'UPDATE_ATTEMPT' &&
+        node.interactions.some(
+          (interaction) =>
+            interaction.state === 'PENDING' && interaction.canResolve,
+        ),
     ),
   );
   const needsCurrentUserAction = Boolean(
@@ -795,7 +1094,8 @@ function BugDetail({
           <h2>{bug.report.title}</h2>
         </div>
         <dl>
-          <Detail label="当前阶段">
+          <Detail label="当前阶段">{bug.presentation.stageLabel}</Detail>
+          <Detail label="当前状态">
             <span
               aria-label={visual.label}
               className="collab-current-visual"
@@ -833,12 +1133,14 @@ function BugDetail({
         </nav>
       </header>
       <BugReportDetails bug={bug} onEdit={onEdit} />
-      {repair ? (
+      {progress.length ? (
         <RepairAttemptDetails
           bug={bug}
+          onOpenBatch={onOpenBatch}
           pending={pending}
           repair={repair}
           run={run}
+          timeline={progress}
         />
       ) : null}
       {pendingDelivery ? (
@@ -850,78 +1152,8 @@ function BugDetail({
           </p>
         </section>
       ) : null}
-      {updateBatch ? (
-        <UpdateBatchDetails batch={updateBatch} pending={pending} run={run} />
-      ) : null}
-      {bug.feedback.length ? (
-        <section className="collab-bug-detail-section">
-          <h3>反馈记录</h3>
-          <ol className="collab-repair-records">
-            {[...bug.feedback].reverse().map((entry) => (
-              <li key={entry.id}>
-                <header>
-                  <strong>
-                    {entry.kind === 'TESTER_FEEDBACK'
-                      ? '测试反馈'
-                      : entry.kind === 'DEVELOPER_NOTE'
-                        ? '开发补充'
-                        : '执行失败'}
-                  </strong>
-                  <time>{formatDateTime(entry.createdAt)}</time>
-                </header>
-                <p>{entry.content}</p>
-                {entry.attachments.length ? (
-                  <ul className="collab-attachments collab-bug-attachments">
-                    {entry.attachments.map((attachment) => (
-                      <li key={attachment.id}>
-                        <AttachmentLink attachment={attachment} />
-                        <small>{formatBytes(attachment.sizeBytes)}</small>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </li>
-            ))}
-          </ol>
-        </section>
-      ) : null}
-      {verifications.length ? (
-        <section className="collab-bug-detail-section">
-          <h3>验证记录</h3>
-          <ol className="collab-repair-records">
-            {[...verifications].reverse().map((verification) => (
-              <li key={verification.id}>
-                <header>
-                  <strong>
-                    第 {verification.round} 轮 ·{' '}
-                    {verification.result === 'PASSED'
-                      ? '验证通过'
-                      : '验证失败并返修'}
-                  </strong>
-                  <time>{formatDateTime(verification.createdAt)}</time>
-                </header>
-                {verification.comment ? <p>{verification.comment}</p> : null}
-                {verification.attachments.length ? (
-                  <ul className="collab-attachments collab-bug-attachments">
-                    {verification.attachments.map((attachment) => (
-                      <li key={attachment.id}>
-                        <AttachmentLink attachment={attachment} />
-                        <small>{formatBytes(attachment.sizeBytes)}</small>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </li>
-            ))}
-          </ol>
-        </section>
-      ) : null}
-      {bug.availableActions.some((action) =>
-        ['REQUEST_REPAIR', 'WITHDRAW_REPAIR'].includes(action),
-      ) ||
-      repair?.availableActions.includes('STOP_EXECUTION') ||
-      pendingDelivery?.availableActions.includes('FREEZE_NOW') ||
-      updateBatch?.availableActions.length ? (
+      {bug.availableActions.includes('REQUEST_REPAIR') ||
+      pendingDelivery?.availableActions.includes('FREEZE_NOW') ? (
         <section className="collab-bug-detail-section">
           <h3>修复与更新操作</h3>
           {bug.availableActions.includes('REQUEST_REPAIR') ? (
@@ -942,42 +1174,6 @@ function BugDetail({
               开始自动修复
             </button>
           ) : null}
-          {bug.availableActions.includes('WITHDRAW_REPAIR') ? (
-            <button
-              disabled={pending}
-              onClick={() =>
-                run(
-                  () =>
-                    withdrawRepairAction(bug.id, {
-                      mutationId: crypto.randomUUID(),
-                      expectedVersion: bug.version,
-                    }),
-                  '缺陷已撤回待修复。',
-                )
-              }
-              type="button"
-            >
-              撤回修复
-            </button>
-          ) : null}
-          {repair?.availableActions.includes('STOP_EXECUTION') ? (
-            <button
-              disabled={pending}
-              onClick={() =>
-                run(
-                  () =>
-                    stopRepairExecutionAction(bug.id, {
-                      mutationId: crypto.randomUUID(),
-                      expectedVersion: bug.version,
-                    }),
-                  '已请求停止当前修复；Bug 仍保留在修复中。',
-                )
-              }
-              type="button"
-            >
-              停止当前修复
-            </button>
-          ) : null}
           {pendingDelivery?.availableActions.includes('FREEZE_NOW') ? (
             <button
               disabled={pending || !submissionItemId}
@@ -995,165 +1191,6 @@ function BugDetail({
               立即统一更新
             </button>
           ) : null}
-          {updateBatch?.availableActions.includes('CANCEL_BATCH') ? (
-            <button
-              disabled={pending}
-              onClick={() =>
-                run(
-                  () =>
-                    cancelUpdateBatchAction(updateBatch.id, {
-                      mutationId: crypto.randomUUID(),
-                      expectedVersion: updateBatch.version,
-                    }),
-                  '更新批次已取消，候选提交回到待更新。',
-                )
-              }
-              type="button"
-            >
-              取消更新批次
-            </button>
-          ) : null}
-          {updateBatch?.availableActions.includes('STOP_EXECUTION') ? (
-            <button
-              disabled={pending}
-              onClick={() =>
-                run(
-                  () =>
-                    stopUpdateExecutionAction(updateBatch.id, {
-                      mutationId: crypto.randomUUID(),
-                      expectedVersion: updateBatch.version,
-                    }),
-                  '已请求停止当前统一更新。',
-                )
-              }
-              type="button"
-            >
-              停止统一更新
-            </button>
-          ) : null}
-          {updateBatch?.availableActions.includes('REPORT_EXTERNAL') ? (
-            <div className="collab-form collab-bug-verification">
-              <label>
-                <span>外部更新结果</span>
-                <select
-                  onChange={(event) =>
-                    setExternalOutcome(
-                      event.target.value as 'SUCCEEDED' | 'FAILED',
-                    )
-                  }
-                  value={externalOutcome}
-                >
-                  <option value="SUCCEEDED">外部更新成功</option>
-                  <option value="FAILED">外部更新失败</option>
-                </select>
-              </label>
-              <textarea
-                maxLength={8_000}
-                onChange={(event) => setExternalSummary(event.target.value)}
-                placeholder={
-                  externalOutcome === 'FAILED'
-                    ? '说明持续集成或部署失败原因'
-                    : '可补充外部更新结果'
-                }
-                rows={3}
-                value={externalSummary}
-              />
-              <input
-                accept="image/png,image/jpeg,image/webp,text/plain,application/json"
-                multiple
-                onChange={(event) =>
-                  setExternalFiles(
-                    Array.from(event.target.files ?? []).slice(0, 5),
-                  )
-                }
-                ref={externalFileInput}
-                type="file"
-              />
-              <button
-                disabled={
-                  pending ||
-                  (externalOutcome === 'FAILED' && !externalSummary.trim())
-                }
-                onClick={() => {
-                  const formData = new FormData();
-                  formData.set('mutationId', crypto.randomUUID());
-                  formData.set('expectedVersion', String(updateBatch.version));
-                  formData.set('outcome', externalOutcome);
-                  formData.set('summary', externalSummary);
-                  externalFiles.forEach((file) =>
-                    formData.append('attachments', file),
-                  );
-                  run(
-                    () =>
-                      reportExternalDeploymentAction(updateBatch.id, formData),
-                    externalOutcome === 'SUCCEEDED'
-                      ? '外部更新已确认成功，缺陷进入待验证。'
-                      : '外部更新失败记录已追加，可在原批次继续。',
-                    () => {
-                      setExternalSummary('');
-                      setExternalFiles([]);
-                      if (externalFileInput.current)
-                        externalFileInput.current.value = '';
-                    },
-                  );
-                }}
-                type="button"
-              >
-                提交外部结果
-              </button>
-            </div>
-          ) : null}
-        </section>
-      ) : null}
-      {bug.availableActions.includes('ADD_FEEDBACK') &&
-      !['REPAIRING', 'WAITING_FOR_UPDATE', 'UPDATING'].includes(bug.stage) ? (
-        <section className="collab-bug-detail-section">
-          <h3>补充反馈</h3>
-          <div className="collab-form collab-bug-verification">
-            <textarea
-              maxLength={8_000}
-              onChange={(event) => setFeedback(event.target.value)}
-              placeholder="补充首次修复后的新信息"
-              rows={3}
-              value={feedback}
-            />
-            <input
-              accept="image/png,image/jpeg,image/webp,text/plain,application/json"
-              multiple
-              onChange={(event) =>
-                setFeedbackFiles(
-                  Array.from(event.target.files ?? []).slice(0, 5),
-                )
-              }
-              ref={feedbackFileInput}
-              type="file"
-            />
-            <button
-              disabled={pending || !feedback.trim()}
-              onClick={() => {
-                const formData = new FormData();
-                formData.set('mutationId', crypto.randomUUID());
-                formData.set('expectedVersion', String(bug.version));
-                formData.set('content', feedback);
-                feedbackFiles.forEach((file) =>
-                  formData.append('attachments', file),
-                );
-                run(
-                  () => addBugFeedbackAction(bug.id, formData),
-                  '反馈已追加。',
-                  () => {
-                    setFeedback('');
-                    setFeedbackFiles([]);
-                    if (feedbackFileInput.current)
-                      feedbackFileInput.current.value = '';
-                  },
-                );
-              }}
-              type="button"
-            >
-              追加反馈
-            </button>
-          </div>
         </section>
       ) : null}
       {bug.availableActions.some((action) =>
@@ -1296,70 +1333,48 @@ function BugDetail({
           </div>
         </section>
       ) : null}
-      {bug.availableActions.includes('CANCEL') ? (
+      {bug.availableActions.includes('RESTORE') ? (
         <section className="collab-bug-detail-section">
-          <h3>缺陷操作</h3>
+          <h3>恢复缺陷</h3>
+          <p>恢复后回到待修复，原始缺陷资料仍可继续编辑。</p>
           <button
             disabled={pending}
             onClick={() =>
               run(
                 () =>
-                  cancelBugAction(bug.id, {
+                  restoreBugAction(bug.id, {
                     mutationId: crypto.randomUUID(),
                     expectedVersion: bug.version,
                   }),
-                '缺陷已移入垃圾桶。',
+                '缺陷已恢复到待修复。',
               )
             }
             type="button"
           >
-            取消缺陷
+            恢复到待修复
           </button>
         </section>
       ) : null}
-      {cleanup ? (
+      {bug.availableActions.includes('UNARCHIVE') ? (
         <section className="collab-bug-detail-section">
-          <h3>取消与清理</h3>
-          <dl className="collab-bug-detail-list">
-            <Detail label="本地资源">{cleanup.presentation.statusLabel}</Detail>
-          </dl>
-          {cleanup.attempts.length ? (
-            <ol className="collab-repair-records">
-              {[...cleanup.attempts].reverse().map((attempt) => (
-                <li key={attempt.id}>
-                  <header>
-                    <strong>第 {attempt.attempt} 次清理</strong>
-                    <time>{formatDateTime(attempt.createdAt)}</time>
-                  </header>
-                  <p>
-                    {attempt.summary ??
-                      repairStateLabel(attempt.executionState)}
-                  </p>
-                  {attempt.technicalFailure ? (
-                    <code>{attempt.technicalFailure}</code>
-                  ) : null}
-                </li>
-              ))}
-            </ol>
-          ) : null}
-          {cleanup.availableActions.includes('RETRY_CLEANUP') ? (
-            <button
-              disabled={pending}
-              onClick={() =>
-                run(
-                  () =>
-                    retryCleanupAction(cleanup.id, {
-                      mutationId: crypto.randomUUID(),
-                      expectedVersion: cleanup.version,
-                    }),
-                  '本地资源清理已重新排队。',
-                )
-              }
-              type="button"
-            >
-              重试清理
-            </button>
-          ) : null}
+          <h3>移出归档</h3>
+          <p>移出后仍保持已完成，并重新显示在看板中。</p>
+          <button
+            disabled={pending}
+            onClick={() =>
+              run(
+                () =>
+                  unarchiveBugAction(bug.id, {
+                    mutationId: crypto.randomUUID(),
+                    expectedVersion: bug.version,
+                  }),
+                '缺陷已移出归档。',
+              )
+            }
+            type="button"
+          >
+            移出归档
+          </button>
         </section>
       ) : null}
       {error ? (
@@ -1437,20 +1452,27 @@ function BugReportDetails({
 
 function RepairAttemptDetails({
   bug,
+  onOpenBatch,
   pending,
   repair,
   run,
+  timeline,
 }: {
   bug: BugView;
+  onOpenBatch: (batchId: string) => void;
   pending: boolean;
-  repair: BugRepairView;
+  repair: BugRepairView | null;
   run: (
     command: () => Promise<WorkspaceActionResult>,
     message: string,
     afterSuccess?: () => void,
   ) => void;
+  timeline: BugProgressTimelineNode[];
 }) {
-  const latestNode = repair.timeline.at(-1);
+  const latestNode = timeline.at(-1);
+  const latestRepairAttemptId = [...timeline]
+    .reverse()
+    .find((node) => node.kind === 'REPAIR_ATTEMPT')?.id;
   const latestNodeRef = useRef<HTMLLIElement>(null);
   useEffect(() => {
     latestNodeRef.current?.scrollIntoView({ block: 'nearest' });
@@ -1458,186 +1480,332 @@ function RepairAttemptDetails({
     latestNode?.id,
     latestNode?.kind === 'REPAIR_ATTEMPT'
       ? latestNode.executionState
-      : latestNode?.kind,
+      : latestNode?.kind === 'UPDATE_BATCH'
+        ? latestNode.visual.state
+        : latestNode?.kind,
   ]);
   return (
     <section className="collab-bug-detail-section collab-progress-timeline">
       <header>
         <div>
           <h3>缺陷进展</h3>
-          <p>{repair.presentation.statusLabel}</p>
+          <p>按生命周期从旧到新记录，已定位到最新节点。</p>
         </div>
       </header>
       <ol className="collab-repair-timeline">
-        {repair.timeline.map((node, index) => (
+        {timeline.map((node, index) => (
           <li
             data-node-kind={node.kind}
             key={node.id}
-            ref={index === repair.timeline.length - 1 ? latestNodeRef : null}
+            ref={index === timeline.length - 1 ? latestNodeRef : null}
           >
             <span aria-hidden="true" className="collab-repair-timeline__mark" />
-            {node.kind === 'BUG_REGISTERED' ? (
-              <article>
-                <header>
-                  <strong>缺陷已登记</strong>
-                  <time>{formatDateTime(node.occurredAt)}</time>
-                </header>
-                <p>原始报告已进入待修复阶段。</p>
-              </article>
-            ) : (
-              <article>
-                <header>
-                  <strong>
-                    第 {node.attempt} 轮修复
-                    {node.result?.outcome === 'COMPLETED'
-                      ? '已完成'
-                      : node.result?.outcome === 'FAILED'
-                        ? '未完成'
-                        : '进行中'}
-                  </strong>
-                  <time>
-                    {formatDateTime(
-                      node.finishedAt ?? node.startedAt ?? node.queuedAt,
-                    )}
-                  </time>
-                </header>
-                {node.interactions.map((interaction) => (
-                  <CookingInteractionRecord
-                    interaction={interaction}
-                    key={interaction.id}
-                    onResolve={(resolution) =>
-                      resolveRepairInteractionAction(interaction.id, {
-                        mutationId: crypto.randomUUID(),
-                        expectedVersion: bug.version,
-                        resolution,
-                      })
-                    }
-                    pending={pending}
-                    run={run}
-                  />
-                ))}
-                {!node.result ? (
-                  <dl className="collab-bug-detail-list">
-                    <Detail label="Agent">{node.agentName}</Detail>
-                    <Detail label="处理状态">
-                      {['CLAIMED', 'RUNNING'].includes(node.executionState)
-                        ? '正在自动处理'
-                        : repairStateLabel(node.executionState)}
-                    </Detail>
-                    <Detail label="开始时间">
-                      {node.startedAt
-                        ? formatDateTime(node.startedAt)
-                        : '等待 Agent 开始'}
-                    </Detail>
-                  </dl>
-                ) : node.result.outcome === 'COMPLETED' ? (
-                  <>
-                    <TimelineList
-                      emptyLabel="Codex 未报告具体修改"
-                      items={node.result.changes}
-                      title="修改内容"
-                    />
-                    <div className="collab-repair-validations">
-                      <h4>检查结果</h4>
-                      {node.result.validations.length ? (
-                        <ul>
-                          {node.result.validations.map((validation) => (
-                            <li
-                              data-validation-status={validation.status}
-                              key={`${validation.name}:${validation.status}`}
-                            >
-                              <strong>
-                                {validationStatusLabel(validation.status)}
-                              </strong>
-                              <span>{validation.name}</span>
-                              {validation.detail ? (
-                                <small>{validation.detail}</small>
-                              ) : null}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p>Codex 未报告检查项</p>
-                      )}
-                    </div>
-                    {node.result.warnings.length ? (
-                      <TimelineList items={node.result.warnings} title="警告" />
-                    ) : null}
-                    <p className="collab-repair-commit-count">
-                      已记录 {node.result.commitCount} 个候选提交
-                    </p>
-                    {node.result.rawSummary || node.result.commits ? (
-                      <details>
-                        <summary>技术详情与 Codex 完整结论</summary>
-                        {node.result.rawSummary ? (
-                          <p>{node.result.rawSummary}</p>
-                        ) : null}
-                        {node.result.commits?.length ? (
-                          <ol>
-                            {node.result.commits.map((commit) => (
-                              <li key={commit}>
-                                <code>{commit}</code>
-                              </li>
-                            ))}
-                          </ol>
-                        ) : null}
-                      </details>
-                    ) : null}
-                  </>
-                ) : (
-                  <>
-                    <dl className="collab-bug-detail-list">
-                      <Detail label="失败阶段">{node.result.failedStep}</Detail>
-                      <Detail label="失败原因">{node.result.reason}</Detail>
-                    </dl>
-                    <TimelineList
-                      emptyLabel="无"
-                      items={node.result.completedActions}
-                      title="已完成事项"
-                    />
-                    <TimelineList
-                      emptyLabel="无"
-                      items={node.result.pendingActions}
-                      title="未执行事项"
-                    />
-                    {node.result.rawSummary || node.result.failureCode ? (
-                      <details>
-                        <summary>技术详情与 Codex 完整结论</summary>
-                        {node.result.rawSummary ? (
-                          <p>{node.result.rawSummary}</p>
-                        ) : null}
-                        {node.result.failureCode ? (
-                          <code>{node.result.failureCode}</code>
-                        ) : null}
-                      </details>
-                    ) : null}
-                    {index === repair.timeline.length - 1 &&
-                    repair.availableActions.includes('RETRY_REPAIR') ? (
-                      <button
-                        disabled={pending}
-                        onClick={() =>
-                          run(
-                            () =>
-                              continueRepairAction(bug.id, {
-                                mutationId: crypto.randomUUID(),
-                                expectedVersion: bug.version,
-                              }),
-                            '已在原修复会话中重新执行。',
-                          )
-                        }
-                        type="button"
-                      >
-                        重新执行修复
-                      </button>
-                    ) : null}
-                  </>
-                )}
-              </article>
-            )}
+            <BugProgressNode
+              bug={bug}
+              latestRepairAttemptId={latestRepairAttemptId}
+              node={node}
+              onOpenBatch={onOpenBatch}
+              pending={pending}
+              repair={repair}
+              run={run}
+            />
           </li>
         ))}
       </ol>
     </section>
+  );
+}
+
+function BugProgressNode({
+  bug,
+  latestRepairAttemptId,
+  node,
+  onOpenBatch,
+  pending,
+  repair,
+  run,
+}: {
+  bug: BugView;
+  latestRepairAttemptId: string | undefined;
+  node: BugProgressTimelineNode;
+  onOpenBatch: (batchId: string) => void;
+  pending: boolean;
+  repair: BugRepairView | null;
+  run: (
+    command: () => Promise<WorkspaceActionResult>,
+    message: string,
+    afterSuccess?: () => void,
+  ) => void;
+}) {
+  if (node.kind === 'BUG_REGISTERED')
+    return (
+      <article>
+        <header>
+          <strong>缺陷已登记</strong>
+          <time>{formatDateTime(node.occurredAt)}</time>
+        </header>
+        <p>原始报告已进入待修复阶段。</p>
+      </article>
+    );
+  if (node.kind === 'UPDATE_BATCH')
+    return (
+      <article>
+        <header>
+          <strong>已进入统一更新批次</strong>
+          <time>{formatDateTime(node.occurredAt)}</time>
+        </header>
+        <p>
+          {node.statusLabel} · 共 {node.bugCount} 条缺陷
+        </p>
+        <span
+          aria-label={node.visual.label}
+          className="collab-current-visual collab-progress-visual"
+          data-visual-state={node.visual.state}
+        >
+          <span aria-hidden="true">{node.visual.symbol}</span>
+          {node.visual.label}
+        </span>
+        <button onClick={() => onOpenBatch(node.batchId)} type="button">
+          查看共享批次详情
+        </button>
+      </article>
+    );
+  if (node.kind === 'VERIFICATION')
+    return (
+      <article>
+        <header>
+          <strong>
+            第 {node.round} 轮验证
+            {node.result === 'PASSED' ? '已通过' : '未通过'}
+          </strong>
+          <time>{formatDateTime(node.createdAt)}</time>
+        </header>
+        {node.comment ? <p>{node.comment}</p> : <p>测试负责人未补充说明。</p>}
+        {node.result === 'FAILED' && node.repairAttempt ? (
+          <strong>已进入第 {node.repairAttempt} 轮修复</strong>
+        ) : null}
+        <ProgressAttachments attachments={node.attachments} />
+      </article>
+    );
+  if (node.kind === 'REOPEN')
+    return (
+      <article>
+        <header>
+          <strong>第 {node.round} 次重新打开</strong>
+          <time>{formatDateTime(node.createdAt)}</time>
+        </header>
+        <p>{node.feedback}</p>
+        <strong>已进入第 {node.repairAttempt} 轮修复</strong>
+        <ProgressAttachments attachments={node.attachments} />
+      </article>
+    );
+  if (node.kind === 'CANCELLED' || node.kind === 'RESTORED')
+    return (
+      <article>
+        <header>
+          <strong>
+            {node.kind === 'CANCELLED' ? '缺陷已取消' : '缺陷已恢复到待修复'}
+          </strong>
+          <time>{formatDateTime(node.createdAt)}</time>
+        </header>
+        <p>
+          {node.kind === 'CANCELLED'
+            ? '缺陷已移出主看板，可从已取消缺陷中恢复。'
+            : '原始资料已重新开放编辑，尚未自动开始修复。'}
+        </p>
+      </article>
+    );
+  if (node.kind !== 'REPAIR_ATTEMPT') return null;
+  return (
+    <RepairAttemptTimelineArticle
+      bug={bug}
+      isLatestRepairAttempt={node.id === latestRepairAttemptId}
+      node={node}
+      pending={pending}
+      repair={repair}
+      run={run}
+    />
+  );
+}
+
+function RepairAttemptTimelineArticle({
+  bug,
+  isLatestRepairAttempt,
+  node,
+  pending,
+  repair,
+  run,
+}: {
+  bug: BugView;
+  isLatestRepairAttempt: boolean;
+  node: Extract<BugProgressTimelineNode, { kind: 'REPAIR_ATTEMPT' }>;
+  pending: boolean;
+  repair: BugRepairView | null;
+  run: (
+    command: () => Promise<WorkspaceActionResult>,
+    message: string,
+    afterSuccess?: () => void,
+  ) => void;
+}) {
+  return (
+    <article>
+      <header>
+        <strong>
+          第 {node.attempt} 轮修复
+          {node.result?.outcome === 'COMPLETED'
+            ? '已完成'
+            : node.result?.outcome === 'FAILED'
+              ? '未完成'
+              : '进行中'}
+        </strong>
+        <time>
+          {formatDateTime(node.finishedAt ?? node.startedAt ?? node.queuedAt)}
+        </time>
+      </header>
+      {node.interactions.map((interaction) => (
+        <CookingInteractionRecord
+          interaction={interaction}
+          key={interaction.id}
+          onResolve={(resolution) =>
+            resolveRepairInteractionAction(interaction.id, {
+              mutationId: crypto.randomUUID(),
+              expectedVersion: bug.version,
+              resolution,
+            })
+          }
+          pending={pending}
+          run={run}
+        />
+      ))}
+      {!node.result ? (
+        <dl className="collab-bug-detail-list">
+          <Detail label="Agent">{node.agentName}</Detail>
+          <Detail label="处理状态">
+            {['CLAIMED', 'RUNNING'].includes(node.executionState)
+              ? '正在自动处理'
+              : repairStateLabel(node.executionState)}
+          </Detail>
+          <Detail label="开始时间">
+            {node.startedAt
+              ? formatDateTime(node.startedAt)
+              : '等待 Agent 开始'}
+          </Detail>
+        </dl>
+      ) : node.result.outcome === 'COMPLETED' ? (
+        <>
+          <TimelineList
+            emptyLabel="Codex 未报告具体修改"
+            items={node.result.changes}
+            title="修改内容"
+          />
+          <div className="collab-repair-validations">
+            <h4>检查结果</h4>
+            {node.result.validations.length ? (
+              <ul>
+                {node.result.validations.map((validation) => (
+                  <li
+                    data-validation-status={validation.status}
+                    key={`${validation.name}:${validation.status}`}
+                  >
+                    <strong>{validationStatusLabel(validation.status)}</strong>
+                    <span>{validation.name}</span>
+                    {validation.detail ? (
+                      <small>{validation.detail}</small>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>Codex 未报告检查项</p>
+            )}
+          </div>
+          {node.result.warnings.length ? (
+            <TimelineList items={node.result.warnings} title="警告" />
+          ) : null}
+          <p className="collab-repair-commit-count">
+            已记录 {node.result.commitCount} 个候选提交
+          </p>
+          {node.result.rawSummary || node.result.commits ? (
+            <details>
+              <summary>技术详情与 Codex 完整结论</summary>
+              {node.result.rawSummary ? <p>{node.result.rawSummary}</p> : null}
+              {node.result.commits?.length ? (
+                <ol>
+                  {node.result.commits.map((commit) => (
+                    <li key={commit}>
+                      <code>{commit}</code>
+                    </li>
+                  ))}
+                </ol>
+              ) : null}
+            </details>
+          ) : null}
+        </>
+      ) : (
+        <>
+          <dl className="collab-bug-detail-list">
+            <Detail label="失败阶段">{node.result.failedStep}</Detail>
+            <Detail label="失败原因">{node.result.reason}</Detail>
+          </dl>
+          <TimelineList
+            emptyLabel="无"
+            items={node.result.completedActions}
+            title="已完成事项"
+          />
+          <TimelineList
+            emptyLabel="无"
+            items={node.result.pendingActions}
+            title="未执行事项"
+          />
+          {node.result.rawSummary || node.result.failureCode ? (
+            <details>
+              <summary>技术详情与 Codex 完整结论</summary>
+              {node.result.rawSummary ? <p>{node.result.rawSummary}</p> : null}
+              {node.result.failureCode ? (
+                <code>{node.result.failureCode}</code>
+              ) : null}
+            </details>
+          ) : null}
+          {isLatestRepairAttempt &&
+          repair?.availableActions.includes('RETRY_REPAIR') ? (
+            <button
+              disabled={pending}
+              onClick={() =>
+                run(
+                  () =>
+                    continueRepairAction(bug.id, {
+                      mutationId: crypto.randomUUID(),
+                      expectedVersion: bug.version,
+                    }),
+                  '已在原修复会话中重新执行。',
+                )
+              }
+              type="button"
+            >
+              重新执行修复
+            </button>
+          ) : null}
+        </>
+      )}
+    </article>
+  );
+}
+
+function ProgressAttachments({
+  attachments,
+}: {
+  attachments: BugView['report']['attachments'];
+}) {
+  if (!attachments.length) return null;
+  return (
+    <ul className="collab-attachments collab-bug-attachments">
+      {attachments.map((attachment) => (
+        <li key={attachment.id}>
+          <AttachmentLink attachment={attachment} />
+          <small>{formatBytes(attachment.sizeBytes)}</small>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -1678,120 +1846,361 @@ function validationStatusLabel(
 
 function UpdateBatchDetails({
   batch,
-  pending,
-  run,
+  onChanged,
 }: {
   batch: UpdateBatchView;
-  pending: boolean;
-  run: (
+  onChanged: (revision: number, message: string) => void;
+}) {
+  const [externalOutcome, setExternalOutcome] = useState<
+    'SUCCEEDED' | 'FAILED'
+  >('SUCCEEDED');
+  const [externalSummary, setExternalSummary] = useState('');
+  const [externalFiles, setExternalFiles] = useState<File[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const externalFileInput = useRef<HTMLInputElement>(null);
+
+  function run(
     command: () => Promise<WorkspaceActionResult>,
     message: string,
     afterSuccess?: () => void,
-  ) => void;
-}) {
+  ) {
+    startTransition(async () => {
+      try {
+        const result = await command();
+        if (!result.ok) {
+          setError(result.error.message);
+          return;
+        }
+        setError(null);
+        afterSuccess?.();
+        onChanged(result.result.revision, message);
+      } catch (actionError) {
+        setError(messageOf(actionError, '操作失败，请稍后重试。'));
+      }
+    });
+  }
+
   return (
-    <section className="collab-bug-detail-section">
-      <h3>统一更新批次</h3>
-      <p>{batch.presentation.statusLabel}</p>
-      <dl className="collab-bug-detail-list">
-        <Detail label="冻结时间">{formatDateTime(batch.frozenAt)}</Detail>
-        <Detail label="冻结缺陷数">{batch.entries.length}</Detail>
-      </dl>
-      <ol className="collab-repair-records">
-        {batch.entries.map((entry) => (
-          <li key={entry.bugId}>
-            <strong>
-              缺陷-{String(entry.bugShortId).padStart(3, '0')} ·{' '}
-              {entry.bugTitle}
-            </strong>
-            {entry.commits?.length ? (
-              <ol className="collab-repair-records">
-                {entry.commits.map((commit) => (
-                  <li key={commit}>
-                    <code>{commit}</code>
-                  </li>
-                ))}
-              </ol>
-            ) : null}
-          </li>
-        ))}
-      </ol>
-      {batch.interactions.length ? (
-        <>
-          <h3>更新例外处理</h3>
-          <ol className="collab-update-interactions">
-            {batch.interactions.map((interaction) => (
-              <li key={interaction.id}>
-                <CookingInteractionRecord
-                  interaction={interaction}
-                  onResolve={(resolution) =>
-                    resolveUpdateInteractionAction(interaction.id, {
-                      mutationId: crypto.randomUUID(),
-                      expectedVersion: batch.version,
-                      resolution,
-                    })
-                  }
-                  pending={pending}
-                  run={run}
-                />
-              </li>
-            ))}
-          </ol>
-        </>
+    <div className="collab-dialog__body collab-bug-drawer__body collab-update-batch-detail">
+      <header className="collab-bug-detail-hero">
+        <div>
+          <small>共享更新对象</small>
+          <h2>{batch.engineeringName} · 统一更新批次</h2>
+        </div>
+        <dl>
+          <Detail label="批次状态">{batch.presentation.statusLabel}</Detail>
+          <Detail label="当前状态">
+            <span
+              aria-label={batch.presentation.visual.label}
+              className="collab-current-visual"
+              data-visual-state={batch.presentation.visual.state}
+            >
+              <span aria-hidden="true">{batch.presentation.visual.symbol}</span>
+              {batch.presentation.visual.label}
+            </span>
+          </Detail>
+          <Detail label="目标分支">{batch.targetBranch}</Detail>
+          <Detail label="部署方式">
+            {deploymentLabel(batch.deploymentKind)}
+          </Detail>
+          <Detail label="环境">{batch.environmentName}</Detail>
+        </dl>
+      </header>
+      {error ? (
+        <p className="collab-form__error" role="alert">
+          {error}
+        </p>
       ) : null}
-      {batch.attempts.length ? (
-        <>
-          <h3>更新运行记录</h3>
-          <ol className="collab-repair-records">
-            {[...batch.attempts].reverse().map((attempt) => (
-              <li key={attempt.id}>
-                <header>
-                  <strong>第 {attempt.attempt} 次统一更新</strong>
-                  <time>{formatDateTime(attempt.createdAt)}</time>
-                </header>
-                <p>
-                  {attempt.summary ?? repairStateLabel(attempt.executionState)}
-                </p>
-                {attempt.technicalFailure ? (
-                  <code>{attempt.technicalFailure}</code>
-                ) : null}
-              </li>
-            ))}
-          </ol>
-        </>
-      ) : null}
-      {batch.externalReports.length ? (
-        <>
-          <h3>外部更新记录</h3>
-          <ol className="collab-repair-records">
-            {[...batch.externalReports].reverse().map((report) => (
-              <li key={report.id}>
-                <header>
-                  <strong>
-                    第 {report.round} 次 ·{' '}
-                    {report.outcome === 'SUCCEEDED'
-                      ? '外部更新成功'
-                      : '外部更新失败'}
-                  </strong>
-                  <time>{formatDateTime(report.createdAt)}</time>
-                </header>
-                {report.summary ? <p>{report.summary}</p> : null}
-                {report.attachments.length ? (
-                  <ul className="collab-attachments collab-bug-attachments">
-                    {report.attachments.map((attachment) => (
-                      <li key={attachment.id}>
-                        <AttachmentLink attachment={attachment} />
-                        <small>{formatBytes(attachment.sizeBytes)}</small>
+      <section className="collab-bug-detail-section">
+        <h3>冻结范围</h3>
+        <p>
+          {formatDateTime(batch.frozenAt)} 冻结，共 {batch.entries.length}{' '}
+          条缺陷。批次完成后会分别回到待验证。
+        </p>
+        <ol className="collab-repair-records">
+          {batch.entries.map((entry) => (
+            <li key={entry.bugId}>
+              <strong>
+                缺陷-{String(entry.bugShortId).padStart(3, '0')} ·{' '}
+                {entry.bugTitle}
+              </strong>
+              {entry.commits?.length ? (
+                <details>
+                  <summary>{entry.commits.length} 个候选 Commit</summary>
+                  <ol className="collab-repair-records">
+                    {entry.commits.map((commit) => (
+                      <li key={commit}>
+                        <code>{commit}</code>
                       </li>
                     ))}
-                  </ul>
-                ) : null}
+                  </ol>
+                </details>
+              ) : null}
+            </li>
+          ))}
+        </ol>
+      </section>
+      <section className="collab-bug-detail-section">
+        <h3>批次进展</h3>
+        <ol className="collab-repair-timeline collab-update-timeline">
+          {batch.timeline.map((node) => {
+            if (node.kind === 'BATCH_FORMED')
+              return (
+                <li data-node-kind={node.kind} key={node.id}>
+                  <span aria-hidden="true">◆</span>
+                  <article>
+                    <header>
+                      <strong>统一更新批次已形成</strong>
+                      <time>{formatDateTime(node.occurredAt)}</time>
+                    </header>
+                    <p>已冻结 {node.bugCount} 条缺陷。</p>
+                  </article>
+                </li>
+              );
+            if (node.kind === 'EXTERNAL_REPORT')
+              return (
+                <li data-node-kind={node.kind} key={node.id}>
+                  <span aria-hidden="true">
+                    {node.outcome === 'SUCCEEDED' ? '✓' : '×'}
+                  </span>
+                  <article>
+                    <header>
+                      <strong>
+                        第 {node.round} 轮外部部署
+                        {node.outcome === 'SUCCEEDED' ? '成功' : '失败'}
+                      </strong>
+                      <time>{formatDateTime(node.occurredAt)}</time>
+                    </header>
+                    {node.summary ? <p>{node.summary}</p> : null}
+                    {node.attachments.length ? (
+                      <ul className="collab-attachments collab-bug-attachments">
+                        {node.attachments.map((attachment) => (
+                          <li key={attachment.id}>
+                            <AttachmentLink attachment={attachment} />
+                            <small>{formatBytes(attachment.sizeBytes)}</small>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </article>
+                </li>
+              );
+            return (
+              <li data-node-kind={node.kind} key={node.id}>
+                <span aria-hidden="true">
+                  {node.result?.outcome === 'FAILED'
+                    ? '×'
+                    : node.result
+                      ? '✓'
+                      : '●'}
+                </span>
+                <article>
+                  <header>
+                    <strong>{updateAttemptLabel(node)}</strong>
+                    <time>{formatDateTime(node.queuedAt)}</time>
+                  </header>
+                  {node.result?.outcome === 'FAILED' ? (
+                    <>
+                      <div className="collab-structured-failure">
+                        <strong>{node.result.failedStep}</strong>
+                        <p>{node.result.reason}</p>
+                      </div>
+                      <DetailList
+                        items={node.result.completedActions}
+                        title="已完成操作"
+                      />
+                      <DetailList
+                        items={node.result.pendingActions}
+                        title="待处理事项"
+                      />
+                    </>
+                  ) : node.result ? (
+                    <>
+                      <DetailList
+                        items={node.result.completedActions}
+                        title="已完成操作"
+                      />
+                      <div className="collab-repair-validations">
+                        <h4>验证结果</h4>
+                        {node.result.validations.length ? (
+                          <ul>
+                            {node.result.validations.map(
+                              (validation, index) => (
+                                <li
+                                  data-validation-status={validation.status}
+                                  key={`${validation.name}:${index}`}
+                                >
+                                  <strong>
+                                    {validationLabel(validation.status)}
+                                  </strong>
+                                  <span>{validation.name}</span>
+                                  {validation.detail ? (
+                                    <small>{validation.detail}</small>
+                                  ) : null}
+                                </li>
+                              ),
+                            )}
+                          </ul>
+                        ) : (
+                          <p>Codex 未报告验证项</p>
+                        )}
+                      </div>
+                      {node.result.warnings.length ? (
+                        <DetailList items={node.result.warnings} title="提醒" />
+                      ) : null}
+                    </>
+                  ) : (
+                    <p>{repairStateLabel(node.executionState)}</p>
+                  )}
+                  {node.interactions.length ? (
+                    <ol className="collab-update-interactions">
+                      {node.interactions.map((interaction) => (
+                        <li key={interaction.id}>
+                          <CookingInteractionRecord
+                            interaction={interaction}
+                            onResolve={(resolution) =>
+                              resolveUpdateInteractionAction(interaction.id, {
+                                mutationId: crypto.randomUUID(),
+                                expectedVersion: batch.version,
+                                resolution,
+                              })
+                            }
+                            pending={pending}
+                            run={run}
+                          />
+                        </li>
+                      ))}
+                    </ol>
+                  ) : null}
+                  {node.result?.rawSummary ||
+                  (node.result?.outcome === 'FAILED' &&
+                    node.result.failureCode) ? (
+                    <details className="collab-technical-details">
+                      <summary>技术详情与 Codex 完整结论</summary>
+                      {node.result.rawSummary ? (
+                        <p>{node.result.rawSummary}</p>
+                      ) : null}
+                      {node.result.outcome === 'FAILED' &&
+                      node.result.failureCode ? (
+                        <code>{node.result.failureCode}</code>
+                      ) : null}
+                    </details>
+                  ) : null}
+                </article>
               </li>
-            ))}
-          </ol>
-        </>
+            );
+          })}
+        </ol>
+      </section>
+      {batch.availableActions.length ? (
+        <section className="collab-bug-detail-section">
+          <h3>批次操作</h3>
+          {batch.availableActions.includes('RETRY_UPDATE') ? (
+            <button
+              disabled={pending}
+              onClick={() =>
+                run(
+                  () =>
+                    retryUpdateAction(batch.id, {
+                      mutationId: crypto.randomUUID(),
+                      expectedVersion: batch.version,
+                    }),
+                  '已重新执行统一更新。',
+                )
+              }
+              type="button"
+            >
+              重新执行统一更新
+            </button>
+          ) : null}
+          {batch.availableActions.includes('REPORT_EXTERNAL') ? (
+            <div className="collab-form collab-bug-verification">
+              <label>
+                <span>外部更新结果</span>
+                <select
+                  onChange={(event) =>
+                    setExternalOutcome(
+                      event.target.value as 'SUCCEEDED' | 'FAILED',
+                    )
+                  }
+                  value={externalOutcome}
+                >
+                  <option value="SUCCEEDED">外部更新成功</option>
+                  <option value="FAILED">外部更新失败</option>
+                </select>
+              </label>
+              <textarea
+                maxLength={8_000}
+                onChange={(event) => setExternalSummary(event.target.value)}
+                placeholder={
+                  externalOutcome === 'FAILED'
+                    ? '说明持续集成或部署失败原因'
+                    : '可补充外部更新结果'
+                }
+                rows={3}
+                value={externalSummary}
+              />
+              <input
+                accept="image/png,image/jpeg,image/webp,text/plain,application/json"
+                multiple
+                onChange={(event) =>
+                  setExternalFiles(
+                    Array.from(event.target.files ?? []).slice(0, 5),
+                  )
+                }
+                ref={externalFileInput}
+                type="file"
+              />
+              <button
+                disabled={
+                  pending ||
+                  (externalOutcome === 'FAILED' && !externalSummary.trim())
+                }
+                onClick={() => {
+                  const formData = new FormData();
+                  formData.set('mutationId', crypto.randomUUID());
+                  formData.set('expectedVersion', String(batch.version));
+                  formData.set('outcome', externalOutcome);
+                  formData.set('summary', externalSummary);
+                  externalFiles.forEach((file) =>
+                    formData.append('attachments', file),
+                  );
+                  run(
+                    () => reportExternalDeploymentAction(batch.id, formData),
+                    externalOutcome === 'SUCCEEDED'
+                      ? '外部更新已确认成功，缺陷进入待验证。'
+                      : '外部更新失败记录已追加，可重新执行原批次。',
+                    () => {
+                      setExternalSummary('');
+                      setExternalFiles([]);
+                      if (externalFileInput.current)
+                        externalFileInput.current.value = '';
+                    },
+                  );
+                }}
+                type="button"
+              >
+                提交外部结果
+              </button>
+            </div>
+          ) : null}
+        </section>
       ) : null}
-    </section>
+    </div>
+  );
+}
+
+function DetailList({ items, title }: { items: string[]; title: string }) {
+  return (
+    <div>
+      <strong>{title}</strong>
+      <ul>
+        {items.map((item, index) => (
+          <li key={`${item}:${index}`}>{item}</li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -2075,17 +2484,19 @@ function dragTransition(bug: BugView, target: MainStage) {
       message: `${bugLabel(bug)} 已提交自动修复。`,
     };
   if (
-    target === 'WAITING_FOR_REPAIR' &&
-    bug.stage === 'REPAIRING' &&
-    bug.availableActions.includes('WITHDRAW_REPAIR')
+    target === 'DONE' &&
+    bug.stage === 'WAITING_FOR_VERIFICATION' &&
+    bug.availableActions.includes('VERIFY_PASS')
   )
     return {
-      command: () =>
-        withdrawRepairAction(bug.id, {
-          mutationId: crypto.randomUUID(),
-          expectedVersion: bug.version,
-        }),
-      message: `${bugLabel(bug)} 已撤回待修复。`,
+      command: () => {
+        const formData = new FormData();
+        formData.set('mutationId', crypto.randomUUID());
+        formData.set('expectedVersion', String(bug.version));
+        formData.set('result', 'PASSED');
+        return verifyBugAction(bug.id, formData);
+      },
+      message: `${bugLabel(bug)} 已验证完成。`,
     };
   return null;
 }
@@ -2093,6 +2504,7 @@ function dragTransition(bug: BugView, target: MainStage) {
 function drawerTitle(mode: Drawer['mode'], bug: BugView | null): string {
   if (mode === 'create') return '登记缺陷';
   if (mode === 'edit') return '编辑缺陷';
+  if (mode === 'batch') return '统一更新批次详情';
   return bug?.report.title ?? '缺陷详情';
 }
 
@@ -2112,6 +2524,33 @@ function formatDateTime(value: string): string {
     timeStyle: 'short',
     timeZone: 'Asia/Shanghai',
   }).format(new Date(value));
+}
+
+function deploymentLabel(kind: UpdateBatchView['deploymentKind']): string {
+  return kind === 'LOCAL_SCRIPT' ? '本地脚本部署' : '持续集成部署';
+}
+
+function updateAttemptLabel(
+  attempt: Extract<
+    UpdateBatchView['timeline'][number],
+    { kind: 'UPDATE_ATTEMPT' }
+  >,
+): string {
+  if (attempt.result?.outcome === 'COMPLETED')
+    return `第 ${attempt.attempt} 轮统一更新已完成`;
+  if (attempt.result?.outcome === 'PUSHED')
+    return `第 ${attempt.attempt} 轮已 Push，等待外部结果`;
+  if (attempt.result?.outcome === 'FAILED')
+    return `第 ${attempt.attempt} 轮统一更新未完成`;
+  return `第 ${attempt.attempt} 轮统一更新进行中`;
+}
+
+function validationLabel(status: 'PASSED' | 'FAILED' | 'SKIPPED'): string {
+  return {
+    PASSED: '通过',
+    FAILED: '失败',
+    SKIPPED: '跳过',
+  }[status];
 }
 
 function repairStateLabel(
@@ -2207,6 +2646,19 @@ function permissionSummary(value: JsonValue): string[] {
   };
   const items = walk(value, []);
   return items.length ? items : ['未提供可展示的权限范围'];
+}
+
+function stopCardAction(action: () => void) {
+  return (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    action();
+  };
+}
+
+function bugVersionOf(result: WorkspaceActionResult): number | null {
+  return result.ok && 'bugVersion' in result.result
+    ? result.result.bugVersion
+    : null;
 }
 
 function messageOf(error: unknown, fallback: string): string {

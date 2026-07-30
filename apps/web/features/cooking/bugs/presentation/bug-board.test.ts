@@ -81,6 +81,20 @@ describe('缺陷看板展示', () => {
     expect(css).toContain('animation: none');
   });
 
+  test('更新中列只渲染共享批次卡并从 Bug 摘要进入同一详情', async () => {
+    const source = await readFile(bugBoardPath, 'utf8');
+    expect(source).toContain('batches.map((batch)');
+    expect(source).toContain('统一更新批次 · {batch.entries.length} 条缺陷');
+    expect(source).toContain(
+      '`${batches.length} 个批次 · ${bugs.length} 条缺陷`',
+    );
+    expect(source).toContain('查看共享批次详情');
+    expect(source).toContain("node.kind === 'UPDATE_ATTEMPT'");
+    expect(source).toContain("batch.availableActions.includes('RETRY_UPDATE')");
+    expect(source).toContain('重新执行统一更新');
+    expect(source).not.toContain('补充信息并继续统一更新');
+  });
+
   test('原生 Interaction 保留三种审批决定和问题选项结构', async () => {
     const source = await readFile(bugBoardPath, 'utf8');
     expect(source).toContain('仅允许这一次');
@@ -95,6 +109,36 @@ describe('缺陷看板展示', () => {
     expect(source).not.toContain('queuePosition');
   });
 
+  test('自由输入只保留在验证失败和重新打开上下文', async () => {
+    const source = await readFile(bugBoardPath, 'utf8');
+    expect(source).toContain('验证失败并返修');
+    expect(source).toContain('重新打开');
+    expect(source).toContain('已进入第 {node.repairAttempt} 轮修复');
+    expect(source).toContain("node.kind === 'VERIFICATION'");
+    expect(source).toContain("node.kind === 'REOPEN'");
+    expect(source).not.toContain('补充反馈');
+    expect(source).not.toContain('追加反馈');
+    expect(source).not.toContain('ADD_FEEDBACK');
+  });
+
+  test('生命周期按钮与拖拽只保留四条合法转换', async () => {
+    const source = await readFile(bugBoardPath, 'utf8');
+    expect(source).toContain("target === 'REPAIRING'");
+    expect(source).toContain("bug.stage === 'WAITING_FOR_REPAIR'");
+    expect(source).toContain("target === 'DONE'");
+    expect(source).toContain("bug.stage === 'WAITING_FOR_VERIFICATION'");
+    expect(source).toContain("bug.availableActions.includes('CANCEL')");
+    expect(source).toContain("bug.availableActions.includes('ARCHIVE')");
+    expect(source).toContain('恢复到待修复');
+    expect(source).toContain('移出归档');
+    expect(source).toContain('撤销');
+    expect(source).not.toContain("target === 'WAITING_FOR_REPAIR'");
+    expect(source).not.toContain('WITHDRAW_REPAIR');
+    expect(source).not.toContain('停止当前修复');
+    expect(source).not.toContain('停止统一更新');
+    expect(source).not.toContain('取消更新批次');
+  });
+
   test('详情默认展示旧到新的结构化进展并隔离冻结报告', async () => {
     const [source, css] = await Promise.all([
       readFile(bugBoardPath, 'utf8'),
@@ -107,6 +151,9 @@ describe('缺陷看板展示', () => {
     expect(source).toContain('进展');
     expect(source).toContain('缺陷资料');
     expect(source).toContain("node.kind === 'BUG_REGISTERED'");
+    expect(source).toContain("node.kind === 'UPDATE_BATCH'");
+    expect(source).toContain("node.kind === 'CANCELLED'");
+    expect(source).toContain("node.kind === 'RESTORED'");
     expect(source).toContain('data-node-kind={node.kind}');
     expect(source).toContain("node.result.outcome === 'COMPLETED'");
     expect(source).toContain('重新执行修复');

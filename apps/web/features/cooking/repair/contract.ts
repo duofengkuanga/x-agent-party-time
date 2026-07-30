@@ -253,7 +253,7 @@ export const BugRepairViewSchema = z.object({
   pendingCommits: z.array(CommitShaSchema).nullable(),
   sessionAvailable: z.boolean(),
   timeline: z.array(RepairTimelineNodeSchema),
-  availableActions: z.array(z.enum(['RETRY_REPAIR', 'STOP_EXECUTION'])),
+  availableActions: z.array(z.literal('RETRY_REPAIR')),
   presentation: z.object({
     statusLabel: z.string().trim().min(1),
     visual: CookingVisualPresentationSchema,
@@ -269,11 +269,6 @@ export const ResolveRepairInteractionInputSchema = z.object({
   mutationId: CookingMutationIdSchema,
   expectedVersion: z.number().int().positive(),
   resolution: z.json(),
-});
-
-export const StopRepairInputSchema = z.object({
-  mutationId: CookingMutationIdSchema,
-  expectedVersion: z.number().int().positive(),
 });
 
 export const RepairWorkspaceProjectionSchema = z.object({
@@ -293,7 +288,6 @@ export type ContinueRepairInput = z.infer<typeof ContinueRepairInputSchema>;
 export type ResolveRepairInteractionInput = z.infer<
   typeof ResolveRepairInteractionInputSchema
 >;
-export type StopRepairInput = z.infer<typeof StopRepairInputSchema>;
 export type RepairWorkspaceProjection = z.infer<
   typeof RepairWorkspaceProjectionSchema
 >;

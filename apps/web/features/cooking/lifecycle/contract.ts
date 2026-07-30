@@ -23,7 +23,25 @@ export const VerificationRecordViewSchema = z.object({
   round: z.number().int().positive(),
   result: z.enum(['PASSED', 'FAILED']),
   comment: z.string().nullable(),
+  repairAttempt: z.number().int().positive().nullable(),
   attachments: z.array(BugAttachmentViewSchema),
+  createdAt: z.iso.datetime(),
+});
+
+export const ReopenRecordViewSchema = z.object({
+  id: z.uuid(),
+  bugId: BugIdSchema,
+  round: z.number().int().positive(),
+  feedback: z.string().trim().min(1),
+  repairAttempt: z.number().int().positive(),
+  attachments: z.array(BugAttachmentViewSchema),
+  createdAt: z.iso.datetime(),
+});
+
+export const BugLifecycleTransitionViewSchema = z.object({
+  id: z.uuid(),
+  bugId: BugIdSchema,
+  kind: z.enum(['CANCELLED', 'RESTORED']),
   createdAt: z.iso.datetime(),
 });
 
@@ -41,7 +59,7 @@ export const CleanupViewSchema = z.object({
   id: CleanupIdSchema,
   submissionId: SubmissionIdSchema,
   submissionItemId: SubmissionItemIdSchema,
-  reason: z.enum(['BUG_CANCELLED', 'SUBMISSION_CLOSED']),
+  reason: z.literal('SUBMISSION_CLOSED'),
   subjectId: z.uuid(),
   state: z.enum(['READY', 'RUNNING', 'FAILED', 'COMPLETED']),
   version: z.number().int().positive(),
@@ -69,7 +87,7 @@ export const TimelineEntrySchema = z.object({
   id: z.string().trim().min(1),
   kind: z.enum([
     'VERIFICATION',
-    'FEEDBACK',
+    'REOPEN',
     'REPAIR',
     'UPDATE',
     'EXTERNAL_DEPLOYMENT',
@@ -86,6 +104,11 @@ export const LifecycleWorkspaceProjectionSchema = z.object({
   verificationsByBug: z.record(
     BugIdSchema,
     z.array(VerificationRecordViewSchema),
+  ),
+  reopensByBug: z.record(BugIdSchema, z.array(ReopenRecordViewSchema)),
+  transitionsByBug: z.record(
+    BugIdSchema,
+    z.array(BugLifecycleTransitionViewSchema),
   ),
   cleanups: z.array(CleanupViewSchema),
   cleanupInteractions: z.array(CleanupInteractionViewSchema),

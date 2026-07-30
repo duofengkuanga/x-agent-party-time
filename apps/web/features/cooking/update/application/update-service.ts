@@ -15,7 +15,7 @@ import {
 import { CookingWriteStore } from '@/features/cooking/shared/write-store';
 import {
   CiCdUpdateExecutionResultSchema,
-  ContinueUpdateInputSchema,
+  RetryUpdateInputSchema,
   ExternalDeploymentReportInputSchema,
   FreezeUpdateInputSchema,
   LocalScriptUpdateExecutionResultSchema,
@@ -24,7 +24,7 @@ import {
   UpdateBatchViewSchema,
   UpdateMutationResultSchema,
   UpdateWorkspaceProjectionSchema,
-  type ContinueUpdateInput,
+  type RetryUpdateInput,
   type ExternalDeploymentReportInput,
   type ResolveUpdateInteractionInput,
   type UpdateBatchCommandInput,
@@ -34,10 +34,10 @@ import {
 } from '../contract';
 import {
   buildContinuationCiCdUpdatePrompt,
-  buildContinuationLocalScriptUpdatePrompt,
   buildInitialCiCdUpdatePrompt,
   buildInitialLocalScriptUpdatePrompt,
-  buildManualContinuationCiCdUpdatePrompt,
+  buildRetryCiCdUpdatePrompt,
+  buildRetryLocalScriptUpdatePrompt,
 } from '../prompt';
 
 const QUIET_WINDOW_MS = 2 * 60 * 1_000;
@@ -70,13 +70,7 @@ type BatchRow = {
   id: string;
   submission_id: string;
   submission_item_id: string;
-  state:
-    | 'READY'
-    | 'RUNNING'
-    | 'WAITING_EXTERNAL'
-    | 'FAILED'
-    | 'COMPLETED'
-    | 'CANCELLED';
+  state: 'READY' | 'RUNNING' | 'WAITING_EXTERNAL' | 'FAILED' | 'COMPLETED';
   version: number;
   active_execution_id: string | null;
   session_id: string | null;
@@ -251,17 +245,17 @@ export class UpdateService {
     return result;
   }
 
-  continueUpdate(
+  retryUpdate(
     actorUserId: string,
     batchId: string,
-    inputValue: ContinueUpdateInput,
+    inputValue: RetryUpdateInput,
   ): UpdateMutationResult {
-    const input = ContinueUpdateInputSchema.parse(inputValue);
+    const input = RetryUpdateInputSchema.parse(inputValue);
     const replay = this.hasRecordedMutation(input.mutationId);
     const result = this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
-      operation: 'UPDATE_BATCH_CONTINUE',
+      operation: 'UPDATE_BATCH_RETRY',
       resourceType: 'UPDATE_BATCH',
       resultSchema: UpdateMutationResultSchema,
       perform: () => {
@@ -270,7 +264,7 @@ export class UpdateService {
         if (batch.state !== 'FAILED')
           throw new PlatformError(
             'INVALID_TRANSITION',
-            '只有失败的更新批次可以继续',
+            '只有失败的更新批次可以重新执行',
           );
         const latest = this.latestAttempt(batchId);
         if (!latest || !isTerminal(latest.state))
@@ -283,30 +277,20 @@ export class UpdateService {
           deployment.kind === 'CI_CD'
             ? this.latestUnconsumedFailedReport(batchId)
             : undefined;
-        if (!externalReport && !input.content)
-          throw new PlatformError(
-            'VALIDATION_FAILED',
-            '请补充本次继续执行所需的信息',
-          );
         const attachmentIds = externalReport
           ? this.externalReportAttachmentIds(externalReport.id)
           : [];
-        const prompt =
-          deployment.kind === 'LOCAL_SCRIPT'
-            ? buildContinuationLocalScriptUpdatePrompt({
-                content: input.content!,
-              })
-            : externalReport
-              ? buildContinuationCiCdUpdatePrompt({
-                  reportRound: externalReport.round,
-                  summary: externalReport.summary!,
-                  attachmentNames: this.externalReportAttachments(
-                    externalReport.id,
-                  ).map(({ original_name }) => original_name),
-                })
-              : buildManualContinuationCiCdUpdatePrompt({
-                  content: input.content!,
-                });
+        const prompt = externalReport
+          ? buildContinuationCiCdUpdatePrompt({
+              reportRound: externalReport.round,
+              summary: externalReport.summary!,
+              attachmentNames: this.externalReportAttachments(
+                externalReport.id,
+              ).map(({ original_name }) => original_name),
+            })
+          : deployment.kind === 'LOCAL_SCRIPT'
+            ? buildRetryLocalScriptUpdatePrompt()
+            : buildRetryCiCdUpdatePrompt();
         const attemptId = this.createId();
         const execution = this.executions.enqueue({
           owner: { namespace: 'cooking', kind: 'UPDATE_BATCH', id: attemptId },
@@ -365,7 +349,7 @@ export class UpdateService {
           audits: [
             {
               projectId: this.itemSource(batch.submission_item_id).project_id,
-              action: 'UPDATE_BATCH_CONTINUED',
+              action: 'UPDATE_BATCH_RETRIED',
               targetType: 'UPDATE_BATCH',
               targetId: batchId,
               details: { executionId: execution.id },
@@ -473,168 +457,6 @@ export class UpdateService {
                 round: reportRound,
                 attachmentCount: input.attachmentIds.length,
               },
-            },
-          ],
-        };
-      },
-    });
-    if (!replay) {
-      const batch = this.batch(batchId);
-      this.onInvalidated(batch.submission_id, result.revision);
-    }
-    return result;
-  }
-
-  cancelBatch(
-    actorUserId: string,
-    batchId: string,
-    inputValue: UpdateBatchCommandInput,
-  ): UpdateMutationResult {
-    const input = UpdateBatchCommandInputSchema.parse(inputValue);
-    const replay = this.hasRecordedMutation(input.mutationId);
-    const result = this.writes.run({
-      mutationId: input.mutationId,
-      actorUserId,
-      operation: 'UPDATE_BATCH_CANCEL',
-      resourceType: 'UPDATE_BATCH',
-      resultSchema: UpdateMutationResultSchema,
-      perform: () => {
-        const batch = this.requireBatchResponsible(actorUserId, batchId);
-        this.requireBatchVersion(batch, input.expectedVersion);
-        if (batch.state !== 'READY' || !batch.active_execution_id)
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '只有尚未开始的更新批次可以取消',
-          );
-        const execution = this.executions.cancelQueued(
-          batch.active_execution_id,
-          '更新批次已取消',
-        );
-        const now = this.now().toISOString();
-        const batchUpdate = this.db
-          .prepare(
-            `UPDATE cooking_update_attempt
-             SET outcome_json = ?, finished_at = ? WHERE execution_id = ?`,
-          )
-          .run(
-            JSON.stringify({
-              outcome: 'FAILED',
-              summary: '更新批次在 Agent 领取前取消。',
-              technicalFailure: execution.outcome?.kind,
-            }),
-            now,
-            execution.id,
-          );
-        this.db
-          .prepare(
-            `UPDATE cooking_update_batch
-             SET state = 'CANCELLED', active_execution_id = NULL,
-                 version = version + 1, updated_at = ?
-             WHERE id = ? AND version = ? AND state = 'READY'`,
-          )
-          .run(now, batchId, input.expectedVersion);
-        if (batchUpdate.changes !== 1) throw staleBatch();
-        const entries = this.batchEntries(batchId);
-        const bugUpdate = this.db
-          .prepare(
-            `UPDATE cooking_bug
-             SET stage = 'WAITING_FOR_UPDATE', version = version + 1,
-                 updated_at = ?
-             WHERE id IN (
-               SELECT bug_id FROM cooking_update_batch_entry WHERE batch_id = ?
-             ) AND stage = 'UPDATING'`,
-          )
-          .run(now, batchId);
-        if (bugUpdate.changes !== entries.length)
-          throw new PlatformError('STALE_STATE', '更新批次中的缺陷状态已变化');
-        this.resetPendingDelivery(batch.submission_item_id, now);
-        const revision = this.bumpRevision(batch.submission_id, now);
-        return {
-          result: {
-            batchId,
-            batchVersion: input.expectedVersion + 1,
-            executionId: execution.id,
-            revision,
-          },
-          resourceId: batchId,
-          audits: [
-            {
-              projectId: this.itemSource(batch.submission_item_id).project_id,
-              action: 'UPDATE_BATCH_CANCELLED',
-              targetType: 'UPDATE_BATCH',
-              targetId: batchId,
-            },
-          ],
-        };
-      },
-    });
-    if (!replay) {
-      const batch = this.batch(batchId);
-      this.onInvalidated(batch.submission_id, result.revision);
-    }
-    return result;
-  }
-
-  stopExecution(
-    actorUserId: string,
-    batchId: string,
-    inputValue: UpdateBatchCommandInput,
-  ): UpdateMutationResult {
-    const input = UpdateBatchCommandInputSchema.parse(inputValue);
-    const replay = this.hasRecordedMutation(input.mutationId);
-    const result = this.writes.run({
-      mutationId: input.mutationId,
-      actorUserId,
-      operation: 'UPDATE_BATCH_STOP',
-      resourceType: 'UPDATE_BATCH',
-      resultSchema: UpdateMutationResultSchema,
-      perform: () => {
-        const batch = this.requireBatchResponsible(actorUserId, batchId);
-        this.requireBatchVersion(batch, input.expectedVersion);
-        if (batch.state !== 'RUNNING' || !batch.active_execution_id)
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '当前没有可以停止的更新执行',
-          );
-        const execution = this.executions.get(batch.active_execution_id);
-        if (
-          ![
-            'CLAIMED',
-            'RUNNING',
-            'WAITING_FOR_INTERACTION',
-            'WAITING_TO_RESUME',
-          ].includes(execution.state)
-        )
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '当前没有可以停止的更新执行',
-          );
-        this.executions.requestCancellation(execution.id);
-        const now = this.now().toISOString();
-        const update = this.db
-          .prepare(
-            `UPDATE cooking_update_batch
-             SET version = version + 1, updated_at = ?
-             WHERE id = ? AND version = ? AND state = 'RUNNING'`,
-          )
-          .run(now, batchId, input.expectedVersion);
-        if (update.changes !== 1) throw staleBatch();
-        const revision = this.bumpRevision(batch.submission_id, now);
-        return {
-          result: {
-            batchId,
-            batchVersion: input.expectedVersion + 1,
-            executionId: execution.id,
-            revision,
-          },
-          resourceId: batchId,
-          audits: [
-            {
-              projectId: this.itemSource(batch.submission_item_id).project_id,
-              action: 'UPDATE_EXECUTION_STOP_REQUESTED',
-              targetType: 'UPDATE_BATCH',
-              targetId: batchId,
-              details: { executionId: execution.id },
             },
           ],
         };
@@ -875,10 +697,62 @@ export class UpdateService {
     const deployment = DeploymentMethodSchema.parse(
       JSON.parse(batch.deployment_json),
     );
-    const interactions = this.interactionsForBatch(batchId).map((row) =>
-      projectCookingInteraction(row, technical),
+    const projectedInteractions = this.interactionsForBatch(batchId).map(
+      (row) => ({
+        executionId: row.execution_id,
+        interaction: projectCookingInteraction(row, technical),
+      }),
+    );
+    const interactions = projectedInteractions.map(
+      ({ interaction }) => interaction,
     );
     const statusLabel = batchStateLabel(batch.state);
+    const timeline = [
+      {
+        id: `formed:${batch.id}`,
+        kind: 'BATCH_FORMED' as const,
+        occurredAt: batch.frozen_at,
+        bugCount: entries.length,
+      },
+      ...[
+        ...attempts.map((attempt) => ({
+          id: attempt.id,
+          kind: 'UPDATE_ATTEMPT' as const,
+          executionId: attempt.execution_id,
+          attempt: attempt.attempt,
+          executionState: attempt.state,
+          queuedAt: attempt.created_at,
+          finishedAt: attempt.finished_at,
+          interactions: projectedInteractions
+            .filter(({ executionId }) => executionId === attempt.execution_id)
+            .map(({ interaction }) => interaction),
+          result: attempt.outcome_json
+            ? projectUpdateAttemptResult(attempt.outcome_json, technical)
+            : null,
+          sortAt: attempt.created_at,
+        })),
+        ...this.externalReports(batchId).map((report) => ({
+          id: report.id,
+          kind: 'EXTERNAL_REPORT' as const,
+          round: report.round,
+          outcome: report.outcome,
+          summary: report.summary,
+          attachments: technical
+            ? this.externalReportAttachments(report.id).map((attachment) => ({
+                id: attachment.id,
+                originalName: attachment.original_name,
+                mediaType: attachment.media_type,
+                sizeBytes: attachment.size_bytes,
+                createdAt: attachment.created_at,
+              }))
+            : [],
+          occurredAt: report.created_at,
+          sortAt: report.created_at,
+        })),
+      ]
+        .sort((left, right) => left.sortAt.localeCompare(right.sortAt))
+        .map(({ sortAt: _sortAt, ...node }) => node),
+    ];
     return UpdateBatchViewSchema.parse({
       id: batch.id,
       submissionId: batch.submission_id,
@@ -887,6 +761,9 @@ export class UpdateService {
       version: batch.version,
       activeExecutionId: technical ? batch.active_execution_id : null,
       frozenAt: batch.frozen_at,
+      engineeringName: source.engineering_name,
+      targetBranch: source.target_branch,
+      environmentName: source.environment_name,
       deploymentKind: deployment.kind,
       entries: entries.map((entry) => ({
         bugId: entry.bug_id,
@@ -894,63 +771,11 @@ export class UpdateService {
         bugTitle: entry.title,
         commits: technical ? parseCommits(entry.commits_json) : null,
       })),
-      attempts: technical
-        ? attempts.map((attempt) => {
-            const outcome = attempt.outcome_json
-              ? (JSON.parse(attempt.outcome_json) as {
-                  outcome?: string;
-                  summary?: string;
-                  technicalFailure?: string;
-                })
-              : null;
-            const failed = outcome?.outcome === 'FAILED';
-            return {
-              id: attempt.id,
-              executionId: attempt.execution_id,
-              attempt: attempt.attempt,
-              executionState: attempt.state,
-              summary: outcome?.summary ?? null,
-              technicalFailure:
-                outcome?.technicalFailure ?? (failed ? outcome?.summary : null),
-              createdAt: attempt.created_at,
-              finishedAt: attempt.finished_at,
-            };
-          })
-        : [],
-      interactions,
-      externalReports: this.externalReports(batchId).map((report) => ({
-        id: report.id,
-        round: report.round,
-        outcome: report.outcome,
-        summary: technical ? report.summary : null,
-        attachments: technical
-          ? this.externalReportAttachments(report.id).map((attachment) => ({
-              id: attachment.id,
-              originalName: attachment.original_name,
-              mediaType: attachment.media_type,
-              sizeBytes: attachment.size_bytes,
-              createdAt: attachment.created_at,
-            }))
-          : [],
-        createdAt: report.created_at,
-      })),
+      timeline,
       availableActions: technical
         ? [
             ...(batch.state === 'FAILED' && latest && isTerminal(latest.state)
-              ? (['CONTINUE_UPDATE'] as const)
-              : []),
-            ...(batch.state === 'READY' && active?.state === 'QUEUED'
-              ? (['CANCEL_BATCH'] as const)
-              : []),
-            ...(batch.state === 'RUNNING' &&
-            active &&
-            [
-              'CLAIMED',
-              'RUNNING',
-              'WAITING_FOR_INTERACTION',
-              'WAITING_TO_RESUME',
-            ].includes(active.state)
-              ? (['STOP_EXECUTION'] as const)
+              ? (['RETRY_UPDATE'] as const)
               : []),
             ...(batch.state === 'WAITING_EXTERNAL' &&
             deployment.kind === 'CI_CD'
@@ -1171,19 +996,28 @@ export class UpdateService {
         attemptOutcome: {
           outcome: 'FAILED',
           summary: '更新结果格式无效',
+          failedStep: '解析结构化结果',
+          reason: 'Agent 返回内容不符合统一更新结果 Schema',
+          completedActions: [],
+          pendingActions: ['重新执行统一更新'],
           technicalFailure: 'RESULT_SCHEMA_INVALID',
         },
       };
     }
-    const summary =
-      execution.outcome?.kind === 'CANCELLED'
-        ? '更新执行已停止，可由工程负责人继续。'
-        : '统一更新未完成，可由工程负责人补充信息后继续。';
+    const cancelled = execution.outcome?.kind === 'CANCELLED';
+    const summary = cancelled ? '更新执行已停止' : '统一更新未完成';
     return {
       kind: 'FAILED',
       attemptOutcome: {
         outcome: 'FAILED',
         summary,
+        failedStep: cancelled ? '执行停止' : '执行统一更新',
+        reason:
+          execution.outcome?.kind === 'FAILED'
+            ? execution.outcome.failure.message
+            : summary,
+        completedActions: [],
+        pendingActions: ['重新执行统一更新'],
         technicalFailure:
           execution.outcome?.kind === 'FAILED'
             ? execution.outcome.failure.code
@@ -1606,6 +1440,54 @@ function parseCommits(value: string): string[] {
   return parsed;
 }
 
+function projectUpdateAttemptResult(outcomeJson: string, technical: boolean) {
+  const outcome = JSON.parse(outcomeJson) as Record<string, unknown>;
+  if (outcome.outcome === 'COMPLETED' || outcome.outcome === 'PUSHED')
+    return {
+      outcome: outcome.outcome,
+      completedActions: stringArray(outcome.completedActions),
+      validations: Array.isArray(outcome.validations)
+        ? outcome.validations
+        : [],
+      warnings: stringArray(outcome.warnings),
+      rawSummary:
+        technical && typeof outcome.summary === 'string'
+          ? outcome.summary
+          : null,
+    };
+  return {
+    outcome: 'FAILED' as const,
+    failedStep:
+      typeof outcome.failedStep === 'string'
+        ? outcome.failedStep
+        : '执行统一更新',
+    reason:
+      !technical &&
+      typeof outcome.technicalFailure === 'string' &&
+      outcome.technicalFailure !== 'CANCELLED'
+        ? '统一更新执行未完成，工程负责人可查看详细原因。'
+        : typeof outcome.reason === 'string'
+          ? outcome.reason
+          : typeof outcome.summary === 'string'
+            ? outcome.summary
+            : '统一更新未完成',
+    completedActions: stringArray(outcome.completedActions),
+    pendingActions: stringArray(outcome.pendingActions),
+    failureCode:
+      technical && typeof outcome.technicalFailure === 'string'
+        ? outcome.technicalFailure
+        : null,
+    rawSummary:
+      technical && typeof outcome.summary === 'string' ? outcome.summary : null,
+  };
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : [];
+}
+
 function isUpdateExecution(execution: Execution): boolean {
   return (
     execution.owner.namespace === 'cooking' &&
@@ -1624,7 +1506,6 @@ function batchStateLabel(state: BatchRow['state']): string {
     WAITING_EXTERNAL: '等待外部部署结果',
     FAILED: '统一更新未完成',
     COMPLETED: '统一更新已完成',
-    CANCELLED: '更新批次已取消',
   }[state];
 }
 
@@ -1683,7 +1564,6 @@ function updateVisual(
     return { state: 'RUNNING', label: '正在自动处理', symbol: '●' };
   if (
     batch.state === 'WAITING_EXTERNAL' ||
-    batch.state === 'CANCELLED' ||
     (latest && ['CANCEL_REQUESTED', 'CANCELLED'].includes(latest.state))
   )
     return {
