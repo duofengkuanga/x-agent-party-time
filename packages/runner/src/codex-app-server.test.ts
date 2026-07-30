@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  CodexAppServerExecutor,
   publicInteractionPayload,
   restorePrivateInteractionResolution,
 } from './codex-app-server';
@@ -171,5 +172,47 @@ describe('Codex Interaction 安全投影', () => {
         privatePayload,
       ),
     ).toEqual({ permissions: {}, scope: 'turn' });
+  });
+});
+
+describe('Codex Turn 失败摘要', () => {
+  test('Turn 失败时保留 429 重试耗尽摘要', async () => {
+    const executor = new CodexAppServerExecutor();
+    const failure = new Promise((resolve, reject) => {
+      (
+        executor as unknown as {
+          completeTurn: (
+            active: unknown,
+            params: Record<string, unknown>,
+          ) => void;
+        }
+      ).completeTurn(
+        {
+          threadId: 'thread-429',
+          turnId: 'turn-429',
+          log: { write: () => undefined },
+          reject,
+          resolve,
+        },
+        {
+          turn: {
+            id: 'turn-429',
+            status: 'failed',
+            error: {
+              message:
+                'exceeded retry limit, last status: 429 Too Many Requests, request id: request-429',
+              codexErrorInfo: {
+                responseTooManyFailedAttempts: { httpStatusCode: 429 },
+              },
+            },
+          },
+        },
+      );
+    });
+
+    await expect(failure).rejects.toMatchObject({
+      message: 'Codex 请求过多：429 Too Many Requests，已超过重试次数。',
+      sessionId: 'thread-429',
+    });
   });
 });

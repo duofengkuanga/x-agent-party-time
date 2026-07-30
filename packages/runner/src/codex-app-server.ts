@@ -296,7 +296,7 @@ export class CodexAppServerExecutor implements CodexExecutor {
     const status = optionalString(turn.status);
     if (status !== 'completed') {
       active.reject(
-        new CodexAppServerError('Codex Turn 未正常完成', active.threadId),
+        new CodexAppServerError(turnFailureMessage(turn), active.threadId),
       );
       return;
     }
@@ -569,6 +569,19 @@ function sanitizeJsonValue(value: unknown): JsonValue {
 
 function turnKey(threadId: string, turnId: string): string {
   return `${threadId}:${turnId}`;
+}
+
+function turnFailureMessage(turn: Record<string, unknown>): string {
+  const error = asRecord(turn.error);
+  const message = optionalString(error.message);
+  const codexErrorInfo = asRecord(error.codexErrorInfo);
+  const tooMany = asRecord(codexErrorInfo.responseTooManyFailedAttempts);
+  if (
+    tooMany.httpStatusCode === 429 ||
+    message?.includes('429 Too Many Requests')
+  )
+    return 'Codex 请求过多：429 Too Many Requests，已超过重试次数。';
+  return message?.trim() || 'Codex Turn 未正常完成';
 }
 
 function asRecord(value: unknown): Record<string, any> {
