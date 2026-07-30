@@ -261,7 +261,7 @@ export class RunnerWorker {
                   code: 'CODEX_EXECUTION_FAILED',
                   message:
                     error instanceof CodexAppServerError
-                      ? 'Codex 执行未正常完成'
+                      ? error.message
                       : 'Runner 执行中断',
                   retryable: true,
                 },

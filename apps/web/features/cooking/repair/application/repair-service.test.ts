@@ -395,6 +395,8 @@ describe('RepairService', () => {
   test('Execution 失败使用真实 code/message 且仅向工程负责人投影技术码', async () => {
     const fixture = await setup();
     const started = await startLatest(fixture, 'failed-session');
+    const failureSummary =
+      'Codex 请求过多：429 Too Many Requests，已超过重试次数。';
     fixture.executions.complete(fixture.runner.id, started.executionId, {
       leaseToken: started.leaseToken,
       sessionId: started.sessionId,
@@ -402,7 +404,7 @@ describe('RepairService', () => {
         kind: 'FAILED',
         failure: {
           code: 'CODEX_EXECUTION_FAILED',
-          message: '测试命令退出码为 1',
+          message: failureSummary,
           retryable: true,
         },
       },
@@ -427,9 +429,9 @@ describe('RepairService', () => {
       kind: 'REPAIR_ATTEMPT',
       result: {
         outcome: 'FAILED',
-        reason: '测试命令退出码为 1',
+        reason: failureSummary,
         failureCode: 'CODEX_EXECUTION_FAILED',
-        rawSummary: '测试命令退出码为 1',
+        rawSummary: failureSummary,
       },
     });
   });

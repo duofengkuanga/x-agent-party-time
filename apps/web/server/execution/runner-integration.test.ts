@@ -29,6 +29,7 @@ import type {
   CodexExecutor,
   StartedCodexExecution,
 } from '../../../../packages/runner/src/codex-app-server';
+import { CodexAppServerError } from '../../../../packages/runner/src/codex-app-server';
 import { RunnerClient } from '../../../../packages/runner/src/client';
 import { ExecutionOutbox } from '../../../../packages/runner/src/outbox';
 import type { ExecutionWorkspaceManager } from '../../../../packages/runner/src/execution-workspaces';
@@ -130,6 +131,39 @@ describe('generic Runner worker', () => {
       },
     });
     expect(await fixture.outbox.list()).toEqual([]);
+  });
+
+  test('Codex 执行失败保留 App Server 返回的具体失败摘要', async () => {
+    const fixture = await setup();
+    const binding = bindingId(2);
+    await fixture.state.bind(binding, fixture.repository);
+    const execution = fixture.executions.enqueue(
+      input(fixture.paired.runner.id, binding, 'rate-limited'),
+    );
+    const failureSummary =
+      'Codex 请求过多：429 Too Many Requests，已超过重试次数。';
+    const worker = workerFor(
+      fixture,
+      new FakeCodexExecutor(async () => {
+        await Bun.sleep(5);
+        throw new CodexAppServerError(failureSummary, 'rate-limited-session');
+      }),
+    );
+
+    expect(await worker.cycle(0)).toBe(1);
+    await worker.waitForIdle();
+
+    expect(fixture.executions.get(execution.id)).toMatchObject({
+      state: 'FAILED',
+      outcome: {
+        kind: 'FAILED',
+        failure: {
+          code: 'CODEX_EXECUTION_FAILED',
+          message: failureSummary,
+          retryable: true,
+        },
+      },
+    });
   });
 
   test('Outcome 网络失败进入私有 Outbox，重启后先重放且只应用一次', async () => {
