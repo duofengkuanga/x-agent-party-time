@@ -5442,9 +5442,9 @@
 
 .collab-storage-button--icon > small {
   align-items: center;
-  background: var(--paper);
+  background: var(--paper) !important;
   border: 0;
-  color: var(--ink);
+  color: var(--ink) !important;
   display: flex;
   font-size: 8px;
   font-weight: 900;
@@ -5461,6 +5461,33 @@
   font-family: system-ui, sans-serif;
   font-size: 17px;
   line-height: 1;
+  transform-origin: center;
+  transition: transform 120ms ease;
+}
+
+.collab-storage-button__drop-label {
+  display: none;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.collab-bug-drag-preview {
+  align-items: center;
+  color: var(--ink);
+  display: flex;
+  font-family: system-ui, sans-serif;
+  font-size: 24px;
+  height: 32px;
+  justify-content: center;
+  left: -100px;
+  pointer-events: none;
+  position: fixed;
+  text-shadow: 0 1px 0 color-mix(in srgb, var(--paper), transparent 12%);
+  top: -100px;
+  width: 32px;
 }
 
 .collab-shell .collab-storage-button--icon:hover,
@@ -5468,8 +5495,15 @@
   background: transparent !important;
   border: 0 !important;
   box-shadow: none !important;
-  filter: drop-shadow(0 1px 0 var(--accent));
   outline: 0 !important;
+  transform: none;
+}
+
+.collab-shell .collab-storage-button--icon:hover .collab-storage-button__glyph,
+.collab-shell
+  .collab-storage-button--icon:focus-visible
+  .collab-storage-button__glyph {
+  filter: drop-shadow(0 1px 0 var(--accent));
   transform: translateY(-1px) scale(1.06);
 }
 
@@ -5480,12 +5514,36 @@
   transform: translateY(-2px);
 }
 
+.collab-shell .collab-storage-button--icon[data-drop-eligible='true'] {
+  background: color-mix(in srgb, var(--accent), transparent 90%) !important;
+  border: 0 !important;
+  color: var(--ink) !important;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 7px;
+  min-width: 128px;
+  padding: 0 10px;
+  width: auto;
+}
+
+.collab-storage-button--icon[data-drop-eligible='true']
+  .collab-storage-button__drop-label {
+  display: inline;
+}
+
 .collab-shell .collab-storage-button--icon[data-drop-target='true'] {
-  background: transparent !important;
+  background: var(--accent) !important;
   border: 0 !important;
   box-shadow: none !important;
-  filter: drop-shadow(0 1px 0 var(--accent));
+  color: #fff !important;
   outline: 0 !important;
+  transform: none;
+}
+
+.collab-shell
+  .collab-storage-button--icon[data-drop-target='true']
+  .collab-storage-button__glyph {
+  filter: drop-shadow(0 1px 0 var(--accent));
   transform: translateY(-2px) scale(1.1);
 }
 
@@ -5534,6 +5592,13 @@
 
 .collab-bug-drawer__body::-webkit-scrollbar {
   display: none;
+}
+
+.collab-bug-drawer__actions {
+  background: var(--paper);
+  bottom: 0;
+  padding: 15px 20px 20px;
+  position: sticky;
 }
 
 .collab-bug-drawer__body[data-detail-view='progress'] > .collab-bug-report {

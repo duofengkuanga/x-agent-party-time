@@ -58,6 +58,7 @@ const STATUS_COLUMNS = [
   { status: 'WAITING_FOR_VERIFICATION', label: '待验证', note: '测试' },
   { status: 'DONE', label: '已完成', note: '完成' },
 ] as const;
+const TRANSIENT_NOTICE_MS = 3_000;
 
 type MainStage = (typeof STATUS_COLUMNS)[number]['status'];
 type Drawer =
@@ -81,7 +82,7 @@ export function BugBoard({
   snapshot,
   syncLabel,
 }: {
-  onChanged: (revision: number, message: string) => void;
+  onChanged: (revision: number, message: string | null) => void;
   snapshot: CookingWorkspaceSnapshot;
   syncLabel: string;
 }) {
@@ -89,6 +90,7 @@ export function BugBoard({
   const [showCancelled, setShowCancelled] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
   const [draggingBugId, setDraggingBugId] = useState<string | null>(null);
+  const draggingBugIdRef = useRef<string | null>(null);
   const [dropTarget, setDropTarget] = useState<MainStage | null>(null);
   const [cancelDropActive, setCancelDropActive] = useState(false);
   const [archiveDropActive, setArchiveDropActive] = useState(false);
@@ -103,11 +105,41 @@ export function BugBoard({
   );
   const archivedBugs = snapshot.bugs.filter(({ archivedAt }) => archivedAt);
   const draggingBug = snapshot.bugs.find(({ id }) => id === draggingBugId);
+  const cancelDropEligible =
+    draggingBug?.availableActions.includes('CANCEL') ?? false;
+  const archiveDropEligible =
+    draggingBug?.availableActions.includes('ARCHIVE') ?? false;
+
+  useEffect(() => {
+    if (!undoAction) return;
+    const timeout = window.setTimeout(
+      () => setUndoAction(null),
+      TRANSIENT_NOTICE_MS,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [undoAction]);
+
+  function draggedBugFrom(event: ReactDragEvent<HTMLElement>) {
+    const bugId =
+      event.dataTransfer.getData('application/x-cooking-bug-id') ||
+      draggingBugIdRef.current ||
+      draggingBugId;
+    return snapshot.bugs.find(({ id }) => id === bugId);
+  }
+
+  function clearDraggingBug() {
+    draggingBugIdRef.current = null;
+    setDraggingBugId(null);
+    setDropTarget(null);
+    setCancelDropActive(false);
+    setArchiveDropActive(false);
+  }
 
   function run(
     command: () => Promise<WorkspaceActionResult>,
     message: string,
     onSuccess?: (result: WorkspaceActionResult) => void,
+    noticeMessage: string | null = message,
   ): void {
     startTransition(async () => {
       try {
@@ -118,7 +150,7 @@ export function BugBoard({
         }
         setError(null);
         onSuccess?.(result);
-        onChanged(result.result.revision, message);
+        onChanged(result.result.revision, noticeMessage);
       } catch (actionError) {
         setError(messageOf(actionError, '操作失败，请稍后重试。'));
       }
@@ -146,6 +178,7 @@ export function BugBoard({
             }),
         });
       },
+      null,
     );
   }
 
@@ -170,47 +203,33 @@ export function BugBoard({
             }),
         });
       },
+      null,
     );
   }
 
   function dropBug(event: ReactDragEvent<HTMLElement>, stage: MainStage) {
-    const bugId =
-      event.dataTransfer.getData('application/x-cooking-bug-id') ||
-      draggingBugId;
-    const bug = snapshot.bugs.find(({ id }) => id === bugId);
+    const bug = draggedBugFrom(event);
     if (!bug) return;
     const transition = dragTransition(bug, stage);
     if (!transition) return;
     event.preventDefault();
-    setDraggingBugId(null);
-    setDropTarget(null);
-    setCancelDropActive(false);
+    clearDraggingBug();
     run(transition.command, transition.message);
   }
 
   function dropIntoCancelled(event: ReactDragEvent<HTMLElement>) {
-    const bugId =
-      event.dataTransfer.getData('application/x-cooking-bug-id') ||
-      draggingBugId;
-    const bug = snapshot.bugs.find(({ id }) => id === bugId);
+    const bug = draggedBugFrom(event);
     if (!bug?.availableActions.includes('CANCEL')) return;
     event.preventDefault();
-    setDraggingBugId(null);
-    setDropTarget(null);
-    setCancelDropActive(false);
+    clearDraggingBug();
     cancelBug(bug);
   }
 
   function dropIntoArchive(event: ReactDragEvent<HTMLElement>) {
-    const bugId =
-      event.dataTransfer.getData('application/x-cooking-bug-id') ||
-      draggingBugId;
-    const bug = snapshot.bugs.find(({ id }) => id === bugId);
+    const bug = draggedBugFrom(event);
     if (!bug?.availableActions.includes('ARCHIVE')) return;
     event.preventDefault();
-    setDraggingBugId(null);
-    setDropTarget(null);
-    setArchiveDropActive(false);
+    clearDraggingBug();
     archiveBug(bug);
   }
 
@@ -218,19 +237,26 @@ export function BugBoard({
     <section className="collab-board-section">
       <div className="collab-section-label collab-board-heading">
         <button
-          aria-label={`查看已取消缺陷，共 ${cancelledBugs.length} 条`}
-          className="collab-storage-button collab-storage-button--icon collab-storage-button--cancelled"
+          aria-label={
+            cancelDropEligible && draggingBug
+              ? `拖到这里取消 ${bugLabel(draggingBug)}，当前共 ${cancelledBugs.length} 条已取消缺陷`
+              : `查看已取消缺陷，共 ${cancelledBugs.length} 条`
+          }
+          className={`collab-storage-button collab-storage-button--icon collab-storage-button--cancelled${cancelDropEligible ? ' is-active' : ''}`}
+          data-drop-eligible={cancelDropEligible ? 'true' : undefined}
           data-drop-target={cancelDropActive ? 'true' : undefined}
           onClick={() => setShowCancelled(true)}
-          onDragEnter={() => {
-            if (draggingBug?.availableActions.includes('CANCEL'))
+          onDragEnter={(event) => {
+            if (draggedBugFrom(event)?.availableActions.includes('CANCEL'))
               setCancelDropActive(true);
           }}
           onDragLeave={() => setCancelDropActive(false)}
           onDragOver={(event) => {
-            if (!draggingBug?.availableActions.includes('CANCEL')) return;
+            if (!draggedBugFrom(event)?.availableActions.includes('CANCEL'))
+              return;
             event.preventDefault();
             event.dataTransfer.dropEffect = 'move';
+            setCancelDropActive(true);
           }}
           onDrop={dropIntoCancelled}
           title="已取消缺陷"
@@ -238,6 +264,12 @@ export function BugBoard({
         >
           <span aria-hidden="true" className="collab-storage-button__glyph">
             🗑
+          </span>
+          <span
+            aria-hidden="true"
+            className="collab-storage-button__drop-label"
+          >
+            {cancelDropActive ? '🖐 松开即可取消' : '拖到这里取消'}
           </span>
           {cancelledBugs.length ? (
             <small aria-hidden="true">{cancelledBugs.length}</small>
@@ -256,19 +288,26 @@ export function BugBoard({
             </button>
           ) : null}
           <button
-            aria-label={`查看归档缺陷，共 ${archivedBugs.length} 条`}
-            className="collab-storage-button collab-storage-button--icon collab-storage-button--archived"
+            aria-label={
+              archiveDropEligible && draggingBug
+                ? `拖到这里归档 ${bugLabel(draggingBug)}，当前共 ${archivedBugs.length} 条归档缺陷`
+                : `查看归档缺陷，共 ${archivedBugs.length} 条`
+            }
+            className={`collab-storage-button collab-storage-button--icon collab-storage-button--archived${archiveDropEligible ? ' is-active' : ''}`}
+            data-drop-eligible={archiveDropEligible ? 'true' : undefined}
             data-drop-target={archiveDropActive ? 'true' : undefined}
             onClick={() => setShowArchive(true)}
-            onDragEnter={() => {
-              if (draggingBug?.availableActions.includes('ARCHIVE'))
+            onDragEnter={(event) => {
+              if (draggedBugFrom(event)?.availableActions.includes('ARCHIVE'))
                 setArchiveDropActive(true);
             }}
             onDragLeave={() => setArchiveDropActive(false)}
             onDragOver={(event) => {
-              if (!draggingBug?.availableActions.includes('ARCHIVE')) return;
+              if (!draggedBugFrom(event)?.availableActions.includes('ARCHIVE'))
+                return;
               event.preventDefault();
               event.dataTransfer.dropEffect = 'move';
+              setArchiveDropActive(true);
             }}
             onDrop={dropIntoArchive}
             title="归档缺陷"
@@ -276,6 +315,12 @@ export function BugBoard({
           >
             <span aria-hidden="true" className="collab-storage-button__glyph">
               🗄
+            </span>
+            <span
+              aria-hidden="true"
+              className="collab-storage-button__drop-label"
+            >
+              {archiveDropActive ? '🖐 松开即可归档' : '拖到这里归档'}
             </span>
             {archivedBugs.length ? (
               <small aria-hidden="true">{archivedBugs.length}</small>
@@ -387,12 +432,23 @@ export function BugBoard({
                           dragging={draggingBugId === bug.id}
                           key={bug.id}
                           onDragEnd={() => {
-                            setDraggingBugId(null);
-                            setDropTarget(null);
-                            setCancelDropActive(false);
-                            setArchiveDropActive(false);
+                            clearDraggingBug();
                           }}
                           onDragStart={(event) => {
+                            const dragPreview = document.createElement('span');
+                            dragPreview.className = 'collab-bug-drag-preview';
+                            dragPreview.setAttribute('aria-hidden', 'true');
+                            dragPreview.textContent = '✊';
+                            document.body.append(dragPreview);
+                            event.dataTransfer.setDragImage(
+                              dragPreview,
+                              14,
+                              14,
+                            );
+                            window.requestAnimationFrame(() =>
+                              dragPreview.remove(),
+                            );
+                            draggingBugIdRef.current = bug.id;
                             setDraggingBugId(bug.id);
                             event.dataTransfer.effectAllowed = 'move';
                             event.dataTransfer.setData(
@@ -401,19 +457,8 @@ export function BugBoard({
                             );
                           }}
                           onArchive={() => archiveBug(bug)}
-                          onCancel={() => cancelBug(bug)}
                           onOpen={() =>
                             setDrawer({ mode: 'view', bugId: bug.id })
-                          }
-                          onStartRepair={() =>
-                            run(
-                              () =>
-                                requestRepairAction(bug.id, {
-                                  mutationId: crypto.randomUUID(),
-                                  expectedVersion: bug.version,
-                                }),
-                              `${bugLabel(bug)} 已提交自动修复。`,
-                            )
                           }
                           onVerifyPass={() => {
                             const formData = new FormData();
@@ -581,11 +626,9 @@ function BugCard({
   draggable,
   dragging,
   onArchive,
-  onCancel,
   onDragEnd,
   onDragStart,
   onOpen,
-  onStartRepair,
   onVerifyPass,
   visual,
 }: {
@@ -593,11 +636,9 @@ function BugCard({
   draggable: boolean;
   dragging: boolean;
   onArchive: () => void;
-  onCancel: () => void;
   onDragEnd: () => void;
   onDragStart: (event: ReactDragEvent<HTMLElement>) => void;
   onOpen: () => void;
-  onStartRepair: () => void;
   onVerifyPass: () => void;
   visual: CookingVisualPresentation;
 }) {
@@ -632,19 +673,9 @@ function BugCard({
         <strong className="collab-bug-card__attention">{visual.label}</strong>
       ) : null}
       {bug.availableActions.some((action) =>
-        ['CANCEL', 'REQUEST_REPAIR', 'VERIFY_PASS', 'ARCHIVE'].includes(action),
+        ['VERIFY_PASS', 'ARCHIVE'].includes(action),
       ) ? (
         <footer className="collab-bug-card__actions">
-          {bug.availableActions.includes('CANCEL') ? (
-            <button onClick={stopCardAction(onCancel)} type="button">
-              取消
-            </button>
-          ) : null}
-          {bug.availableActions.includes('REQUEST_REPAIR') ? (
-            <button onClick={stopCardAction(onStartRepair)} type="button">
-              开始修复
-            </button>
-          ) : null}
           {bug.availableActions.includes('VERIFY_PASS') ? (
             <button onClick={stopCardAction(onVerifyPass)} type="button">
               验证通过
@@ -1033,6 +1064,7 @@ function BugDetail({
   const [verificationFiles, setVerificationFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const detailBodyRef = useRef<HTMLDivElement>(null);
   const verificationFileInput = useRef<HTMLInputElement>(null);
   const repair = snapshot.repairByBug[bug.id] ?? null;
   const progress = snapshot.progressByBug[bug.id] ?? [];
@@ -1074,6 +1106,14 @@ function BugDetail({
     ),
   );
 
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      if (!detailBodyRef.current) return;
+      detailBodyRef.current.scrollTop = detailBodyRef.current.scrollHeight;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [bug.id]);
+
   function run(
     command: () => Promise<WorkspaceActionResult>,
     message: string,
@@ -1099,6 +1139,7 @@ function BugDetail({
     <div
       className="collab-dialog__body collab-bug-drawer__body"
       data-detail-view={detailView}
+      ref={detailBodyRef}
     >
       <header className="collab-bug-detail-hero">
         <div>

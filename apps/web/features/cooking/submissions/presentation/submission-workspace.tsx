@@ -42,6 +42,7 @@ const SIDEBAR_DEFAULT_WIDTH = 320;
 const SIDEBAR_MIN_WIDTH = 240;
 const SIDEBAR_MAX_WIDTH = 560;
 const STAGE_MIN_WIDTH = 480;
+const TRANSIENT_NOTICE_MS = 3_000;
 
 type SyncState = 'connected' | 'reconnecting' | 'syncing';
 type CollabLayoutStyle = CSSProperties & {
@@ -153,6 +154,15 @@ export function SubmissionWorkspace({
       submissions: initialSubmissions,
     });
   }, [initialSnapshot, initialSubmissions]);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timeout = window.setTimeout(
+      () => setNotice(null),
+      TRANSIENT_NOTICE_MS,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [notice]);
 
   useEffect(() => {
     const storedWidth = Number(
