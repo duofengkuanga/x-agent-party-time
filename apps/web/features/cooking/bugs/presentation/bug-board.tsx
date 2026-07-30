@@ -217,32 +217,47 @@ export function BugBoard({
   return (
     <section className="collab-board-section">
       <div className="collab-section-label collab-board-heading">
+        <button
+          aria-label={`查看已取消缺陷，共 ${cancelledBugs.length} 条`}
+          className="collab-storage-button collab-storage-button--icon collab-storage-button--cancelled"
+          data-drop-target={cancelDropActive ? 'true' : undefined}
+          onClick={() => setShowCancelled(true)}
+          onDragEnter={() => {
+            if (draggingBug?.availableActions.includes('CANCEL'))
+              setCancelDropActive(true);
+          }}
+          onDragLeave={() => setCancelDropActive(false)}
+          onDragOver={(event) => {
+            if (!draggingBug?.availableActions.includes('CANCEL')) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'move';
+          }}
+          onDrop={dropIntoCancelled}
+          title="已取消缺陷"
+          type="button"
+        >
+          <span aria-hidden="true" className="collab-storage-button__glyph">
+            🗑
+          </span>
+          {cancelledBugs.length ? (
+            <small aria-hidden="true">{cancelledBugs.length}</small>
+          ) : null}
+        </button>
         <span>{snapshot.submission.submission.title} · 缺陷看板</span>
         <div className="collab-board-heading__actions">
           <small>{syncLabel}</small>
+          {snapshot.availableActions.includes('CREATE_BUG') ? (
+            <button
+              disabled={pending}
+              onClick={() => setDrawer({ mode: 'create' })}
+              type="button"
+            >
+              ＋ 登记缺陷
+            </button>
+          ) : null}
           <button
-            aria-label="查看已取消缺陷"
-            className="collab-storage-button"
-            data-drop-target={cancelDropActive ? 'true' : undefined}
-            onClick={() => setShowCancelled(true)}
-            onDragEnter={() => {
-              if (draggingBug?.availableActions.includes('CANCEL'))
-                setCancelDropActive(true);
-            }}
-            onDragLeave={() => setCancelDropActive(false)}
-            onDragOver={(event) => {
-              if (!draggingBug?.availableActions.includes('CANCEL')) return;
-              event.preventDefault();
-              event.dataTransfer.dropEffect = 'move';
-            }}
-            onDrop={dropIntoCancelled}
-            type="button"
-          >
-            已取消 {cancelledBugs.length}
-          </button>
-          <button
-            aria-label="查看归档缺陷"
-            className="collab-storage-button"
+            aria-label={`查看归档缺陷，共 ${archivedBugs.length} 条`}
+            className="collab-storage-button collab-storage-button--icon collab-storage-button--archived"
             data-drop-target={archiveDropActive ? 'true' : undefined}
             onClick={() => setShowArchive(true)}
             onDragEnter={() => {
@@ -256,19 +271,16 @@ export function BugBoard({
               event.dataTransfer.dropEffect = 'move';
             }}
             onDrop={dropIntoArchive}
+            title="归档缺陷"
             type="button"
           >
-            归档 {archivedBugs.length}
+            <span aria-hidden="true" className="collab-storage-button__glyph">
+              🗄
+            </span>
+            {archivedBugs.length ? (
+              <small aria-hidden="true">{archivedBugs.length}</small>
+            ) : null}
           </button>
-          {snapshot.availableActions.includes('CREATE_BUG') ? (
-            <button
-              disabled={pending}
-              onClick={() => setDrawer({ mode: 'create' })}
-              type="button"
-            >
-              ＋ 登记缺陷
-            </button>
-          ) : null}
         </div>
       </div>
       {error ? (
@@ -345,7 +357,7 @@ export function BugBoard({
                 <h2>{column.label}</h2>
                 <b>
                   {column.status === 'UPDATING'
-                    ? `${batches.length} 个批次 · ${bugs.length} 条缺陷`
+                    ? batches.length.toString().padStart(2, '0')
                     : bugs.length.toString().padStart(2, '0')}
                 </b>
               </header>

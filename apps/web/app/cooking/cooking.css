@@ -5422,6 +5422,57 @@
 }
 
 /* Lifecycle storage drop targets. */
+.collab-storage-button--icon {
+  align-self: center;
+  border-color: transparent;
+  box-shadow: none;
+  display: grid;
+  flex: 0 0 34px;
+  font-size: 16px;
+  height: 34px;
+  line-height: 1;
+  min-width: 34px;
+  padding: 0;
+  place-items: center;
+  position: relative;
+  width: 34px;
+}
+
+.collab-storage-button--icon > small {
+  align-items: center;
+  background: var(--paper);
+  border: 0;
+  color: var(--ink);
+  display: flex;
+  font-size: 8px;
+  font-weight: 900;
+  height: 16px;
+  justify-content: center;
+  min-width: 16px;
+  padding: 0 3px;
+  position: absolute;
+  right: -6px;
+  top: -6px;
+}
+
+.collab-storage-button__glyph {
+  font-family: system-ui, sans-serif;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.collab-storage-button--icon:hover,
+.collab-storage-button--icon:focus-visible {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.collab-storage-button--icon:focus-visible {
+  background: var(--accent);
+  color: #fff;
+  outline: 0;
+}
+
 .collab-storage-button[data-drop-target='true'] {
   background: var(--accent);
   border-color: var(--accent);

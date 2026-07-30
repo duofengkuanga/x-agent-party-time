@@ -392,7 +392,7 @@ export function SubmissionWorkspace({
           snapshot={snapshot}
           submissions={visibleSubmissions}
           syncState={syncState}
-          updateDetails={(title, requirementDescription) => {
+          updateDetails={(title, requirementDescription, targetBranches) => {
             if (!snapshot) return;
             startTransition(async () => {
               try {
@@ -403,25 +403,18 @@ export function SubmissionWorkspace({
                     expectedVersion: snapshot.submission.submission.version,
                     title,
                     requirementDescription,
+                    targetBranches,
                   },
                 );
                 if (!result.ok) {
                   setError(result.error.message);
                   return;
                 }
-                const next = {
-                  ...snapshot,
-                  revision: result.submission.workspaceRevision,
-                  submission: {
-                    ...snapshot.submission,
-                    submission: result.submission,
-                  },
-                };
-                snapshotRef.current = next;
                 dispatch({
                   type: 'UPDATE_SUBMISSION',
                   submission: result.submission,
                 });
+                await refreshSnapshot(result.submission.workspaceRevision);
                 setNotice('提测信息已更新。');
                 setError(null);
               } catch (actionError) {
@@ -582,7 +575,14 @@ function SubmissionRail({
   snapshot: CookingWorkspaceSnapshot | null;
   submissions: SubmissionSummary[];
   syncState: SyncState;
-  updateDetails: (title: string, requirementDescription: string) => void;
+  updateDetails: (
+    title: string,
+    requirementDescription: string,
+    targetBranches: Array<{
+      submissionItemId: string;
+      targetBranch: string;
+    }>,
+  ) => void;
   updating: boolean;
 }) {
   return (
@@ -775,7 +775,14 @@ function SubmissionDetails({
   ) => void;
   onRetryCleanup: (cleanupId: string, expectedVersion: number) => void;
   snapshot: CookingWorkspaceSnapshot;
-  updateDetails: (title: string, requirementDescription: string) => void;
+  updateDetails: (
+    title: string,
+    requirementDescription: string,
+    targetBranches: Array<{
+      submissionItemId: string;
+      targetBranch: string;
+    }>,
+  ) => void;
   updating: boolean;
 }) {
   const view = snapshot.submission;
@@ -784,7 +791,32 @@ function SubmissionDetails({
   const [requirementDescription, setRequirementDescription] = useState(
     submission.requirementDescription,
   );
+  const [targetBranches, setTargetBranches] = useState<Record<string, string>>(
+    () =>
+      Object.fromEntries(
+        view.items.map((item) => [item.id, item.targetBranch]),
+      ),
+  );
   const editable = view.availableActions.includes('EDIT_DETAILS');
+  const editableTargetBranches = view.items.filter((item) =>
+    item.availableActions.includes('EDIT_TARGET_BRANCH'),
+  );
+  const detailsChanged =
+    title !== submission.title ||
+    requirementDescription !== submission.requirementDescription;
+  const targetBranchesChanged = editableTargetBranches.some(
+    (item) => targetBranches[item.id] !== item.targetBranch,
+  );
+  const canSave = editable || editableTargetBranches.length > 0;
+  useEffect(() => {
+    setTitle(submission.title);
+    setRequirementDescription(submission.requirementDescription);
+    setTargetBranches(
+      Object.fromEntries(
+        view.items.map((item) => [item.id, item.targetBranch]),
+      ),
+    );
+  }, [submission.id, submission.version, view.items]);
   return (
     <header className="collab-submission-header">
       <dl className="collab-submission-facts">
@@ -835,7 +867,27 @@ function SubmissionDetails({
                 <tr key={item.id}>
                   <td>{item.engineering.name}</td>
                   <td>{item.responsibleUser.displayName}</td>
-                  <td>{item.targetBranch}</td>
+                  <td>
+                    {item.availableActions.includes('EDIT_TARGET_BRANCH') ? (
+                      <input
+                        aria-label={`${item.engineering.name}目标分支`}
+                        className="collab-table-input"
+                        disabled={updating}
+                        form="collab-submission-details-form"
+                        maxLength={240}
+                        onChange={(event) =>
+                          setTargetBranches((current) => ({
+                            ...current,
+                            [item.id]: event.target.value,
+                          }))
+                        }
+                        required
+                        value={targetBranches[item.id] ?? item.targetBranch}
+                      />
+                    ) : (
+                      item.targetBranch
+                    )}
+                  </td>
                   <td>
                     <span>
                       {item.environment.name}
@@ -876,36 +928,53 @@ function SubmissionDetails({
           </tbody>
         </table>
       </div>
-      {editable ? (
+      {canSave ? (
         <form
           className="collab-form"
+          id="collab-submission-details-form"
           onSubmit={(event) => {
             event.preventDefault();
-            updateDetails(title, requirementDescription);
+            updateDetails(
+              title,
+              requirementDescription,
+              editableTargetBranches.map((item) => ({
+                submissionItemId: item.id,
+                targetBranch: targetBranches[item.id] ?? item.targetBranch,
+              })),
+            );
           }}
         >
-          <label>
-            <span>提测标题</span>
-            <input
-              maxLength={160}
-              onChange={(event) => setTitle(event.target.value)}
-              required
-              value={title}
-            />
-          </label>
-          <label>
-            <span>需求说明</span>
-            <textarea
-              maxLength={8_000}
-              onChange={(event) =>
-                setRequirementDescription(event.target.value)
-              }
-              required
-              rows={4}
-              value={requirementDescription}
-            />
-          </label>
-          <button disabled={updating} type="submit">
+          {editable ? (
+            <>
+              <label>
+                <span>提测标题</span>
+                <input
+                  maxLength={160}
+                  onChange={(event) => setTitle(event.target.value)}
+                  required
+                  value={title}
+                />
+              </label>
+              <label>
+                <span>需求说明</span>
+                <textarea
+                  maxLength={8_000}
+                  onChange={(event) =>
+                    setRequirementDescription(event.target.value)
+                  }
+                  required
+                  rows={4}
+                  value={requirementDescription}
+                />
+              </label>
+            </>
+          ) : (
+            <small>可以修改自己负责且尚未登记缺陷的目标分支。</small>
+          )}
+          <button
+            disabled={updating || (!detailsChanged && !targetBranchesChanged)}
+            type="submit"
+          >
             {updating ? '正在保存…' : '保存提测信息'}
           </button>
         </form>
