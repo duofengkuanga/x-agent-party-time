@@ -6,6 +6,10 @@ const cookingCssPath = new URL(
   '../../../../app/cooking/cooking.css',
   import.meta.url,
 );
+const submissionWorkspacePath = new URL(
+  '../../submissions/presentation/submission-workspace.tsx',
+  import.meta.url,
+);
 
 describe('缺陷看板展示', () => {
   test('只按当前提测快照分组展示名称和稳定标识', async () => {
@@ -113,6 +117,11 @@ describe('缺陷看板展示', () => {
     expect(css).toContain('.collab-shell .collab-storage-button--icon');
     expect(css).toContain('border: 0 !important');
     expect(css).toContain('background: transparent !important');
+    expect(css).toContain('background: var(--paper) !important');
+    expect(css).toContain('color: var(--ink) !important');
+    expect(css).toContain(
+      '.collab-storage-button--icon:hover .collab-storage-button__glyph',
+    );
   });
 
   test('原生 Interaction 保留三种审批决定和问题选项结构', async () => {
@@ -141,14 +150,23 @@ describe('缺陷看板展示', () => {
     expect(source).not.toContain('ADD_FEEDBACK');
   });
 
-  test('生命周期按钮与拖拽只保留四条合法转换', async () => {
-    const source = await readFile(bugBoardPath, 'utf8');
+  test('生命周期拖拽只保留四条合法转换且待修复卡无操作按钮', async () => {
+    const [source, css] = await Promise.all([
+      readFile(bugBoardPath, 'utf8'),
+      readFile(cookingCssPath, 'utf8'),
+    ]);
     expect(source).toContain("target === 'REPAIRING'");
     expect(source).toContain("bug.stage === 'WAITING_FOR_REPAIR'");
     expect(source).toContain("target === 'DONE'");
     expect(source).toContain("bug.stage === 'WAITING_FOR_VERIFICATION'");
     expect(source).toContain("bug.availableActions.includes('CANCEL')");
     expect(source).toContain("bug.availableActions.includes('ARCHIVE')");
+    expect(source).toContain('draggingBugIdRef.current = bug.id');
+    expect(source).toContain('draggedBugFrom(event)');
+    expect(source).not.toContain('stopCardAction(onCancel)');
+    expect(source).not.toContain('stopCardAction(onStartRepair)');
+    expect(source).not.toContain('onCancel={() => cancelBug(bug)}');
+    expect(source).not.toContain('onStartRepair={() =>');
     expect(source).toContain('恢复到待修复');
     expect(source).toContain('移出归档');
     expect(source).toContain('撤销');
@@ -157,6 +175,82 @@ describe('缺陷看板展示', () => {
     expect(source).not.toContain('停止当前修复');
     expect(source).not.toContain('停止统一更新');
     expect(source).not.toContain('取消更新批次');
+    expect(source).toContain("data-drop-eligible={cancelDropEligible ? 'true'");
+    expect(source).toContain(
+      "data-drop-eligible={archiveDropEligible ? 'true'",
+    );
+    expect(source).toContain("cancelDropEligible ? ' is-active' : ''");
+    expect(source).toContain("archiveDropEligible ? ' is-active' : ''");
+    expect(source).toContain('event.dataTransfer.setDragImage');
+    expect(source).toContain('collab-bug-drag-preview');
+    expect(source).toContain("dragPreview.textContent = '✊';");
+    expect(source).toContain('拖到这里取消');
+    expect(source).toContain('拖到这里归档');
+    expect(source).toContain('🖐 松开即可取消');
+    expect(source).toContain('🖐 松开即可归档');
+    expect(css).toContain("[data-drop-eligible='true']");
+    expect(css).toContain('.collab-storage-button__drop-label');
+    expect(css).toContain('.collab-bug-drag-preview');
+    expect(css).toContain('font-size: 24px;');
+    expect(
+      css.split('.collab-bug-drag-preview')[1]?.split('}')[0],
+    ).not.toContain('border:');
+    expect(
+      css.split('.collab-bug-drag-preview')[1]?.split('}')[0],
+    ).not.toContain('box-shadow');
+    expect(
+      css
+        .split(
+          ".collab-shell .collab-storage-button--icon[data-drop-eligible='true']",
+        )[1]
+        ?.split('}')[0],
+    ).toContain('border: 0 !important');
+    expect(
+      css
+        .split(
+          ".collab-shell .collab-storage-button--icon[data-drop-target='true']",
+        )[1]
+        ?.split('}')[0],
+    ).toContain('box-shadow: none !important');
+  });
+
+  test('取消与归档只保留可撤销提示且临时提示三秒后关闭', async () => {
+    const [source, workspaceSource] = await Promise.all([
+      readFile(bugBoardPath, 'utf8'),
+      readFile(submissionWorkspacePath, 'utf8'),
+    ]);
+
+    expect(source).toContain('const TRANSIENT_NOTICE_MS = 3_000;');
+    expect(source).toMatch(
+      /window\.setTimeout\(\s*\(\) => setUndoAction\(null\),\s*TRANSIENT_NOTICE_MS/u,
+    );
+    expect(source).toContain(
+      'onChanged(result.result.revision, noticeMessage);',
+    );
+    expect(source.match(/\n\s+null,\n\s+\);/gu)).toHaveLength(2);
+    expect(workspaceSource).toContain('const TRANSIENT_NOTICE_MS = 3_000;');
+    expect(workspaceSource).toMatch(
+      /window\.setTimeout\(\s*\(\) => setNotice\(null\),\s*TRANSIENT_NOTICE_MS/u,
+    );
+    expect(workspaceSource).toContain('setNotice(message);');
+  });
+
+  test('缺陷详情打开后定位到底部且登记表单按钮区保留边距', async () => {
+    const [source, css] = await Promise.all([
+      readFile(bugBoardPath, 'utf8'),
+      readFile(cookingCssPath, 'utf8'),
+    ]);
+
+    expect(source).toContain(
+      'const detailBodyRef = useRef<HTMLDivElement>(null)',
+    );
+    expect(source).toContain('detailBodyRef.current.scrollTop =');
+    expect(source).toContain('detailBodyRef.current.scrollHeight;');
+    expect(source).toContain('ref={detailBodyRef}');
+    expect(css).toContain('.collab-bug-drawer__actions');
+    expect(css).toContain('padding: 15px 20px 20px;');
+    expect(css).toContain('position: sticky;');
+    expect(css).toContain('bottom: 0;');
   });
 
   test('详情默认展示旧到新的结构化进展并隔离冻结报告', async () => {
