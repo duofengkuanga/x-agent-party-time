@@ -5422,16 +5422,18 @@
 }
 
 /* Lifecycle storage drop targets. */
-.collab-storage-button--icon {
+.collab-shell .collab-storage-button--icon {
   align-self: center;
-  border-color: transparent;
-  box-shadow: none;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
   display: grid;
   flex: 0 0 34px;
   font-size: 16px;
   height: 34px;
   line-height: 1;
   min-width: 34px;
+  outline: 0 !important;
   padding: 0;
   place-items: center;
   position: relative;
@@ -5461,16 +5463,14 @@
   line-height: 1;
 }
 
-.collab-storage-button--icon:hover,
-.collab-storage-button--icon:focus-visible {
-  border-color: transparent;
-  box-shadow: none;
-}
-
-.collab-storage-button--icon:focus-visible {
-  background: var(--accent);
-  color: #fff;
-  outline: 0;
+.collab-shell .collab-storage-button--icon:hover,
+.collab-shell .collab-storage-button--icon:focus-visible {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  filter: drop-shadow(0 1px 0 var(--accent));
+  outline: 0 !important;
+  transform: translateY(-1px) scale(1.06);
 }
 
 .collab-storage-button[data-drop-target='true'] {
@@ -5478,6 +5478,15 @@
   border-color: var(--accent);
   color: #fff;
   transform: translateY(-2px);
+}
+
+.collab-shell .collab-storage-button--icon[data-drop-target='true'] {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  filter: drop-shadow(0 1px 0 var(--accent));
+  outline: 0 !important;
+  transform: translateY(-2px) scale(1.1);
 }
 
 .collab-stored-bug-list {

@@ -96,6 +96,7 @@ describe('缺陷看板展示', () => {
 
   test('已取消与归档使用左右语义图标，更新列只显示批次数字', async () => {
     const source = await readFile(bugBoardPath, 'utf8');
+    const css = await readFile(cookingCssPath, 'utf8');
     const cancelled = source.indexOf('collab-storage-button--cancelled');
     const title = source.indexOf(
       '{snapshot.submission.submission.title} · 缺陷看板',
@@ -109,6 +110,9 @@ describe('缺陷看板展示', () => {
     expect(source).toContain('🗑');
     expect(source).toContain('🗄');
     expect(source).toContain("batches.length.toString().padStart(2, '0')");
+    expect(css).toContain('.collab-shell .collab-storage-button--icon');
+    expect(css).toContain('border: 0 !important');
+    expect(css).toContain('background: transparent !important');
   });
 
   test('原生 Interaction 保留三种审批决定和问题选项结构', async () => {
