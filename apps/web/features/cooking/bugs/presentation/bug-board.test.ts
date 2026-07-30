@@ -85,14 +85,30 @@ describe('缺陷看板展示', () => {
     const source = await readFile(bugBoardPath, 'utf8');
     expect(source).toContain('batches.map((batch)');
     expect(source).toContain('统一更新批次 · {batch.entries.length} 条缺陷');
-    expect(source).toContain(
-      '`${batches.length} 个批次 · ${bugs.length} 条缺陷`',
-    );
+    expect(source).toContain("batches.length.toString().padStart(2, '0')");
+    expect(source).not.toContain('个批次 · ${bugs.length} 条缺陷');
     expect(source).toContain('查看共享批次详情');
     expect(source).toContain("node.kind === 'UPDATE_ATTEMPT'");
     expect(source).toContain("batch.availableActions.includes('RETRY_UPDATE')");
     expect(source).toContain('重新执行统一更新');
     expect(source).not.toContain('补充信息并继续统一更新');
+  });
+
+  test('已取消与归档使用左右语义图标，更新列只显示批次数字', async () => {
+    const source = await readFile(bugBoardPath, 'utf8');
+    const cancelled = source.indexOf('collab-storage-button--cancelled');
+    const title = source.indexOf(
+      '{snapshot.submission.submission.title} · 缺陷看板',
+    );
+    const create = source.indexOf('＋ 登记缺陷');
+    const archived = source.indexOf('collab-storage-button--archived');
+
+    expect(cancelled).toBeGreaterThan(-1);
+    expect(cancelled).toBeLessThan(title);
+    expect(archived).toBeGreaterThan(create);
+    expect(source).toContain('🗑');
+    expect(source).toContain('🗄');
+    expect(source).toContain("batches.length.toString().padStart(2, '0')");
   });
 
   test('原生 Interaction 保留三种审批决定和问题选项结构', async () => {

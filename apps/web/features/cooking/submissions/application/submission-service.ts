@@ -67,6 +67,8 @@ type SubmissionItemRow = {
   created_at: string;
 };
 
+type WorkspaceSubmissionItemRow = SubmissionItemRow & { bug_count: number };
+
 type ItemSnapshotSource = {
   engineering_id: string;
   engineering_name: string;
@@ -226,6 +228,15 @@ export class SubmissionService {
     input: UpdateSubmissionInput,
   ): TestSubmission {
     const parsed = UpdateSubmissionInputSchema.parse(input);
+    const targetBranches = parsed.targetBranches ?? [];
+    if (
+      new Set(targetBranches.map(({ submissionItemId }) => submissionItemId))
+        .size !== targetBranches.length
+    )
+      throw new PlatformError(
+        'VALIDATION_FAILED',
+        '同一提测工程不能重复提交目标分支',
+      );
     const replay = this.hasRecordedMutation(parsed.mutationId);
     const result = this.writes.run({
       mutationId: parsed.mutationId,
@@ -235,19 +246,87 @@ export class SubmissionService {
       resultSchema: TestSubmissionSchema,
       perform: () => {
         const current = this.requireSubmissionAccess(actorUserId, submissionId);
-        if (
-          current.created_by_user_id !== actorUserId &&
-          current.membership_role !== 'OWNER'
-        )
+        const canEditDetails =
+          current.created_by_user_id === actorUserId ||
+          current.membership_role === 'OWNER';
+        const detailsChanged =
+          parsed.title !== current.title ||
+          parsed.requirementDescription !== current.requirement_description;
+        if (detailsChanged && !canEditDetails)
           throw new PlatformError(
             'PERMISSION_DENIED',
             '只有创建人或项目所有者可以修改提测信息',
+          );
+        if (!canEditDetails && targetBranches.length === 0)
+          throw new PlatformError(
+            'PERMISSION_DENIED',
+            '当前用户没有可修改的提测信息',
           );
         if (current.status !== 'ACTIVE')
           throw new PlatformError('INVALID_TRANSITION', '已关闭提测单不能修改');
         if (current.version !== parsed.expectedVersion)
           throw new PlatformError('STALE_STATE', '提测单已更新，请刷新后重试');
         const updatedAt = this.now().toISOString();
+        const changedTargetBranches: Array<{
+          submissionItemId: string;
+          targetBranch: string;
+        }> = [];
+        for (const target of targetBranches) {
+          const item = this.db
+            .prepare(
+              `SELECT responsible_user_id, target_branch
+               FROM cooking_submission_item
+               WHERE id = ? AND submission_id = ?`,
+            )
+            .get(target.submissionItemId, submissionId) as
+            { responsible_user_id: string; target_branch: string } | undefined;
+          if (!item)
+            throw new PlatformError(
+              'VALIDATION_FAILED',
+              '提测工程不存在或不属于当前提测单',
+            );
+          if (item.responsible_user_id !== actorUserId)
+            throw new PlatformError(
+              'PERMISSION_DENIED',
+              '只有对应开发负责人可以修改目标分支',
+            );
+          if (
+            this.db
+              .prepare(
+                `SELECT 1 FROM cooking_bug
+                 WHERE submission_item_id = ? LIMIT 1`,
+              )
+              .get(target.submissionItemId)
+          )
+            throw new PlatformError(
+              'INVALID_TRANSITION',
+              '该工程已有缺陷，不能再修改目标分支',
+            );
+          if (item.target_branch === target.targetBranch) continue;
+          const updateItem = this.db
+            .prepare(
+              `UPDATE cooking_submission_item
+               SET target_branch = ?
+               WHERE id = ? AND submission_id = ?
+                 AND responsible_user_id = ?
+                 AND NOT EXISTS (
+                   SELECT 1 FROM cooking_bug
+                   WHERE submission_item_id = cooking_submission_item.id
+                 )`,
+            )
+            .run(
+              target.targetBranch,
+              target.submissionItemId,
+              submissionId,
+              actorUserId,
+            );
+          if (updateItem.changes !== 1)
+            throw new PlatformError(
+              'STALE_STATE',
+              '提测工程状态已更新，请刷新后重试',
+            );
+          changedTargetBranches.push(target);
+        }
         const update = this.db
           .prepare(
             `UPDATE cooking_test_submission
@@ -286,6 +365,7 @@ export class SubmissionService {
               details: {
                 title: parsed.title,
                 requirementDescription: parsed.requirementDescription,
+                targetBranches: changedTargetBranches,
               },
             },
           ],
@@ -339,12 +419,20 @@ export class SubmissionService {
     const row = this.requireSubmissionAccess(userId, submissionId);
     const items = this.db
       .prepare(
-        `SELECT * FROM cooking_submission_item
+        `SELECT item.*,
+                (
+                  SELECT COUNT(*) FROM cooking_bug bug
+                  WHERE bug.submission_item_id = item.id
+                ) bug_count
+         FROM cooking_submission_item item
          WHERE submission_id = ?
          ORDER BY position, id`,
       )
       .all(submissionId)
-      .map((item) => mapItem(item as SubmissionItemRow));
+      .map((row) => {
+        const itemRow = row as WorkspaceSubmissionItemRow;
+        return { item: mapItem(itemRow), hasBug: itemRow.bug_count > 0 };
+      });
     const canEdit =
       row.status === 'ACTIVE' &&
       (row.created_by_user_id === userId || row.membership_role === 'OWNER');
@@ -361,7 +449,7 @@ export class SubmissionService {
         projectName: row.project_name,
         tester: mapUser('tester', row),
         createdBy: mapUser('creator', row),
-        items: items.map((item) => ({
+        items: items.map(({ item, hasBug }) => ({
           id: item.id,
           submissionId: item.submissionId,
           engineering: {
@@ -384,6 +472,12 @@ export class SubmissionService {
                   deployment: item.environment.deployment,
                 }
               : null,
+          availableActions:
+            row.status === 'ACTIVE' &&
+            item.responsibleUser.id === userId &&
+            !hasBug
+              ? (['EDIT_TARGET_BRANCH'] as const)
+              : [],
           createdAt: item.createdAt,
         })),
         availableActions: [

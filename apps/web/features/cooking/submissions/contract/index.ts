@@ -99,6 +99,7 @@ export const SubmissionItemViewSchema = SubmissionItemSchema.omit({
       deployment: DeploymentMethodSchema,
     })
     .nullable(),
+  availableActions: z.array(z.literal('EDIT_TARGET_BRANCH')),
 });
 
 export const SubmissionViewSchema = z.object({
@@ -157,6 +158,15 @@ export const UpdateSubmissionInputSchema = z.object({
   expectedVersion: z.number().int().positive(),
   title: SubmissionTitleSchema,
   requirementDescription: RequirementDescriptionSchema,
+  targetBranches: z
+    .array(
+      z.object({
+        submissionItemId: SubmissionItemIdSchema,
+        targetBranch: TargetBranchSchema,
+      }),
+    )
+    .max(20)
+    .optional(),
 });
 
 export type TestSubmission = z.infer<typeof TestSubmissionSchema>;

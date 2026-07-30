@@ -402,8 +402,12 @@ describe('Submission workspace', () => {
       repositoryUrl: 'https://example.com/front.git',
       deployment: fixture.environments.front.deployment,
     });
+    expect(developer.submission.items[0]?.availableActions).toEqual([
+      'EDIT_TARGET_BRANCH',
+    ]);
     expect(developer.submission.items[1]?.targetBranch).toBe('feature/back');
     expect(developer.submission.items[1]?.technical).toBeNull();
+    expect(developer.submission.items[1]?.availableActions).toEqual([]);
     const tester = fixture.service.getWorkspace(
       fixture.users.tester.id,
       submission.id,
@@ -414,6 +418,11 @@ describe('Submission workspace', () => {
     expect(tester.submission.items.every(({ technical }) => !technical)).toBe(
       true,
     );
+    expect(
+      tester.submission.items.every(
+        ({ availableActions }) => availableActions.length === 0,
+      ),
+    ).toBe(true);
     expect(() =>
       fixture.service.getWorkspace(fixture.users.outsider.id, submission.id),
     ).toThrow(
@@ -422,6 +431,94 @@ describe('Submission workspace', () => {
         message: '提测单不存在或无权访问',
       }),
     );
+  });
+
+  test('开发负责人只在零缺陷时通过保存提测信息修改自己的目标分支', async () => {
+    const fixture = await setup();
+    const submission = createSubmission(fixture, [
+      item(fixture, 'front', 'developerA', 'frontA', 'feature/front'),
+      item(fixture, 'back', 'developerB', 'backB', 'feature/back'),
+    ]);
+    const initial = fixture.service.getWorkspace(
+      fixture.users.developerA.id,
+      submission.id,
+    );
+    const front = initial.submission.items[0]!;
+    const back = initial.submission.items[1]!;
+    fixture.events.splice(0);
+
+    const updated = fixture.service.updateSubmission(
+      fixture.users.developerA.id,
+      submission.id,
+      {
+        mutationId: randomUUID(),
+        expectedVersion: 1,
+        title: submission.title,
+        requirementDescription: submission.requirementDescription,
+        targetBranches: [
+          {
+            submissionItemId: front.id,
+            targetBranch: 'feature/front-next',
+          },
+        ],
+      },
+    );
+    expect(updated).toMatchObject({ version: 2, workspaceRevision: 2 });
+    expect(
+      fixture.service.getWorkspace(fixture.users.developerA.id, submission.id)
+        .submission.items[0]?.targetBranch,
+    ).toBe('feature/front-next');
+    expect(fixture.events).toEqual([
+      { submissionId: submission.id, revision: 2 },
+    ]);
+
+    expect(() =>
+      fixture.service.updateSubmission(
+        fixture.users.developerA.id,
+        submission.id,
+        {
+          mutationId: randomUUID(),
+          expectedVersion: 2,
+          title: submission.title,
+          requirementDescription: submission.requirementDescription,
+          targetBranches: [
+            { submissionItemId: back.id, targetBranch: 'feature/forged' },
+          ],
+        },
+      ),
+    ).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
+    expect(() =>
+      fixture.service.updateSubmission(fixture.users.owner.id, submission.id, {
+        mutationId: randomUUID(),
+        expectedVersion: 2,
+        title: submission.title,
+        requirementDescription: submission.requirementDescription,
+        targetBranches: [
+          { submissionItemId: front.id, targetBranch: 'feature/owner-forged' },
+        ],
+      }),
+    ).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
+
+    insertBug(fixture, submission.id, front.id);
+    expect(
+      fixture.service.getWorkspace(fixture.users.developerA.id, submission.id)
+        .submission.items[0]?.availableActions,
+    ).toEqual([]);
+    expect(() =>
+      fixture.service.updateSubmission(
+        fixture.users.developerA.id,
+        submission.id,
+        {
+          mutationId: randomUUID(),
+          expectedVersion: 2,
+          title: submission.title,
+          requirementDescription: submission.requirementDescription,
+          targetBranches: [
+            { submissionItemId: front.id, targetBranch: 'feature/too-late' },
+          ],
+        },
+      ),
+    ).toThrow(expect.objectContaining({ code: 'INVALID_TRANSITION' }));
   });
 
   test('活动提测保护 Tester、负责人、工程标识与环境配置', async () => {
@@ -624,6 +721,36 @@ function createSubmission(
     testerUserId: fixture.users.tester.id,
     items,
   });
+}
+
+function insertBug(
+  fixture: Awaited<ReturnType<typeof setup>>,
+  submissionId: string,
+  submissionItemId: string,
+): void {
+  const now = '2026-07-30T00:00:00.000Z';
+  fixture.database
+    .prepare(
+      `INSERT INTO cooking_bug(
+         id, short_id, submission_id, submission_item_id, stage, title,
+         operation_path, actual_result, expected_result, notes,
+         report_locked_at, archived_at, archived_by_user_id, version,
+         created_by_user_id, created_at, updated_at
+       ) VALUES (?, 1, ?, ?, 'WAITING_FOR_REPAIR', ?, ?, ?, ?, NULL,
+                 NULL, NULL, NULL, 1, ?, ?, ?)`,
+    )
+    .run(
+      randomUUID(),
+      submissionId,
+      submissionItemId,
+      '锁定目标分支',
+      '打开测试页面',
+      '出现缺陷',
+      '应按预期工作',
+      fixture.users.tester.id,
+      now,
+      now,
+    );
 }
 
 function countRows(database: AppDatabase, table: string): number {
