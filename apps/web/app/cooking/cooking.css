@@ -5440,7 +5440,7 @@
   width: 34px;
 }
 
-.collab-storage-button--icon > small {
+.collab-storage-button--icon > sup {
   align-items: center;
   background: var(--paper) !important;
   border: 0;
@@ -5455,6 +5455,18 @@
   position: absolute;
   right: -6px;
   top: -6px;
+}
+
+.collab-shell .collab-storage-button--icon:hover > sup,
+.collab-shell .collab-storage-button--icon:focus-visible > sup,
+.collab-shell .collab-storage-button--icon[data-drop-eligible='true'] > sup,
+.collab-shell .collab-storage-button--icon[data-drop-target='true'] > sup {
+  background: var(--paper) !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: var(--ink) !important;
+  filter: none !important;
+  transform: none !important;
 }
 
 .collab-storage-button__glyph {

@@ -272,7 +272,7 @@ export function BugBoard({
             {cancelDropActive ? '🖐 松开即可取消' : '拖到这里取消'}
           </span>
           {cancelledBugs.length ? (
-            <small aria-hidden="true">{cancelledBugs.length}</small>
+            <sup aria-hidden="true">{cancelledBugs.length}</sup>
           ) : null}
         </button>
         <span>{snapshot.submission.submission.title} · 缺陷看板</span>
@@ -323,7 +323,7 @@ export function BugBoard({
               {archiveDropActive ? '🖐 松开即可归档' : '拖到这里归档'}
             </span>
             {archivedBugs.length ? (
-              <small aria-hidden="true">{archivedBugs.length}</small>
+              <sup aria-hidden="true">{archivedBugs.length}</sup>
             ) : null}
           </button>
         </div>
