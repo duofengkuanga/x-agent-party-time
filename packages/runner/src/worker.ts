@@ -205,10 +205,13 @@ export class RunnerWorker {
         },
         controller.signal,
       );
-    } catch {
+    } catch (error) {
       await this.reportStartFailure(execution, {
         code: 'CODEX_START_FAILED',
-        message: 'Codex App Server 启动任务失败',
+        message:
+          error instanceof CodexAppServerError
+            ? error.message
+            : 'Codex App Server 启动任务失败',
         retryable: true,
       });
       return;
