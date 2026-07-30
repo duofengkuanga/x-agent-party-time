@@ -71,6 +71,32 @@ describe('Server SQLite schema', () => {
         database
           .query<{ name: string }, []>(
             `SELECT name FROM sqlite_master
+             WHERE type = 'table' AND name IN (
+               'cooking_bug_feedback',
+               'cooking_verification_attachment',
+               'cooking_reopen_record',
+               'cooking_reopen_attachment'
+             ) ORDER BY name`,
+          )
+          .all()
+          .map(({ name }) => name),
+      ).toEqual([
+        'cooking_reopen_attachment',
+        'cooking_reopen_record',
+        'cooking_verification_attachment',
+      ]);
+      expect(
+        database
+          .query<{ sql: string }, []>(
+            `SELECT sql FROM sqlite_master
+             WHERE type = 'table' AND name = 'cooking_cleanup'`,
+          )
+          .get()?.sql,
+      ).not.toContain('BUG_CANCELLED');
+      expect(
+        database
+          .query<{ name: string }, []>(
+            `SELECT name FROM sqlite_master
              WHERE type = 'table' AND name LIKE 'cooking_%repair%'
              ORDER BY name`,
           )

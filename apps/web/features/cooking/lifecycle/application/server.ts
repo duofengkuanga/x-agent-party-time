@@ -16,8 +16,5 @@ export function lifecycleService(): LifecycleService {
     undefined,
     (submissionId, revision) =>
       workspaceEvents().publish({ submissionId, revision }),
-    {
-      bugCancelled: (bugId) => updates.recalculatePendingDeliveryForBug(bugId),
-    },
   );
 }

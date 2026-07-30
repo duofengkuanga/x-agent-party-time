@@ -87,6 +87,33 @@ export async function cancelBugAction(
   );
 }
 
+export async function restoreBugAction(
+  bugId: string,
+  input: LifecycleCommandInput,
+): Promise<BugLifecycleActionResult> {
+  return simpleAction((userId) =>
+    lifecycleService().restoreBug(userId, bugId, input),
+  );
+}
+
+export async function archiveBugAction(
+  bugId: string,
+  input: LifecycleCommandInput,
+): Promise<BugLifecycleActionResult> {
+  return simpleAction((userId) =>
+    lifecycleService().archiveBug(userId, bugId, input),
+  );
+}
+
+export async function unarchiveBugAction(
+  bugId: string,
+  input: LifecycleCommandInput,
+): Promise<BugLifecycleActionResult> {
+  return simpleAction((userId) =>
+    lifecycleService().unarchiveBug(userId, bugId, input),
+  );
+}
+
 export async function closeSubmissionAction(
   submissionId: string,
   input: LifecycleCommandInput,

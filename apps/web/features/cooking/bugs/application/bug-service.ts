@@ -8,7 +8,6 @@ import {
 import { UserSchema, type User } from '@/server/auth/contract';
 import { CookingWriteStore } from '@/features/cooking/shared/write-store';
 import {
-  AddBugFeedbackInputSchema,
   AssignBugInputSchema,
   BugMutationResultSchema,
   BugSchema,
@@ -16,8 +15,6 @@ import {
   CreateBugInputSchema,
   RequestRepairInputSchema,
   UpdateBugReportInputSchema,
-  WithdrawRepairInputSchema,
-  type AddBugFeedbackInput,
   type AssignBugInput,
   type Bug,
   type BugMutationResult,
@@ -25,7 +22,6 @@ import {
   type CreateBugInput,
   type RequestRepairInput,
   type UpdateBugReportInput,
-  type WithdrawRepairInput,
 } from '../contract';
 
 type BugRow = {
@@ -40,6 +36,8 @@ type BugRow = {
   expected_result: string | null;
   notes: string | null;
   report_locked_at: string | null;
+  archived_at: string | null;
+  archived_by_user_id: string | null;
   version: number;
   created_by_user_id: string;
   created_at: string;
@@ -66,15 +64,6 @@ type ItemRow = {
   binding_id: string;
 };
 
-type FeedbackRow = {
-  id: string;
-  bug_id: string;
-  kind: 'TESTER_FEEDBACK' | 'DEVELOPER_NOTE' | 'EXECUTION_FAILURE';
-  author_user_id: string | null;
-  content: string;
-  created_at: string;
-};
-
 const STAGE_LABELS: Record<Bug['stage'], string> = {
   WAITING_FOR_REPAIR: '待修复',
   REPAIRING: '修复中',
@@ -87,12 +76,10 @@ const STAGE_LABELS: Record<Bug['stage'], string> = {
 
 export type BugRepairHooks = {
   requested: (bugId: string) => void;
-  withdrawn: (bugId: string) => void;
 };
 
 const NOOP_REPAIR_HOOKS: BugRepairHooks = {
   requested: () => {},
-  withdrawn: () => {},
 };
 
 export class BugService {
@@ -160,7 +147,7 @@ export class BugService {
             now,
             now,
           );
-        this.bindAttachments(bugId, null, parsed.attachmentIds, now);
+        this.bindAttachments(bugId, parsed.attachmentIds, now);
         const revision = this.bumpRevision(submissionId, now);
         const bug = this.requireBug(bugId);
         return {
@@ -307,14 +294,11 @@ export class BugService {
           );
         if (!bug.submissionItemId)
           throw new PlatformError('VALIDATION_FAILED', '请先确定缺陷所属工程');
-        const item = this.requireItem(bug.submissionId, bug.submissionItemId)!;
-        if (
-          actorUserId !== access.tester_user_id &&
-          actorUserId !== item.responsible_user_id
-        )
+        this.requireItem(bug.submissionId, bug.submissionItemId);
+        if (actorUserId !== access.tester_user_id)
           throw new PlatformError(
             'PERMISSION_DENIED',
-            '只有测试负责人或该工程负责人可以发起修复',
+            '只有测试负责人可以开始自动修复',
           );
         const update = this.db
           .prepare(
@@ -334,110 +318,6 @@ export class BugService {
     );
   }
 
-  withdrawRepair(
-    actorUserId: string,
-    bugId: string,
-    input: WithdrawRepairInput,
-  ): BugMutationResult {
-    const parsed = WithdrawRepairInputSchema.parse(input);
-    return this.updateBug(
-      actorUserId,
-      bugId,
-      parsed.mutationId,
-      'BUG_REPAIR_WITHDRAW',
-      (bug, access, now) => {
-        if (bug.version !== parsed.expectedVersion) throw staleBug();
-        if (bug.stage !== 'REPAIRING' || !bug.submissionItemId)
-          throw new PlatformError('INVALID_TRANSITION', '当前缺陷不能撤回修复');
-        const item = this.requireItem(bug.submissionId, bug.submissionItemId)!;
-        if (
-          actorUserId !== access.tester_user_id &&
-          actorUserId !== item.responsible_user_id
-        )
-          throw new PlatformError(
-            'PERMISSION_DENIED',
-            '只有测试负责人或该工程负责人可以撤回修复',
-          );
-        this.repairHooks.withdrawn(bug.id);
-        const update = this.db
-          .prepare(
-            `UPDATE cooking_bug
-             SET stage = 'WAITING_FOR_REPAIR', version = version + 1, updated_at = ?
-             WHERE id = ? AND version = ? AND stage = 'REPAIRING'`,
-          )
-          .run(now, bug.id, parsed.expectedVersion);
-        if (update.changes !== 1) throw staleBug();
-        return {
-          action: 'BUG_REPAIR_WITHDRAWN',
-          details: {},
-        };
-      },
-    );
-  }
-
-  addFeedback(
-    actorUserId: string,
-    bugId: string,
-    input: AddBugFeedbackInput,
-  ): BugMutationResult {
-    const parsed = AddBugFeedbackInputSchema.parse(input);
-    return this.updateBug(
-      actorUserId,
-      bugId,
-      parsed.mutationId,
-      'BUG_FEEDBACK_ADD',
-      (bug, access, now) => {
-        if (bug.version !== parsed.expectedVersion) throw staleBug();
-        if (!bug.reportLockedAt)
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '首次修复前请直接编辑缺陷报告',
-          );
-        const item = this.requireItem(bug.submissionId, bug.submissionItemId);
-        const tester = actorUserId === access.tester_user_id;
-        if (!tester && actorUserId !== item?.responsible_user_id)
-          throw new PlatformError(
-            'PERMISSION_DENIED',
-            '当前成员不能补充此缺陷反馈',
-          );
-        this.requireBindableFiles(actorUserId, parsed.attachmentIds);
-        const feedbackId = this.createId();
-        this.db
-          .prepare(
-            `INSERT INTO cooking_bug_feedback(
-               id, bug_id, kind, author_user_id, content, created_at
-             ) VALUES (?, ?, ?, ?, ?, ?)`,
-          )
-          .run(
-            feedbackId,
-            bug.id,
-            tester ? 'TESTER_FEEDBACK' : 'DEVELOPER_NOTE',
-            actorUserId,
-            parsed.content,
-            now,
-          );
-        this.bindAttachments(bug.id, feedbackId, parsed.attachmentIds, now);
-        const update = this.db
-          .prepare(
-            `UPDATE cooking_bug SET version = version + 1, updated_at = ?
-             WHERE id = ? AND version = ?`,
-          )
-          .run(now, bug.id, parsed.expectedVersion);
-        if (update.changes !== 1) throw staleBug();
-        return {
-          action: 'BUG_FEEDBACK_ADDED',
-          boundAttachmentIds: parsed.attachmentIds,
-          unboundAttachmentIds: [],
-          details: {
-            feedbackId,
-            kind: tester ? 'TESTER_FEEDBACK' : 'DEVELOPER_NOTE',
-            attachmentCount: parsed.attachmentIds.length,
-          },
-        };
-      },
-    );
-  }
-
   workspace(userId: string, submissionId: string): BugWorkspaceProjection {
     const access = this.requireAccess(userId, submissionId);
     const bugs = (
@@ -450,7 +330,6 @@ export class BugService {
     ).map((row) => {
       const bug = mapBug(row, this.reportAttachmentIds(row.id));
       const item = this.requireItem(submissionId, bug.submissionItemId);
-      const feedback = this.feedback(row.id);
       return {
         ...bug,
         report: {
@@ -465,7 +344,7 @@ export class BugService {
             ? { expectedResult: bug.report.expectedResult }
             : {}),
           ...(bug.report.notes ? { notes: bug.report.notes } : {}),
-          attachments: this.attachments(row.id, null),
+          attachments: this.attachments(row.id),
         },
         createdBy: this.getUser(bug.createdByUserId),
         assignment: item
@@ -477,15 +356,6 @@ export class BugService {
               responsibleUser: itemUser(item),
             }
           : null,
-        feedback: feedback.map((entry) => ({
-          id: entry.id,
-          bugId: entry.bug_id,
-          kind: entry.kind,
-          authorUserId: entry.author_user_id,
-          content: entry.content,
-          attachments: this.attachments(row.id, entry.id),
-          createdAt: entry.created_at,
-        })),
         availableActions: this.availableActions(userId, access, bug, item),
         presentation: {
           stageLabel: STAGE_LABELS[bug.stage],
@@ -508,12 +378,27 @@ export class BugService {
   requireAttachmentAccess(userId: string, fileId: string): void {
     const row = this.db
       .prepare(
-        `SELECT bug.submission_id
-         FROM cooking_bug_attachment attachment
-         JOIN cooking_bug bug ON bug.id = attachment.bug_id
-         WHERE attachment.file_id = ?`,
+        `SELECT submission_id FROM (
+           SELECT bug.submission_id
+           FROM cooking_bug_attachment attachment
+           JOIN cooking_bug bug ON bug.id = attachment.bug_id
+           WHERE attachment.file_id = ?
+           UNION ALL
+           SELECT bug.submission_id
+           FROM cooking_verification_attachment attachment
+           JOIN cooking_verification_record verification
+             ON verification.id = attachment.verification_id
+           JOIN cooking_bug bug ON bug.id = verification.bug_id
+           WHERE attachment.file_id = ?
+           UNION ALL
+           SELECT bug.submission_id
+           FROM cooking_reopen_attachment attachment
+           JOIN cooking_reopen_record reopen ON reopen.id = attachment.reopen_id
+           JOIN cooking_bug bug ON bug.id = reopen.bug_id
+           WHERE attachment.file_id = ?
+         ) LIMIT 1`,
       )
-      .get(fileId) as { submission_id: string } | undefined;
+      .get(fileId, fileId, fileId) as { submission_id: string } | undefined;
     if (!row) throw new PlatformError('NOT_FOUND', '附件不存在或无权访问');
     try {
       this.requireAccess(userId, row.submission_id);
@@ -666,18 +551,37 @@ export class BugService {
     for (const fileId of fileIds) {
       const row = this.db
         .prepare(
-          `SELECT file.uploaded_by_user_id, attachment.bug_id
+          `SELECT file.uploaded_by_user_id, attachment.bug_id,
+                  verification_attachment.file_id verification_file_id,
+                  reopen_attachment.file_id reopen_file_id,
+                  report_attachment.file_id report_file_id
            FROM platform_file file
            LEFT JOIN cooking_bug_attachment attachment
              ON attachment.file_id = file.id
+           LEFT JOIN cooking_verification_attachment verification_attachment
+             ON verification_attachment.file_id = file.id
+           LEFT JOIN cooking_reopen_attachment reopen_attachment
+             ON reopen_attachment.file_id = file.id
+           LEFT JOIN cooking_external_deployment_report_attachment report_attachment
+             ON report_attachment.file_id = file.id
            WHERE file.id = ?`,
         )
         .get(fileId) as
-        { uploaded_by_user_id: string; bug_id: string | null } | undefined;
+        | {
+            uploaded_by_user_id: string;
+            bug_id: string | null;
+            verification_file_id: string | null;
+            reopen_file_id: string | null;
+            report_file_id: string | null;
+          }
+        | undefined;
       if (
         !row ||
         row.uploaded_by_user_id !== actorUserId ||
-        (row.bug_id && row.bug_id !== currentBugId)
+        (row.bug_id && row.bug_id !== currentBugId) ||
+        row.verification_file_id ||
+        row.reopen_file_id ||
+        row.report_file_id
       )
         throw new PlatformError(
           'VALIDATION_FAILED',
@@ -686,20 +590,15 @@ export class BugService {
     }
   }
 
-  private bindAttachments(
-    bugId: string,
-    feedbackId: string | null,
-    fileIds: string[],
-    now: string,
-  ): void {
+  private bindAttachments(bugId: string, fileIds: string[], now: string): void {
     fileIds.forEach((fileId, position) =>
       this.db
         .prepare(
           `INSERT INTO cooking_bug_attachment(
-             file_id, bug_id, feedback_id, position, created_at
-           ) VALUES (?, ?, ?, ?, ?)`,
+             file_id, bug_id, position, created_at
+           ) VALUES (?, ?, ?, ?)`,
         )
-        .run(fileId, bugId, feedbackId, position, now),
+        .run(fileId, bugId, position, now),
     );
   }
 
@@ -709,12 +608,9 @@ export class BugService {
     now: string,
   ): void {
     this.db
-      .prepare(
-        `DELETE FROM cooking_bug_attachment
-         WHERE bug_id = ? AND feedback_id IS NULL`,
-      )
+      .prepare(`DELETE FROM cooking_bug_attachment WHERE bug_id = ?`)
       .run(bugId);
-    this.bindAttachments(bugId, null, fileIds, now);
+    this.bindAttachments(bugId, fileIds, now);
   }
 
   private reportAttachmentIds(bugId: string): string[] {
@@ -722,7 +618,7 @@ export class BugService {
       this.db
         .prepare(
           `SELECT file_id FROM cooking_bug_attachment
-           WHERE bug_id = ? AND feedback_id IS NULL ORDER BY position`,
+           WHERE bug_id = ? ORDER BY position`,
         )
         .all(bugId) as Array<{ file_id: string }>
     ).map(({ file_id }) => file_id);
@@ -730,7 +626,6 @@ export class BugService {
 
   private attachments(
     bugId: string,
-    feedbackId: string | null,
   ): Array<
     Pick<
       StoredFile,
@@ -745,13 +640,9 @@ export class BugService {
          FROM cooking_bug_attachment attachment
          JOIN platform_file file ON file.id = attachment.file_id
          WHERE attachment.bug_id = ?
-           AND (
-             (? IS NULL AND attachment.feedback_id IS NULL) OR
-             attachment.feedback_id = ?
-           )
          ORDER BY attachment.position`,
       )
-      .all(bugId, feedbackId, feedbackId) as Array<{
+      .all(bugId) as Array<{
       id: string;
       storage_key: string;
       original_name: string;
@@ -782,15 +673,6 @@ export class BugService {
     });
   }
 
-  private feedback(bugId: string): FeedbackRow[] {
-    return this.db
-      .prepare(
-        `SELECT * FROM cooking_bug_feedback
-         WHERE bug_id = ? ORDER BY created_at, id`,
-      )
-      .all(bugId) as FeedbackRow[];
-  }
-
   private bumpRevision(submissionId: string, now: string): number {
     const update = this.db
       .prepare(
@@ -815,83 +697,42 @@ export class BugService {
     userId: string,
     access: AccessRow,
     bug: Bug,
-    item: ItemRow | null,
+    _item: ItemRow | null,
   ) {
     if (access.submission_status !== 'ACTIVE') return [];
     const tester = userId === access.tester_user_id;
-    const assignedResponsible = userId === item?.responsible_user_id;
     const anyResponsible = this.isAnyResponsible(userId, bug.submissionId);
     const actions: Array<
       | 'EDIT_REPORT'
       | 'ASSIGN'
       | 'REQUEST_REPAIR'
-      | 'WITHDRAW_REPAIR'
-      | 'ADD_FEEDBACK'
       | 'VERIFY_PASS'
       | 'VERIFY_FAIL'
       | 'REOPEN'
       | 'CANCEL'
+      | 'RESTORE'
+      | 'ARCHIVE'
+      | 'UNARCHIVE'
     > = [];
     if (!bug.reportLockedAt) {
       if (tester) actions.push('EDIT_REPORT');
       if (tester || access.membership_role === 'OWNER' || anyResponsible)
         actions.push('ASSIGN');
-      if (
-        bug.stage === 'WAITING_FOR_REPAIR' &&
-        bug.submissionItemId &&
-        (tester || assignedResponsible)
-      )
-        actions.push('REQUEST_REPAIR');
-    } else {
-      if (tester || assignedResponsible) actions.push('ADD_FEEDBACK');
-      if (
-        bug.stage === 'REPAIRING' &&
-        !this.hasStartedRepairExecution(bug.id) &&
-        (tester || assignedResponsible)
-      )
-        actions.push('WITHDRAW_REPAIR');
     }
-    if (tester && bug.stage === 'WAITING_FOR_VERIFICATION')
+    if (!tester) return actions;
+    if (
+      bug.stage === 'WAITING_FOR_REPAIR' &&
+      bug.submissionItemId &&
+      !bug.archivedAt
+    )
+      actions.push('REQUEST_REPAIR', 'CANCEL');
+    if (bug.stage === 'CANCELLED') actions.push('RESTORE');
+    if (bug.stage === 'WAITING_FOR_VERIFICATION')
       actions.push('VERIFY_PASS', 'VERIFY_FAIL');
-    if (tester && bug.stage === 'DONE') actions.push('REOPEN');
-    if (
-      tester &&
-      ['WAITING_FOR_REPAIR', 'WAITING_FOR_UPDATE'].includes(bug.stage)
-    )
-      actions.push('CANCEL');
-    if (
-      tester &&
-      bug.stage === 'REPAIRING' &&
-      !this.hasActiveRepairExecution(bug.id)
-    )
-      actions.push('CANCEL');
+    if (bug.stage === 'DONE' && !bug.archivedAt)
+      actions.push('REOPEN', 'ARCHIVE');
+    if (bug.stage === 'DONE' && bug.archivedAt) actions.push('UNARCHIVE');
     return actions;
-  }
-
-  private hasStartedRepairExecution(bugId: string): boolean {
-    const row = this.db
-      .prepare(
-        `SELECT execution.state
-         FROM cooking_repair_attempt attempt
-         JOIN platform_execution execution ON execution.id = attempt.execution_id
-         WHERE attempt.bug_id = ? ORDER BY attempt.attempt DESC LIMIT 1`,
-      )
-      .get(bugId) as { state: string } | undefined;
-    return row?.state !== 'QUEUED';
-  }
-
-  private hasActiveRepairExecution(bugId: string): boolean {
-    const row = this.db
-      .prepare(
-        `SELECT execution.state
-         FROM cooking_repair_attempt attempt
-         JOIN platform_execution execution ON execution.id = attempt.execution_id
-         WHERE attempt.bug_id = ? ORDER BY attempt.attempt DESC LIMIT 1`,
-      )
-      .get(bugId) as { state: string } | undefined;
-    return Boolean(
-      row && !['SUCCEEDED', 'FAILED', 'CANCELLED'].includes(row.state),
-    );
   }
 
   private getUser(userId: string): User {
@@ -963,6 +804,8 @@ function mapBug(row: BugRow, attachmentIds: string[]): Bug {
       attachmentIds,
     },
     reportLockedAt: row.report_locked_at,
+    archivedAt: row.archived_at,
+    archivedByUserId: row.archived_by_user_id,
     version: row.version,
     createdByUserId: row.created_by_user_id,
     createdAt: row.created_at,

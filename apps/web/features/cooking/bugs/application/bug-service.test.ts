@@ -265,7 +265,7 @@ describe('BugService', () => {
     ).toBe(true);
   });
 
-  test('分诊、首次修复锁定与撤回保持报告永久锁定', async () => {
+  test('分诊后仅测试负责人可开始修复且报告永久锁定', async () => {
     const fixture = await setup();
     const created = createBug(fixture, fixture.users.tester.id, {
       title: '待分诊缺陷',
@@ -303,7 +303,7 @@ describe('BugService', () => {
       }),
     ).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
     const repairing = fixture.service.requestRepair(
-      fixture.users.developerA.id,
+      fixture.users.tester.id,
       assigned.id,
       {
         mutationId: randomUUID(),
@@ -315,23 +315,10 @@ describe('BugService', () => {
       version: 3,
       reportLockedAt: '2026-07-27T03:00:00.000Z',
     });
-    const withdrawn = fixture.service.withdrawRepair(
-      fixture.users.tester.id,
-      repairing.id,
-      {
+    expect(() =>
+      fixture.service.updateReport(fixture.users.tester.id, repairing.id, {
         mutationId: randomUUID(),
         expectedVersion: repairing.version,
-      },
-    ).bug;
-    expect(withdrawn).toMatchObject({
-      stage: 'WAITING_FOR_REPAIR',
-      version: 4,
-      reportLockedAt: '2026-07-27T03:00:00.000Z',
-    });
-    expect(() =>
-      fixture.service.updateReport(fixture.users.tester.id, withdrawn.id, {
-        mutationId: randomUUID(),
-        expectedVersion: withdrawn.version,
         submissionItemId: fixture.items.front,
         title: '不能覆盖',
         attachmentIds: [],
@@ -352,7 +339,7 @@ describe('BugService', () => {
       mutation(first.version),
     ).bug;
     fixture.service.requestRepair(
-      fixture.users.developerB.id,
+      fixture.users.tester.id,
       second.id,
       mutation(second.version),
     );
@@ -371,7 +358,7 @@ describe('BugService', () => {
     expect(firstQueued.reportLockedAt).not.toBeNull();
   });
 
-  test('Workspace 返回服务端动作并隐藏 Binding，锁定后反馈只追加', async () => {
+  test('Workspace 返回服务端动作并隐藏 Binding，锁定后不再提供通用反馈', async () => {
     const fixture = await setup();
     const bug = createAssignedBug(fixture, '反馈缺陷', fixture.items.front);
     const waitingView = fixture.service.workspace(
@@ -389,26 +376,15 @@ describe('BugService', () => {
       bug.id,
       mutation(bug.version),
     ).bug;
-    const feedback = fixture.service.addFeedback(
-      fixture.users.developerA.id,
-      bug.id,
-      {
-        mutationId: randomUUID(),
-        expectedVersion: repairing.version,
-        content: '已补充边界条件',
-        attachmentIds: [],
-      },
-    ).bug;
     const developerView = fixture.service.workspace(
       fixture.users.developerA.id,
       fixture.submission.id,
     );
-    expect(developerView.bugs[0]?.feedback).toHaveLength(1);
-    expect(developerView.bugs[0]?.availableActions).toEqual(['ADD_FEEDBACK']);
+    expect(developerView.bugs[0]?.availableActions).toEqual([]);
     expect(JSON.stringify(developerView)).not.toMatch(
-      /binding|runner|repository|branch|commit|prompt/iu,
+      /binding|runner|repository|branch|commit|prompt|feedback/iu,
     );
-    expect(feedback.version).toBe(repairing.version + 1);
+    expect(repairing.version).toBe(bug.version + 1);
     expect(() =>
       fixture.service.workspace(
         fixture.users.outsider.id,

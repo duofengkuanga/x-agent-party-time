@@ -19,12 +19,10 @@ import {
   RepairMutationResultSchema,
   RepairWorkspaceProjectionSchema,
   ResolveRepairInteractionInputSchema,
-  StopRepairInputSchema,
   type BugRepairView,
   type RepairMutationResult,
   type RepairWorkspaceProjection,
   type ResolveRepairInteractionInput,
-  type StopRepairInput,
   type ContinueRepairInput,
 } from '../contract';
 import {
@@ -231,35 +229,6 @@ export class RepairService {
     return execution.id;
   }
 
-  withdrawQueuedExecution(bugId: string): void {
-    const latest = this.latestAttempt(bugId);
-    if (!latest || latest.state !== 'QUEUED')
-      throw new PlatformError('INVALID_TRANSITION', '修复已开始，不能直接撤回');
-    const execution = this.executions.cancelQueued(
-      latest.execution_id,
-      '修复请求已撤回',
-    );
-    const now = this.now().toISOString();
-    this.db
-      .prepare(
-        `UPDATE cooking_repair_attempt
-         SET outcome_json = ?, finished_at = ? WHERE id = ?`,
-      )
-      .run(
-        JSON.stringify({
-          outcome: 'FAILED',
-          summary: '修复请求在 Agent 领取前撤回。',
-          failedStep: '等待 Agent 领取',
-          reason: '测试负责人撤回了修复请求。',
-          completedActions: [],
-          pendingActions: ['重新开始自动修复'],
-          technicalFailure: execution.outcome?.kind ?? null,
-        }),
-        now,
-        latest.id,
-      );
-  }
-
   applyTerminalExecution(execution: Execution): void {
     if (
       execution.owner.namespace !== 'cooking' ||
@@ -455,73 +424,6 @@ export class RepairService {
     return result;
   }
 
-  stopExecution(
-    actorUserId: string,
-    bugId: string,
-    inputValue: StopRepairInput,
-  ): RepairMutationResult {
-    const input = StopRepairInputSchema.parse(inputValue);
-    const replay = this.hasRecordedMutation(input.mutationId);
-    const result = this.writes.run({
-      mutationId: input.mutationId,
-      actorUserId,
-      operation: 'REPAIR_STOP',
-      resourceType: 'BUG',
-      resultSchema: RepairMutationResultSchema,
-      perform: () => {
-        const source = this.requireResponsible(actorUserId, bugId);
-        this.requireActiveVersion(source, input.expectedVersion);
-        if (source.stage !== 'REPAIRING')
-          throw new PlatformError('INVALID_TRANSITION', '当前缺陷不在修复中');
-        const latest = this.latestAttempt(bugId);
-        if (
-          !latest ||
-          ![
-            'CLAIMED',
-            'RUNNING',
-            'WAITING_FOR_INTERACTION',
-            'WAITING_TO_RESUME',
-          ].includes(latest.state)
-        )
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '当前没有可以停止的修复执行',
-          );
-        this.executions.requestCancellation(latest.execution_id);
-        const now = this.now().toISOString();
-        const update = this.db
-          .prepare(
-            `UPDATE cooking_bug SET version = version + 1, updated_at = ?
-             WHERE id = ? AND version = ? AND stage = 'REPAIRING'`,
-          )
-          .run(now, bugId, input.expectedVersion);
-        if (update.changes !== 1) throw staleRepair();
-        const revision = this.bumpRevision(bugId, now);
-        return {
-          result: {
-            bugId,
-            bugVersion: input.expectedVersion + 1,
-            executionId: latest.execution_id,
-            revision,
-          },
-          resourceId: bugId,
-          audits: [
-            {
-              projectId: source.project_id,
-              action: 'REPAIR_EXECUTION_STOP_REQUESTED',
-              targetType: 'BUG',
-              targetId: bugId,
-              details: { executionId: latest.execution_id },
-            },
-          ],
-        };
-      },
-    });
-    if (!replay)
-      this.onInvalidated(this.source(bugId).submission_id, result.revision);
-    return result;
-  }
-
   resolveInteraction(
     actorUserId: string,
     interactionId: string,
@@ -654,25 +556,13 @@ export class RepairService {
         ...attemptNodes,
       ],
       availableActions:
-        technical && source.submission_status === 'ACTIVE'
-          ? [
-              ...(source.stage === 'REPAIRING' &&
-              latest &&
-              latest.outcome_json &&
-              isFailedAttemptOutcome(latest.outcome_json)
-                ? (['RETRY_REPAIR'] as const)
-                : []),
-              ...(source.stage === 'REPAIRING' &&
-              latest &&
-              [
-                'CLAIMED',
-                'RUNNING',
-                'WAITING_FOR_INTERACTION',
-                'WAITING_TO_RESUME',
-              ].includes(latest.state)
-                ? (['STOP_EXECUTION'] as const)
-                : []),
-            ]
+        technical &&
+        source.submission_status === 'ACTIVE' &&
+        source.stage === 'REPAIRING' &&
+        latest &&
+        latest.outcome_json &&
+        isFailedAttemptOutcome(latest.outcome_json)
+          ? ['RETRY_REPAIR']
           : [],
       presentation: {
         statusLabel,
@@ -876,10 +766,16 @@ export class RepairService {
     return (
       this.db
         .prepare(
-          `SELECT content FROM cooking_bug_feedback
-           WHERE bug_id = ? ORDER BY created_at, id`,
+          `SELECT content FROM (
+             SELECT comment content, created_at, id
+             FROM cooking_verification_record
+             WHERE bug_id = ? AND result = 'FAILED'
+             UNION ALL
+             SELECT feedback content, created_at, id
+             FROM cooking_reopen_record WHERE bug_id = ?
+           ) ORDER BY created_at, id`,
         )
-        .all(bugId) as Array<{ content: string }>
+        .all(bugId, bugId) as Array<{ content: string }>
     ).map(({ content }) => content);
   }
 
@@ -888,7 +784,7 @@ export class RepairService {
       this.db
         .prepare(
           `SELECT file_id FROM cooking_bug_attachment
-           WHERE bug_id = ? ORDER BY feedback_id IS NOT NULL, position`,
+           WHERE bug_id = ? ORDER BY position`,
         )
         .all(bugId) as Array<{ file_id: string }>
     ).map(({ file_id }) => file_id);

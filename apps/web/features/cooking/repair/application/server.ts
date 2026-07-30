@@ -56,9 +56,6 @@ export function cookingExecutionService(): ExecutionService {
     undefined,
     undefined,
     publish,
-    {
-      bugCancelled: (bugId) => updates.recalculatePendingDeliveryForBug(bugId),
-    },
   );
   return new ExecutionService(
     appDatabase,

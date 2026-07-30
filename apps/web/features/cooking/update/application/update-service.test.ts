@@ -244,7 +244,6 @@ async function setup(
     (submissionId, revision) => events.push({ submissionId, revision }),
     {
       requested: (bugId) => repairs.createInitialExecution(bugId),
-      withdrawn: (bugId) => repairs.withdrawQueuedExecution(bugId),
     },
   );
 
@@ -515,21 +514,36 @@ describe('UpdateService', () => {
       sessionId: failed.sessionId,
       outcome: {
         kind: 'SUCCEEDED',
-        result: { outcome: 'FAILED', summary: '部署脚本返回非零状态' },
+        result: failedUpdate('部署脚本返回非零状态'),
       },
     });
     let batch = latestBatch(fixture.database, fixture.item.id);
     expect(batch.state).toBe('FAILED');
     expect(currentBug(fixture.database, first.id).stage).toBe('UPDATING');
     expect(currentBug(fixture.database, second.id).stage).toBe('UPDATING');
+    const testerAttempt = fixture.updates
+      .batchView(fixture.users.tester.id, batch.id)
+      .timeline.find((node) => node.kind === 'UPDATE_ATTEMPT');
+    expect(
+      testerAttempt?.kind === 'UPDATE_ATTEMPT'
+        ? testerAttempt.result
+        : undefined,
+    ).toMatchObject({
+      outcome: 'FAILED',
+      failedStep: '执行统一更新',
+      reason: '部署脚本返回非零状态',
+      completedActions: [],
+      pendingActions: ['修正失败原因后重新执行'],
+      failureCode: null,
+      rawSummary: null,
+    });
 
-    const continued = fixture.updates.continueUpdate(
+    const continued = fixture.updates.retryUpdate(
       fixture.users.developer.id,
       batch.id,
       {
         mutationId: randomUUID(),
         expectedVersion: batch.version,
-        content: '环境变量已补齐，请继续原批次',
       },
     );
     const continuation = fixture.executions.get(continued.executionId);
@@ -538,7 +552,7 @@ describe('UpdateService', () => {
       resumeSessionId: 'update-session',
       priority: 0,
     });
-    expect(continuation.renderedPrompt).toContain('只处理以下增量信息');
+    expect(continuation.renderedPrompt).toContain('上一轮结构化失败结果');
     const resumed = await startExecution(
       fixture,
       continuation.id,
@@ -549,7 +563,7 @@ describe('UpdateService', () => {
       sessionId: resumed.sessionId,
       outcome: {
         kind: 'SUCCEEDED',
-        result: { outcome: 'COMPLETED', summary: '统一更新和部署完成' },
+        result: completedUpdate('统一更新和部署完成'),
       },
     });
     batch = latestBatch(fixture.database, fixture.item.id);
@@ -583,7 +597,7 @@ describe('UpdateService', () => {
       sessionId: first.sessionId,
       outcome: {
         kind: 'SUCCEEDED',
-        result: { outcome: 'PUSHED', summary: '代码已普通 Push' },
+        result: pushedUpdate('代码已普通 Push'),
       },
     });
     const waiting = latestBatch(fixture.database, fixture.item.id);
@@ -592,7 +606,19 @@ describe('UpdateService', () => {
     expect(
       fixture.updates.batchView(fixture.users.tester.id, waiting.id),
     ).toMatchObject({
-      attempts: [],
+      timeline: [
+        { kind: 'BATCH_FORMED' },
+        {
+          kind: 'UPDATE_ATTEMPT',
+          result: {
+            outcome: 'PUSHED',
+            completedActions: ['集成候选并普通 Push'],
+            validations: [{ name: '定向检查', status: 'PASSED' }],
+            warnings: [],
+            rawSummary: null,
+          },
+        },
+      ],
       availableActions: [],
       presentation: { statusLabel: '等待外部部署结果' },
     });
@@ -655,18 +681,21 @@ describe('UpdateService', () => {
       fixture.users.developer.id,
       waiting.id,
     );
-    expect(responsibleView.externalReports[0]).toMatchObject({
+    expect(
+      responsibleView.timeline.find((node) => node.kind === 'EXTERNAL_REPORT'),
+    ).toMatchObject({
       round: 1,
       outcome: 'FAILED',
       summary: '流水线测试失败',
       attachments: [{ id: evidence.id, originalName: 'pipeline.txt' }],
     });
     expect(
-      fixture.updates.batchView(fixture.users.tester.id, waiting.id)
-        .externalReports[0],
-    ).toMatchObject({ summary: null, attachments: [] });
+      fixture.updates
+        .batchView(fixture.users.tester.id, waiting.id)
+        .timeline.find((node) => node.kind === 'EXTERNAL_REPORT'),
+    ).toMatchObject({ summary: '流水线测试失败', attachments: [] });
 
-    const continued = fixture.updates.continueUpdate(
+    const continued = fixture.updates.retryUpdate(
       fixture.users.developer.id,
       waiting.id,
       {
@@ -698,7 +727,7 @@ describe('UpdateService', () => {
       sessionId: second.sessionId,
       outcome: {
         kind: 'SUCCEEDED',
-        result: { outcome: 'PUSHED', summary: '修复后已重新 Push' },
+        result: pushedUpdate('修复后已重新 Push'),
       },
     });
     const waitingAgain = latestBatch(fixture.database, fixture.item.id);
@@ -743,7 +772,7 @@ describe('UpdateService', () => {
       sessionId: running.sessionId,
       outcome: {
         kind: 'SUCCEEDED',
-        result: { outcome: 'FAILED', summary: '等待负责人处理冲突' },
+        result: failedUpdate('等待负责人处理冲突'),
       },
     });
     const firstBatch = latestBatch(fixture.database, fixture.item.id);
@@ -760,13 +789,12 @@ describe('UpdateService', () => {
       'WAITING_FOR_UPDATE',
     );
 
-    const continued = fixture.updates.continueUpdate(
+    const continued = fixture.updates.retryUpdate(
       fixture.users.developer.id,
       firstBatch.id,
       {
         mutationId: randomUUID(),
         expectedVersion: latestBatch(fixture.database, fixture.item.id).version,
-        content: '冲突已确认，继续首批',
       },
     );
     const resumed = await startExecution(
@@ -779,7 +807,7 @@ describe('UpdateService', () => {
       sessionId: resumed.sessionId,
       outcome: {
         kind: 'SUCCEEDED',
-        result: { outcome: 'COMPLETED', summary: '首批完成' },
+        result: completedUpdate('首批完成'),
       },
     });
     expect(fixture.updates.prepareDueExecutions()).toHaveLength(1);
@@ -896,7 +924,7 @@ describe('UpdateService', () => {
         sessionId: running.sessionId,
         outcome: {
           kind: 'SUCCEEDED',
-          result: { outcome: 'COMPLETED', summary: '应整体回滚' },
+          result: completedUpdate('应整体回滚'),
         },
       }),
     ).toThrow();
@@ -904,60 +932,6 @@ describe('UpdateService', () => {
     expect(latestBatch(fixture.database, fixture.item.id)).toEqual(beforeBatch);
     expect(currentBug(fixture.database, bug.id)).toEqual(beforeBug);
     expect(pendingCommits(fixture.database, bug.id)).toEqual(['aaaaaaa']);
-  });
-
-  test('QUEUED Batch 可取消并恢复 Pending Delivery，开始后只能停止', async () => {
-    const fixture = await setup();
-    const bug = fixture.createBug('可取消候选');
-    await completeNextRepair(fixture, 'repair-one', ['aaaaaaa']);
-    const frozen = fixture.updates.freezeNow(
-      fixture.users.developer.id,
-      fixture.item.id,
-      { mutationId: randomUUID() },
-    );
-    let batch = latestBatch(fixture.database, fixture.item.id);
-    fixture.updates.cancelBatch(fixture.users.developer.id, batch.id, {
-      mutationId: randomUUID(),
-      expectedVersion: batch.version,
-    });
-    expect(latestBatch(fixture.database, fixture.item.id).state).toBe(
-      'CANCELLED',
-    );
-    expect(currentBug(fixture.database, bug.id).stage).toBe(
-      'WAITING_FOR_UPDATE',
-    );
-    expect(pendingCommits(fixture.database, bug.id)).toEqual(['aaaaaaa']);
-    expect(pending(fixture.database, fixture.item.id)).toEqual({
-      last_candidate_at: '2026-07-27T10:00:00.000Z',
-      eligible_at: '2026-07-27T10:02:00.000Z',
-    });
-
-    const refrozen = fixture.updates.freezeNow(
-      fixture.users.developer.id,
-      fixture.item.id,
-      { mutationId: randomUUID() },
-    );
-    const running = await startExecution(
-      fixture,
-      refrozen.executionId,
-      'stop-session',
-    );
-    batch = latestBatch(fixture.database, fixture.item.id);
-    expect(() =>
-      fixture.updates.cancelBatch(fixture.users.developer.id, batch.id, {
-        mutationId: randomUUID(),
-        expectedVersion: batch.version,
-      }),
-    ).toThrow(expect.objectContaining({ code: 'INVALID_TRANSITION' }));
-    const stopped = fixture.updates.stopExecution(
-      fixture.users.developer.id,
-      batch.id,
-      { mutationId: randomUUID(), expectedVersion: batch.version },
-    );
-    expect(stopped.executionId).toBe(running.executionId);
-    expect(fixture.executions.get(running.executionId).state).toBe(
-      'CANCEL_REQUESTED',
-    );
   });
 
   test('负责人可处理 Update Interaction，Tester 只能看到安全等待状态', async () => {
@@ -996,8 +970,22 @@ describe('UpdateService', () => {
       fixture.users.developer.id,
       fixture.submission.id,
     ).updateBatches[0]!;
-    const tester = testerBatch.interactions[0]!;
-    const developer = developerBatch.interactions[0]!;
+    const testerAttempt = testerBatch.timeline.find(
+      (node) => node.kind === 'UPDATE_ATTEMPT',
+    );
+    const developerAttempt = developerBatch.timeline.find(
+      (node) => node.kind === 'UPDATE_ATTEMPT',
+    );
+    expect(testerAttempt?.kind).toBe('UPDATE_ATTEMPT');
+    expect(developerAttempt?.kind).toBe('UPDATE_ATTEMPT');
+    const tester =
+      testerAttempt?.kind === 'UPDATE_ATTEMPT'
+        ? testerAttempt.interactions[0]!
+        : undefined;
+    const developer =
+      developerAttempt?.kind === 'UPDATE_ATTEMPT'
+        ? developerAttempt.interactions[0]!
+        : undefined;
     expect(tester).toMatchObject({ request: null, canResolve: false });
     expect(developer).toMatchObject({
       request: {
@@ -1018,16 +1006,8 @@ describe('UpdateService', () => {
       symbol: '!',
     });
     expect(JSON.stringify(developer)).not.toContain('/Users/example');
-    expect(
-      fixture.updates.workspace(fixture.users.tester.id, fixture.submission.id)
-        .updateBatches[0]?.attempts,
-    ).toEqual([]);
-    expect(
-      fixture.updates.workspace(
-        fixture.users.developer.id,
-        fixture.submission.id,
-      ).updateBatches[0]?.attempts,
-    ).toHaveLength(1);
+    expect(testerAttempt).toMatchObject({ result: null });
+    expect(developerAttempt).toMatchObject({ result: null });
     const batch = latestBatch(fixture.database, fixture.item.id);
     expect(() =>
       fixture.updates.resolveInteraction(
@@ -1056,11 +1036,15 @@ describe('UpdateService', () => {
         )
         .get(interaction.id),
     ).toEqual({ state: 'RESOLVED' });
+    const resolvedAttempt = fixture.updates
+      .workspace(fixture.users.developer.id, fixture.submission.id)
+      .updateBatches[0]?.timeline.find(
+        (node) => node.kind === 'UPDATE_ATTEMPT',
+      );
     expect(
-      fixture.updates.workspace(
-        fixture.users.developer.id,
-        fixture.submission.id,
-      ).updateBatches[0]?.interactions[0],
+      resolvedAttempt?.kind === 'UPDATE_ATTEMPT'
+        ? resolvedAttempt.interactions[0]
+        : undefined,
     ).toMatchObject({
       state: 'RESOLVED',
       resolution: 'ACCEPTED_FOR_SESSION',
@@ -1178,8 +1162,39 @@ class GitUpdateExecutor implements CodexExecutor {
       deployment.exited,
     ]);
     if (exitCode !== 0) throw new Error(stderr);
-    return { outcome: 'COMPLETED', summary: '普通 Push 和本地脚本完成' };
+    return completedUpdate('普通 Push 和本地脚本完成');
   }
+}
+
+function completedUpdate(summary: string) {
+  return {
+    outcome: 'COMPLETED' as const,
+    summary,
+    completedActions: ['集成候选并完成部署'],
+    validations: [{ name: '定向检查', status: 'PASSED' as const }],
+    warnings: [],
+  };
+}
+
+function pushedUpdate(summary: string) {
+  return {
+    outcome: 'PUSHED' as const,
+    summary,
+    completedActions: ['集成候选并普通 Push'],
+    validations: [{ name: '定向检查', status: 'PASSED' as const }],
+    warnings: [],
+  };
+}
+
+function failedUpdate(summary: string) {
+  return {
+    outcome: 'FAILED' as const,
+    summary,
+    failedStep: '执行统一更新',
+    reason: summary,
+    completedActions: [],
+    pendingActions: ['修正失败原因后重新执行'],
+  };
 }
 
 async function completeNextRepair(

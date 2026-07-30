@@ -158,7 +158,6 @@ async function setup(options: { repairCreateId?: () => string } = {}) {
     (submissionId, revision) => events.push({ submissionId, revision }),
     {
       requested: (bugId) => repairs.createInitialExecution(bugId),
-      withdrawn: (bugId) => repairs.withdrawQueuedExecution(bugId),
     },
   );
   const created = bugs.createBug(users.tester.id, submission.id, {
@@ -241,36 +240,6 @@ describe('RepairService', () => {
     expect(
       (await fixture.executions.claim(fixture.runner.id, 1, 0))[0]?.id,
     ).toBe(execution.id);
-  });
-
-  test('领取前撤回保留锁定报告与 Attempt 历史，重新发起创建新 Execution', async () => {
-    const fixture = await setup();
-    const first = latestAttempt(fixture.database, fixture.requested.bug.id);
-    const withdrawn = fixture.bugs.withdrawRepair(
-      fixture.users.tester.id,
-      fixture.requested.bug.id,
-      mutation(2),
-    );
-    expect(withdrawn.bug).toMatchObject({
-      stage: 'WAITING_FOR_REPAIR',
-      version: 3,
-    });
-    expect(withdrawn.bug.reportLockedAt).not.toBeNull();
-    expect(fixture.executions.get(first.execution_id).state).toBe('CANCELLED');
-
-    fixture.bugs.requestRepair(
-      fixture.users.tester.id,
-      fixture.requested.bug.id,
-      mutation(3),
-    );
-    const second = latestAttempt(fixture.database, fixture.requested.bug.id);
-    expect(second).toMatchObject({ attempt: 2 });
-    expect(second.execution_id).not.toBe(first.execution_id);
-    expect(fixture.executions.get(second.execution_id)).toMatchObject({
-      previousExecutionId: first.execution_id,
-      resumeSessionId: null,
-      state: 'QUEUED',
-    });
   });
 
   test('成功 Repair 冻结候选提交且不能重新执行', async () => {
@@ -637,7 +606,7 @@ describe('RepairService', () => {
     ).toEqual([]);
   });
 
-  test('Interaction 仅负责人可查看详情并响应，停止 Execution 不取消 Bug', async () => {
+  test('Interaction 仅负责人可查看详情并响应', async () => {
     const fixture = await setup();
     const started = await startLatest(fixture, 'interaction-session');
     const interaction = fixture.executions.openInteraction(
@@ -753,66 +722,6 @@ describe('RepairService', () => {
         },
       ),
     ).toThrow(expect.objectContaining({ code: 'STALE_STATE' }));
-
-    const stoppedFixture = await setup();
-    const running = await startLatest(stoppedFixture, 'stop-session');
-    const stoppedInteraction = stoppedFixture.executions.openInteraction(
-      stoppedFixture.runner.id,
-      running.executionId,
-      {
-        leaseToken: running.leaseToken,
-        kind: 'USER_INPUT',
-        method: 'item/tool/requestUserInput',
-        payload: {
-          questions: [
-            {
-              id: 'reason',
-              header: '继续处理',
-              question: '继续吗？',
-              options: [
-                {
-                  value: 'continue',
-                  label: '继续',
-                  description: '继续当前自动修复',
-                },
-              ],
-            },
-          ],
-        },
-      },
-    );
-    const stopped = stoppedFixture.repairs.stopExecution(
-      stoppedFixture.users.developer.id,
-      stoppedFixture.requested.bug.id,
-      { mutationId: randomUUID(), expectedVersion: 2 },
-    );
-    expect(stopped.executionId).toBe(running.executionId);
-    expect(
-      stoppedFixture.database
-        .prepare(
-          'SELECT state FROM platform_execution_interaction WHERE id = ?',
-        )
-        .get(stoppedInteraction.id),
-    ).toEqual({ state: 'INVALIDATED' });
-    expect(stoppedFixture.executions.get(running.executionId)).toMatchObject({
-      state: 'CANCELLED',
-      cancellationRequested: true,
-    });
-    expect(
-      currentBug(stoppedFixture.database, stoppedFixture.requested.bug.id)
-        .stage,
-    ).toBe('REPAIRING');
-    expect(
-      stoppedFixture.database
-        .prepare(
-          'SELECT state FROM platform_execution_interaction WHERE id = ?',
-        )
-        .get(stoppedInteraction.id),
-    ).toEqual({ state: 'INVALIDATED' });
-    expect(
-      currentBug(stoppedFixture.database, stoppedFixture.requested.bug.id)
-        .stage,
-    ).toBe('REPAIRING');
   });
 });
 

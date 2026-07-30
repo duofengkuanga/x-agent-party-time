@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { PlatformError } from '@/server/errors';
 
-export const SERVER_SCHEMA_VERSION = 15;
+export const SERVER_SCHEMA_VERSION = 17;
 
 const SCHEMA = `
 CREATE TABLE platform_user (
@@ -401,41 +401,42 @@ CREATE TABLE cooking_bug (
   expected_result TEXT,
   notes TEXT,
   report_locked_at TEXT,
+  archived_at TEXT,
+  archived_by_user_id TEXT REFERENCES platform_user(id) ON DELETE RESTRICT,
   version INTEGER NOT NULL CHECK (version > 0),
   created_by_user_id TEXT NOT NULL REFERENCES platform_user(id) ON DELETE RESTRICT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  UNIQUE(submission_id, short_id)
+  UNIQUE(submission_id, short_id),
+  CHECK (
+    (archived_at IS NULL AND archived_by_user_id IS NULL) OR
+    (stage = 'DONE' AND archived_at IS NOT NULL AND archived_by_user_id IS NOT NULL)
+  )
 ) STRICT;
 CREATE INDEX cooking_bug_submission_stage
   ON cooking_bug(submission_id, stage, short_id);
 CREATE INDEX cooking_bug_item_stage
   ON cooking_bug(submission_item_id, stage, short_id);
 
-CREATE TABLE cooking_bug_feedback (
+CREATE TABLE cooking_bug_lifecycle_event (
   id TEXT PRIMARY KEY,
   bug_id TEXT NOT NULL REFERENCES cooking_bug(id) ON DELETE CASCADE,
-  kind TEXT NOT NULL CHECK (kind IN (
-    'TESTER_FEEDBACK',
-    'DEVELOPER_NOTE',
-    'EXECUTION_FAILURE'
-  )),
-  author_user_id TEXT REFERENCES platform_user(id) ON DELETE RESTRICT,
-  content TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('CANCELLED', 'RESTORED')),
+  actor_user_id TEXT NOT NULL REFERENCES platform_user(id) ON DELETE RESTRICT,
   created_at TEXT NOT NULL
 ) STRICT;
-CREATE INDEX cooking_bug_feedback_bug
-  ON cooking_bug_feedback(bug_id, created_at, id);
+CREATE INDEX cooking_bug_lifecycle_event_bug
+  ON cooking_bug_lifecycle_event(bug_id, created_at, id);
 
 CREATE TABLE cooking_bug_attachment (
   file_id TEXT PRIMARY KEY REFERENCES platform_file(id) ON DELETE RESTRICT,
   bug_id TEXT NOT NULL REFERENCES cooking_bug(id) ON DELETE CASCADE,
-  feedback_id TEXT REFERENCES cooking_bug_feedback(id) ON DELETE CASCADE,
   position INTEGER NOT NULL CHECK (position >= 0),
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  UNIQUE(bug_id, position)
 ) STRICT;
 CREATE INDEX cooking_bug_attachment_bug
-  ON cooking_bug_attachment(bug_id, feedback_id, position);
+  ON cooking_bug_attachment(bug_id, position);
 
 CREATE TABLE cooking_bug_repair_context (
   bug_id TEXT PRIMARY KEY REFERENCES cooking_bug(id) ON DELETE CASCADE,
@@ -474,7 +475,7 @@ CREATE TABLE cooking_update_batch (
   submission_id TEXT NOT NULL REFERENCES cooking_test_submission(id) ON DELETE CASCADE,
   submission_item_id TEXT NOT NULL REFERENCES cooking_submission_item(id) ON DELETE RESTRICT,
   state TEXT NOT NULL CHECK (state IN (
-    'READY', 'RUNNING', 'WAITING_EXTERNAL', 'FAILED', 'COMPLETED', 'CANCELLED'
+    'READY', 'RUNNING', 'WAITING_EXTERNAL', 'FAILED', 'COMPLETED'
   )),
   version INTEGER NOT NULL CHECK (version > 0),
   active_execution_id TEXT REFERENCES platform_execution(id) ON DELETE RESTRICT,
@@ -547,23 +548,56 @@ CREATE TABLE cooking_verification_record (
   round INTEGER NOT NULL CHECK (round > 0),
   result TEXT NOT NULL CHECK (result IN ('PASSED', 'FAILED')),
   comment TEXT,
-  feedback_id TEXT REFERENCES cooking_bug_feedback(id) ON DELETE RESTRICT,
+  repair_attempt INTEGER CHECK (repair_attempt > 0),
   verified_by_user_id TEXT NOT NULL REFERENCES platform_user(id) ON DELETE RESTRICT,
   created_at TEXT NOT NULL,
   UNIQUE(bug_id, round),
   CHECK (
-    (result = 'PASSED' AND feedback_id IS NULL) OR
-    (result = 'FAILED' AND feedback_id IS NOT NULL AND comment IS NOT NULL)
+    (result = 'PASSED' AND repair_attempt IS NULL) OR
+    (result = 'FAILED' AND comment IS NOT NULL AND repair_attempt IS NOT NULL)
   )
 ) STRICT;
 CREATE INDEX cooking_verification_record_bug
   ON cooking_verification_record(bug_id, round, created_at);
 
+CREATE TABLE cooking_verification_attachment (
+  verification_id TEXT NOT NULL REFERENCES cooking_verification_record(id) ON DELETE CASCADE,
+  file_id TEXT PRIMARY KEY REFERENCES platform_file(id) ON DELETE RESTRICT,
+  position INTEGER NOT NULL CHECK (position >= 0),
+  created_at TEXT NOT NULL,
+  UNIQUE(verification_id, position)
+) STRICT;
+CREATE INDEX cooking_verification_attachment_record
+  ON cooking_verification_attachment(verification_id, position);
+
+CREATE TABLE cooking_reopen_record (
+  id TEXT PRIMARY KEY,
+  bug_id TEXT NOT NULL REFERENCES cooking_bug(id) ON DELETE CASCADE,
+  round INTEGER NOT NULL CHECK (round > 0),
+  feedback TEXT NOT NULL,
+  repair_attempt INTEGER NOT NULL CHECK (repair_attempt > 0),
+  reopened_by_user_id TEXT NOT NULL REFERENCES platform_user(id) ON DELETE RESTRICT,
+  created_at TEXT NOT NULL,
+  UNIQUE(bug_id, round)
+) STRICT;
+CREATE INDEX cooking_reopen_record_bug
+  ON cooking_reopen_record(bug_id, round, created_at);
+
+CREATE TABLE cooking_reopen_attachment (
+  reopen_id TEXT NOT NULL REFERENCES cooking_reopen_record(id) ON DELETE CASCADE,
+  file_id TEXT PRIMARY KEY REFERENCES platform_file(id) ON DELETE RESTRICT,
+  position INTEGER NOT NULL CHECK (position >= 0),
+  created_at TEXT NOT NULL,
+  UNIQUE(reopen_id, position)
+) STRICT;
+CREATE INDEX cooking_reopen_attachment_record
+  ON cooking_reopen_attachment(reopen_id, position);
+
 CREATE TABLE cooking_cleanup (
   id TEXT PRIMARY KEY,
   submission_id TEXT NOT NULL REFERENCES cooking_test_submission(id) ON DELETE CASCADE,
   submission_item_id TEXT NOT NULL REFERENCES cooking_submission_item(id) ON DELETE RESTRICT,
-  reason TEXT NOT NULL CHECK (reason IN ('BUG_CANCELLED', 'SUBMISSION_CLOSED')),
+  reason TEXT NOT NULL CHECK (reason = 'SUBMISSION_CLOSED'),
   subject_id TEXT NOT NULL,
   state TEXT NOT NULL CHECK (state IN ('READY', 'RUNNING', 'FAILED', 'COMPLETED')),
   version INTEGER NOT NULL CHECK (version > 0),

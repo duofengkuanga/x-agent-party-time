@@ -11,7 +11,6 @@ import {
 import { CookingMutationIdSchema } from '@/features/cooking/shared/contract';
 
 export const BugIdSchema = z.uuid();
-export const BugFeedbackIdSchema = z.uuid();
 export const BugStageSchema = z.enum([
   'WAITING_FOR_REPAIR',
   'REPAIRING',
@@ -20,11 +19,6 @@ export const BugStageSchema = z.enum([
   'WAITING_FOR_VERIFICATION',
   'DONE',
   'CANCELLED',
-]);
-export const BugFeedbackKindSchema = z.enum([
-  'TESTER_FEEDBACK',
-  'DEVELOPER_NOTE',
-  'EXECUTION_FAILURE',
 ]);
 export const BugTitleSchema = z.string().trim().min(1).max(240);
 const OptionalReportTextSchema = z.string().trim().min(1).max(8_000);
@@ -47,20 +41,12 @@ export const BugSchema = z.object({
   stage: BugStageSchema,
   report: BugReportSchema,
   reportLockedAt: z.iso.datetime().nullable(),
+  archivedAt: z.iso.datetime().nullable(),
+  archivedByUserId: UserIdSchema.nullable(),
   version: z.number().int().positive(),
   createdByUserId: UserIdSchema,
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
-});
-
-export const BugFeedbackSchema = z.object({
-  id: BugFeedbackIdSchema,
-  bugId: BugIdSchema,
-  kind: BugFeedbackKindSchema,
-  authorUserId: UserIdSchema.nullable(),
-  content: z.string().trim().min(1).max(8_000),
-  attachmentIds: BugAttachmentIdsSchema,
-  createdAt: z.iso.datetime(),
 });
 
 export const CreateBugInputSchema = z.object({
@@ -92,15 +78,6 @@ export const RequestRepairInputSchema = z.object({
   expectedVersion: z.number().int().positive(),
 });
 
-export const WithdrawRepairInputSchema = RequestRepairInputSchema;
-
-export const AddBugFeedbackInputSchema = z.object({
-  mutationId: CookingMutationIdSchema,
-  expectedVersion: z.number().int().positive(),
-  content: z.string().trim().min(1).max(8_000),
-  attachmentIds: BugAttachmentIdsSchema,
-});
-
 export const BugAttachmentViewSchema = z.object({
   id: z.uuid(),
   originalName: z.string().trim().min(1).max(255),
@@ -119,12 +96,13 @@ export const BugActionSchema = z.enum([
   'EDIT_REPORT',
   'ASSIGN',
   'REQUEST_REPAIR',
-  'WITHDRAW_REPAIR',
-  'ADD_FEEDBACK',
   'VERIFY_PASS',
   'VERIFY_FAIL',
   'REOPEN',
   'CANCEL',
+  'RESTORE',
+  'ARCHIVE',
+  'UNARCHIVE',
 ]);
 
 export const BugViewSchema = BugSchema.omit({
@@ -143,11 +121,6 @@ export const BugViewSchema = BugSchema.omit({
       responsibleUser: UserSchema,
     })
     .nullable(),
-  feedback: z.array(
-    BugFeedbackSchema.omit({ attachmentIds: true }).extend({
-      attachments: z.array(BugAttachmentViewSchema),
-    }),
-  ),
   availableActions: z.array(BugActionSchema),
   presentation: z.object({
     stageLabel: z.string().trim().min(1),
@@ -169,13 +142,10 @@ export const BugMutationResultSchema = z.object({
 
 export type Bug = z.infer<typeof BugSchema>;
 export type BugView = z.infer<typeof BugViewSchema>;
-export type BugFeedback = z.infer<typeof BugFeedbackSchema>;
 export type CreateBugInput = z.infer<typeof CreateBugInputSchema>;
 export type UpdateBugReportInput = z.infer<typeof UpdateBugReportInputSchema>;
 export type AssignBugInput = z.infer<typeof AssignBugInputSchema>;
 export type RequestRepairInput = z.infer<typeof RequestRepairInputSchema>;
-export type WithdrawRepairInput = z.infer<typeof WithdrawRepairInputSchema>;
-export type AddBugFeedbackInput = z.infer<typeof AddBugFeedbackInputSchema>;
 export type BugWorkspaceProjection = z.infer<
   typeof BugWorkspaceProjectionSchema
 >;
