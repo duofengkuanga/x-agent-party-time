@@ -166,6 +166,38 @@ describe('generic Runner worker', () => {
     });
   });
 
+  test('Codex 启动失败保留 App Server 返回的具体失败摘要', async () => {
+    const fixture = await setup();
+    const binding = bindingId(3);
+    await fixture.state.bind(binding, fixture.repository);
+    const execution = fixture.executions.enqueue(
+      input(fixture.paired.runner.id, binding, 'start-rate-limited'),
+    );
+    const failureSummary =
+      'Codex 请求过多：429 Too Many Requests，已超过重试次数。';
+    const worker = workerFor(fixture, {
+      begin: async () => {
+        throw new CodexAppServerError(failureSummary, null);
+      },
+    });
+
+    expect(await worker.cycle(0)).toBe(1);
+    await worker.waitForIdle();
+
+    expect(fixture.executions.get(execution.id)).toMatchObject({
+      state: 'FAILED',
+      sessionId: null,
+      outcome: {
+        kind: 'FAILED',
+        failure: {
+          code: 'CODEX_START_FAILED',
+          message: failureSummary,
+          retryable: true,
+        },
+      },
+    });
+  });
+
   test('Outcome 网络失败进入私有 Outbox，重启后先重放且只应用一次', async () => {
     const fixture = await setup();
     const binding = bindingId(2);
