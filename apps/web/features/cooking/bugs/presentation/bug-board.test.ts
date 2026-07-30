@@ -120,6 +120,13 @@ describe('缺陷看板展示', () => {
     expect(css).toContain('background: var(--paper) !important');
     expect(css).toContain('color: var(--ink) !important');
     expect(css).toContain(
+      '.collab-shell .collab-storage-button--icon:hover > sup',
+    );
+    expect(css).toContain(
+      ".collab-shell .collab-storage-button--icon[data-drop-target='true'] > sup",
+    );
+    expect(source).toContain('<sup aria-hidden="true">');
+    expect(css).toContain(
       '.collab-storage-button--icon:hover .collab-storage-button__glyph',
     );
   });
