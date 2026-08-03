@@ -438,7 +438,8 @@ export class ExecutionService {
       this.db
         .prepare(
           `UPDATE platform_execution
-           SET state = 'WAITING_TO_RESUME', resume_requested_at = ?
+           SET state = 'WAITING_TO_RESUME', resume_requested_at = ?,
+               resume_session_id = COALESCE(session_id, resume_session_id)
            WHERE id = ?`,
         )
         .run(resolvedAt, interaction.execution_id);

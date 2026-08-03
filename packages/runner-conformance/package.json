@@ -1,0 +1,22 @@
+{
+  "name": "@agent-party-time/runner-conformance",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "bun test src",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agent-party-time/execution-contract": "workspace:*",
+    "@agent-party-time/runner-contract": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "@types/node": "^24.10.1",
+    "typescript": "^5.9.3"
+  }
+}

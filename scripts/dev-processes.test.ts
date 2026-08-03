@@ -32,13 +32,13 @@ describe('parseProcessTable', () => {
 });
 
 describe('discoverServiceProcesses', () => {
-  test('只匹配当前仓库中的 App 与 Runner', () => {
+  test('只匹配当前仓库中的 App；Agent 通过 control socket 管理', () => {
     const rows = [
       row(101, 10, 'bun run dev:app'),
       row(102, 101, 'bun --cwd apps/web dev'),
       row(103, 102, 'next dev'),
-      row(201, 20, 'bun run dev:runner'),
-      row(202, 201, 'bun packages/runner/src/index.ts start'),
+      row(201, 20, 'bun run dev:xapt'),
+      row(202, 201, 'bun apps/xapt/src/index.ts internal-daemon'),
       row(301, 30, 'bun run dev:app'),
       row(501, 50, 'bun test'),
     ];
@@ -62,18 +62,16 @@ describe('discoverServiceProcesses', () => {
       [101, 'app'],
       [102, 'app'],
       [103, 'app'],
-      [201, 'runner'],
-      [202, 'runner'],
     ]);
-    expect(findServiceRoots(matches).map(({ pid }) => pid)).toEqual([101, 201]);
+    expect(findServiceRoots(matches).map(({ pid }) => pid)).toEqual([101]);
   });
 });
 
 describe('collectDescendantPids', () => {
-  test('包含 Runner 派生出的 Codex 子进程', () => {
+  test('包含 xapt 派生出的 Codex 子进程', () => {
     const rows = [
-      row(101, 10, 'bun run dev:runner'),
-      row(102, 101, 'bun packages/runner/src/index.ts start'),
+      row(101, 10, 'bun run dev:xapt'),
+      row(102, 101, 'bun apps/xapt/src/index.ts internal-daemon'),
       row(103, 102, 'codex app-server'),
       row(104, 103, 'worker child'),
       row(201, 20, 'unrelated process'),

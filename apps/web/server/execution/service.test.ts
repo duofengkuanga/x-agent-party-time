@@ -178,6 +178,7 @@ describe('Execution lifecycle', () => {
     setNow('2026-07-27T08:00:02.000Z');
     executions.resolveInteraction(interaction.id, { decision: 'accept' });
     expect(executions.get(first.id).state).toBe('WAITING_TO_RESUME');
+    expect(executions.get(first.id).resumeSessionId).toBe('session-first');
     expect(
       await executions.waitInteraction(
         runnerId,

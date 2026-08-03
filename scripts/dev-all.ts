@@ -7,7 +7,7 @@ type ServiceCommand = {
 
 const commands: ServiceCommand[] = [
   { label: 'App', script: 'dev:app' },
-  { label: 'Agent', script: 'dev:runner' },
+  { label: 'Agent', script: 'dev:xapt' },
 ];
 
 const activeChildren = new Set<ChildProcess>();

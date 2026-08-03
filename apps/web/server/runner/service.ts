@@ -437,16 +437,22 @@ export class RunnerService {
     return mapRunner(row);
   }
 
-  heartbeat(credential: string | undefined): Runner {
+  heartbeat(credential: string | undefined, availableSlots = 3): Runner {
     const runner = this.authenticateCredential(credential);
     const lastSeenAt = this.now().toISOString();
     this.db
       .prepare(
-        `UPDATE platform_runner SET last_seen_at = ?
+        `UPDATE platform_runner
+         SET last_seen_at = ?, available_slots = ?
          WHERE id = ? AND revoked_at IS NULL`,
       )
-      .run(lastSeenAt, runner.id);
+      .run(lastSeenAt, availableSlots, runner.id);
     return RunnerSchema.parse({ ...runner, lastSeenAt });
+  }
+
+  revokeSelf(credential: string | undefined): Runner {
+    const runner = this.authenticateCredential(credential);
+    return this.revokeRunner(runner.ownerUserId, runner.id, runner.version);
   }
 
   listRunners(ownerUserId: string): RunnerStatus[] {

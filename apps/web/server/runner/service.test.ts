@@ -95,7 +95,7 @@ describe('Runner pairing', () => {
   });
 
   test('过期配对码被拒绝且不能指定其他 Owner', async () => {
-    const { service, setNow, users } = await setup();
+    const { database, service, setNow, users } = await setup();
     const issue = service.issuePairingCode(users.owner.id, 1_000);
     setNow('2026-07-26T10:00:02Z');
     expect(() => service.pair(issue.code, '过期 Runner')).toThrow(
@@ -219,12 +219,19 @@ describe('Agent 浏览器授权', () => {
 
 describe('Runner credential and heartbeat', () => {
   test('Bearer Credential 驱动心跳和在线状态，停止心跳后转离线', async () => {
-    const { service, setNow, users } = await setup();
+    const { database, service, setNow, users } = await setup();
     const issue = service.issuePairingCode(users.owner.id);
     const paired = service.pair(issue.code, '心跳 Runner');
     expect(service.listRunners(users.owner.id)[0]?.online).toBe(false);
-    const heartbeat = service.heartbeat(paired.credential);
+    const heartbeat = service.heartbeat(paired.credential, 1);
     expect(heartbeat.lastSeenAt).toBe('2026-07-26T10:00:00.000Z');
+    expect(
+      database
+        .query<{ available_slots: number }, [string]>(
+          'SELECT available_slots FROM platform_runner WHERE id = ?',
+        )
+        .get(paired.runner.id)?.available_slots,
+    ).toBe(1);
     expect(service.listRunners(users.owner.id)[0]?.online).toBe(true);
     setNow('2026-07-26T10:00:31Z');
     expect(service.listRunners(users.owner.id)[0]?.online).toBe(false);

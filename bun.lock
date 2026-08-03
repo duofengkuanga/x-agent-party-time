@@ -22,10 +22,28 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
+        "@agent-party-time/runner-conformance": "workspace:*",
         "@types/bun": "^1.3.14",
         "@types/node": "^24.10.1",
         "@types/react": "^19",
         "@types/react-dom": "^19",
+        "typescript": "^5.9.3",
+      },
+    },
+    "apps/xapt": {
+      "name": "@agent-party-time/xapt",
+      "version": "0.1.0",
+      "bin": {
+        "xapt": "src/index.ts",
+      },
+      "dependencies": {
+        "@agent-party-time/execution-contract": "workspace:*",
+        "@agent-party-time/runner-contract": "workspace:*",
+        "zod": "^4.4.3",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.3.14",
+        "@types/node": "^24.10.1",
         "typescript": "^5.9.3",
       },
     },
@@ -39,16 +57,12 @@
         "typescript": "^5.9.3",
       },
     },
-    "packages/runner": {
-      "name": "@agent-party-time/runner",
+    "packages/runner-conformance": {
+      "name": "@agent-party-time/runner-conformance",
       "version": "0.1.0",
-      "bin": {
-        "agent-party-time-runner": "src/index.ts",
-      },
       "dependencies": {
         "@agent-party-time/execution-contract": "workspace:*",
         "@agent-party-time/runner-contract": "workspace:*",
-        "zod": "^4.4.3",
       },
       "devDependencies": {
         "@types/bun": "^1.3.14",
@@ -70,11 +84,13 @@
   "packages": {
     "@agent-party-time/execution-contract": ["@agent-party-time/execution-contract@workspace:packages/execution-contract"],
 
-    "@agent-party-time/runner": ["@agent-party-time/runner@workspace:packages/runner"],
+    "@agent-party-time/runner-conformance": ["@agent-party-time/runner-conformance@workspace:packages/runner-conformance"],
 
     "@agent-party-time/runner-contract": ["@agent-party-time/runner-contract@workspace:packages/runner-contract"],
 
     "@agent-party-time/web": ["@agent-party-time/web@workspace:apps/web"],
+
+    "@agent-party-time/xapt": ["@agent-party-time/xapt@workspace:apps/xapt"],
 
     "@babel/code-frame": ["@babel/code-frame@7.29.7", "https://registry.npmmirror.com/@babel/code-frame/-/code-frame-7.29.7.tgz", { "dependencies": { "@babel/helper-validator-identifier": "^7.29.7", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw=="],
 

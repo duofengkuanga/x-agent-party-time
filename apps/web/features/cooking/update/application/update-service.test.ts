@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
-import { appendFile, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { JsonValue } from '@agent-party-time/execution-contract';
+import { ProtocolAgent } from '@agent-party-time/runner-conformance';
 import { AuthService } from '@/server/auth/service';
 import type { AppDatabase } from '@/server/database';
 import { openDatabase } from '@/server/database';
@@ -23,19 +23,6 @@ import { ProjectService } from '@/features/cooking/projects/application/project-
 import { RepairService } from '@/features/cooking/repair/application/repair-service';
 import { SubmissionService } from '@/features/cooking/submissions/application/submission-service';
 import { CookingWorkspaceService } from '@/features/cooking/workspace/application/workspace-service';
-import { AttachmentMaterializer } from '../../../../../../packages/runner/src/attachments';
-import type {
-  CodexExecutionInput,
-  CodexExecutor,
-  StartedCodexExecution,
-} from '../../../../../../packages/runner/src/codex-app-server';
-import { RunnerClient } from '../../../../../../packages/runner/src/client';
-import { ExecutionOutbox } from '../../../../../../packages/runner/src/outbox';
-import {
-  RunnerStateStore,
-  runnerLocalPaths,
-} from '../../../../../../packages/runner/src/state';
-import { RunnerWorker } from '../../../../../../packages/runner/src/worker';
 import { UpdateService } from './update-service';
 
 const directories: string[] = [];
@@ -1063,16 +1050,9 @@ describe('UpdateService', () => {
     ).toThrow(expect.objectContaining({ code: 'STALE_STATE' }));
   });
 
-  test('真实 Runner 在测试 Git 仓库按冻结顺序 Push 并执行 LOCAL_SCRIPT', async () => {
+  test('协议级 Agent 按冻结顺序完成 LOCAL_SCRIPT Update Outcome', async () => {
     const fixture = await setup();
-    const repository = join(fixture.directory, 'integration-repository');
-    const remote = join(fixture.directory, 'remote.git');
-    const deploymentOutput = join(fixture.directory, 'deployment-output.txt');
-    const commits = await initializeIntegrationRepository(
-      repository,
-      remote,
-      deploymentOutput,
-    );
+    const commits = ['a'.repeat(40), 'b'.repeat(40)];
     fixture.createBug('第一个真实候选');
     await completeNextRepair(fixture, 'repair-one', [commits[0]!]);
     fixture.createBug('第二个真实候选');
@@ -1083,88 +1063,32 @@ describe('UpdateService', () => {
       { mutationId: randomUUID() },
     );
 
-    const paths = runnerLocalPaths({
-      AGENT_PARTY_TIME_RUNNER_HOME: join(fixture.directory, 'runner-home'),
-    });
-    const state = new RunnerStateStore(paths);
-    await state.saveConfig({
+    const agent = new ProtocolAgent({
       serverUrl: 'http://update.test',
-      runnerId: fixture.runner.id,
+      fetch: updateProtocolFetch(fixture),
       credential: fixture.pairedRunner.credential,
     });
-    await state.bind(fixture.binding.id, repository);
-    const client = new RunnerClient(state, updateProtocolFetch(fixture));
-    const outbox = new ExecutionOutbox(paths);
-    const executor = new GitUpdateExecutor(commits, deploymentOutput);
-    const worker = new RunnerWorker(
-      client,
-      state,
-      outbox,
-      executor,
-      new AttachmentMaterializer(client, paths),
-      1,
-      quietOutput,
-      {
-        prepare: async (repositoryPath) => ({
-          kind: 'EXECUTE' as const,
-          cwd: repositoryPath,
-        }),
+    let claimedPrompt = '';
+    const completed = await agent.runNext(
+      async (execution) => {
+        claimedPrompt = execution.renderedPrompt;
+        return {
+          kind: 'SUCCEEDED',
+          result: completedUpdate('普通 Push 和本地脚本完成'),
+        };
       },
+      { sessionId: () => 'update-conformance-session' },
     );
 
-    expect(await worker.cycle(0)).toBe(1);
-    await worker.waitForIdle();
-    expect(executor.input?.executionId).toBe(frozen.executionId);
-    expect(executor.input?.prompt.indexOf(commits[0]!)).toBeLessThan(
-      executor.input?.prompt.indexOf(commits[1]!) ?? -1,
+    expect(completed?.id).toBe(frozen.executionId);
+    expect(claimedPrompt.indexOf(commits[0]!)).toBeLessThan(
+      claimedPrompt.indexOf(commits[1]!),
     );
     expect(latestBatch(fixture.database, fixture.item.id).state).toBe(
       'COMPLETED',
     );
-    expect(await readFile(deploymentOutput, 'utf8')).toBe('deployed\n');
-    expect(
-      (await runGit(repository, ['rev-list', '--count', 'origin/main'])).trim(),
-    ).toBe('3');
-    expect(await outbox.list()).toEqual([]);
   });
 });
-
-class GitUpdateExecutor implements CodexExecutor {
-  input: CodexExecutionInput | null = null;
-
-  constructor(
-    private readonly commits: string[],
-    private readonly deploymentOutput: string,
-  ) {}
-
-  async begin(
-    input: CodexExecutionInput,
-    _signal: AbortSignal,
-  ): Promise<StartedCodexExecution> {
-    this.input = input;
-    return {
-      sessionId: input.resumeSessionId ?? 'update-e2e-session',
-      completion: this.execute(input),
-    };
-  }
-
-  private async execute(input: CodexExecutionInput): Promise<JsonValue> {
-    await runGit(input.repositoryPath, ['cherry-pick', ...this.commits]);
-    await runGit(input.repositoryPath, ['push', 'origin', 'main']);
-    const deployment = Bun.spawn(['bun', 'run', 'deploy:test'], {
-      cwd: input.repositoryPath,
-      env: { ...process.env, DEPLOYMENT_OUTPUT: this.deploymentOutput },
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
-    const [stderr, exitCode] = await Promise.all([
-      new Response(deployment.stderr).text(),
-      deployment.exited,
-    ]);
-    if (exitCode !== 0) throw new Error(stderr);
-    return completedUpdate('普通 Push 和本地脚本完成');
-  }
-}
 
 function completedUpdate(summary: string) {
   return {
@@ -1333,66 +1257,6 @@ function updateProtocolFetch(
   };
 }
 
-async function initializeIntegrationRepository(
-  repository: string,
-  remote: string,
-  deploymentOutput: string,
-): Promise<string[]> {
-  await mkdir(repository, { recursive: true });
-  await runGit(repository, ['init', '--initial-branch=main']);
-  await runGit(repository, ['config', 'user.email', 'update@example.com']);
-  await runGit(repository, ['config', 'user.name', 'Update Fixture']);
-  await Bun.write(
-    join(repository, 'package.json'),
-    `${JSON.stringify({
-      scripts: { 'deploy:test': 'node deploy.mjs' },
-    })}\n`,
-  );
-  await Bun.write(
-    join(repository, 'deploy.mjs'),
-    `import { writeFile } from 'node:fs/promises';\nawait writeFile(process.env.DEPLOYMENT_OUTPUT, 'deployed\\n');\n`,
-  );
-  await Bun.write(join(repository, 'base.txt'), 'base\n');
-  await runGit(repository, ['add', '.']);
-  await runGit(repository, [
-    'commit',
-    '-m',
-    'chore: initialize update fixture',
-  ]);
-  await runGit(repository, ['init', '--bare', remote]);
-  await runGit(repository, ['remote', 'add', 'origin', remote]);
-  await runGit(repository, ['push', '-u', 'origin', 'main']);
-  const base = (await runGit(repository, ['rev-parse', 'HEAD'])).trim();
-
-  await appendFile(join(repository, 'feature.txt'), 'repair one\n');
-  await runGit(repository, ['add', 'feature.txt']);
-  await runGit(repository, ['commit', '-m', 'fix: repair one']);
-  const first = (await runGit(repository, ['rev-parse', 'HEAD'])).trim();
-  await appendFile(join(repository, 'feature.txt'), 'repair two\n');
-  await runGit(repository, ['add', 'feature.txt']);
-  await runGit(repository, ['commit', '-m', 'fix: repair two']);
-  const second = (await runGit(repository, ['rev-parse', 'HEAD'])).trim();
-  await runGit(repository, ['reset', '--hard', base]);
-  await rm(deploymentOutput, { force: true });
-  return [first, second];
-}
-
-async function runGit(repository: string, args: string[]): Promise<string> {
-  const process = Bun.spawn(['git', ...args], {
-    cwd: repository,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(process.stdout).text(),
-    new Response(process.stderr).text(),
-    process.exited,
-  ]);
-  if (exitCode !== 0)
-    throw new Error(`git ${args.join(' ')} 失败：${stderr.trim()}`);
-  return stdout;
-}
-
 function mutableClock(initial: string) {
   let value = new Date(initial);
   return {
@@ -1415,5 +1279,3 @@ function user(username: string, displayName: string) {
     password: 'password',
   };
 }
-
-const quietOutput = { log: () => {}, error: () => {} };
