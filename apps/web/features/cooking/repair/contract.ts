@@ -188,23 +188,6 @@ export const RepairOutputJsonSchema: JsonObject = {
     'pendingActions',
   ],
   additionalProperties: false,
-  anyOf: [
-    {
-      type: 'object',
-      properties: {
-        outcome: { type: 'string', enum: ['COMPLETED'] },
-        commits: { type: 'array', minItems: 1 },
-      },
-      required: ['outcome', 'commits'],
-    },
-    {
-      type: 'object',
-      properties: {
-        outcome: { type: 'string', enum: ['FAILED'] },
-      },
-      required: ['outcome'],
-    },
-  ],
 };
 
 const RepairAttemptResultViewSchema = z.discriminatedUnion('outcome', [

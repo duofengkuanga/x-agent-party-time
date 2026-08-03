@@ -166,6 +166,47 @@ describe('generic Runner worker', () => {
     });
   });
 
+  test('Codex 超长失败摘要会收敛到协议上限并持久化终态', async () => {
+    const fixture = await setup();
+    const binding = bindingId(20);
+    await fixture.state.bind(binding, fixture.repository);
+    const execution = fixture.executions.enqueue(
+      input(fixture.paired.runner.id, binding, 'oversized-failure'),
+    );
+    const failureSummary = `上游拒绝结构化输出：${'x'.repeat(2_000)}`;
+    const worker = workerFor(
+      fixture,
+      new FakeCodexExecutor(async () => {
+        await Bun.sleep(5);
+        throw new CodexAppServerError(failureSummary, 'oversized-session');
+      }),
+    );
+
+    expect(await worker.cycle(0)).toBe(1);
+    await worker.waitForIdle();
+
+    const result = fixture.executions.get(execution.id);
+    expect(result).toMatchObject({
+      state: 'FAILED',
+      outcome: {
+        kind: 'FAILED',
+        failure: {
+          code: 'CODEX_EXECUTION_FAILED',
+          retryable: true,
+        },
+      },
+    });
+    expect(
+      result.outcome?.kind === 'FAILED' &&
+        result.outcome.failure.message.startsWith('上游拒绝结构化输出：'),
+    ).toBe(true);
+    expect(
+      result.outcome?.kind === 'FAILED' &&
+        result.outcome.failure.message.length <= 1_000,
+    ).toBe(true);
+    expect(await fixture.outbox.list()).toEqual([]);
+  });
+
   test('Codex 启动失败保留 App Server 返回的具体失败摘要', async () => {
     const fixture = await setup();
     const binding = bindingId(3);

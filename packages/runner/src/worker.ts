@@ -21,6 +21,8 @@ import {
 } from './execution-workspaces';
 import { RunnerStateStore } from './state';
 
+const MAX_EXECUTION_FAILURE_MESSAGE_LENGTH = 1_000;
+
 type WorkerOutput = Pick<Console, 'log' | 'error'>;
 
 export class RunnerWorker {
@@ -210,7 +212,7 @@ export class RunnerWorker {
         code: 'CODEX_START_FAILED',
         message:
           error instanceof CodexAppServerError
-            ? error.message
+            ? executionFailureMessage(error.message)
             : 'Codex App Server 启动任务失败',
         retryable: true,
       });
@@ -264,7 +266,7 @@ export class RunnerWorker {
                   code: 'CODEX_EXECUTION_FAILED',
                   message:
                     error instanceof CodexAppServerError
-                      ? error.message
+                      ? executionFailureMessage(error.message)
                       : 'Runner 执行中断',
                   retryable: true,
                 },
@@ -424,6 +426,13 @@ export class RunnerWorker {
     }
     await this.client.completeExecution(entry.executionId, entry.request);
   }
+}
+
+function executionFailureMessage(message: string): string {
+  const normalized = message.trim();
+  if (normalized.length <= MAX_EXECUTION_FAILURE_MESSAGE_LENGTH)
+    return normalized;
+  return `${normalized.slice(0, MAX_EXECUTION_FAILURE_MESSAGE_LENGTH - 1)}…`;
 }
 
 class CancellationRequested extends Error {}
