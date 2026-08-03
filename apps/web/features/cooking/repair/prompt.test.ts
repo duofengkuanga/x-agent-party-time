@@ -101,24 +101,24 @@ describe('Repair prompt contract', () => {
         'pendingActions',
       ],
     });
-    expect(JSON.stringify(RepairOutputJsonSchema)).not.toContain('"oneOf"');
-    expect(RepairOutputJsonSchema.anyOf).toEqual([
-      {
-        type: 'object',
-        properties: {
-          outcome: { type: 'string', enum: ['COMPLETED'] },
-          commits: { type: 'array', minItems: 1 },
-        },
-        required: ['outcome', 'commits'],
-      },
-      {
-        type: 'object',
-        properties: {
-          outcome: { type: 'string', enum: ['FAILED'] },
-        },
-        required: ['outcome'],
-      },
-    ]);
+    for (const keyword of ['oneOf', 'anyOf', 'allOf', 'enum', 'const', 'not'])
+      expect(keyword in RepairOutputJsonSchema).toBe(false);
+    const schemas: unknown[] = [RepairOutputJsonSchema];
+    while (schemas.length > 0) {
+      const schema = schemas.pop();
+      if (!schema || typeof schema !== 'object') continue;
+      if (Array.isArray(schema)) {
+        schemas.push(...schema);
+        continue;
+      }
+      const record = schema as Record<string, unknown>;
+      if (record.type === 'object') {
+        const properties = record.properties as Record<string, unknown>;
+        expect(record.additionalProperties).toBe(false);
+        expect(record.required).toEqual(Object.keys(properties));
+      }
+      schemas.push(...Object.values(record));
+    }
     expect(
       RepairExecutionResultSchema.safeParse({
         outcome: 'FAILED',
