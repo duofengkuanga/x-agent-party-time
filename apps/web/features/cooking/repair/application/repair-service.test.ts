@@ -475,6 +475,46 @@ describe('RepairService', () => {
     });
   });
 
+  test('旧 Session 的 Model Provider 已移除时使用完整上下文新建 Session', async () => {
+    const fixture = await setup();
+    const started = await startLatest(fixture, 'legacy-custom-session');
+    fixture.database
+      .prepare(
+        `UPDATE cooking_bug_repair_context
+         SET pending_commits_json = ? WHERE bug_id = ?`,
+      )
+      .run(JSON.stringify(['aaaaaaa']), fixture.requested.bug.id);
+    fixture.executions.complete(fixture.runner.id, started.executionId, {
+      leaseToken: started.leaseToken,
+      sessionId: started.sessionId,
+      outcome: {
+        kind: 'FAILED',
+        failure: {
+          code: 'CODEX_START_FAILED',
+          message:
+            'failed to load configuration: Model provider `custom` not found',
+          retryable: true,
+        },
+      },
+    });
+
+    const continued = fixture.repairs.continueRepair(
+      fixture.users.developer.id,
+      fixture.requested.bug.id,
+      {
+        mutationId: randomUUID(),
+        expectedVersion: 3,
+      },
+    );
+    const execution = fixture.executions.get(continued.executionId);
+
+    expect(execution.resumeSessionId).toBeNull();
+    expect(execution.renderedPrompt).toContain('支付按钮无响应');
+    expect(execution.renderedPrompt).toContain('点击后没有反应');
+    expect(execution.renderedPrompt).toContain('进入支付流程');
+    expect(execution.renderedPrompt).toContain('aaaaaaa');
+  });
+
   test('Schema 非法、缺失或重复 Commit 时 Execution FAILED 且 Bug 保持修复中', async () => {
     const invalidResults = [
       {
