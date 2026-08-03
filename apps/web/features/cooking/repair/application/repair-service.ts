@@ -1,5 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import type { Execution } from '@agent-party-time/execution-contract';
+import {
+  ExecutionOutcomeSchema,
+  type Execution,
+} from '@agent-party-time/execution-contract';
 import type { AppDatabase } from '@/server/database';
 import { PlatformError } from '@/server/errors';
 import { ExecutionService } from '@/server/execution/service';
@@ -193,10 +196,31 @@ export class RepairService {
       throw new PlatformError('RESOURCE_CONFLICT', '当前修复 Attempt 尚未结束');
     const attempt = latest.attempt + 1;
     const attemptId = this.createId();
-    const prompt = buildContinuationRepairPrompt({
-      lifecycleContext: lifecycleContext || undefined,
-      pendingCommits: parseCommits(context.pending_commits_json),
-    });
+    const pendingCommits = parseCommits(context.pending_commits_json);
+    const startFreshSession = requiresFreshRepairSession(latest);
+    const prompt = startFreshSession
+      ? buildInitialRepairPrompt({
+          workspaceKey: context.workspace_key,
+          submissionTitle: source.submission_title,
+          requirementDescription: source.requirement_description,
+          engineeringName: source.engineering_name,
+          repositoryUrl: source.repository_url,
+          targetBranch: source.target_branch,
+          bugTitle: source.title,
+          operationPath: source.operation_path ?? undefined,
+          actualResult: source.actual_result ?? undefined,
+          expectedResult: source.expected_result ?? undefined,
+          notes: source.notes ?? undefined,
+          feedback: [
+            ...this.feedbackContents(bugId),
+            ...(lifecycleContext ? [lifecycleContext] : []),
+          ],
+          pendingCommits,
+        })
+      : buildContinuationRepairPrompt({
+          lifecycleContext: lifecycleContext || undefined,
+          pendingCommits,
+        });
     const execution = this.executions.enqueue({
       owner: { namespace: 'cooking', kind: 'BUG_REPAIR', id: attemptId },
       attempt,
@@ -215,8 +239,10 @@ export class RepairService {
         baseRef: `origin/${source.target_branch}`,
         branch: `apt/repair/${bugId}`,
       },
-      attachmentIds,
-      resumeSessionId: context.session_id,
+      attachmentIds: startFreshSession
+        ? [...new Set([...this.attachmentIds(bugId), ...attachmentIds])]
+        : attachmentIds,
+      resumeSessionId: startFreshSession ? null : context.session_id,
     });
     const now = this.now().toISOString();
     this.db
@@ -992,6 +1018,25 @@ function repairVisual(
 function isFailedAttemptOutcome(outcomeJson: string): boolean {
   const raw = JSON.parse(outcomeJson) as Record<string, unknown>;
   return raw.outcome === 'FAILED';
+}
+
+function requiresFreshRepairSession(attempt: AttemptRow): boolean {
+  if (!attempt.outcome) return false;
+  let raw: unknown;
+  try {
+    raw = JSON.parse(attempt.outcome);
+  } catch {
+    return false;
+  }
+  const outcome = ExecutionOutcomeSchema.safeParse(raw);
+  return (
+    outcome.success &&
+    outcome.data.kind === 'FAILED' &&
+    outcome.data.failure.code === 'CODEX_START_FAILED' &&
+    /^failed to load configuration: Model provider `[^`]+` not found$/u.test(
+      outcome.data.failure.message,
+    )
+  );
 }
 
 function parseCommits(value: string): string[] {
