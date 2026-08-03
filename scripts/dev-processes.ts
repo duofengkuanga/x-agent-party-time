@@ -1,9 +1,12 @@
 import { spawnSync } from 'node:child_process';
-import { readlinkSync, realpathSync } from 'node:fs';
+import { existsSync, readlinkSync, realpathSync } from 'node:fs';
 import { dirname, normalize, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DaemonControlClient } from '../apps/xapt/src/daemon/control.js';
+import type { DaemonSnapshot } from '../apps/xapt/src/daemon/status.js';
+import { xaptPaths } from '../apps/xapt/src/platform/paths.js';
 
-export type ServiceKey = 'app' | 'runner';
+export type ServiceKey = 'app' | 'agent';
 
 export type ProcessRow = {
   pid: number;
@@ -56,20 +59,9 @@ const SERVICE_DEFINITIONS: readonly ServiceDefinition[] = [
     ],
   },
   {
-    key: 'runner',
-    label: 'Runner',
-    matchers: [
-      {
-        pattern: new RegExp(`${BUN}\\s+run\\s+dev:runner(?:\\s|$)`),
-        relativeCwds: ['.'],
-      },
-      {
-        pattern: new RegExp(
-          `${BUN}\\s+(?:\\S*\/)?packages/runner/src/index\\.ts\\s+start(?:\\s|$)`,
-        ),
-        relativeCwds: ['.'],
-      },
-    ],
+    key: 'agent',
+    label: 'Agent',
+    matchers: [],
   },
 ];
 
@@ -206,11 +198,24 @@ export function findServiceRoots(
   });
 }
 
-function printStatus(processes: readonly ServiceProcess[]): void {
+function printStatus(
+  processes: readonly ServiceProcess[],
+  agent: DaemonSnapshot,
+): void {
   const roots = findServiceRoots(processes);
   console.log('开发服务状态：');
 
   for (const definition of SERVICE_DEFINITIONS) {
+    if (definition.key === 'agent') {
+      const detail =
+        agent.service === 'RUNNING'
+          ? `运行中，${agent.activeSlots} / ${agent.totalSlots} 个执行槽使用中`
+          : agent.service === 'UNRESPONSIVE'
+            ? '无响应'
+            : '未运行';
+      console.log(`- ${definition.label}：${detail}`);
+      continue;
+    }
     const serviceRoots = roots.filter(
       (entry) => entry.service === definition.key,
     );
@@ -272,10 +277,28 @@ function signalProcesses(
 async function stopServices(
   rows: readonly ProcessRow[],
   processes: readonly ServiceProcess[],
+  agent: DaemonSnapshot,
+  stopAgent: () => Promise<void>,
 ): Promise<number> {
-  if (processes.length === 0) {
+  if (processes.length === 0 && agent.service === 'STOPPED') {
     console.log('没有发现正在运行的开发服务。');
     return 0;
+  }
+
+  if (agent.service === 'UNRESPONSIVE') {
+    console.error('停止失败：xapt 开发 daemon 本机控制无响应。');
+    return 1;
+  }
+
+  if (agent.service === 'RUNNING') {
+    try {
+      await stopAgent();
+    } catch (error) {
+      console.error(
+        `停止失败：${error instanceof Error ? error.message : 'xapt daemon 控制失败'}`,
+      );
+      return 1;
+    }
   }
 
   const matchedPids = new Set(processes.map((entry) => entry.pid));
@@ -284,6 +307,8 @@ async function stopServices(
 
   const serviceRoots = findServiceRoots(processes);
   const grouped = SERVICE_DEFINITIONS.map((definition) => {
+    if (definition.key === 'agent')
+      return agent.service === 'RUNNING' ? 'Agent 1 组' : null;
     const count = serviceRoots.filter(
       (entry) => entry.service === definition.key,
     ).length;
@@ -309,7 +334,7 @@ async function stopServices(
     return 1;
   }
 
-  console.log('App、Runner 开发服务已全部停止。');
+  console.log('App、Agent 开发服务已全部停止。');
   return 0;
 }
 
@@ -322,12 +347,51 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
 
   const rows = readProcessTable();
   const processes = discoverServiceProcesses(rows, readProcessCwd);
+  const developmentHome = resolve(PROJECT_ROOT, '.scratch/xapt-development');
+  const control = new DaemonControlClient(
+    xaptPaths(developmentHome).controlSocket,
+  );
+  let agent: DaemonSnapshot;
+  const controlSocket = xaptPaths(developmentHome).controlSocket;
+  if (!existsSync(controlSocket)) {
+    agent = stoppedSnapshotForDevelopment();
+  } else {
+    try {
+      agent = await control.status();
+    } catch {
+      agent = {
+        ...stoppedSnapshotForDevelopment(),
+        service: 'UNRESPONSIVE',
+      };
+    }
+  }
   if (action === 'status') {
-    printStatus(processes);
+    printStatus(processes, agent);
     return 0;
   }
 
-  return stopServices(rows, processes);
+  return stopServices(rows, processes, agent, async () => {
+    await control.stop(false);
+  });
+}
+
+function stoppedSnapshotForDevelopment(): DaemonSnapshot {
+  return {
+    service: 'STOPPED',
+    connection: 'UNCONFIGURED',
+    activity: 'IDLE',
+    version: 'development',
+    codexVersion: null,
+    serverOrigin: null,
+    agentName: null,
+    lastHeartbeatAt: null,
+    activeSlots: 0,
+    totalSlots: 3,
+    waitingInteractions: 0,
+    outboxCount: 0,
+    bindingCount: 0,
+    bindingActive: false,
+  };
 }
 
 const invokedPath = process.argv[1] ? resolve(process.argv[1]) : '';

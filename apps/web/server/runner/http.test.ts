@@ -16,6 +16,7 @@ import {
   handleRunnerBindings,
   handleRunnerHeartbeat,
   handleRunnerPair,
+  handleRunnerSelfRevocation,
 } from './http';
 
 const directories: string[] = [];
@@ -81,10 +82,10 @@ describe('Runner HTTP protocol', () => {
     expect(unauthorized.status).toBe(401);
 
     const heartbeat = await handleRunnerHeartbeat(
-      bearerRequest(
+      bearerJsonRequest(
         'http://server/api/runner/heartbeat',
         paired.credential,
-        'POST',
+        { availableSlots: 2 },
       ),
       runners,
     );
@@ -126,6 +127,34 @@ describe('Runner HTTP protocol', () => {
       bindingId: '00000000-0000-4000-8000-000000000001',
       repositoryUrl: 'https://example.com/team/project.git',
     });
+  });
+
+  test('Agent 自撤销只能撤销当前 Credential，撤销后立即失效', async () => {
+    const { runners, user } = await setup();
+    const current = runners.pair(
+      runners.issuePairingCode(user.id).code,
+      'Current Agent',
+    );
+    const other = runners.pair(
+      runners.issuePairingCode(user.id).code,
+      'Other Agent',
+    );
+
+    const response = await handleRunnerSelfRevocation(
+      bearerRequest('http://server/api/runner', current.credential, 'DELETE'),
+      runners,
+    );
+
+    expect(response.status).toBe(200);
+    expect(() => runners.heartbeat(current.credential)).toThrow(
+      expect.objectContaining({ code: 'NOT_AUTHENTICATED' }),
+    );
+    expect(runners.heartbeat(other.credential).id).toBe(other.runner.id);
+    const repeated = await handleRunnerSelfRevocation(
+      bearerRequest('http://server/api/runner', current.credential, 'DELETE'),
+      runners,
+    );
+    expect(repeated.status).toBe(401);
   });
 
   test('浏览器授权 Route 不向浏览器或响应泄露 verifier 与长期凭据', async () => {

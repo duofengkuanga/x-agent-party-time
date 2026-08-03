@@ -147,6 +147,12 @@ export const RunnerAuthorizationClaimResponseSchema = z.discriminatedUnion(
   ],
 );
 
+export const RunnerHeartbeatRequestSchema = z
+  .object({
+    availableSlots: z.number().int().min(0).max(3),
+  })
+  .strict();
+
 export const RunnerHeartbeatResponseSchema = z.object({
   runner: RunnerSchema,
 });
@@ -225,6 +231,9 @@ export type RunnerAuthorizationClaimResponse = z.infer<
 >;
 export type RunnerHeartbeatResponse = z.infer<
   typeof RunnerHeartbeatResponseSchema
+>;
+export type RunnerHeartbeatRequest = z.infer<
+  typeof RunnerHeartbeatRequestSchema
 >;
 export type RunnerBindingRef = z.infer<typeof RunnerBindingRefSchema>;
 export type RunnerBindingConfirmationRequest = z.infer<

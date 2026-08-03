@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
-import { appendFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { JsonValue } from '@agent-party-time/execution-contract';
+import type { ClaimedExecution } from '@agent-party-time/execution-contract';
+import { ProtocolAgent } from '@agent-party-time/runner-conformance';
 import { AuthService } from '@/server/auth/service';
 import type { AppDatabase } from '@/server/database';
 import { openDatabase } from '@/server/database';
@@ -20,19 +21,6 @@ import { BugService } from '@/features/cooking/bugs/application/bug-service';
 import { EngineeringService } from '@/features/cooking/engineering/application/engineering-service';
 import { ProjectService } from '@/features/cooking/projects/application/project-service';
 import { SubmissionService } from '@/features/cooking/submissions/application/submission-service';
-import { AttachmentMaterializer } from '../../../../../../packages/runner/src/attachments';
-import type {
-  CodexExecutionInput,
-  CodexExecutor,
-  StartedCodexExecution,
-} from '../../../../../../packages/runner/src/codex-app-server';
-import { RunnerClient } from '../../../../../../packages/runner/src/client';
-import { ExecutionOutbox } from '../../../../../../packages/runner/src/outbox';
-import {
-  RunnerStateStore,
-  runnerLocalPaths,
-} from '../../../../../../packages/runner/src/state';
-import { RunnerWorker } from '../../../../../../packages/runner/src/worker';
 import { RepairService } from './repair-service';
 
 const directories: string[] = [];
@@ -322,41 +310,32 @@ describe('RepairService', () => {
     ).toEqual(['aaaaaaa', 'bbbbbbb']);
   });
 
-  test('真实 Runner、测试 Git 仓库与 Fake Codex 完成无输入重新执行链路', async () => {
+  test('协议级 Agent 完成失败后无输入重新执行链路', async () => {
     const fixture = await setup();
-    const repository = join(fixture.directory, 'repair-repository');
-    await initializeGitRepository(repository);
-    const paths = runnerLocalPaths({
-      AGENT_PARTY_TIME_RUNNER_HOME: join(fixture.directory, 'runner-home'),
-    });
-    const state = new RunnerStateStore(paths);
-    await state.saveConfig({
+    const agent = new ProtocolAgent({
       serverUrl: 'http://repair.test',
-      runnerId: fixture.runner.id,
+      fetch: repairProtocolFetch(fixture),
       credential: fixture.pairedRunner.credential,
     });
-    await state.bind(fixture.binding.id, repository);
-    const client = new RunnerClient(state, repairProtocolFetch(fixture));
-    const outbox = new ExecutionOutbox(paths);
-    const executor = new RecordingRepairExecutor(true);
-    const worker = new RunnerWorker(
-      client,
-      state,
-      outbox,
-      executor,
-      new AttachmentMaterializer(client, paths),
-      1,
-      quietOutput,
-      {
-        prepare: async (repositoryPath) => ({
-          kind: 'EXECUTE' as const,
-          cwd: repositoryPath,
-        }),
-      },
-    );
+    const claimed: ClaimedExecution[] = [];
 
-    expect(await worker.cycle(0)).toBe(1);
-    await worker.waitForIdle();
+    await agent.runNext(
+      async (execution) => {
+        claimed.push(execution);
+        return {
+          kind: 'SUCCEEDED',
+          result: {
+            outcome: 'FAILED',
+            summary: '首次修复未完成',
+            failedStep: '定向测试',
+            reason: '仍有一项回归测试失败',
+            completedActions: ['定位失败测试'],
+            pendingActions: ['修复回归并重新验证'],
+          },
+        };
+      },
+      { sessionId: () => 'repair-conformance-session' },
+    );
     expect(
       currentBug(fixture.database, fixture.requested.bug.id),
     ).toMatchObject({ stage: 'REPAIRING', version: 3 });
@@ -369,27 +348,38 @@ describe('RepairService', () => {
         expectedVersion: 3,
       },
     );
-    expect(await worker.cycle(0)).toBe(1);
-    await worker.waitForIdle();
+    await agent.runNext(
+      async (execution) => {
+        claimed.push(execution);
+        return {
+          kind: 'SUCCEEDED',
+          result: {
+            outcome: 'COMPLETED',
+            summary: '第二次修复完成',
+            changes: ['完成第二次修复'],
+            validations: [{ name: '定向检查', status: 'PASSED' }],
+            warnings: [],
+            commits: ['abcdef1'],
+          },
+        };
+      },
+      { sessionId: () => 'repair-conformance-session' },
+    );
 
-    expect(executor.inputs).toHaveLength(2);
-    expect(executor.inputs[0]?.resumeSessionId).toBeNull();
-    expect(executor.inputs[1]).toMatchObject({
-      executionId: continued.executionId,
-      resumeSessionId: executor.sessionId,
+    expect(claimed).toHaveLength(2);
+    expect(claimed[0]?.resumeSessionId).toBeNull();
+    expect(claimed[1]).toMatchObject({
+      id: continued.executionId,
+      resumeSessionId: 'repair-conformance-session',
     });
-    expect(executor.inputs[1]?.prompt).toContain('不要求用户补充文本');
-    expect(executor.inputs[1]?.prompt).not.toContain('点击后没有反应');
+    expect(claimed[1]?.renderedPrompt).toContain('不要求用户补充文本');
+    expect(claimed[1]?.renderedPrompt).not.toContain('点击后没有反应');
     expect(
       fixture.repairs.repairView(
         fixture.users.developer.id,
         fixture.requested.bug.id,
       )?.pendingCommits,
-    ).toEqual(executor.commits);
-    expect(
-      (await runGit(repository, ['rev-list', '--count', 'HEAD'])).trim(),
-    ).toBe('2');
-    expect(await outbox.list()).toEqual([]);
+    ).toEqual(['abcdef1']);
   });
 
   test('Execution 失败使用真实 code/message 且仅向工程负责人投影技术码', async () => {
@@ -767,61 +757,6 @@ describe('RepairService', () => {
   });
 });
 
-class RecordingRepairExecutor implements CodexExecutor {
-  readonly sessionId = 'repair-e2e-session';
-  readonly inputs: CodexExecutionInput[] = [];
-  readonly commits: string[] = [];
-
-  constructor(private readonly failFirst = false) {}
-
-  async begin(
-    input: CodexExecutionInput,
-    _signal: AbortSignal,
-  ): Promise<StartedCodexExecution> {
-    this.inputs.push(input);
-    return {
-      sessionId: input.resumeSessionId ?? this.sessionId,
-      completion: this.commit(input),
-    };
-  }
-
-  private async commit(input: CodexExecutionInput): Promise<JsonValue> {
-    const attempt = this.inputs.length;
-    if (this.failFirst && attempt === 1)
-      return {
-        outcome: 'FAILED',
-        summary: '首次修复未完成',
-        failedStep: '定向测试',
-        reason: '仍有一项回归测试失败',
-        completedActions: ['定位失败测试'],
-        pendingActions: ['修复回归并重新验证'],
-      };
-    await appendFile(
-      join(input.repositoryPath, 'repair.txt'),
-      `第 ${attempt} 次修复\n`,
-      'utf8',
-    );
-    await runGit(input.repositoryPath, ['add', 'repair.txt']);
-    await runGit(input.repositoryPath, [
-      'commit',
-      '-m',
-      `fix: repair attempt ${attempt}`,
-    ]);
-    const commit = (await runGit(input.repositoryPath, ['rev-parse', 'HEAD']))
-      .trim()
-      .toLowerCase();
-    this.commits.push(commit);
-    return {
-      outcome: 'COMPLETED',
-      summary: `第 ${attempt} 次修复完成`,
-      changes: [`完成第 ${attempt} 次修复`],
-      validations: [{ name: 'Git 工作区检查', status: 'PASSED' }],
-      warnings: [],
-      commits: [commit],
-    };
-  }
-}
-
 function repairProtocolFetch(
   fixture: Awaited<ReturnType<typeof setup>>,
 ): typeof fetch {
@@ -856,34 +791,6 @@ function repairProtocolFetch(
     );
   };
 }
-
-async function initializeGitRepository(repository: string): Promise<void> {
-  await mkdir(repository, { recursive: true });
-  await runGit(repository, ['init', '--initial-branch=main']);
-  await runGit(repository, ['config', 'user.email', 'repair@example.com']);
-  await runGit(repository, ['config', 'user.name', 'Repair Fixture']);
-  await Bun.write(join(repository, 'README.md'), '# Repair Fixture\n');
-  await runGit(repository, ['add', 'README.md']);
-  await runGit(repository, ['commit', '-m', 'chore: initialize fixture']);
-}
-
-async function runGit(repository: string, args: string[]): Promise<string> {
-  const process = Bun.spawn(['git', ...args], {
-    cwd: repository,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(process.stdout).text(),
-    new Response(process.stderr).text(),
-    process.exited,
-  ]);
-  if (exitCode !== 0)
-    throw new Error(`git ${args.join(' ')} 失败：${stderr.trim()}`);
-  return stdout;
-}
-
-const quietOutput = { log: () => {}, error: () => {} };
 
 async function startLatest(
   fixture: Awaited<ReturnType<typeof setup>>,

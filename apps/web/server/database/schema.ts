@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { PlatformError } from '@/server/errors';
 
-export const SERVER_SCHEMA_VERSION = 17;
+export const SERVER_SCHEMA_VERSION = 18;
 
 const SCHEMA = `
 CREATE TABLE platform_user (
@@ -39,6 +39,7 @@ CREATE TABLE platform_runner (
   name TEXT NOT NULL,
   credential_hash TEXT NOT NULL UNIQUE,
   version INTEGER NOT NULL CHECK (version > 0),
+  available_slots INTEGER NOT NULL DEFAULT 3 CHECK (available_slots BETWEEN 0 AND 3),
   last_seen_at TEXT,
   revoked_at TEXT,
   created_at TEXT NOT NULL

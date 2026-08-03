@@ -10,6 +10,7 @@ import {
   RunnerBindingWorkResponseSchema,
   RunnerBindingsResponseSchema,
   RunnerHeartbeatResponseSchema,
+  RunnerHeartbeatRequestSchema,
   RunnerPairRequestSchema,
   RunnerPairingResultSchema,
   type RunnerBindingRef,
@@ -72,12 +73,30 @@ export async function handleRunnerAuthorizationClaim(
 
 export async function handleRunnerHeartbeat(
   request: Request,
-  runners: Pick<RunnerService, 'heartbeat'>,
+  runners: Pick<RunnerService, 'authenticateCredential' | 'heartbeat'>,
+): Promise<Response> {
+  try {
+    const credential = bearerCredential(request);
+    runners.authenticateCredential(credential);
+    const body = RunnerHeartbeatRequestSchema.parse(await request.json());
+    return jsonResponse(
+      RunnerHeartbeatResponseSchema.parse({
+        runner: runners.heartbeat(credential, body.availableSlots),
+      }),
+    );
+  } catch (error) {
+    return errorResponse(normalizeRequestError(error));
+  }
+}
+
+export async function handleRunnerSelfRevocation(
+  request: Request,
+  runners: Pick<RunnerService, 'revokeSelf'>,
 ): Promise<Response> {
   try {
     return jsonResponse(
       RunnerHeartbeatResponseSchema.parse({
-        runner: runners.heartbeat(bearerCredential(request)),
+        runner: runners.revokeSelf(bearerCredential(request)),
       }),
     );
   } catch (error) {

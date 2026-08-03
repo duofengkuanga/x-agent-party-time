@@ -47,6 +47,28 @@ Seed 默认创建三名本地开发用户：
 
 ## 安装与启动
 
+面向 Apple Silicon macOS 的 0.x 预览版使用 ad-hoc 签名，未经 Apple 公证，
+不会绕过 Gatekeeper，也不会安装或修改官方 Codex。安装前请先安装 Codex
+standalone、完成 `codex login`，并确保版本不低于 `0.145.0`。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/duofengkuanga/x-agent-party-time/main/scripts/install-xapt.sh | sh
+xapt daemon start
+xapt daemon connect http://localhost:3000
+xapt daemon status
+```
+
+更新和卸载：
+
+```bash
+xapt update
+xapt uninstall
+```
+
+忙碌状态不会被普通停止、更新或卸载打断；`--force` 仅在真实 TTY 中确认后执行。
+
+### 仓库开发
+
 ```bash
 bun install --frozen-lockfile
 bun run dev
@@ -59,7 +81,7 @@ bun run dev
 - App：Next.js 全栈应用，默认 `http://localhost:3000`
 - Agent：本机执行进程；Web 尚未可用时安全等待
 
-首次启动或本机凭据失效时，Agent 会自动打开浏览器连接页。登录后确认
+首次运行 `bun run xapt:dev -- daemon connect http://localhost:3000` 时，Agent 会打开浏览器连接页。登录后确认
 Agent 名称与短指纹即可完成授权；正常重启不会再次打开授权页。
 
 浏览器打开 `http://localhost:3000`，登录后会进入 `/cooking`。工程成员在
@@ -78,7 +100,7 @@ bun run stop
 
 ```bash
 bun run dev:app
-bun run dev:runner
+bun run dev:xapt
 ```
 
 ## 本地 Agent 授权与工程绑定
@@ -87,9 +109,9 @@ bun run dev:runner
 不需要复制配对码、Binding 标识或输入本机路径。每个工程成员默认只能保留
 一个当前绑定；未被提测或任务引用的绑定可以删除后重新创建。
 
-Agent 私有状态默认位于 `~/.agent-party-time/runner/`，文件权限为仅当前
-用户可读写。`bun run runner -- pair`、`bind`、`bindings` 等底层命令仅为
-协议诊断入口，不属于正常用户流程。
+开发 Agent 使用 `.scratch/xapt-development/` 隔离状态；正式 xapt 按 macOS
+惯例分别使用 `~/Library/Application Support/com.agentpartytime.xapt`、Caches
+和 Logs，Credential 原文只在 macOS Keychain 中。
 
 ## 本地数据
 
@@ -98,11 +120,14 @@ Agent 私有状态默认位于 `~/.agent-party-time/runner/`，文件权限为�
 ├── server/
 │   ├── server.sqlite
 │   └── files/
-└── runner/
-    ├── config.json
-    ├── bindings.json
-    ├── executions/
-    └── outbox/
+```
+
+xapt 本机状态：
+
+```text
+~/Library/Application Support/com.agentpartytime.xapt/
+├── connection.json
+└── state/{bindings.json,executions/,outbox/,workspaces/}
 ```
 
 项目处于开发期，不提供旧 Schema 迁移。数据库版本不匹配时：
@@ -113,8 +138,7 @@ rm -rf ~/.agent-party-time/server
 bun run seed:app
 ```
 
-不要删除 `runner/`，除非确实需要清除本机 Agent 凭据、工程绑定和未发送
-Outcome。
+不要手工删除 xapt 状态；使用 `xapt uninstall`，避免丢失未发送 Outcome。
 
 ## 质量门
 
@@ -130,9 +154,9 @@ bun run build:app
 
 ```bash
 bun test apps/web
-bun test packages/runner/src
+bun test apps/xapt/src
 bun run typecheck:app
-bun run typecheck:runner
+bun run typecheck:xapt
 ```
 
 ## 代码结构
@@ -141,7 +165,7 @@ bun run typecheck:runner
 apps/web/                    Next App、SSR、Server Actions、Route Handlers
 packages/execution-contract/ 通用 Execution / Lease / Interaction / Outcome 协议
 packages/runner-contract/    Agent 授权、心跳与工程绑定引用协议
-packages/runner/             本机 Agent 与 Codex App Server 适配
+apps/xapt/                   standalone Agent、daemon 与 Codex App Server 适配
 scripts/                     App + Agent 开发进程管理
 ```
 
@@ -151,8 +175,8 @@ scripts/                     App + Agent 开发进程管理
 app routes → features/cooking → server
 app routes → server
 server ✕→ features/cooking
-runner → execution-contract + runner-contract
-runner ✕→ cooking
+xapt → execution-contract + runner-contract
+xapt ✕→ cooking
 ```
 
 ## 安全边界

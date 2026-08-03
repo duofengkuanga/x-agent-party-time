@@ -20,6 +20,7 @@
     "@agent-party-time/runner-contract": "workspace:*"
   },
   "devDependencies": {
+    "@agent-party-time/runner-conformance": "workspace:*",
     "@types/node": "^24.10.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
