@@ -27,3 +27,14 @@ test('Agent 授权通过后主动刷新连接状态', async () => {
   );
   expect(refresh).toContain('router.refresh()');
 });
+
+test('Agent 台账页持续刷新连接状态', async () => {
+  const page = await readFile(join(agentsRoot, 'page.tsx'), 'utf8');
+  const refresh = await readFile(
+    join(agentsRoot, 'agent-status-refresh.tsx'),
+    'utf8',
+  ).catch(() => '');
+  expect(page).toContain('<AgentStatusRefresh />');
+  expect(refresh).toContain('setInterval');
+  expect(refresh).toContain('router.refresh()');
+});

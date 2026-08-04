@@ -5,6 +5,7 @@ import { executionService } from '@/server/execution/server';
 import { runnerService } from '@/server/runner/server';
 import { bindingService } from '@/features/cooking/application/server';
 import { AgentRevokeForm } from './agent-revoke-form';
+import { AgentStatusRefresh } from './agent-status-refresh';
 
 export const metadata: Metadata = {
   title: '我的 Agent — Agent Party Time',
@@ -29,6 +30,7 @@ export default async function AgentsPage({
   const message = await searchParams;
   return (
     <main className="agent-settings">
+      <AgentStatusRefresh />
       <header className="agent-settings__hero">
         <Link className="agent-settings__back" href="/cooking">
           ← 返回工作台
