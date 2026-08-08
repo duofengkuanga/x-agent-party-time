@@ -8,6 +8,7 @@ import {
   useReducer,
   useRef,
   useState,
+  useSyncExternalStore,
   useTransition,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -16,6 +17,12 @@ import {
 import type { User } from '@/server/auth/contract';
 import type { JsonValue } from '@agent-party-time/execution-contract';
 import { createClientId } from '@/features/cooking/shared/client-id';
+import {
+  SIDEBAR_COOKIE_NAME,
+  SIDEBAR_MAX_WIDTH,
+  SIDEBAR_MIN_WIDTH,
+  clampSidebarWidth,
+} from '@/features/cooking/shared/sidebar-width';
 import {
   CookingWorkspaceSnapshotSchema,
   type CookingWorkspaceSnapshot,
@@ -39,10 +46,7 @@ import {
 import { SubmissionComposer } from './submission-composer';
 
 const SIDEBAR_STORAGE_KEY = 'agent-party-time:collab-sidebar-width';
-const SIDEBAR_DEFAULT_WIDTH = 320;
-const SIDEBAR_MIN_WIDTH = 240;
-const SIDEBAR_MAX_WIDTH = 560;
-const STAGE_MIN_WIDTH = 480;
+const SIDEBAR_CHANGE_EVENT = 'agent-party-time:collab-sidebar-width-change';
 const TRANSIENT_NOTICE_MS = 3_000;
 
 type SyncState = 'connected' | 'reconnecting' | 'syncing';
@@ -70,10 +74,12 @@ export function SubmissionWorkspace({
   currentUser,
   initialSnapshot,
   initialSubmissions,
+  initialSidebarWidth,
 }: {
   currentUser: User;
   initialSnapshot: CookingWorkspaceSnapshot | null;
   initialSubmissions: SubmissionSummary[];
+  initialSidebarWidth: number;
 }) {
   const router = useRouter();
   const [{ snapshot, submissions, syncState }, dispatch] = useReducer(
@@ -89,7 +95,15 @@ export function SubmissionWorkspace({
     useState<SubmissionCreationCatalog | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
+  const storedSidebarWidth = useSyncExternalStore(
+    subscribeSidebarWidth,
+    () => getSidebarWidthSnapshot(initialSidebarWidth),
+    () => initialSidebarWidth,
+  );
+  const [sidebarWidthOverride, setSidebarWidthOverride] = useState<
+    number | null
+  >(null);
+  const sidebarWidth = sidebarWidthOverride ?? storedSidebarWidth;
   const [sidebarResizing, setSidebarResizing] = useState(false);
   const [includeClosed, setIncludeClosed] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -104,6 +118,14 @@ export function SubmissionWorkspace({
     startWidth: number;
     startX: number;
   } | null>(null);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
+    if (!stored) return;
+    const storedWidth = Number(stored);
+    if (!(Number.isFinite(storedWidth) && storedWidth > 0)) return;
+    writeSidebarWidthCookie(clampSidebarWidth(storedWidth));
+  }, []);
 
   const selectedId = snapshot?.submission.submission.id ?? null;
 
@@ -166,21 +188,6 @@ export function SubmissionWorkspace({
   }, [notice]);
 
   useEffect(() => {
-    const storedWidth = Number(
-      window.localStorage.getItem(SIDEBAR_STORAGE_KEY),
-    );
-    if (Number.isFinite(storedWidth) && storedWidth > 0)
-      setSidebarWidth(clampSidebarWidth(storedWidth));
-
-    function fitSidebarToViewport() {
-      setSidebarWidth((current) => clampSidebarWidth(current));
-    }
-
-    window.addEventListener('resize', fitSidebarToViewport);
-    return () => window.removeEventListener('resize', fitSidebarToViewport);
-  }, []);
-
-  useEffect(() => {
     if (!selectedId) return;
     const events = new EventSource(
       `/api/cooking/events?submissionId=${encodeURIComponent(selectedId)}`,
@@ -229,6 +236,8 @@ export function SubmissionWorkspace({
 
   function saveSidebarWidth(width: number) {
     window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(width));
+    writeSidebarWidthCookie(width);
+    window.dispatchEvent(new Event(SIDEBAR_CHANGE_EVENT));
   }
 
   function beginSidebarResize(event: ReactPointerEvent<HTMLDivElement>) {
@@ -251,7 +260,7 @@ export function SubmissionWorkspace({
         sidebarDrag.current.startX,
     );
     sidebarDrag.current.currentWidth = nextWidth;
-    setSidebarWidth(nextWidth);
+    setSidebarWidthOverride(nextWidth);
   }
 
   function finishSidebarResize(event: ReactPointerEvent<HTMLDivElement>) {
@@ -260,18 +269,17 @@ export function SubmissionWorkspace({
     sidebarDrag.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId))
       event.currentTarget.releasePointerCapture(event.pointerId);
-    setSidebarWidth(finalWidth);
+    setSidebarWidthOverride(null);
     setSidebarResizing(false);
     saveSidebarWidth(finalWidth);
   }
 
   function cancelSidebarResize(event: ReactPointerEvent<HTMLDivElement>) {
     if (!sidebarDrag.current) return;
-    const originalWidth = sidebarDrag.current.startWidth;
     sidebarDrag.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId))
       event.currentTarget.releasePointerCapture(event.pointerId);
-    setSidebarWidth(originalWidth);
+    setSidebarWidthOverride(null);
     setSidebarResizing(false);
   }
 
@@ -291,8 +299,8 @@ export function SubmissionWorkspace({
               : null;
     if (nextWidth === null) return;
     event.preventDefault();
-    setSidebarWidth(nextWidth);
     saveSidebarWidth(nextWidth);
+    setSidebarWidthOverride(null);
   }
 
   const visibleSubmissions = includeClosed
@@ -1126,20 +1134,28 @@ function EmptyStage({
   );
 }
 
-function clampSidebarWidth(width: number): number {
-  if (typeof window === 'undefined')
-    return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, width));
-  const viewportMaximum = Math.max(
-    SIDEBAR_MIN_WIDTH,
-    window.innerWidth - STAGE_MIN_WIDTH,
-  );
-  return Math.round(
-    Math.min(
-      SIDEBAR_MAX_WIDTH,
-      viewportMaximum,
-      Math.max(SIDEBAR_MIN_WIDTH, width),
-    ),
-  );
+function subscribeSidebarWidth(onStoreChange: () => void) {
+  window.addEventListener(SIDEBAR_CHANGE_EVENT, onStoreChange);
+  window.addEventListener('storage', onStoreChange);
+  window.addEventListener('resize', onStoreChange);
+  return () => {
+    window.removeEventListener(SIDEBAR_CHANGE_EVENT, onStoreChange);
+    window.removeEventListener('storage', onStoreChange);
+    window.removeEventListener('resize', onStoreChange);
+  };
+}
+
+function getSidebarWidthSnapshot(serverFallback: number): number {
+  const storedWidth = Number(window.localStorage.getItem(SIDEBAR_STORAGE_KEY));
+  const base =
+    Number.isFinite(storedWidth) && storedWidth > 0
+      ? storedWidth
+      : serverFallback;
+  return clampSidebarWidth(base);
+}
+
+function writeSidebarWidthCookie(width: number) {
+  document.cookie = `${SIDEBAR_COOKIE_NAME}=${width}; path=/cooking; max-age=31536000`;
 }
 
 function workspaceReducer(
