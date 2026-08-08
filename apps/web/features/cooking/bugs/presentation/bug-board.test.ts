@@ -321,4 +321,30 @@ describe('缺陷看板展示', () => {
     expect(css).toContain('.collab-bug-id code');
     expect(css).toContain('.collab-bug-id button');
   });
+
+  test('待统一更新展示开始更新倒计时并保留主状态文案', async () => {
+    const [source, css] = await Promise.all([
+      readFile(bugBoardPath, 'utf8'),
+      readFile(cookingCssPath, 'utf8'),
+    ]);
+    expect(source).toContain('collab-bug-card__countdown');
+    expect(source).toContain('<UpdateCountdown eligibleAt={eligibleAt} />');
+    expect(source).toContain('{visual.label}');
+    expect(source).toContain('后开始更新');
+    expect(source).toContain('正在准备统一更新');
+    expect(source).toMatch(/window\.setInterval\(update, 1_000\)/u);
+    expect(source).toContain('window.clearInterval(timer)');
+    expect(source).toContain('pendingDeliveryFor(bug, snapshot)');
+    expect(source).toContain('（<UpdateCountdown eligibleAt={');
+    expect(css).toContain('.collab-bug-card__countdown');
+    expect(css).toContain('display: block;');
+  });
+
+  test('卡片高度自适应，两行标题不压住操作按钮', async () => {
+    const css = await readFile(cookingCssPath, 'utf8');
+    const cardRule = css.match(/\.collab-bug-card\s*\{([^}]*)\}/u)?.[1] ?? '';
+    expect(cardRule).toContain('height: auto;');
+    expect(cardRule).toContain('min-height: 132px;');
+    expect(cardRule).not.toMatch(/(?<!-)height: 132px;/u);
+  });
 });

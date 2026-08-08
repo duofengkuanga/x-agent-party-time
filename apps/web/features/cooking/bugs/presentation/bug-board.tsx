@@ -426,11 +426,13 @@ export function BugBoard({
                         bug.availableActions.includes('ARCHIVE'),
                       );
                       const visual = snapshot.visualByBug[bug.id]!;
+                      const pendingDelivery = pendingDeliveryFor(bug, snapshot);
                       return (
                         <BugCard
                           bug={bug}
                           draggable={!pending && draggable}
                           dragging={draggingBugId === bug.id}
+                          eligibleAt={pendingDelivery?.eligibleAt}
                           key={bug.id}
                           onDragEnd={() => {
                             clearDraggingBug();
@@ -626,6 +628,7 @@ function BugCard({
   bug,
   draggable,
   dragging,
+  eligibleAt,
   onArchive,
   onDragEnd,
   onDragStart,
@@ -636,6 +639,7 @@ function BugCard({
   bug: BugView;
   draggable: boolean;
   dragging: boolean;
+  eligibleAt?: string;
   onArchive: () => void;
   onDragEnd: () => void;
   onDragStart: (event: ReactDragEvent<HTMLElement>) => void;
@@ -669,7 +673,14 @@ function BugCard({
       <small>{bug.presentation.assignmentLabel}</small>
       <h3>{bug.report.title}</h3>
       {visual.state !== 'IDLE' ? (
-        <strong className="collab-bug-card__attention">{visual.label}</strong>
+        <strong className="collab-bug-card__attention">
+          {visual.label}
+          {eligibleAt ? (
+            <span className="collab-bug-card__countdown">
+              <UpdateCountdown eligibleAt={eligibleAt} />
+            </span>
+          ) : null}
+        </strong>
       ) : null}
       {bug.availableActions.some((action) =>
         ['VERIFY_PASS', 'ARCHIVE'].includes(action),
@@ -689,6 +700,19 @@ function BugCard({
       ) : null}
     </article>
   );
+}
+
+function UpdateCountdown({ eligibleAt }: { eligibleAt: string }) {
+  const [remainingMs, setRemainingMs] = useState<number | null>(null);
+  useEffect(() => {
+    const update = () =>
+      setRemainingMs(new Date(eligibleAt).getTime() - Date.now());
+    update();
+    const timer = window.setInterval(update, 1_000);
+    return () => window.clearInterval(timer);
+  }, [eligibleAt]);
+  if (remainingMs === null) return null;
+  return formatCountdown(remainingMs);
 }
 
 function UpdateBatchCard({
@@ -1070,11 +1094,7 @@ function BugDetail({
   const progress = snapshot.progressByBug[bug.id] ?? [];
   const visual = snapshot.visualByBug[bug.id]!;
   const submissionItemId = bug.assignment?.submissionItemId ?? null;
-  const pendingDelivery = submissionItemId
-    ? snapshot.pendingDeliveries.find(
-        (candidate) => candidate.submissionItemId === submissionItemId,
-      )
-    : undefined;
+  const pendingDelivery = pendingDeliveryFor(bug, snapshot);
   const updateBatch = [...snapshot.updateBatches]
     .reverse()
     .find((candidate) =>
@@ -1220,6 +1240,7 @@ function BugDetail({
           <p>
             最新候选已记录；静默截止时间：
             {formatDateTime(pendingDelivery.eligibleAt)}
+            （<UpdateCountdown eligibleAt={pendingDelivery.eligibleAt} />）
           </p>
         </section>
       ) : null}
@@ -2584,6 +2605,25 @@ function drawerTitle(mode: Drawer['mode'], bug: BugView | null): string {
 
 function bugLabel(bug: BugView): string {
   return `缺陷-${String(bug.shortId).padStart(3, '0')}`;
+}
+
+function pendingDeliveryFor(bug: BugView, snapshot: CookingWorkspaceSnapshot) {
+  const submissionItemId = bug.assignment?.submissionItemId;
+  return submissionItemId
+    ? snapshot.pendingDeliveries.find(
+        (candidate) => candidate.submissionItemId === submissionItemId,
+      )
+    : undefined;
+}
+
+function formatCountdown(remainingMs: number): string {
+  const totalSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+  if (totalSeconds <= 0) return '正在准备统一更新';
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes === 0) return `${seconds} 秒后开始更新`;
+  if (seconds === 0) return `${minutes} 分钟后开始更新`;
+  return `${minutes} 分 ${seconds} 秒后开始更新`;
 }
 
 function formatBytes(value: number): string {

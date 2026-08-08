@@ -1964,8 +1964,8 @@
   display: grid;
   gap: 10px;
   grid-template-columns: 10px minmax(0, 1fr);
-  height: 132px;
-  min-height: 62px;
+  height: auto;
+  min-height: 132px;
   min-width: 0;
   overflow: hidden;
   padding: 12px;
@@ -2121,9 +2121,15 @@
   font-size: 9px;
   font-style: normal;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 1;
+  -webkit-line-clamp: 2;
   line-height: 1.45;
   overflow: hidden;
+}
+
+.collab-bug-card__countdown {
+  color: var(--faint);
+  display: block;
+  font-weight: 600;
 }
 
 @keyframes collab-bug-card-breathe {
