@@ -275,3 +275,89 @@ describe('Codex Turn 失败摘要', () => {
     });
   });
 });
+
+describe('Codex Turn 结构化结果解析', () => {
+  function completeTurnWithMessage(text: string): Promise<unknown> {
+    const executor = new CodexAppServerExecutor();
+    return new Promise((resolve, reject) => {
+      (
+        executor as unknown as {
+          completeTurn: (
+            active: unknown,
+            params: Record<string, unknown>,
+          ) => void;
+        }
+      ).completeTurn(
+        {
+          threadId: 'thread-structured',
+          turnId: 'turn-structured',
+          log: { write: () => undefined },
+          reject,
+          resolve,
+        },
+        {
+          turn: {
+            id: 'turn-structured',
+            status: 'completed',
+            items: [{ type: 'agentMessage', text }],
+          },
+        },
+      );
+    });
+  }
+
+  test('整条消息就是 JSON 时直接解析', async () => {
+    await expect(completeTurnWithMessage('{"summary":"ok"}')).resolves.toEqual({
+      summary: 'ok',
+    });
+  });
+
+  test('总结后跟 ```json 代码块时提取代码块解析', async () => {
+    const message =
+      '修复完成，提交已创建。\n\n```json\n{"outcome":"COMPLETED","commits":["640d5b3"]}\n```';
+    await expect(completeTurnWithMessage(message)).resolves.toEqual({
+      outcome: 'COMPLETED',
+      commits: ['640d5b3'],
+    });
+  });
+
+  test('未标注 json 的代码块也能解析', async () => {
+    await expect(
+      completeTurnWithMessage('```\n{"ok":true}\n```'),
+    ).resolves.toEqual({ ok: true });
+  });
+
+  test('多个代码块时取最后一个', async () => {
+    const message = '```json\n{"first":1}\n```\n\n```json\n{"second":2}\n```';
+    await expect(completeTurnWithMessage(message)).resolves.toEqual({
+      second: 2,
+    });
+  });
+
+  test('无代码块但消息内嵌 JSON 对象时提取解析', async () => {
+    const message =
+      '处理完成，结果如下：{"outcome":"COMPLETED","count":2} 以上。';
+    await expect(completeTurnWithMessage(message)).resolves.toEqual({
+      outcome: 'COMPLETED',
+      count: 2,
+    });
+  });
+
+  test('纯自然语言且无 JSON 时返回结构化结果无效', async () => {
+    await expect(
+      completeTurnWithMessage('修复完成，提交已创建且工作区干净。'),
+    ).rejects.toMatchObject({
+      message: 'Codex Turn 返回的结构化结果无效',
+      sessionId: 'thread-structured',
+    });
+  });
+
+  test('代码块内不是合法 JSON 时返回结构化结果无效', async () => {
+    await expect(
+      completeTurnWithMessage('```json\n{这不是 JSON}\n```'),
+    ).rejects.toMatchObject({
+      message: 'Codex Turn 返回的结构化结果无效',
+      sessionId: 'thread-structured',
+    });
+  });
+});

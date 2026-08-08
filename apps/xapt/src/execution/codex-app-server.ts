@@ -316,16 +316,17 @@ export class CodexAppServerExecutor implements CodexExecutor {
       );
       return;
     }
-    try {
-      active.resolve(JSON.parse(stripJsonFence(message)) as JsonValue);
-    } catch {
+    const result = parseStructuredResult(message);
+    if (result === undefined) {
       active.reject(
         new CodexAppServerError(
           'Codex Turn 返回的结构化结果无效',
           active.threadId,
         ),
       );
+      return;
     }
+    active.resolve(result);
   }
 
   private async handleServerRequest(
@@ -601,10 +602,25 @@ function optionalString(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
 }
 
-function stripJsonFence(value: string): string {
-  const trimmed = value.trim();
-  const match = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/iu);
-  return match?.[1] ?? trimmed;
+function parseStructuredResult(message: string): JsonValue | undefined {
+  const trimmed = message.trim();
+  const candidates: string[] = [trimmed];
+  const fences = [...trimmed.matchAll(/```(?:json)?\s*([\s\S]*?)```/giu)]
+    .map((match) => match[1].trim())
+    .reverse();
+  candidates.push(...fences);
+  const start = trimmed.indexOf('{');
+  const end = trimmed.lastIndexOf('}');
+  if (start >= 0 && end > start) candidates.push(trimmed.slice(start, end + 1));
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try {
+      return JSON.parse(candidate) as JsonValue;
+    } catch {
+      // 尝试下一个候选片段
+    }
+  }
+  return undefined;
 }
 
 function safeMessage(error: unknown): string {
