@@ -340,6 +340,22 @@ describe('缺陷看板展示', () => {
     expect(css).toContain('display: block;');
   });
 
+  test('从缺陷详情进入批次详情可返回原缺陷', async () => {
+    const [source, css] = await Promise.all([
+      readFile(bugBoardPath, 'utf8'),
+      readFile(cookingCssPath, 'utf8'),
+    ]);
+    expect(source).toContain('fromBugId?: string');
+    expect(source).toContain('← 返回缺陷详情');
+    expect(source).toContain('onOpenBatch(batchId, bug!.id)');
+    expect(source).toContain('onOpenBug(drawer.fromBugId!)');
+    expect(source).toContain(
+      "setDrawer({ mode: 'batch', batchId, fromBugId })",
+    );
+    expect(source).toContain("setDrawer({ mode: 'view', bugId })");
+    expect(css).toContain('.collab-bug-drawer__back');
+  });
+
   test('卡片高度自适应，两行标题不压住操作按钮', async () => {
     const css = await readFile(cookingCssPath, 'utf8');
     const cardRule = css.match(/\.collab-bug-card\s*\{([^}]*)\}/u)?.[1] ?? '';

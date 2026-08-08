@@ -5621,6 +5621,26 @@
   letter-spacing: 0.08em;
 }
 
+.collab-bug-drawer__chrome-actions {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+}
+
+.collab-bug-drawer__back {
+  background: transparent;
+  border: 0;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 6px;
+}
+
+.collab-bug-drawer__back:hover {
+  color: color-mix(in srgb, var(--accent), var(--ink) 22%);
+}
+
 .collab-bug-drawer__body {
   padding: 0;
   scroll-behavior: smooth;

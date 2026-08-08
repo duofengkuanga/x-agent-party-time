@@ -65,7 +65,7 @@ type MainStage = (typeof STATUS_COLUMNS)[number]['status'];
 type Drawer =
   | { mode: 'create' }
   | { mode: 'view' | 'edit'; bugId: string }
-  | { mode: 'batch'; batchId: string };
+  | { mode: 'batch'; batchId: string; fromBugId?: string };
 type WorkspaceActionResult =
   | BugActionResult
   | RepairActionResult
@@ -616,7 +616,10 @@ export function BugBoard({
           }}
           onClose={() => setDrawer(null)}
           onEdit={(bugId) => setDrawer({ mode: 'edit', bugId })}
-          onOpenBatch={(batchId) => setDrawer({ mode: 'batch', batchId })}
+          onOpenBatch={(batchId, fromBugId) =>
+            setDrawer({ mode: 'batch', batchId, fromBugId })
+          }
+          onOpenBug={(bugId) => setDrawer({ mode: 'view', bugId })}
           snapshot={snapshot}
         />
       ) : null}
@@ -760,13 +763,15 @@ function BugDrawer({
   onClose,
   onEdit,
   onOpenBatch,
+  onOpenBug,
   snapshot,
 }: {
   drawer: Drawer;
   onChanged: (revision: number, message: string) => void;
   onClose: () => void;
   onEdit: (bugId: string) => void;
-  onOpenBatch: (batchId: string) => void;
+  onOpenBatch: (batchId: string, fromBugId?: string) => void;
+  onOpenBug: (bugId: string) => void;
   snapshot: CookingWorkspaceSnapshot;
 }) {
   const bug =
@@ -806,9 +811,21 @@ function BugDrawer({
               <h2>{drawerTitle(drawer.mode, bug)}</h2>
             </div>
           )}
-          <button aria-label="关闭详情抽屉" onClick={onClose} type="button">
-            ×
-          </button>
+          <div className="collab-bug-drawer__chrome-actions">
+            {drawer.mode === 'batch' && drawer.fromBugId ? (
+              <button
+                aria-label="返回缺陷详情"
+                className="collab-bug-drawer__back"
+                onClick={() => onOpenBug(drawer.fromBugId!)}
+                type="button"
+              >
+                ← 返回缺陷详情
+              </button>
+            ) : null}
+            <button aria-label="关闭详情抽屉" onClick={onClose} type="button">
+              ×
+            </button>
+          </div>
         </header>
         {drawer.mode === 'batch' ? (
           <UpdateBatchDetails batch={batch!} onChanged={onChanged} />
@@ -823,7 +840,7 @@ function BugDrawer({
                 ? () => onEdit(bug!.id)
                 : null
             }
-            onOpenBatch={onOpenBatch}
+            onOpenBatch={(batchId) => onOpenBatch(batchId, bug!.id)}
             snapshot={snapshot}
           />
         ) : (
