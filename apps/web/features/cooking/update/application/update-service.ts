@@ -719,6 +719,7 @@ export class UpdateService {
           id: attempt.id,
           kind: 'UPDATE_ATTEMPT' as const,
           executionId: attempt.execution_id,
+          sessionId: technical ? attempt.session_id : null,
           attempt: attempt.attempt,
           executionState: attempt.state,
           queuedAt: attempt.created_at,

@@ -965,6 +965,10 @@ describe('UpdateService', () => {
     );
     expect(testerAttempt?.kind).toBe('UPDATE_ATTEMPT');
     expect(developerAttempt?.kind).toBe('UPDATE_ATTEMPT');
+    expect(testerAttempt).toMatchObject({ sessionId: null });
+    expect(developerAttempt).toMatchObject({
+      sessionId: 'interaction-session',
+    });
     const tester =
       testerAttempt?.kind === 'UPDATE_ATTEMPT'
         ? testerAttempt.interactions[0]!

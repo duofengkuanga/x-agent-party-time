@@ -146,6 +146,7 @@ export const UpdateBatchTimelineNodeSchema = z.discriminatedUnion('kind', [
     id: UpdateAttemptIdSchema,
     kind: z.literal('UPDATE_ATTEMPT'),
     executionId: z.uuid(),
+    sessionId: z.string().trim().min(1).nullable(),
     attempt: z.number().int().positive(),
     executionState: ExecutionStateSchema,
     queuedAt: z.iso.datetime(),

@@ -2146,7 +2146,14 @@ function UpdateBatchDetails({
                       ) : null}
                     </>
                   ) : (
-                    <p>{repairStateLabel(node.executionState)}</p>
+                    <dl className="collab-bug-detail-list">
+                      <Detail label="会话 ID">
+                        {node.sessionId ?? '等待 Agent 建立会话'}
+                      </Detail>
+                      <Detail label="处理状态">
+                        {repairStateLabel(node.executionState)}
+                      </Detail>
+                    </dl>
                   )}
                   {node.interactions.length ? (
                     <ol className="collab-update-interactions">
