@@ -17,6 +17,11 @@ import {
 } from '@agent-party-time/runner-contract';
 import { ZodError } from 'zod';
 import { publicError, PlatformError } from '@/server/errors';
+import {
+  BugDeleteRequestSchema,
+  BugDeleteResponseSchema,
+} from '@/features/cooking/bugs/contract';
+import type { BugService } from '@/features/cooking/bugs/application/bug-service';
 import type { RunnerService } from './service';
 
 export async function handleRunnerPair(
@@ -180,6 +185,23 @@ export async function handleRunnerBindingWorkCompletion(
       RunnerBindingWorkCompletionResponseSchema.parse({
         state: complete(runner.id, requestId, completion),
       }),
+    );
+  } catch (error) {
+    return errorResponse(normalizeRequestError(error));
+  }
+}
+
+export async function handleBugDelete(
+  request: Request,
+  runners: Pick<RunnerService, 'authenticateCredential'>,
+  bugs: Pick<BugService, 'deleteBugs'>,
+): Promise<Response> {
+  try {
+    const credential = bearerCredential(request);
+    runners.authenticateCredential(credential);
+    const body = BugDeleteRequestSchema.parse(await request.json());
+    return jsonResponse(
+      BugDeleteResponseSchema.parse(bugs.deleteBugs(body)),
     );
   } catch (error) {
     return errorResponse(normalizeRequestError(error));

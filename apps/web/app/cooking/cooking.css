@@ -5714,6 +5714,26 @@
   overflow-wrap: anywhere;
 }
 
+.collab-bug-id {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.collab-bug-id code {
+  font-size: 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.collab-bug-id button {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 9px;
+  padding: 1px 6px;
+}
+
 .collab-bug-detail-tabs {
   display: flex;
   gap: 0;

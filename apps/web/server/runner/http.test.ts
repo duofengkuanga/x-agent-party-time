@@ -15,6 +15,7 @@ import {
   handleRunnerBindingWorkCompletion,
   handleRunnerBindings,
   handleRunnerHeartbeat,
+  handleBugDelete,
   handleRunnerPair,
   handleRunnerSelfRevocation,
 } from './http';
@@ -276,6 +277,71 @@ describe('Runner HTTP protocol', () => {
         headers: { 'content-type': 'application/json' },
       }),
       runners,
+    );
+    expect(malformed.status).toBe(400);
+    expect(await malformed.json()).toEqual({
+      error: { code: 'VALIDATION_FAILED', message: '请求内容无效' },
+    });
+  });
+
+  test('缺陷删除 Route 只接受 Bearer Credential', async () => {
+    const { runners, user } = await setup();
+    const paired = runners.pair(
+      runners.issuePairingCode(user.id).code,
+      'Bug Delete Agent',
+    );
+    const unauthorized = await handleBugDelete(
+      bearerJsonRequest(
+        'http://server/api/cooking/bugs/delete',
+        'invalid-credential',
+        { all: true },
+      ),
+      runners,
+      { deleteBugs: () => ({ deletedBugIds: [], deletedExecutionIds: [] }) },
+    );
+    expect(unauthorized.status).toBe(401);
+
+    const authorized = await handleBugDelete(
+      bearerJsonRequest(
+        'http://server/api/cooking/bugs/delete',
+        paired.credential,
+        { all: true, force: true },
+      ),
+      runners,
+      {
+        deleteBugs: (input) => {
+          expect(input).toEqual({ all: true, force: true });
+          return {
+            deletedBugIds: ['944d519c-1ed0-4711-a3b1-325bec5bbe56'],
+            deletedExecutionIds: ['00000000-0000-4000-8000-000000000001'],
+          };
+        },
+      },
+    );
+    expect(authorized.status).toBe(200);
+    expect(await authorized.json()).toEqual({
+      deletedBugIds: ['944d519c-1ed0-4711-a3b1-325bec5bbe56'],
+      deletedExecutionIds: ['00000000-0000-4000-8000-000000000001'],
+    });
+  });
+
+  test('缺陷删除 Route 非法请求结构返回安全 Validation Error', async () => {
+    const { runners, user } = await setup();
+    const paired = runners.pair(
+      runners.issuePairingCode(user.id).code,
+      'Bug Delete Malformed Agent',
+    );
+    const malformed = await handleBugDelete(
+      new Request('http://server/api/cooking/bugs/delete', {
+        method: 'POST',
+        body: '{broken',
+        headers: {
+          authorization: `Bearer ${paired.credential}`,
+          'content-type': 'application/json',
+        },
+      }),
+      runners,
+      { deleteBugs: () => ({ deletedBugIds: [], deletedExecutionIds: [] }) },
     );
     expect(malformed.status).toBe(400);
     expect(await malformed.json()).toEqual({

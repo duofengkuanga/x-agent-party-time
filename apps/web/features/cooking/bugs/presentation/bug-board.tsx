@@ -1058,6 +1058,7 @@ function BugDetail({
   const [detailView, setDetailView] = useState<'progress' | 'report'>(
     'progress',
   );
+  const [copied, setCopied] = useState(false);
   const [verificationComment, setVerificationComment] = useState('');
   const [verificationFeedback, setVerificationFeedback] = useState('');
   const [verificationFiles, setVerificationFiles] = useState<File[]>([]);
@@ -1146,6 +1147,22 @@ function BugDetail({
           <h2>{bug.report.title}</h2>
         </div>
         <dl>
+          <Detail label="缺陷 ID">
+            <span className="collab-bug-id">
+              <code>{bug.id}</code>
+              <button
+                aria-label="复制删除命令"
+                onClick={() => {
+                  void navigator.clipboard.writeText(`xapt bugs delete ${bug.id}`);
+                  setCopied(true);
+                  window.setTimeout(() => setCopied(false), 1600);
+                }}
+                type="button"
+              >
+                {copied ? '已复制' : '复制'}
+              </button>
+            </span>
+          </Detail>
           <Detail label="当前阶段">{bug.presentation.stageLabel}</Detail>
           <Detail label="当前状态">
             <span

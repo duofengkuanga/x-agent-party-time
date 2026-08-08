@@ -150,3 +150,21 @@ export type BugWorkspaceProjection = z.infer<
   typeof BugWorkspaceProjectionSchema
 >;
 export type BugMutationResult = z.infer<typeof BugMutationResultSchema>;
+
+export const BugDeleteRequestSchema = z
+  .object({
+    bugIds: z.array(z.uuid()).min(1).optional(),
+    all: z.boolean().optional(),
+    force: z.boolean().optional(),
+  })
+  .strict()
+  .refine(
+    (value) => (value.all ? !value.bugIds : value.bugIds !== undefined),
+    { message: '必须指定 bugIds 或 all 之一' },
+  );
+export const BugDeleteResponseSchema = z.object({
+  deletedBugIds: z.array(z.uuid()),
+  deletedExecutionIds: z.array(z.uuid()),
+});
+export type BugDeleteRequest = z.infer<typeof BugDeleteRequestSchema>;
+export type BugDeleteResponse = z.infer<typeof BugDeleteResponseSchema>;

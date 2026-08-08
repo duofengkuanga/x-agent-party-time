@@ -302,4 +302,23 @@ describe('缺陷看板展示', () => {
     expect(css).toContain('.collab-bug-drawer__body');
     expect(css).toContain('scrollbar-width: none');
   });
+
+  test('缺陷详情暴露 Bug ID 与复制删除命令', async () => {
+    const [source, css] = await Promise.all([
+      readFile(bugBoardPath, 'utf8'),
+      readFile(cookingCssPath, 'utf8'),
+    ]);
+    expect(source).toContain('<Detail label="缺陷 ID">');
+    expect(source).toContain('className="collab-bug-id"');
+    expect(source).toContain('<code>{bug.id}</code>');
+    expect(source).toContain('aria-label="复制删除命令"');
+    expect(source).toContain('`xapt bugs delete ${bug.id}`');
+    expect(source).toContain('navigator.clipboard.writeText');
+    expect(source).toContain("setCopied(true)");
+    expect(source).toContain("{copied ? '已复制' : '复制'}");
+    expect(source).toContain("const [copied, setCopied] = useState(false)");
+    expect(css).toContain('.collab-bug-id');
+    expect(css).toContain('.collab-bug-id code');
+    expect(css).toContain('.collab-bug-id button');
+  });
 });

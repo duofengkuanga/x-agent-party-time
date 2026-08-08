@@ -13,12 +13,16 @@ import {
   BugSchema,
   BugWorkspaceProjectionSchema,
   CreateBugInputSchema,
+  BugDeleteRequestSchema,
+  BugDeleteResponseSchema,
   RequestRepairInputSchema,
   UpdateBugReportInputSchema,
   type AssignBugInput,
   type Bug,
   type BugMutationResult,
   type BugWorkspaceProjection,
+  type BugDeleteRequest,
+  type BugDeleteResponse,
   type CreateBugInput,
   type RequestRepairInput,
   type UpdateBugReportInput,
@@ -758,6 +762,201 @@ export class BugService {
     });
   }
 
+
+  deleteBugs(input: BugDeleteRequest): BugDeleteResponse {
+    const parsed = BugDeleteRequestSchema.parse(input);
+    const bugIds = parsed.all
+      ? (
+          this.db
+            .prepare('SELECT id FROM cooking_bug ORDER BY id')
+            .all() as Array<{ id: string }>
+        ).map(({ id }) => id)
+      : [...new Set(parsed.bugIds!)];
+    if (bugIds.length === 0)
+      throw new PlatformError('NOT_FOUND', '没有可删除的缺陷');
+    const bugs = bugIds.map((bugId) => this.requireBug(bugId));
+    const executionIds = this.bugExecutionIds(bugIds);
+    if (!parsed.force && executionIds.length > 0) {
+      const active = this.db
+        .prepare(
+          `SELECT id FROM platform_execution
+           WHERE id IN (${placeholders(executionIds.length)})
+             AND state IN (
+               'QUEUED', 'CLAIMED', 'RUNNING',
+               'WAITING_FOR_INTERACTION', 'WAITING_TO_RESUME', 'CANCEL_REQUESTED'
+             )`,
+        )
+        .all(...executionIds) as Array<{ id: string }>;
+      if (active.length > 0)
+        throw new PlatformError(
+          'RESOURCE_CONFLICT',
+          '缺陷仍有进行中的修复/更新任务，请先取消或使用 --force',
+        );
+    }
+    return this.db.transaction(() => {
+      this.deleteBugRows(bugIds, executionIds);
+      const deletedExecutionIds = this.deleteExecutions(executionIds);
+      this.bumpDeletedSubmissions(bugs);
+      return {
+        deletedBugIds: bugIds,
+        deletedExecutionIds,
+      };
+    })();
+  }
+
+  private bugExecutionIds(bugIds: string[]): string[] {
+    const ids = new Set<string>();
+    for (const { execution_id } of this.db
+      .prepare(
+        `SELECT execution_id FROM cooking_repair_attempt
+         WHERE bug_id IN (${placeholders(bugIds.length)})`,
+      )
+      .all(...bugIds) as Array<{ execution_id: string }>)
+      ids.add(execution_id);
+    const batchIds = (
+      this.db
+        .prepare(
+          `SELECT DISTINCT batch_id FROM cooking_update_batch_entry
+           WHERE bug_id IN (${placeholders(bugIds.length)})`,
+        )
+        .all(...bugIds) as Array<{ batch_id: string }>
+    ).map(({ batch_id }) => batch_id);
+    if (batchIds.length > 0) {
+      for (const { execution_id } of this.db
+        .prepare(
+          `SELECT execution_id FROM cooking_update_attempt
+           WHERE batch_id IN (${placeholders(batchIds.length)})`,
+        )
+        .all(...batchIds) as Array<{ execution_id: string }>)
+        ids.add(execution_id);
+      for (const { active_execution_id } of this.db
+        .prepare(
+          `SELECT active_execution_id FROM cooking_update_batch
+           WHERE id IN (${placeholders(batchIds.length)})
+             AND active_execution_id IS NOT NULL`,
+        )
+        .all(...batchIds) as Array<{ active_execution_id: string }>)
+        ids.add(active_execution_id);
+    }
+    return [...ids];
+  }
+
+  private deleteBugRows(bugIds: string[], executionIds: string[]): void {
+    if (executionIds.length > 0) {
+      this.db
+        .prepare(
+          `UPDATE cooking_update_batch SET active_execution_id = NULL
+           WHERE active_execution_id IN (${placeholders(executionIds.length)})`,
+        )
+        .run(...executionIds);
+      this.db
+        .prepare(
+          `UPDATE cooking_cleanup SET active_execution_id = NULL
+           WHERE active_execution_id IN (${placeholders(executionIds.length)})`,
+        )
+        .run(...executionIds);
+      this.db
+        .prepare(
+          `DELETE FROM cooking_update_attempt
+           WHERE execution_id IN (${placeholders(executionIds.length)})`,
+        )
+        .run(...executionIds);
+      this.db
+        .prepare(
+          `DELETE FROM cooking_cleanup_attempt
+           WHERE execution_id IN (${placeholders(executionIds.length)})`,
+        )
+        .run(...executionIds);
+    }
+    this.db
+      .prepare(
+        `DELETE FROM cooking_update_batch_entry
+         WHERE bug_id IN (${placeholders(bugIds.length)})`,
+      )
+      .run(...bugIds);
+    this.db
+      .prepare(
+        `DELETE FROM cooking_mutation
+         WHERE resource_type = 'BUG'
+           AND resource_id IN (${placeholders(bugIds.length)})`,
+      )
+      .run(...bugIds);
+    this.db
+      .prepare(
+        `DELETE FROM cooking_audit_event
+         WHERE target_type = 'BUG'
+           AND target_id IN (${placeholders(bugIds.length)})`,
+      )
+      .run(...bugIds);
+    this.db
+      .prepare(
+        `DELETE FROM cooking_repair_attempt
+         WHERE bug_id IN (${placeholders(bugIds.length)})`,
+      )
+      .run(...bugIds);
+    this.db
+      .prepare(
+        `DELETE FROM cooking_bug
+         WHERE id IN (${placeholders(bugIds.length)})`,
+      )
+      .run(...bugIds);
+  }
+
+  private deleteExecutions(executionIds: string[]): string[] {
+    const deleted: string[] = [];
+    let remaining = [...executionIds];
+    while (remaining.length > 0) {
+      const result = this.db
+        .prepare(
+          `DELETE FROM platform_execution
+           WHERE id IN (${placeholders(remaining.length)})
+             AND NOT EXISTS (
+               SELECT 1 FROM platform_execution successor
+               WHERE successor.previous_execution_id = platform_execution.id
+                 AND successor.id IN (${placeholders(remaining.length)})
+             )`,
+        )
+        .run(...remaining, ...remaining);
+      if (result.changes === 0)
+        throw new PlatformError(
+          'RESOURCE_CONFLICT',
+          '存在无法删除的执行链，请先清理后继执行',
+        );
+      const stillPresent = this.db
+        .prepare(
+          `SELECT id FROM platform_execution
+           WHERE id IN (${placeholders(remaining.length)})`,
+        )
+        .all(...remaining) as Array<{ id: string }>;
+      const present = new Set(stillPresent.map(({ id }) => id));
+      deleted.push(...remaining.filter((id) => !present.has(id)));
+      remaining = stillPresent.map(({ id }) => id);
+    }
+    return deleted;
+  }
+
+  private bumpDeletedSubmissions(bugs: Bug[]): void {
+    const now = this.now().toISOString();
+    const submissionIds = [...new Set(bugs.map((bug) => bug.submissionId))];
+    for (const submissionId of submissionIds) {
+      const update = this.db
+        .prepare(
+          `UPDATE cooking_test_submission
+           SET workspace_revision = workspace_revision + 1, updated_at = ?
+           WHERE id = ? AND status = 'ACTIVE'`,
+        )
+        .run(now, submissionId);
+      if (update.changes !== 1) continue;
+      const row = this.db
+        .prepare(
+          `SELECT workspace_revision revision
+           FROM cooking_test_submission WHERE id = ?`,
+        )
+        .get(submissionId) as { revision: number };
+      this.onInvalidated(submissionId, row.revision);
+    }
+  }
+
   private hasRecordedMutation(mutationId: string): boolean {
     return Boolean(
       this.db
@@ -820,6 +1019,10 @@ function itemUser(item: ItemRow): User {
     displayName: item.responsible_display_name,
     createdAt: item.responsible_user_created_at,
   });
+}
+
+function placeholders(count: number): string {
+  return Array.from({ length: count }, () => '?').join(', ');
 }
 
 function staleBug(): PlatformError {

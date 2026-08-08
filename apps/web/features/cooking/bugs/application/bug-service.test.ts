@@ -12,6 +12,8 @@ import { BindingService } from '@/features/cooking/bindings/application/binding-
 import { EngineeringService } from '@/features/cooking/engineering/application/engineering-service';
 import { ProjectService } from '@/features/cooking/projects/application/project-service';
 import { SubmissionService } from '@/features/cooking/submissions/application/submission-service';
+import { RepairService } from '@/features/cooking/repair/application/repair-service';
+import { ZodError } from 'zod';
 import { BugService } from './bug-service';
 
 const directories: string[] = [];
@@ -428,6 +430,242 @@ describe('BugService', () => {
       fixture.service.workspace(fixture.users.tester.id, fixture.submission.id)
         .bugs,
     ).toHaveLength(1);
+  });
+
+  test('deleteBugs 校验缺陷存在与参数互斥', async () => {
+    const fixture = await setup();
+    expect(() => fixture.service.deleteBugs({})).toThrow(ZodError);
+    expect(() => fixture.service.deleteBugs({ bugIds: [] })).toThrow(ZodError);
+    expect(() =>
+      fixture.service.deleteBugs({
+        bugIds: [randomUUID()],
+        all: true,
+      }),
+    ).toThrow(ZodError);
+    expect(() =>
+      fixture.service.deleteBugs({ bugIds: [randomUUID()] }),
+    ).toThrow(expect.objectContaining({ code: 'NOT_FOUND' }));
+  });
+
+  test('deleteBugs 删除无执行的普通缺陷并推进提测版本', async () => {
+    const fixture = await setup();
+    const first = createBug(fixture, fixture.users.tester.id, {
+      title: '待删除缺陷一',
+    });
+    const second = createBug(fixture, fixture.users.tester.id, {
+      title: '待删除缺陷二',
+    });
+    const revisionBefore = fixture.service.workspace(
+      fixture.users.tester.id,
+      fixture.submission.id,
+    ).bugs.length;
+    expect(revisionBefore).toBe(2);
+
+    const result = fixture.service.deleteBugs({
+      bugIds: [first.bug.id, second.bug.id],
+    });
+    expect(result.deletedBugIds).toEqual([first.bug.id, second.bug.id]);
+    expect(result.deletedExecutionIds).toEqual([]);
+    expect(
+      fixture.database
+        .query<{ count: number }, [string]>(
+          'SELECT COUNT(*) count FROM cooking_bug WHERE id = ?',
+        )
+        .get(first.bug.id)?.count,
+    ).toBe(0);
+    expect(
+      fixture.database
+        .query<{ count: number }, [string]>(
+          `SELECT COUNT(*) count FROM cooking_mutation
+           WHERE resource_type = 'BUG' AND resource_id = ?`,
+        )
+        .get(first.bug.id)?.count,
+    ).toBe(0);
+    expect(
+      fixture.database
+        .query<{ count: number }, [string]>(
+          `SELECT COUNT(*) count FROM cooking_audit_event
+           WHERE target_type = 'BUG' AND target_id = ?`,
+        )
+        .get(second.bug.id)?.count,
+    ).toBe(0);
+    expect(fixture.events.at(-1)).toEqual({
+      submissionId: fixture.submission.id,
+      revision: 4,
+    });
+  });
+
+  test('deleteBugs 存在非终态执行且未 force 时拒绝删除', async () => {
+    const fixture = await setup();
+    const bug = createAssignedBug(fixture, '进行中缺陷', fixture.items.front);
+    new RepairService(fixture.database).createInitialExecution(bug.id);
+    expect(() =>
+      fixture.service.deleteBugs({ bugIds: [bug.id] }),
+    ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
+    expect(
+      fixture.database
+        .query<{ count: number }, [string]>(
+          'SELECT COUNT(*) count FROM cooking_bug WHERE id = ?',
+        )
+        .get(bug.id)?.count,
+    ).toBe(1);
+  });
+
+  test('deleteBugs --force 删除链式修复执行与关联上下文', async () => {
+    const fixture = await setup();
+    const bug = createAssignedBug(fixture, '链式修复缺陷', fixture.items.front);
+    const repairs = new RepairService(fixture.database);
+    const first = repairs.createInitialExecution(bug.id);
+    fixture.database
+      .prepare(
+        `UPDATE platform_execution
+         SET state = 'FAILED', finished_at = ? WHERE id = ?`,
+      )
+      .run('2026-07-27T03:30:00.000Z', first);
+    const second = repairs.createInitialExecution(bug.id);
+    fixture.database
+      .prepare(
+        `UPDATE platform_execution
+         SET state = 'SUCCEEDED', finished_at = ? WHERE id = ?`,
+      )
+      .run('2026-07-27T04:00:00.000Z', second);
+    const previous = fixture.database
+      .query<{ previous_execution_id: string | null }, [string]>(
+        'SELECT previous_execution_id FROM platform_execution WHERE id = ?',
+      )
+      .get(second)?.previous_execution_id;
+    expect(previous).toBe(first);
+
+    const result = fixture.service.deleteBugs({
+      bugIds: [bug.id],
+      force: true,
+    });
+    expect(new Set(result.deletedExecutionIds)).toEqual(
+      new Set([first, second]),
+    );
+    expect(
+      fixture.database
+        .query<{ count: number }, [string]>(
+          'SELECT COUNT(*) count FROM platform_execution WHERE id = ?',
+        )
+        .get(first)?.count,
+    ).toBe(0);
+    expect(
+      fixture.database
+        .query<{ count: number }, [string]>(
+          'SELECT COUNT(*) count FROM cooking_repair_attempt WHERE bug_id = ?',
+        )
+        .get(bug.id)?.count,
+    ).toBe(0);
+    expect(
+      fixture.database
+        .query<{ count: number }, [string]>(
+          'SELECT COUNT(*) count FROM cooking_bug_repair_context WHERE bug_id = ?',
+        )
+        .get(bug.id)?.count,
+    ).toBe(0);
+    expect(
+      fixture.database
+        .query<{ count: number }, [string]>(
+          'SELECT COUNT(*) count FROM cooking_bug WHERE id = ?',
+        )
+        .get(bug.id)?.count,
+    ).toBe(0);
+  });
+
+  test('deleteBugs 清理统一更新批次引用与活动执行', async () => {
+    const fixture = await setup();
+    const bug = createAssignedBug(fixture, '批次内缺陷', fixture.items.front);
+    const repairs = new RepairService(fixture.database);
+    const executionId = repairs.createInitialExecution(bug.id);
+    fixture.database
+      .prepare(
+        `UPDATE platform_execution
+         SET state = 'SUCCEEDED', finished_at = ? WHERE id = ?`,
+      )
+      .run('2026-07-27T04:00:00.000Z', executionId);
+    const now = '2026-07-27T04:00:00.000Z';
+    const batchId = randomUUID();
+    fixture.database
+      .prepare(
+        `INSERT INTO cooking_update_batch(
+           id, submission_id, submission_item_id, state, version,
+           active_execution_id, session_id, deployment_json, frozen_at,
+           created_at, updated_at
+         ) VALUES (?, ?, ?, 'RUNNING', 1, ?, NULL, '{}', ?, ?, ?)`,
+      )
+      .run(
+        batchId,
+        fixture.submission.id,
+        fixture.items.front,
+        executionId,
+        now,
+        now,
+        now,
+      );
+    fixture.database
+      .prepare(
+        `INSERT INTO cooking_update_batch_entry(
+           batch_id, bug_id, position, commits_json
+         ) VALUES (?, ?, 0, '[]')`,
+      )
+      .run(batchId, bug.id);
+    fixture.database
+      .prepare(
+        `INSERT INTO cooking_update_attempt(
+           id, batch_id, execution_id, attempt, outcome_json, created_at, finished_at
+         ) VALUES (?, ?, ?, 1, NULL, ?, NULL)`,
+      )
+      .run(randomUUID(), batchId, executionId, now);
+
+    const result = fixture.service.deleteBugs({
+      bugIds: [bug.id],
+      force: true,
+    });
+    expect(result.deletedExecutionIds).toEqual([executionId]);
+    expect(
+      fixture.database
+        .query<{ count: number }, [string]>(
+          `SELECT COUNT(*) count FROM cooking_update_batch_entry WHERE bug_id = ?`,
+        )
+        .get(bug.id)?.count,
+    ).toBe(0);
+    expect(
+      fixture.database
+        .query<{ count: number }, [string]>(
+          `SELECT COUNT(*) count FROM cooking_update_attempt WHERE execution_id = ?`,
+        )
+        .get(executionId)?.count,
+    ).toBe(0);
+    expect(
+      fixture.database
+        .query<{ active_execution_id: string | null }, [string]>(
+          'SELECT active_execution_id FROM cooking_update_batch WHERE id = ?',
+        )
+        .get(batchId)?.active_execution_id,
+    ).toBeNull();
+    expect(
+      fixture.database
+        .query<{ count: number }, [string]>(
+          'SELECT COUNT(*) count FROM platform_execution WHERE id = ?',
+        )
+        .get(executionId)?.count,
+    ).toBe(0);
+  });
+
+  test('deleteBugs --all 删除全部缺陷', async () => {
+    const fixture = await setup();
+    createBug(fixture, fixture.users.tester.id, { title: '全部清理一' });
+    createBug(fixture, fixture.users.tester.id, { title: '全部清理二' });
+    const result = fixture.service.deleteBugs({ all: true });
+    expect(result.deletedBugIds).toHaveLength(2);
+    expect(
+      fixture.database
+        .query<{ count: number }, [string]>(
+          'SELECT COUNT(*) count FROM cooking_bug WHERE submission_id = ?',
+        )
+        .get(fixture.submission.id)?.count,
+    ).toBe(0);
   });
 });
 
