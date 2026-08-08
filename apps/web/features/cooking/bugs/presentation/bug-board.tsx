@@ -1153,7 +1153,9 @@ function BugDetail({
               <button
                 aria-label="复制删除命令"
                 onClick={() => {
-                  void navigator.clipboard.writeText(`xapt bugs delete ${bug.id}`);
+                  void navigator.clipboard.writeText(
+                    `xapt bugs delete ${bug.id}`,
+                  );
                   setCopied(true);
                   window.setTimeout(() => setCopied(false), 1600);
                 }}

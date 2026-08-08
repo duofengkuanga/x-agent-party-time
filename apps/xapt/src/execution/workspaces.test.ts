@@ -323,10 +323,9 @@ describe('GitExecutionWorkspaceManager', () => {
     // 身份不匹配时拒绝，且不删除其他记录
     await run(['git', '-C', clean, 'switch', '-c', 'wrong-branch']);
     await expect(
-      manager.removeWorkspaces(
-        ['bug-repair:bug-1', 'bug-repair:bug-2'],
-        { force: true },
-      ),
+      manager.removeWorkspaces(['bug-repair:bug-1', 'bug-repair:bug-2'], {
+        force: true,
+      }),
     ).rejects.toThrow('身份不匹配');
     expect(await manager.workspaceKeys()).toContain('bug-repair:bug-1');
     expect(await manager.workspaceKeys()).toContain('bug-repair:bug-2');
@@ -338,10 +337,9 @@ describe('GitExecutionWorkspaceManager', () => {
     expect(await manager.workspaceKeys()).not.toContain('bug-repair:bug-3');
 
     // force 删除脏工作区，同时删除干净工作区
-    await manager.removeWorkspaces(
-      ['bug-repair:bug-1', 'bug-repair:bug-2'],
-      { force: true },
-    );
+    await manager.removeWorkspaces(['bug-repair:bug-1', 'bug-repair:bug-2'], {
+      force: true,
+    });
     expect(await manager.workspaceKeys()).toEqual([]);
     const worktrees = await output([
       'git',

@@ -200,9 +200,7 @@ export async function handleBugDelete(
     const credential = bearerCredential(request);
     runners.authenticateCredential(credential);
     const body = BugDeleteRequestSchema.parse(await request.json());
-    return jsonResponse(
-      BugDeleteResponseSchema.parse(bugs.deleteBugs(body)),
-    );
+    return jsonResponse(BugDeleteResponseSchema.parse(bugs.deleteBugs(body)));
   } catch (error) {
     return errorResponse(normalizeRequestError(error));
   }

@@ -158,10 +158,9 @@ export const BugDeleteRequestSchema = z
     force: z.boolean().optional(),
   })
   .strict()
-  .refine(
-    (value) => (value.all ? !value.bugIds : value.bugIds !== undefined),
-    { message: '必须指定 bugIds 或 all 之一' },
-  );
+  .refine((value) => (value.all ? !value.bugIds : value.bugIds !== undefined), {
+    message: '必须指定 bugIds 或 all 之一',
+  });
 export const BugDeleteResponseSchema = z.object({
   deletedBugIds: z.array(z.uuid()),
   deletedExecutionIds: z.array(z.uuid()),

@@ -25,7 +25,7 @@ describe('runCli', () => {
   test('renders xapt and minimum Codex versions', async () => {
     expect(await runCli(['--version'])).toEqual({
       exitCode: EXIT_SUCCESS,
-      stdout: 'xapt 0.1.0\n最低 Codex 版本 0.145.0',
+      stdout: 'xapt 0.2.0\n最低 Codex 版本 0.145.0',
     });
   });
 
@@ -45,9 +45,7 @@ describe('runCli', () => {
     [['update']],
     [['uninstall']],
     [['uninstall', '--force']],
-    [
-      ['bugs', 'delete', '944d519c-1ed0-4711-a3b1-325bec5bbe56'],
-    ],
+    [['bugs', 'delete', '944d519c-1ed0-4711-a3b1-325bec5bbe56']],
     [['internal-daemon']],
   ] as const)(
     'recognized but unimplemented command %j fails explicitly',

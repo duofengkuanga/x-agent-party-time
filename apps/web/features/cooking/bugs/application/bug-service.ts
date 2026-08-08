@@ -762,7 +762,6 @@ export class BugService {
     });
   }
 
-
   deleteBugs(input: BugDeleteRequest): BugDeleteResponse {
     const parsed = BugDeleteRequestSchema.parse(input);
     const bugIds = parsed.all

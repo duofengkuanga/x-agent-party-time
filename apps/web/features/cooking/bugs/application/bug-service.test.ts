@@ -499,9 +499,9 @@ describe('BugService', () => {
     const fixture = await setup();
     const bug = createAssignedBug(fixture, '进行中缺陷', fixture.items.front);
     new RepairService(fixture.database).createInitialExecution(bug.id);
-    expect(() =>
-      fixture.service.deleteBugs({ bugIds: [bug.id] }),
-    ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
+    expect(() => fixture.service.deleteBugs({ bugIds: [bug.id] })).toThrow(
+      expect.objectContaining({ code: 'RESOURCE_CONFLICT' }),
+    );
     expect(
       fixture.database
         .query<{ count: number }, [string]>(

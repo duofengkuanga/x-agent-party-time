@@ -1,7 +1,10 @@
 import type { CliRuntime } from './cli/run';
 import { MacOsCodexPreflight } from './daemon/codex';
 import { AgentService } from './daemon/agent-service';
-import { ConnectionCoordinator, normalizeServerOrigin } from './daemon/connection';
+import {
+  ConnectionCoordinator,
+  normalizeServerOrigin,
+} from './daemon/connection';
 import { DaemonControlClient } from './daemon/control';
 import { DaemonManager } from './daemon/manager';
 import { DaemonRuntime } from './daemon/runtime';

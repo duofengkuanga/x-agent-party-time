@@ -7,7 +7,12 @@ export type XaptCommand =
   | { kind: 'daemon-status' }
   | { kind: 'update' }
   | { kind: 'uninstall'; force: boolean }
-  | { kind: 'bugs-delete'; bugIds: readonly string[]; all: boolean; force: boolean }
+  | {
+      kind: 'bugs-delete';
+      bugIds: readonly string[];
+      all: boolean;
+      force: boolean;
+    }
   | { kind: 'internal-daemon' };
 
 export class CliUsageError extends Error {

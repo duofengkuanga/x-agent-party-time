@@ -314,9 +314,9 @@ describe('缺陷看板展示', () => {
     expect(source).toContain('aria-label="复制删除命令"');
     expect(source).toContain('`xapt bugs delete ${bug.id}`');
     expect(source).toContain('navigator.clipboard.writeText');
-    expect(source).toContain("setCopied(true)");
+    expect(source).toContain('setCopied(true)');
     expect(source).toContain("{copied ? '已复制' : '复制'}");
-    expect(source).toContain("const [copied, setCopied] = useState(false)");
+    expect(source).toContain('const [copied, setCopied] = useState(false)');
     expect(css).toContain('.collab-bug-id');
     expect(css).toContain('.collab-bug-id code');
     expect(css).toContain('.collab-bug-id button');
