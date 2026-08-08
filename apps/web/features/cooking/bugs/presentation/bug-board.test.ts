@@ -85,6 +85,22 @@ describe('缺陷看板展示', () => {
     expect(css).toContain('animation: none');
   });
 
+  test('卡片不展示内部缺陷编号，并允许摘要内容换行', async () => {
+    const [source, css] = await Promise.all([
+      readFile(bugBoardPath, 'utf8'),
+      readFile(cookingCssPath, 'utf8'),
+    ]);
+    expect(source).toContain(
+      '<small>{bug.presentation.assignmentLabel}</small>',
+    );
+    expect(source).not.toContain(
+      '{bugLabel(bug)} · {bug.presentation.assignmentLabel}',
+    );
+    expect(css).toContain('grid-row: 1 / -1;');
+    expect(css).toContain('min-width: 0;');
+    expect(css).toContain('overflow-wrap: anywhere;');
+  });
+
   test('更新中列只渲染共享批次卡并从 Bug 摘要进入同一详情', async () => {
     const source = await readFile(bugBoardPath, 'utf8');
     expect(source).toContain('batches.map((batch)');

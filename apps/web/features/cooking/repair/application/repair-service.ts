@@ -554,6 +554,7 @@ export class RepairService {
       id: attempt.id,
       kind: 'REPAIR_ATTEMPT' as const,
       executionId: attempt.execution_id,
+      sessionId: technical ? attempt.session_id : null,
       attempt: attempt.attempt,
       executionState: attempt.state,
       agentName: attempt.runner_name,

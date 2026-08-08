@@ -6,9 +6,9 @@ import {
 } from './contract';
 
 export const LOCAL_SCRIPT_UPDATE_PROMPT_KIND = 'cooking.update.local-script';
-export const LOCAL_SCRIPT_UPDATE_PROMPT_VERSION = 2;
+export const LOCAL_SCRIPT_UPDATE_PROMPT_VERSION = 3;
 export const CI_CD_UPDATE_PROMPT_KIND = 'cooking.update.ci-cd';
-export const CI_CD_UPDATE_PROMPT_VERSION = 2;
+export const CI_CD_UPDATE_PROMPT_VERSION = 3;
 
 const STABLE_PREFIX = `你是本机仓库中的统一更新执行者。请遵守仓库内 AGENTS.md 等规则，原子集成本批全部候选提交。
 
@@ -18,6 +18,7 @@ const STABLE_PREFIX = `你是本机仓库中的统一更新执行者。请遵守
 - 解决冲突后运行仓库规则要求的测试和构建；任何一项失败都返回 FAILED。
 - 验证通过后只允许普通 push，禁止 force push。
 - 不得伪造 Commit、测试、Push、部署或执行结果。
+- 如需验证网页功能，跳过浏览器验证，不启动或等待浏览器验证流程；改用代码级测试、静态检查或其他无需浏览器的验证方式。
 - 成功结果必须返回 completedActions、validations 和 warnings；失败结果必须返回 failedStep、reason、completedActions 和 pendingActions。
 - 最终只返回符合输出 Schema 的 JSON。`;
 
@@ -112,7 +113,9 @@ export function buildContinuationCiCdUpdatePrompt(input: {
     CI_CD_UPDATE_PROMPT_KIND,
     CI_CD_UPDATE_PROMPT_VERSION,
     CiCdUpdateOutputJsonSchema as JsonObject,
-    `继续当前统一更新批次。冻结的缺陷、Commit、顺序、分支和环境保持不变。
+    `临时补充执行约束：如需验证网页功能，跳过浏览器验证，不启动或等待浏览器验证流程；改用代码级测试、静态检查或其他无需浏览器的验证方式。
+
+继续当前统一更新批次。冻结的缺陷、Commit、顺序、分支和环境保持不变。
 
 第 ${input.reportRound} 轮外部部署失败：${input.summary}${attachmentLine}
 
@@ -148,7 +151,9 @@ function retrySnapshot(
     kind,
     version,
     outputJsonSchema,
-    `继续当前统一更新批次。冻结的缺陷、Commit、顺序、分支和环境保持不变。
+    `临时补充执行约束：如需验证网页功能，跳过浏览器验证，不启动或等待浏览器验证流程；改用代码级测试、静态检查或其他无需浏览器的验证方式。
+
+继续当前统一更新批次。冻结的缺陷、Commit、顺序、分支和环境保持不变。
 
 上一轮结构化失败结果已经保留在当前 Session 中。${instruction}；不得拆批、跳过候选、force push 或改写历史，最终只返回符合既定 Schema 的 JSON。`,
   );

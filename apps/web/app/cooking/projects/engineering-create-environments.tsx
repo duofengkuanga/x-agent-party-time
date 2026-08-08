@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { createClientId } from '@/features/cooking/shared/client-id';
 import { DeploymentFields } from '@/features/cooking/engineering/presentation/deployment-fields';
 
 type EnvironmentDraft = {
@@ -24,7 +25,7 @@ export function EngineeringCreateEnvironments({
   function addEnvironment() {
     setEnvironments((current) => [
       ...current,
-      { key: crypto.randomUUID(), name: '' },
+      { key: createClientId(), name: '' },
     ]);
   }
 

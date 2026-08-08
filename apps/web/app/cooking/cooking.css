@@ -1964,7 +1964,10 @@
   display: grid;
   gap: 10px;
   grid-template-columns: 10px minmax(0, 1fr);
+  height: 132px;
   min-height: 62px;
+  min-width: 0;
+  overflow: hidden;
   padding: 12px;
   position: relative;
   transition:
@@ -1991,7 +1994,7 @@
   display: block;
   font-size: 10px;
   grid-column: 1;
-  grid-row: 1 / span 3;
+  grid-row: 1 / -1;
   min-height: 34px;
   padding-left: 3px;
   width: 10px;
@@ -1999,12 +2002,20 @@
 
 .collab-bug-card > small,
 .collab-bug-card > h3,
+.collab-bug-card > p,
 .collab-bug-card__attention {
   grid-column: 2;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .collab-bug-card > small {
   color: var(--muted);
+  line-height: 1.4;
+}
+
+.collab-bug-card > p {
+  margin: 0;
 }
 
 .collab-bug-card[data-stage='WAITING_FOR_REPAIR'] {
@@ -2106,9 +2117,13 @@
 
 .collab-bug-card__attention {
   color: var(--bug-stage-color);
+  display: -webkit-box;
   font-size: 9px;
   font-style: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
   line-height: 1.45;
+  overflow: hidden;
 }
 
 @keyframes collab-bug-card-breathe {
@@ -2166,12 +2181,16 @@
 }
 
 .collab-bug-card h3 {
+  display: -webkit-box;
   flex: 1 1 auto;
   font-family: Georgia, 'Times New Roman', serif;
   font-size: 17px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   line-height: 1.22;
   margin: 0;
   min-width: 0;
+  overflow: hidden;
   overflow-wrap: anywhere;
 }
 
@@ -6749,12 +6768,21 @@
 }
 
 /* 共享统一更新批次 */
+.collab-update-batch-card > h3 {
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
 .collab-update-batch-card > p {
   color: var(--muted);
+  display: -webkit-box;
   font-size: 9px;
   grid-column: 2;
   line-height: 1.45;
   margin: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
 }
 
 .collab-update-batch-summary {
@@ -6808,8 +6836,10 @@
 .collab-bug-card > .collab-bug-card__actions {
   display: flex;
   gap: 6px;
-  grid-column: 1 / -1;
+  grid-column: 2;
   justify-content: flex-end;
+  margin-top: auto;
+  min-width: 0;
   padding-top: 4px;
 }
 

@@ -15,6 +15,7 @@ import {
 } from 'react';
 import type { User } from '@/server/auth/contract';
 import type { JsonValue } from '@agent-party-time/execution-contract';
+import { createClientId } from '@/features/cooking/shared/client-id';
 import {
   CookingWorkspaceSnapshotSchema,
   type CookingWorkspaceSnapshot,
@@ -322,7 +323,7 @@ export function SubmissionWorkspace({
                 const result = await closeSubmissionAction(
                   snapshot.submission.submission.id,
                   {
-                    mutationId: crypto.randomUUID(),
+                    mutationId: createClientId(),
                     expectedVersion: snapshot.submission.submission.version,
                   },
                 );
@@ -358,7 +359,7 @@ export function SubmissionWorkspace({
                 const result = await resolveCleanupInteractionAction(
                   interactionId,
                   {
-                    mutationId: crypto.randomUUID(),
+                    mutationId: createClientId(),
                     expectedVersion,
                     resolution,
                   },
@@ -381,7 +382,7 @@ export function SubmissionWorkspace({
             startTransition(async () => {
               try {
                 const result = await retryCleanupAction(cleanupId, {
-                  mutationId: crypto.randomUUID(),
+                  mutationId: createClientId(),
                   expectedVersion,
                 });
                 if (!result.ok) {
@@ -409,7 +410,7 @@ export function SubmissionWorkspace({
                 const result = await updateSubmissionAction(
                   snapshot.submission.submission.id,
                   {
-                    mutationId: crypto.randomUUID(),
+                    mutationId: createClientId(),
                     expectedVersion: snapshot.submission.submission.version,
                     title,
                     requirementDescription,

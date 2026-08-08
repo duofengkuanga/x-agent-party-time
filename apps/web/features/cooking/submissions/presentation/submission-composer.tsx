@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
+import { createClientId } from '@/features/cooking/shared/client-id';
 import type { User } from '@/server/auth/contract';
 import type { SubmissionCreationCatalog } from '../contract';
 import { createSubmissionAction } from './actions';
@@ -98,7 +99,7 @@ export function SubmissionComposer({
     setError(null);
     try {
       const result = await createSubmissionAction(project.projectId, {
-        mutationId: crypto.randomUUID(),
+        mutationId: createClientId(),
         title,
         requirementDescription,
         testerUserId,
@@ -466,7 +467,7 @@ function createItemDraft(
       engineering.bindings.some((binding) => binding.userId === member.id),
   )!;
   return {
-    key: crypto.randomUUID(),
+    key: createClientId(),
     engineeringId: engineering.id,
     responsibleUserId: responsible.id,
     bindingId: engineering.bindings.find(

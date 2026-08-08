@@ -55,6 +55,7 @@ describe('Update Prompt', () => {
       expect(prompt.renderedPrompt).toContain(
         '冻结的缺陷、Commit、顺序、分支和环境保持不变',
       );
+      expect(prompt.renderedPrompt).toContain('跳过浏览器验证');
       expect(prompt.renderedPrompt).not.toContain('只处理以下增量信息');
     }
   });
@@ -151,6 +152,7 @@ describe('Update Prompt', () => {
       attachmentNames: ['pipeline.txt'],
     });
     expect(continuation.renderedPrompt).toContain('第 2 轮外部部署失败');
+    expect(continuation.renderedPrompt).toContain('跳过浏览器验证');
     expect(continuation.renderedPrompt).toContain('pipeline.txt');
     expect(continuation.renderedPrompt).not.toContain('仓库逻辑地址');
   });

@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readlink,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { xaptPaths } from '../platform/paths';
@@ -34,7 +41,11 @@ describe('GitExecutionWorkspaceManager', () => {
     ]);
     await run(['git', '-C', source, 'config', 'user.name', 'Test']);
     await writeFile(join(source, 'README.md'), 'baseline\n');
-    await run(['git', '-C', source, 'add', 'README.md']);
+    await writeFile(
+      join(source, '.gitignore'),
+      'node_modules/\n.env.local\n.DS_Store\n',
+    );
+    await run(['git', '-C', source, 'add', 'README.md', '.gitignore']);
     await run(['git', '-C', source, 'commit', '-m', 'baseline']);
     await run(['git', '-C', source, 'branch', '-M', 'main']);
     await run(['git', '-C', source, 'remote', 'add', 'origin', remote]);
@@ -160,6 +171,85 @@ describe('GitExecutionWorkspaceManager', () => {
     expect(
       await output(['git', '-C', binding, 'show-ref', '--heads']),
     ).not.toContain('apt/repair/bug-1');
+  });
+
+  test('新 worktree 镜像主工程被忽略内容，复用不覆盖已存在项', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'apt-workspaces-'));
+    directories.push(root);
+    const remote = join(root, 'remote.git');
+    const source = join(root, 'source');
+    const binding = join(root, 'binding');
+    await run(['git', 'init', '--bare', remote]);
+    await run(['git', 'init', source]);
+    await run([
+      'git',
+      '-C',
+      source,
+      'config',
+      'user.email',
+      'test@example.com',
+    ]);
+    await run(['git', '-C', source, 'config', 'user.name', 'Test']);
+    await writeFile(join(source, 'README.md'), 'baseline\n');
+    await writeFile(
+      join(source, '.gitignore'),
+      'node_modules/\n.env.local\n.DS_Store\n',
+    );
+    await run(['git', '-C', source, 'add', 'README.md', '.gitignore']);
+    await run(['git', '-C', source, 'commit', '-m', 'baseline']);
+    await run(['git', '-C', source, 'branch', '-M', 'main']);
+    await run(['git', '-C', source, 'remote', 'add', 'origin', remote]);
+    await run(['git', '-C', source, 'push', '-u', 'origin', 'main']);
+    await run(['git', 'clone', remote, binding]);
+    await run(['git', '-C', binding, 'switch', 'main']);
+
+    await mkdir(join(binding, 'node_modules'), { recursive: true });
+    await writeFile(join(binding, 'node_modules', 'dep.js'), 'dep\n');
+    await writeFile(join(binding, '.env.local'), 'SECRET=1\n');
+    // 被忽略文件位于主工程未跟踪的父目录下，worktree 需先补建父目录
+    await mkdir(join(binding, 'cache'), { recursive: true });
+    await writeFile(join(binding, 'cache', '.DS_Store'), 'ds\n');
+
+    const paths = xaptPaths(root);
+    const manager = new GitExecutionWorkspaceManager(paths);
+    const repair = cwd(
+      await manager.prepare(binding, {
+        key: 'bug-repair:mirror-1',
+        isolation: 'BRANCH_WORKTREE',
+        baseRef: 'origin/main',
+        branch: 'apt/repair/mirror-1',
+      }),
+    );
+
+    expect(await readlink(join(repair, 'node_modules'))).toBe(
+      join(binding, 'node_modules'),
+    );
+    expect(await readlink(join(repair, '.env.local'))).toBe(
+      join(binding, '.env.local'),
+    );
+    expect(await readFile(join(repair, 'node_modules', 'dep.js'), 'utf8')).toBe(
+      'dep\n',
+    );
+    expect(await readlink(join(repair, 'cache', '.DS_Store'))).toBe(
+      join(binding, 'cache', '.DS_Store'),
+    );
+    expect(await output(['git', '-C', repair, 'status', '--porcelain'])).toBe(
+      '',
+    );
+
+    await writeFile(join(repair, '.env.local'), 'LOCAL=1\n');
+    const reused = cwd(
+      await manager.prepare(binding, {
+        key: 'bug-repair:mirror-1',
+        isolation: 'BRANCH_WORKTREE',
+        baseRef: 'origin/main',
+        branch: 'apt/repair/mirror-1',
+      }),
+    );
+    expect(reused).toBe(repair);
+    expect(await readFile(join(repair, '.env.local'), 'utf8')).toBe(
+      'LOCAL=1\n',
+    );
   });
 });
 

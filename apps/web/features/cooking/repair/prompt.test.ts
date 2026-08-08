@@ -29,6 +29,7 @@ describe('Repair prompt contract', () => {
       outputJsonSchema: RepairOutputJsonSchema,
     });
     expect(prompt.renderedPrompt).toContain('不得 push、部署、改写历史');
+    expect(prompt.renderedPrompt).toContain('跳过浏览器验证');
     expect(prompt.renderedPrompt).toContain('支付按钮无响应');
     expect(prompt.renderedPrompt).not.toContain('Execution ID');
     expect(prompt.renderedPrompt).not.toContain('Prompt Version');
@@ -42,6 +43,7 @@ describe('Repair prompt contract', () => {
     });
     expect(prompt.renderedPrompt).toContain('不要求用户补充文本');
     expect(prompt.renderedPrompt).toContain('重新检查未完成原因');
+    expect(prompt.renderedPrompt).toContain('跳过浏览器验证');
     expect(prompt.renderedPrompt).not.toContain('需求：');
     expect(prompt.outputJsonSchema).toEqual(RepairOutputJsonSchema);
   });

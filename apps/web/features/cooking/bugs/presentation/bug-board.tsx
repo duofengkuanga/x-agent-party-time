@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from 'react';
 import type { JsonValue } from '@agent-party-time/execution-contract';
+import { createClientId } from '@/features/cooking/shared/client-id';
 import type {
   BugProgressTimelineNode,
   CookingWorkspaceSnapshot,
@@ -161,7 +162,7 @@ export function BugBoard({
     run(
       () =>
         cancelBugAction(bug.id, {
-          mutationId: crypto.randomUUID(),
+          mutationId: createClientId(),
           expectedVersion: bug.version,
         }),
       `${bugLabel(bug)} 已取消。`,
@@ -173,7 +174,7 @@ export function BugBoard({
           successMessage: `${bugLabel(bug)} 已恢复到待修复。`,
           command: () =>
             restoreBugAction(bug.id, {
-              mutationId: crypto.randomUUID(),
+              mutationId: createClientId(),
               expectedVersion: version,
             }),
         });
@@ -186,7 +187,7 @@ export function BugBoard({
     run(
       () =>
         archiveBugAction(bug.id, {
-          mutationId: crypto.randomUUID(),
+          mutationId: createClientId(),
           expectedVersion: bug.version,
         }),
       `${bugLabel(bug)} 已归档。`,
@@ -198,7 +199,7 @@ export function BugBoard({
           successMessage: `${bugLabel(bug)} 已移出归档。`,
           command: () =>
             unarchiveBugAction(bug.id, {
-              mutationId: crypto.randomUUID(),
+              mutationId: createClientId(),
               expectedVersion: version,
             }),
         });
@@ -462,7 +463,7 @@ export function BugBoard({
                           }
                           onVerifyPass={() => {
                             const formData = new FormData();
-                            formData.set('mutationId', crypto.randomUUID());
+                            formData.set('mutationId', createClientId());
                             formData.set(
                               'expectedVersion',
                               String(bug.version),
@@ -665,9 +666,7 @@ function BugCard({
       <span aria-hidden="true" className="collab-bug-card__state">
         {visual.symbol}
       </span>
-      <small>
-        {bugLabel(bug)} · {bug.presentation.assignmentLabel}
-      </small>
+      <small>{bug.presentation.assignmentLabel}</small>
       <h3>{bug.report.title}</h3>
       {visual.state !== 'IDLE' ? (
         <strong className="collab-bug-card__attention">{visual.label}</strong>
@@ -862,7 +861,7 @@ function BugForm({
       try {
         if (bug && !canEditReport) {
           const result = await assignBugAction(bug.id, {
-            mutationId: crypto.randomUUID(),
+            mutationId: createClientId(),
             expectedVersion: bug.version,
             submissionItemId: submissionItemId || null,
           });
@@ -874,7 +873,7 @@ function BugForm({
           return;
         }
         const formData = new FormData();
-        formData.set('mutationId', crypto.randomUUID());
+        formData.set('mutationId', createClientId());
         if (bug) formData.set('expectedVersion', String(bug.version));
         formData.set('submissionItemId', submissionItemId);
         formData.set('title', title);
@@ -1216,7 +1215,7 @@ function BugDetail({
                 run(
                   () =>
                     requestRepairAction(bug.id, {
-                      mutationId: crypto.randomUUID(),
+                      mutationId: createClientId(),
                       expectedVersion: bug.version,
                     }),
                   '缺陷已提交自动修复。',
@@ -1234,7 +1233,7 @@ function BugDetail({
                 run(
                   () =>
                     freezeUpdateNowAction(submissionItemId!, {
-                      mutationId: crypto.randomUUID(),
+                      mutationId: createClientId(),
                     }),
                   '当前待更新缺陷已冻结为统一更新批次。',
                 )
@@ -1267,7 +1266,7 @@ function BugDetail({
                   disabled={pending}
                   onClick={() => {
                     const formData = new FormData();
-                    formData.set('mutationId', crypto.randomUUID());
+                    formData.set('mutationId', createClientId());
                     formData.set('expectedVersion', String(bug.version));
                     formData.set('result', 'PASSED');
                     formData.set('comment', verificationComment);
@@ -1309,7 +1308,7 @@ function BugDetail({
                   disabled={pending || !verificationFeedback.trim()}
                   onClick={() => {
                     const formData = new FormData();
-                    formData.set('mutationId', crypto.randomUUID());
+                    formData.set('mutationId', createClientId());
                     formData.set('expectedVersion', String(bug.version));
                     formData.set('result', 'FAILED');
                     formData.set('feedback', verificationFeedback);
@@ -1362,7 +1361,7 @@ function BugDetail({
               disabled={pending || !verificationFeedback.trim()}
               onClick={() => {
                 const formData = new FormData();
-                formData.set('mutationId', crypto.randomUUID());
+                formData.set('mutationId', createClientId());
                 formData.set('expectedVersion', String(bug.version));
                 formData.set('feedback', verificationFeedback);
                 verificationFiles.forEach((file) =>
@@ -1396,7 +1395,7 @@ function BugDetail({
               run(
                 () =>
                   restoreBugAction(bug.id, {
-                    mutationId: crypto.randomUUID(),
+                    mutationId: createClientId(),
                     expectedVersion: bug.version,
                   }),
                 '缺陷已恢复到待修复。',
@@ -1418,7 +1417,7 @@ function BugDetail({
               run(
                 () =>
                   unarchiveBugAction(bug.id, {
-                    mutationId: crypto.randomUUID(),
+                    mutationId: createClientId(),
                     expectedVersion: bug.version,
                   }),
                 '缺陷已移出归档。',
@@ -1721,7 +1720,7 @@ function RepairAttemptTimelineArticle({
           key={interaction.id}
           onResolve={(resolution) =>
             resolveRepairInteractionAction(interaction.id, {
-              mutationId: crypto.randomUUID(),
+              mutationId: createClientId(),
               expectedVersion: bug.version,
               resolution,
             })
@@ -1733,6 +1732,9 @@ function RepairAttemptTimelineArticle({
       {!node.result ? (
         <dl className="collab-bug-detail-list">
           <Detail label="Agent">{node.agentName}</Detail>
+          <Detail label="会话 ID">
+            {node.sessionId ?? '等待 Agent 建立会话'}
+          </Detail>
           <Detail label="处理状态">
             {['CLAIMED', 'RUNNING'].includes(node.executionState)
               ? '正在自动处理'
@@ -1827,7 +1829,7 @@ function RepairAttemptTimelineArticle({
                 run(
                   () =>
                     continueRepairAction(bug.id, {
-                      mutationId: crypto.randomUUID(),
+                      mutationId: createClientId(),
                       expectedVersion: bug.version,
                     }),
                   '已在原修复会话中重新执行。',
@@ -2114,7 +2116,7 @@ function UpdateBatchDetails({
                             interaction={interaction}
                             onResolve={(resolution) =>
                               resolveUpdateInteractionAction(interaction.id, {
-                                mutationId: crypto.randomUUID(),
+                                mutationId: createClientId(),
                                 expectedVersion: batch.version,
                                 resolution,
                               })
@@ -2156,7 +2158,7 @@ function UpdateBatchDetails({
                 run(
                   () =>
                     retryUpdateAction(batch.id, {
-                      mutationId: crypto.randomUUID(),
+                      mutationId: createClientId(),
                       expectedVersion: batch.version,
                     }),
                   '已重新执行统一更新。',
@@ -2212,7 +2214,7 @@ function UpdateBatchDetails({
                 }
                 onClick={() => {
                   const formData = new FormData();
-                  formData.set('mutationId', crypto.randomUUID());
+                  formData.set('mutationId', createClientId());
                   formData.set('expectedVersion', String(batch.version));
                   formData.set('outcome', externalOutcome);
                   formData.set('summary', externalSummary);
@@ -2531,7 +2533,7 @@ function dragTransition(bug: BugView, target: MainStage) {
     return {
       command: () =>
         requestRepairAction(bug.id, {
-          mutationId: crypto.randomUUID(),
+          mutationId: createClientId(),
           expectedVersion: bug.version,
         }),
       message: `${bugLabel(bug)} 已提交自动修复。`,
@@ -2544,7 +2546,7 @@ function dragTransition(bug: BugView, target: MainStage) {
     return {
       command: () => {
         const formData = new FormData();
-        formData.set('mutationId', crypto.randomUUID());
+        formData.set('mutationId', createClientId());
         formData.set('expectedVersion', String(bug.version));
         formData.set('result', 'PASSED');
         return verifyBugAction(bug.id, formData);

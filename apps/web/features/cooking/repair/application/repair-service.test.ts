@@ -201,7 +201,7 @@ describe('RepairService', () => {
       bindingId: fixture.binding.id,
       priority: 0,
       promptKind: 'cooking.repair',
-      promptVersion: 2,
+      promptVersion: 3,
       resumeSessionId: null,
       workspace: {
         key: `bug-repair:${fixture.requested.bug.id}`,
@@ -692,6 +692,16 @@ describe('RepairService', () => {
       state: 'NEEDS_APPROVAL',
       label: '需要你审批',
       symbol: '!',
+    });
+    expect(
+      testerRepair.timeline.find((node) => node.kind === 'REPAIR_ATTEMPT'),
+    ).toMatchObject({
+      sessionId: null,
+    });
+    expect(
+      developerRepair.timeline.find((node) => node.kind === 'REPAIR_ATTEMPT'),
+    ).toMatchObject({
+      sessionId: 'interaction-session',
     });
     expect(JSON.stringify(developerView)).not.toContain('/Users/example');
     expect(() =>

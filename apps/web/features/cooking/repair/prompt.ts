@@ -3,7 +3,7 @@ import type { JsonObject } from '@agent-party-time/execution-contract';
 import { RepairOutputJsonSchema } from './contract';
 
 export const REPAIR_PROMPT_KIND = 'cooking.repair';
-export const REPAIR_PROMPT_VERSION = 2;
+export const REPAIR_PROMPT_VERSION = 3;
 
 const STABLE_PREFIX = `你是本机仓库中的修复执行者。请只处理本次给出的缺陷，遵守仓库内 AGENTS.md 等规则。
 
@@ -12,6 +12,7 @@ const STABLE_PREFIX = `你是本机仓库中的修复执行者。请只处理本
 - 可以使用 Codex 自身工具检查代码、运行必要测试并创建普通本地 Git Commit。
 - 不得 push、部署、改写历史、squash、amend、rebase 或清理无关内容。
 - 不得伪造测试、Commit 或执行结果。
+- 如需验证网页功能，跳过浏览器验证，不启动或等待浏览器验证流程；改用代码级测试、静态检查或其他无需浏览器的验证方式。
 - 成功时不得留下属于本缺陷的未提交修改，必须返回按创建顺序排列的非空 Commit SHA。
 - 成功时还要逐项返回修改内容、检查结果和警告；没有警告时返回空数组。
 - 无法安全完成时返回 FAILED，并明确失败阶段、原因、已完成事项和未执行事项，不得编造 Commit。
@@ -70,7 +71,9 @@ export function buildContinuationRepairPrompt(input: {
   lifecycleContext?: string;
   pendingCommits: string[];
 }): RepairPromptSnapshot {
-  return snapshot(`重新执行当前修复 Session。沿用原缺陷报告、历史上下文和已经解决的 Interaction，不要求用户补充文本。
+  return snapshot(`临时补充执行约束：如需验证网页功能，跳过浏览器验证，不启动或等待浏览器验证流程；改用代码级测试、静态检查或其他无需浏览器的验证方式。
+
+重新执行当前修复 Session。沿用原缺陷报告、历史上下文和已经解决的 Interaction，不要求用户补充文本。
 
 ${input.lifecycleContext ? `- 生命周期上下文：${input.lifecycleContext}\n` : ''}
 - 当前待更新候选 Commit：${input.pendingCommits.join(', ') || '无'}
