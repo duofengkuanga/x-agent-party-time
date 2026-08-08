@@ -19,6 +19,17 @@ export interface CliResult {
   stderr?: string;
 }
 
+export interface BugsDeleteInput {
+  bugIds: readonly string[];
+  all: boolean;
+  force: boolean;
+}
+
+export interface BugsDeleteResult {
+  deletedBugIds: string[];
+  deletedExecutionIds: string[];
+}
+
 export interface CliRuntime {
   daemonStart(): Promise<{ snapshot: DaemonSnapshot; alreadyRunning: boolean }>;
   daemonStatus(): Promise<DaemonSnapshot>;
@@ -36,6 +47,7 @@ export interface CliRuntime {
     remoteRevoked: boolean;
     warnings: string[];
   }>;
+  bugsDelete(input: BugsDeleteInput): Promise<BugsDeleteResult>;
   internalDaemon(): Promise<void>;
 }
 
@@ -97,6 +109,18 @@ export async function runCli(
           stdout: renderDaemonStatus(snapshot),
         };
       }
+      case 'bugs-delete': {
+        if (!runtime) return notImplemented('bugs delete');
+        const result = await runtime.bugsDelete({
+          bugIds: command.bugIds,
+          all: command.all,
+          force: command.force,
+        });
+        return {
+          exitCode: EXIT_SUCCESS,
+          stdout: renderBugsDeleteResult(result),
+        };
+      }
       case 'uninstall':
         if (!runtime) return notImplemented('uninstall');
         {
@@ -141,6 +165,16 @@ function notImplemented(command: string): CliResult {
     exitCode: EXIT_FAILURE,
     stderr: renderNotImplemented(command),
   };
+}
+
+function renderBugsDeleteResult(result: BugsDeleteResult): string {
+  const lines = [
+    result.deletedBugIds.length > 0
+      ? `已删除缺陷 ${result.deletedBugIds.length} 个：${result.deletedBugIds.join('、')}`
+      : '没有需要删除的缺陷。',
+    `已删除关联 Execution ${result.deletedExecutionIds.length} 个。`,
+  ];
+  return lines.join('\n');
 }
 
 function renderDaemonStatus(snapshot: DaemonSnapshot): string {

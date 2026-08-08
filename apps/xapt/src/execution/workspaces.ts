@@ -219,6 +219,63 @@ export class GitExecutionWorkspaceManager implements ExecutionWorkspaceManager {
       );
   }
 
+  async workspaceKeys(): Promise<string[]> {
+    const current = await this.readState();
+    return Object.keys(current.workspaces).sort();
+  }
+
+  async removeWorkspaces(
+    keys: string[],
+    options: { force: boolean },
+  ): Promise<void> {
+    const current = await this.readState();
+    const records = [...new Set(keys)]
+      .map((key) => ({ key, record: current.workspaces[key] }))
+      .filter(
+        (entry): entry is { key: string; record: WorkspaceRecord } =>
+          entry.record !== undefined,
+      );
+    // 第一遍：只读校验全部记录，任何一条不满足都不删除，避免半途失败。
+    for (const { key, record } of records) {
+      if (dirname(record.worktreePath) !== this.worktreeRoot)
+        throw new Error(`拒绝删除不属于本机管理的工作区（${key}）`);
+      if (!(await pathExists(record.worktreePath))) continue;
+      if (
+        !(await isExpectedGitWorktree(
+          record.repositoryPath,
+          record,
+          this.worktreeRoot,
+        ))
+      )
+        throw new Error(`拒绝删除仓库或分支身份不匹配的本机工作区（${key}）`);
+      if (
+        !options.force &&
+        (await git(record.worktreePath, ['status', '--porcelain'])).length > 0
+      )
+        throw new Error(
+          `工作区仍有未提交修改（${key}），拒绝删除；如需强制删除请加 --force`,
+        );
+    }
+    // 第二遍：执行删除。每条记录使用各自绑定的 repositoryPath。
+    for (const { key, record } of records) {
+      if (await pathExists(record.worktreePath))
+        await git(record.repositoryPath, [
+          'worktree',
+          'remove',
+          ...(options.force ? ['--force'] : []),
+          record.worktreePath,
+        ]);
+      else await git(record.repositoryPath, ['worktree', 'prune']);
+      await deleteBranchIfPresent(record.repositoryPath, record.branch);
+      delete current.workspaces[key];
+    }
+    for (const repositoryPath of [
+      ...new Set(records.map(({ record }) => record.repositoryPath)),
+    ])
+      await git(repositoryPath, ['worktree', 'prune']);
+    await this.writeState(current);
+  }
+
   private async cleanup(
     repositoryPath: string,
     workspaceKeys: string[],

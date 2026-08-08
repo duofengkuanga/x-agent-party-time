@@ -1,14 +1,14 @@
 import type { CliRuntime } from './cli/run';
 import { MacOsCodexPreflight } from './daemon/codex';
 import { AgentService } from './daemon/agent-service';
-import { ConnectionCoordinator } from './daemon/connection';
+import { ConnectionCoordinator, normalizeServerOrigin } from './daemon/connection';
 import { DaemonControlClient } from './daemon/control';
 import { DaemonManager } from './daemon/manager';
 import { DaemonRuntime } from './daemon/runtime';
 import { NodeLocalFileSystem } from './platform/files';
 import { MacOsBrowser } from './platform/macos/browser';
 import { MacOsDirectorySelector } from './platform/macos/directory-selector';
-import { MacOsKeychain } from './platform/macos/keychain';
+import { MacOsKeychain, keychainAccount } from './platform/macos/keychain';
 import { MacOsLaunchAgent } from './platform/macos/launch-agent';
 import { xaptPaths } from './platform/paths';
 import {
@@ -68,6 +68,8 @@ export function createCliRuntime(): CliRuntime {
     environment,
     keychain,
   );
+  const http = new RunnerHttpClient();
+  const workspaces = new GitExecutionWorkspaceManager(paths);
   return {
     daemonStart: () => manager.start(),
     daemonStatus: () => manager.status(),
@@ -76,6 +78,30 @@ export function createCliRuntime(): CliRuntime {
     daemonStop: (force) => manager.stop(force),
     update: () => updates.update(),
     uninstall: (force) => uninstaller.uninstall(force),
+    bugsDelete: async ({ bugIds, all, force }) => {
+      const connection = await state.loadConnection();
+      if (!connection)
+        throw new Error(
+          '尚未连接 Server，请先运行 xapt daemon connect <server-url>',
+        );
+      const origin = normalizeServerOrigin(connection.serverUrl);
+      const credential = await keychain.read(
+        keychainAccount(origin, connection.runnerId),
+      );
+      if (!credential)
+        throw new Error(
+          '未找到本机 Credential，请先运行 xapt daemon connect <server-url>',
+        );
+      const keys = all
+        ? await workspaces.workspaceKeys()
+        : bugIds.map((bugId) => `bug-repair:${bugId}`);
+      await workspaces.removeWorkspaces(keys, { force });
+      return http.deleteBugs(origin, credential, {
+        bugIds: all ? undefined : bugIds,
+        all,
+        force,
+      });
+    },
     internalDaemon: async () => {
       if (
         environment.platform() !== 'darwin' ||
@@ -83,7 +109,6 @@ export function createCliRuntime(): CliRuntime {
       )
         throw new Error('xapt 0.x 只支持 Apple Silicon macOS');
       const installation = await codex.check();
-      const http = new RunnerHttpClient();
       const connection = new ConnectionCoordinator(
         state,
         keychain,
@@ -103,7 +128,7 @@ export function createCliRuntime(): CliRuntime {
           state,
           files,
           new AttachmentMaterializer(http, paths),
-          new GitExecutionWorkspaceManager(paths),
+          workspaces,
           new CodexAppServerExecutor(installation.executable),
         ),
       );

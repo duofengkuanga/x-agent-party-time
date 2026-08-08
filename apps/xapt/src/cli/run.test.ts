@@ -5,6 +5,7 @@ import {
   EXIT_SUCCESS,
   EXIT_USAGE,
   runCli,
+  type BugsDeleteInput,
   type CliRuntime,
 } from './run';
 
@@ -44,6 +45,9 @@ describe('runCli', () => {
     [['update']],
     [['uninstall']],
     [['uninstall', '--force']],
+    [
+      ['bugs', 'delete', '944d519c-1ed0-4711-a3b1-325bec5bbe56'],
+    ],
     [['internal-daemon']],
   ] as const)(
     'recognized but unimplemented command %j fails explicitly',
@@ -147,6 +151,33 @@ describe('runCli', () => {
     expect(force).toBe(true);
     expect(result.exitCode).toBe(EXIT_SUCCESS);
   });
+
+  test('bugs delete 传递参数并渲染删除结果', async () => {
+    let input: BugsDeleteInput | undefined;
+    const runtime = fakeRuntime(runningSnapshot('CONNECTED'));
+    runtime.bugsDelete = async (value) => {
+      input = value;
+      return {
+        deletedBugIds: ['944d519c-1ed0-4711-a3b1-325bec5bbe56'],
+        deletedExecutionIds: ['00000000-0000-4000-8000-000000000001'],
+      };
+    };
+
+    const result = await runCli(
+      ['bugs', 'delete', '944d519c-1ed0-4711-a3b1-325bec5bbe56', '--force'],
+      runtime,
+    );
+
+    expect(input).toEqual({
+      bugIds: ['944d519c-1ed0-4711-a3b1-325bec5bbe56'],
+      all: false,
+      force: true,
+    });
+    expect(result.exitCode).toBe(EXIT_SUCCESS);
+    expect(result.stdout).toContain('已删除缺陷 1 个');
+    expect(result.stdout).toContain('已删除关联 Execution 1 个');
+    expect(result.stdout).not.toMatch(/credential|runnerId|\/Users\//i);
+  });
 });
 
 function fakeRuntime(snapshot: DaemonSnapshot): CliRuntime {
@@ -169,6 +200,7 @@ function fakeRuntime(snapshot: DaemonSnapshot): CliRuntime {
       daemonRestarted: false,
     }),
     uninstall: async () => ({ remoteRevoked: true, warnings: [] }),
+    bugsDelete: async () => ({ deletedBugIds: [], deletedExecutionIds: [] }),
     internalDaemon: async () => {},
   };
 }

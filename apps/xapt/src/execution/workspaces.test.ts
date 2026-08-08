@@ -251,6 +251,113 @@ describe('GitExecutionWorkspaceManager', () => {
       'LOCAL=1\n',
     );
   });
+
+  test('removeWorkspaces 先全量校验再删除，force 覆盖未提交修改', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'apt-workspaces-'));
+    directories.push(root);
+    const remote = join(root, 'remote.git');
+    const source = join(root, 'source');
+    const binding = join(root, 'binding');
+    await run(['git', 'init', '--bare', remote]);
+    await run(['git', 'init', source]);
+    await run([
+      'git',
+      '-C',
+      source,
+      'config',
+      'user.email',
+      'test@example.com',
+    ]);
+    await run(['git', '-C', source, 'config', 'user.name', 'Test']);
+    await writeFile(join(source, 'README.md'), 'baseline\n');
+    await run(['git', '-C', source, 'add', 'README.md']);
+    await run(['git', '-C', source, 'commit', '-m', 'baseline']);
+    await run(['git', '-C', source, 'branch', '-M', 'main']);
+    await run(['git', '-C', source, 'remote', 'add', 'origin', remote]);
+    await run(['git', '-C', source, 'push', '-u', 'origin', 'main']);
+    await run(['git', 'clone', remote, binding]);
+    await run(['git', '-C', binding, 'switch', 'main']);
+
+    const paths = xaptPaths(root);
+    const manager = new GitExecutionWorkspaceManager(paths);
+    const repair = cwd(
+      await manager.prepare(binding, {
+        key: 'bug-repair:bug-1',
+        isolation: 'BRANCH_WORKTREE',
+        baseRef: 'origin/main',
+        branch: 'apt/repair/bug-1',
+      }),
+    );
+    const clean = cwd(
+      await manager.prepare(binding, {
+        key: 'bug-repair:bug-2',
+        isolation: 'BRANCH_WORKTREE',
+        baseRef: 'origin/main',
+        branch: 'apt/repair/bug-2',
+      }),
+    );
+    const missing = cwd(
+      await manager.prepare(binding, {
+        key: 'bug-repair:bug-3',
+        isolation: 'BRANCH_WORKTREE',
+        baseRef: 'origin/main',
+        branch: 'apt/repair/bug-3',
+      }),
+    );
+
+    expect(await manager.workspaceKeys()).toEqual([
+      'bug-repair:bug-1',
+      'bug-repair:bug-2',
+      'bug-repair:bug-3',
+    ]);
+
+    await writeFile(join(repair, 'dirty.txt'), 'x\n');
+    await expect(
+      manager.removeWorkspaces(['bug-repair:bug-1'], { force: false }),
+    ).rejects.toThrow('未提交修改');
+    expect(await manager.workspaceKeys()).toContain('bug-repair:bug-1');
+
+    await manager.removeWorkspaces(['bug-repair:missing'], { force: false });
+    expect(await manager.workspaceKeys()).toHaveLength(3);
+
+    // 身份不匹配时拒绝，且不删除其他记录
+    await run(['git', '-C', clean, 'switch', '-c', 'wrong-branch']);
+    await expect(
+      manager.removeWorkspaces(
+        ['bug-repair:bug-1', 'bug-repair:bug-2'],
+        { force: true },
+      ),
+    ).rejects.toThrow('身份不匹配');
+    expect(await manager.workspaceKeys()).toContain('bug-repair:bug-1');
+    expect(await manager.workspaceKeys()).toContain('bug-repair:bug-2');
+    await run(['git', '-C', clean, 'switch', 'apt/repair/bug-2']);
+
+    // 物理目录已丢失：prune + 删除分支
+    await rm(missing, { recursive: true, force: true });
+    await manager.removeWorkspaces(['bug-repair:bug-3'], { force: false });
+    expect(await manager.workspaceKeys()).not.toContain('bug-repair:bug-3');
+
+    // force 删除脏工作区，同时删除干净工作区
+    await manager.removeWorkspaces(
+      ['bug-repair:bug-1', 'bug-repair:bug-2'],
+      { force: true },
+    );
+    expect(await manager.workspaceKeys()).toEqual([]);
+    const worktrees = await output([
+      'git',
+      '-C',
+      binding,
+      'worktree',
+      'list',
+      '--porcelain',
+    ]);
+    expect(worktrees).not.toContain(repair);
+    expect(worktrees).not.toContain(clean);
+    const heads = await output(['git', '-C', binding, 'show-ref', '--heads']);
+    expect(heads).not.toContain('apt/repair/bug-1');
+    expect(heads).not.toContain('apt/repair/bug-2');
+    expect(heads).not.toContain('apt/repair/bug-3');
+  });
 });
 
 function cwd(

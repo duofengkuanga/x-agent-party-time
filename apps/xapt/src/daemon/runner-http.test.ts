@@ -59,6 +59,39 @@ test('Binding HTTP 请求携带认证但 Payload 从不包含本机路径', asyn
   expect(bodies.at(-1)).toContain('https://github.com/team/repository.git');
 });
 
+test('deleteBugs 携带认证并解析删除结果', async () => {
+  let request: Request | undefined;
+  const client = new RunnerHttpClient(async (input, init) => {
+    request = new Request(input, init);
+    return Response.json({
+      deletedBugIds: ['944d519c-1ed0-4711-a3b1-325bec5bbe56'],
+      deletedExecutionIds: ['00000000-0000-4000-8000-000000000001'],
+    });
+  });
+
+  const result = await client.deleteBugs(
+    'https://apt.example.com',
+    credential,
+    {
+      bugIds: ['944d519c-1ed0-4711-a3b1-325bec5bbe56'],
+      all: false,
+      force: true,
+    },
+  );
+
+  expect(result).toEqual({
+    deletedBugIds: ['944d519c-1ed0-4711-a3b1-325bec5bbe56'],
+    deletedExecutionIds: ['00000000-0000-4000-8000-000000000001'],
+  });
+  expect(new URL(request!.url).pathname).toBe('/api/cooking/bugs/delete');
+  expect(await request?.json()).toEqual({
+    bugIds: ['944d519c-1ed0-4711-a3b1-325bec5bbe56'],
+    all: false,
+    force: true,
+  });
+  expect(request?.headers.get('authorization')).toBe(`Bearer ${credential}`);
+});
+
 test('网络失败被归一为可分类错误且不会泄露 Credential', async () => {
   const client = new RunnerHttpClient(async () => {
     throw new Error(`failed with ${credential}`);

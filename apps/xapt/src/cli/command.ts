@@ -7,6 +7,7 @@ export type XaptCommand =
   | { kind: 'daemon-status' }
   | { kind: 'update' }
   | { kind: 'uninstall'; force: boolean }
+  | { kind: 'bugs-delete'; bugIds: readonly string[]; all: boolean; force: boolean }
   | { kind: 'internal-daemon' };
 
 export class CliUsageError extends Error {
@@ -24,6 +25,8 @@ export function parseCommand(args: readonly string[]): XaptCommand {
   switch (command) {
     case 'daemon':
       return parseDaemonCommand(rest);
+    case 'bugs':
+      return parseBugsCommand(rest);
     case 'update':
       requireNoArguments('update', rest);
       return { kind: 'update' };
@@ -66,6 +69,31 @@ function parseDaemonCommand(args: readonly string[]): XaptCommand {
     default:
       throw new CliUsageError(`未知 daemon 子命令“${command}”`);
   }
+}
+
+function parseBugsCommand(args: readonly string[]): XaptCommand {
+  const [command, ...rest] = args;
+  if (command === 'delete') return parseBugsDeleteCommand(rest);
+  if (command === undefined) throw new CliUsageError('缺少 bugs 子命令');
+  throw new CliUsageError(`未知 bugs 子命令“${command}”`);
+}
+
+function parseBugsDeleteCommand(args: readonly string[]): XaptCommand {
+  const bugIds: string[] = [];
+  let all = false;
+  let force = false;
+  for (const arg of args) {
+    if (arg === '--force') force = true;
+    else if (arg === '--all') all = true;
+    else if (arg.startsWith('-'))
+      throw new CliUsageError(`bugs delete 不接受参数“${arg}”`);
+    else bugIds.push(arg);
+  }
+  if (all && bugIds.length > 0)
+    throw new CliUsageError('bugs delete 不能同时指定 --all 与缺陷 ID');
+  if (!all && bugIds.length === 0)
+    throw new CliUsageError('缺少必需参数 <bug-id> 或 --all');
+  return { kind: 'bugs-delete', bugIds, all, force };
 }
 
 function parseOptionalForce(command: string, args: readonly string[]): boolean {

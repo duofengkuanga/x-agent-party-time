@@ -38,6 +38,23 @@ import {
   type WaitInteractionResponse,
 } from '@agent-party-time/execution-contract';
 import type { ExecutionFileHttp } from '../execution/attachments';
+import { z } from 'zod';
+
+const BugsDeleteRequestSchema = z
+  .object({
+    bugIds: z.array(z.uuid()).min(1).optional(),
+    all: z.boolean().optional(),
+    force: z.boolean().optional(),
+  })
+  .strict()
+  .refine((value) => (value.all ? !value.bugIds : value.bugIds !== undefined), {
+    message: '必须指定 bugIds 或 all 之一',
+  });
+
+const BugsDeleteResponseSchema = z.object({
+  deletedBugIds: z.array(z.uuid()),
+  deletedExecutionIds: z.array(z.uuid()),
+});
 
 export type RunnerFetch = (
   input: string | URL | Request,
@@ -118,6 +135,11 @@ export interface RunnerExecutionHttp extends ExecutionFileHttp {
     leaseToken: string,
     waitMs?: number,
   ): Promise<WaitInteractionResponse>;
+  deleteBugs(
+    serverOrigin: string,
+    credential: string,
+    input: { bugIds?: readonly string[]; all?: boolean; force?: boolean },
+  ): Promise<{ deletedBugIds: string[]; deletedExecutionIds: string[] }>;
 }
 
 export class RunnerHttpClient
@@ -342,6 +364,22 @@ export class RunnerHttpClient
         serverOrigin,
         credential,
         `/api/runner/interactions/${encodeURIComponent(interactionId)}/wait`,
+        { method: 'POST', body: JSON.stringify(body) },
+      ),
+    );
+  }
+
+  async deleteBugs(
+    serverOrigin: string,
+    credential: string,
+    input: { bugIds?: readonly string[]; all?: boolean; force?: boolean },
+  ): Promise<{ deletedBugIds: string[]; deletedExecutionIds: string[] }> {
+    const body = BugsDeleteRequestSchema.parse(input);
+    return BugsDeleteResponseSchema.parse(
+      await this.authorizedJson(
+        serverOrigin,
+        credential,
+        '/api/cooking/bugs/delete',
         { method: 'POST', body: JSON.stringify(body) },
       ),
     );

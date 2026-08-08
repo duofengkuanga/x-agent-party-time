@@ -333,6 +333,13 @@ async function createFixture(
 }
 
 class FakeExecutionHttp implements RunnerExecutionHttp {
+  async deleteBugs(): Promise<{
+    deletedBugIds: string[];
+    deletedExecutionIds: string[];
+  }> {
+    return { deletedBugIds: [], deletedExecutionIds: [] };
+  }
+
   claimed: ClaimedExecution[];
   readonly claimSlots: number[] = [];
   readonly starts: ExecutionStartRequest[] = [];
