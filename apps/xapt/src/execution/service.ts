@@ -15,6 +15,7 @@ import { RunnerHttpError } from '../daemon/runner-http';
 import type { AttachmentMaterializer } from './attachments';
 import {
   CodexAppServerError,
+  type CodexApprovalPolicy,
   type CodexExecutor,
   type StartedCodexExecution,
 } from './codex-app-server';
@@ -213,6 +214,7 @@ export class ExecutionService {
     try {
       started = await this.executor.begin(
         {
+          approvalPolicy: approvalPolicyFor(execution),
           executionId: execution.id,
           repositoryPath,
           prompt: execution.renderedPrompt,
@@ -567,6 +569,16 @@ export class ExecutionService {
       },
     };
   }
+}
+
+function approvalPolicyFor(execution: ClaimedExecution): CodexApprovalPolicy {
+  if (
+    execution.owner.namespace === 'cooking' &&
+    (execution.owner.kind === 'BUG_REPAIR' ||
+      execution.owner.kind === 'UPDATE_BATCH')
+  )
+    return 'never';
+  return 'on-request';
 }
 
 function failureMessage(message: string): string {

@@ -513,7 +513,8 @@ export class RepairService {
       this.db
         .prepare(
           `SELECT id bug_id FROM cooking_bug
-           WHERE submission_id = ? ORDER BY short_id`,
+           WHERE submission_id = ? AND submission_item_id IS NOT NULL
+           ORDER BY short_id`,
         )
         .all(submissionId) as Array<{ bug_id: string }>
     ).map(({ bug_id }) => bug_id);

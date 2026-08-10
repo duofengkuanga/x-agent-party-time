@@ -1497,7 +1497,7 @@
 }
 
 .collab-engineering-card button:hover:not(:disabled),
-.collab-bug-card button:hover:not(:disabled),
+.collab-bug-card button:not(.collab-bug-card__open):hover:not(:disabled),
 .collab-dialog button:hover:not(:disabled) {
   background: var(--accent);
   border-color: var(--accent);
@@ -1978,13 +1978,36 @@
 }
 
 .collab-bug-card:hover,
-.collab-bug-card:focus-visible {
+.collab-bug-card:has(> .collab-bug-card__open:focus-visible) {
   background: color-mix(in srgb, var(--bug-stage-color) 12%, var(--panel));
   border-color: var(--bug-stage-color);
   box-shadow: 4px 4px 0
     color-mix(in srgb, var(--bug-stage-color), transparent 48%);
   outline: none;
   transform: translate(-1px, -1px);
+}
+
+.collab-bug-card > .collab-bug-card__open {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-size: 0;
+  inset: 0;
+  padding: 0;
+  position: absolute;
+  z-index: 1;
+}
+
+.collab-bug-card > .collab-bug-card__open:focus-visible {
+  outline: 2px solid var(--bug-stage-color);
+  outline-offset: -4px;
+}
+
+.collab-bug-card > .collab-bug-card__open:hover:not(:disabled) {
+  background: transparent;
+  border: 0;
+  color: inherit;
 }
 
 .collab-bug-card__state {
@@ -2000,18 +2023,12 @@
   width: 10px;
 }
 
-.collab-bug-card > small,
 .collab-bug-card > h3,
 .collab-bug-card > p,
 .collab-bug-card__attention {
   grid-column: 2;
   min-width: 0;
   overflow-wrap: anywhere;
-}
-
-.collab-bug-card > small {
-  color: var(--muted);
-  line-height: 1.4;
 }
 
 .collab-bug-card > p {
@@ -2132,6 +2149,113 @@
   font-weight: 600;
 }
 
+.collab-dialog.collab-bug-rework-dialog {
+  width: 520px;
+}
+
+.collab-bug-rework-dialog__body > p {
+  border-left: 2px solid var(--warning);
+  font-size: 11px;
+  line-height: 1.55;
+  margin: 0;
+  padding-left: 10px;
+}
+
+.collab-bug-rework-dialog > .collab-dialog__actions {
+  padding: 15px 20px 20px;
+}
+
+.collab-attachment-picker {
+  border: 1px dashed var(--strong-line);
+  display: grid;
+  gap: 9px;
+  padding: 10px;
+}
+
+.collab-attachment-picker:focus-visible,
+.collab-attachment-picker:focus-within {
+  border-color: var(--accent-dark);
+  outline: 2px solid color-mix(in srgb, var(--accent), transparent 58%);
+  outline-offset: 2px;
+}
+
+.collab-attachment-picker__input {
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  width: 1px;
+}
+
+.collab-attachment-picker__prompt {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.collab-attachment-picker__prompt > span {
+  display: grid;
+  gap: 3px;
+}
+
+.collab-attachment-picker__prompt strong {
+  font-size: 10px;
+}
+
+.collab-attachment-picker__prompt small,
+.collab-attachment-picker__empty {
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.collab-attachment-picker__prompt button {
+  flex: 0 0 auto;
+  font-size: 9px;
+  padding: 6px 9px;
+}
+
+.collab-attachment-picker__files {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 5px;
+  list-style: none;
+  margin: 0;
+  padding: 8px 0 0;
+}
+
+.collab-attachment-picker__files li {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.collab-attachment-picker__files li > span {
+  font-size: 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collab-attachment-picker__files li > small {
+  color: var(--faint);
+  font-size: 8px;
+}
+
+.collab-attachment-picker__files button {
+  border: 0;
+  color: var(--accent-dark);
+  font-size: 8px;
+  min-height: 0;
+  padding: 2px;
+}
+
+.collab-attachment-picker__notice {
+  color: var(--accent-dark);
+  font-size: 8px;
+}
+
 @keyframes collab-bug-card-breathe {
   0%,
   100% {
@@ -2147,11 +2271,13 @@
   }
 }
 
-.collab-bug-card--draggable {
+.collab-bug-card--draggable,
+.collab-bug-card--draggable > .collab-bug-card__open {
   cursor: grab;
 }
 
-.collab-bug-card--draggable:active {
+.collab-bug-card--draggable:active,
+.collab-bug-card--draggable > .collab-bug-card__open:active {
   cursor: grabbing;
 }
 
@@ -2177,12 +2303,12 @@
 }
 
 .collab-bug-card__type {
-  border: 1px solid var(--line);
-  color: var(--blue);
+  color: var(--faint);
   flex: 0 0 auto;
-  font-size: 10px;
-  font-weight: 800;
-  padding: 2px 5px;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.35;
   white-space: nowrap;
 }
 
@@ -2201,8 +2327,30 @@
 }
 
 .collab-bug-card__footer {
+  align-items: flex-end;
   display: flex;
-  justify-content: flex-end;
+  gap: 8px;
+  grid-column: 2;
+  justify-content: space-between;
+  margin-top: auto;
+  min-width: 0;
+  padding-top: 4px;
+  pointer-events: none;
+  position: relative;
+  z-index: 2;
+}
+
+.collab-bug-card__footer-end {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-left: auto;
+  min-width: 0;
+}
+
+.collab-bug-card__footer-end > .collab-bug-card__attention {
+  text-align: right;
 }
 
 .collab-bug-card__footer time {
@@ -3506,7 +3654,7 @@
 
 /* Global button interaction contract. Persistent semantic states are excluded. */
 .collab-shell
-  button:not(:disabled):not(.is-active):not([aria-current]):not(
+  button:not(:disabled):not(.collab-bug-card__open):not(.is-active):not([aria-current]):not(
     [aria-pressed='true']
   ):not([aria-expanded='true']),
 .collab-shell
@@ -3528,7 +3676,7 @@
 }
 
 .collab-shell
-  button:not(:disabled):not(.is-active):not([aria-current]):not(
+  button:not(:disabled):not(.collab-bug-card__open):not(.is-active):not([aria-current]):not(
     [aria-pressed='true']
   ):not([aria-expanded='true']):hover,
 .collab-shell
@@ -5658,14 +5806,10 @@
   position: sticky;
 }
 
-.collab-bug-drawer__body[data-detail-view='progress'] > .collab-bug-report {
-  display: none;
-}
-
-.collab-bug-drawer__body[data-detail-view='report']
-  > :not(.collab-bug-detail-hero):not(.collab-bug-report):not(
-    .collab-form__error
-  ) {
+.collab-bug-drawer__body[data-detail-view='repair']
+  > [data-progress-kind='update'],
+.collab-bug-drawer__body[data-detail-view='update']
+  > [data-progress-kind='repair'] {
   display: none;
 }
 
@@ -5687,8 +5831,28 @@
   z-index: 4;
 }
 
+.collab-bug-drawer__body[data-detail-view] > .collab-bug-detail-hero {
+  grid-template-columns: 300px minmax(0, 1fr);
+  padding-bottom: 18px;
+  position: relative;
+  top: auto;
+}
+
 .collab-bug-detail-hero > div {
   min-width: 0;
+}
+
+.collab-bug-detail-hero__title {
+  align-content: start;
+  display: grid;
+  gap: 10px;
+  width: 300px;
+}
+
+.collab-bug-detail-hero__title > button {
+  font-size: 9px;
+  justify-self: start;
+  padding: 4px 9px;
 }
 
 .collab-bug-detail-hero > div > small {
@@ -5709,12 +5873,23 @@
   overflow-wrap: anywhere;
 }
 
+.collab-bug-detail-hero__title h2 {
+  font-size: 20px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .collab-bug-detail-hero > dl {
   align-self: start;
   display: grid;
   gap: 8px 14px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin: 0;
+}
+
+.collab-bug-drawer__body[data-detail-view] > .collab-bug-detail-hero > dl {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .collab-bug-detail-hero > dl > div {
@@ -5740,6 +5915,39 @@
   overflow-wrap: anywhere;
 }
 
+.collab-bug-detail-fact {
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  display: -webkit-box;
+  overflow: hidden;
+}
+
+.collab-bug-detail-attachments {
+  display: grid;
+  gap: 3px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.collab-bug-detail-attachments li {
+  align-items: baseline;
+  display: flex;
+  gap: 5px;
+  min-width: 0;
+}
+
+.collab-bug-detail-attachments a {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collab-bug-detail-attachments small {
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+
 .collab-bug-id {
   align-items: center;
   display: inline-flex;
@@ -5761,21 +5969,38 @@
 }
 
 .collab-bug-detail-tabs {
+  align-items: end;
+  background: var(--paper);
+  border-bottom: 1px solid var(--strong-line);
   display: flex;
-  gap: 0;
-  grid-column: 1 / -1;
+  gap: 24px;
+  padding: 0 20px;
+  position: sticky;
+  top: 0;
+  z-index: 4;
 }
 
-.collab-bug-detail-tabs button {
-  border-bottom: 0;
-  min-width: 112px;
-  transform: translateY(1px);
+.collab-shell .collab-bug-detail-tabs button {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0;
+  color: var(--muted) !important;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  min-height: 38px;
+  min-width: 0;
+  padding: 1px 0 0;
 }
 
-.collab-bug-detail-tabs button[aria-current='page'] {
-  background: var(--ink);
-  border-color: var(--ink);
-  color: var(--paper);
+.collab-shell .collab-bug-detail-tabs button:hover:not(:disabled) {
+  background: transparent !important;
+  color: var(--accent-dark) !important;
+}
+
+.collab-shell .collab-bug-detail-tabs button[aria-current='page'] {
+  box-shadow: inset 0 -2px 0 var(--accent);
+  color: var(--ink) !important;
 }
 
 .collab-bug-detail-section {
@@ -5899,6 +6124,16 @@
   gap: 13px;
 }
 
+.collab-progress-timeline[data-summary-only='true'] .collab-progress-summary {
+  gap: 0;
+}
+
+.collab-progress-timeline[data-summary-only='true']
+  .collab-repair-timeline
+  > li {
+  padding-bottom: 18px;
+}
+
 .collab-repair-timeline article > header {
   align-items: baseline;
   display: flex;
@@ -5991,10 +6226,10 @@
   margin-top: 9px;
 }
 
-.collab-bug-report > .collab-bug-detail-section:first-child > header p {
-  color: var(--muted);
-  margin-top: 5px;
-  max-width: 620px;
+.collab-session-facts {
+  background: color-mix(in srgb, var(--paper), var(--blue) 4%);
+  border: 1px dashed var(--line);
+  padding: 8px 10px;
 }
 
 .collab-bug-detail-empty {
@@ -6002,11 +6237,17 @@
 }
 
 @media (max-width: 760px) {
-  .collab-bug-detail-hero {
+  .collab-bug-detail-hero,
+  .collab-bug-drawer__body[data-detail-view] > .collab-bug-detail-hero {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .collab-bug-detail-hero > dl {
+  .collab-bug-detail-hero__title {
+    width: 100%;
+  }
+
+  .collab-bug-detail-hero > dl,
+  .collab-bug-drawer__body[data-detail-view] > .collab-bug-detail-hero > dl {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -6816,19 +7057,14 @@
 /* 共享统一更新批次 */
 .collab-update-batch-card > h3 {
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 1;
+  -webkit-line-clamp: 2;
 }
 
-.collab-update-batch-card > p {
-  color: var(--muted);
-  display: -webkit-box;
-  font-size: 9px;
+.collab-update-batch-card__more {
+  color: var(--faint);
+  font-size: 8px;
   grid-column: 2;
-  line-height: 1.45;
-  margin: 0;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 1;
+  line-height: 1.35;
 }
 
 .collab-update-batch-summary {
@@ -6848,6 +7084,57 @@
 
 .collab-update-batch-detail {
   padding-bottom: 24px;
+}
+
+.collab-update-batch-detail--embedded {
+  padding-bottom: 0;
+}
+
+.collab-update-batch-progress > header p {
+  color: var(--muted);
+  margin-top: 5px;
+}
+
+.collab-update-scope {
+  margin-top: 1px;
+}
+
+.collab-update-scope > summary {
+  font-weight: 900;
+  list-style-position: inside;
+}
+
+.collab-update-scope__entries {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding-left: 18px;
+}
+
+.collab-update-scope__entries > li {
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.collab-update-timeline
+  > li[data-node-kind='BATCH_FORMED']
+  > .collab-repair-timeline__mark {
+  border-color: var(--blue);
+}
+
+.collab-update-timeline
+  > li[data-node-kind='UPDATE_ATTEMPT']
+  > .collab-repair-timeline__mark {
+  border-color: var(--accent);
+}
+
+.collab-update-timeline
+  .collab-repair-timeline__mark[data-outcome='SUCCEEDED'] {
+  border-color: var(--success);
+}
+
+.collab-update-timeline .collab-repair-timeline__mark[data-outcome='FAILED'] {
+  border-color: var(--danger);
 }
 
 .collab-update-timeline .collab-structured-failure {
@@ -6879,17 +7166,271 @@
   margin-top: 10px;
 }
 
-.collab-bug-card > .collab-bug-card__actions {
+.collab-bug-card__footer-end > .collab-bug-card__actions {
   display: flex;
   gap: 6px;
-  grid-column: 2;
   justify-content: flex-end;
-  margin-top: auto;
   min-width: 0;
-  padding-top: 4px;
+  pointer-events: auto;
 }
 
-.collab-bug-card > .collab-bug-card__actions button {
+.collab-bug-card__footer-end > .collab-bug-card__actions button {
   min-height: 28px;
   padding: 5px 8px;
+}
+
+/* Attachment assets stay visually unified across forms, details and timelines. */
+.collab-attachment-picker {
+  border-style: solid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.collab-attachment-picker__prompt {
+  border-left: 3px solid var(--accent);
+  padding-left: 10px;
+}
+
+.collab-attachment-picker__files {
+  display: grid;
+  gap: 7px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding-top: 10px;
+}
+
+.collab-attachment-picker__files li {
+  align-items: center;
+  background: color-mix(in srgb, var(--panel) 78%, transparent);
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+  padding: 7px;
+}
+
+.collab-attachment-picker__files li[data-source='new'] {
+  border-left: 3px solid var(--success);
+}
+
+.collab-attachment-picker__files li > button {
+  align-self: start;
+  background: transparent;
+  border: 0;
+  color: var(--accent-dark);
+  font-size: 8px;
+  min-height: 0;
+  padding: 3px;
+}
+
+.collab-attachment-picker__files li > button:hover,
+.collab-attachment-picker__files li > button:focus-visible {
+  background: var(--accent);
+  color: white;
+}
+
+.collab-attachment-picker__removed {
+  border-top: 1px dashed var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding-top: 8px;
+}
+
+.collab-attachment-picker__removed > span {
+  align-items: center;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 8px;
+  gap: 5px;
+}
+
+.collab-attachment-picker__removed button {
+  background: transparent;
+  border: 0;
+  color: var(--accent-dark);
+  font-size: 8px;
+  min-height: 0;
+  padding: 2px;
+}
+
+.collab-attachment-file {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 48px minmax(0, 1fr);
+  min-width: 0;
+  width: 100%;
+}
+
+.collab-attachment-file > button.collab-attachment-file__thumb {
+  background: var(--paper);
+  border: 1px solid var(--strong-line);
+  height: 42px;
+  min-height: 42px;
+  overflow: hidden;
+  padding: 0;
+  width: 48px;
+}
+
+.collab-attachment-file > button.collab-attachment-file__thumb:hover,
+.collab-attachment-file > button.collab-attachment-file__thumb:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 2px 2px 0 var(--accent);
+  transform: translate(-1px, -1px);
+}
+
+.collab-attachment-file__thumb img {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.collab-attachment-file__kind {
+  align-items: center;
+  background: color-mix(in srgb, var(--ink) 5%, var(--paper));
+  border: 1px solid var(--line);
+  color: var(--muted);
+  display: flex;
+  font-size: 7px;
+  font-weight: 900;
+  height: 42px;
+  justify-content: center;
+  letter-spacing: 0.08em;
+  width: 48px;
+}
+
+.collab-attachment-file__meta {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.collab-attachment-file__meta > :where(a, strong),
+.collab-attachment-file__meta > button.collab-attachment-file__name {
+  background: transparent;
+  border: 0;
+  color: var(--ink);
+  display: block;
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1.35;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+  text-align: left;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collab-attachment-file__meta > :where(a, button):hover,
+.collab-attachment-file__meta > :where(a, button):focus-visible {
+  color: var(--accent-dark);
+  text-decoration: underline;
+}
+
+.collab-attachment-file__meta > small {
+  color: var(--muted);
+  font-size: 7px;
+}
+
+.collab-attachments,
+.collab-bug-detail-attachments {
+  gap: 7px;
+}
+
+.collab-attachments li,
+.collab-bug-detail-attachments li {
+  align-items: center;
+  background: color-mix(in srgb, var(--panel) 72%, transparent);
+  border: 1px solid var(--line);
+  display: block;
+  min-width: 0;
+  padding: 6px;
+}
+
+.collab-bug-detail-attachments {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.collab-bug-form .collab-attachment-picker {
+  margin-bottom: 72px;
+}
+
+.collab-image-preview {
+  align-items: center;
+  background: color-mix(in srgb, var(--ink) 82%, transparent);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 28px;
+  position: fixed;
+  z-index: 120;
+}
+
+.collab-image-preview figure {
+  background: var(--paper);
+  border: 1px solid var(--strong-line);
+  display: grid;
+  margin: 0;
+  max-height: calc(100vh - 56px);
+  max-width: calc(100vw - 56px);
+  min-width: 520px;
+  overflow: auto;
+}
+
+.collab-image-preview figcaption {
+  align-items: center;
+  border-bottom: 1px solid var(--strong-line);
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  padding: 10px 12px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.collab-image-preview figcaption > strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collab-image-preview figcaption > span {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 7px;
+}
+
+.collab-image-preview :where(a, button) {
+  background: transparent;
+  border: 1px solid var(--ink);
+  color: var(--ink);
+  font-size: 9px;
+  min-height: 30px;
+  padding: 6px 9px;
+  text-decoration: none;
+}
+
+.collab-image-preview :where(a, button):hover,
+.collab-image-preview :where(a, button):focus-visible {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+  outline: none;
+}
+
+.collab-image-preview figure > img {
+  display: block;
+  height: auto;
+  margin: auto;
+  max-height: calc(100vh - 130px);
+  max-width: calc(100vw - 90px);
+  object-fit: contain;
+  width: auto;
 }

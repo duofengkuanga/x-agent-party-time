@@ -189,6 +189,28 @@ afterEach(async () => {
 });
 
 describe('RepairService', () => {
+  test('工作区允许缺陷暂未确定工程', async () => {
+    const fixture = await setup();
+    const unassigned = fixture.bugs.createBug(
+      fixture.users.tester.id,
+      fixture.submission.id,
+      {
+        mutationId: randomUUID(),
+        submissionItemId: null,
+        title: '暂未确定工程的缺陷',
+        attachmentIds: [],
+      },
+    );
+
+    const workspace = fixture.repairs.workspace(
+      fixture.users.tester.id,
+      fixture.submission.id,
+    );
+
+    expect(workspace.repairByBug[fixture.requested.bug.id]).toBeDefined();
+    expect(workspace.repairByBug[unassigned.bug.id]).toBeUndefined();
+  });
+
   test('首次请求创建绑定正确且带隔离 Worktree 的通用 Execution', async () => {
     const fixture = await setup();
     const attempt = latestAttempt(fixture.database, fixture.requested.bug.id);
