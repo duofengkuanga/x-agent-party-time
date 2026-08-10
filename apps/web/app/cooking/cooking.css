@@ -3654,9 +3654,9 @@
 
 /* Global button interaction contract. Persistent semantic states are excluded. */
 .collab-shell
-  button:not(:disabled):not(.collab-bug-card__open):not(.is-active):not([aria-current]):not(
-    [aria-pressed='true']
-  ):not([aria-expanded='true']),
+  button:not(:disabled):not(.collab-bug-card__open):not(.is-active):not(
+    [aria-current]
+  ):not([aria-pressed='true']):not([aria-expanded='true']),
 .collab-shell
   :where(
     a.repair-primary,
@@ -3676,9 +3676,9 @@
 }
 
 .collab-shell
-  button:not(:disabled):not(.collab-bug-card__open):not(.is-active):not([aria-current]):not(
-    [aria-pressed='true']
-  ):not([aria-expanded='true']):hover,
+  button:not(:disabled):not(.collab-bug-card__open):not(.is-active):not(
+    [aria-current]
+  ):not([aria-pressed='true']):not([aria-expanded='true']):hover,
 .collab-shell
   :where(
     a.repair-primary,
