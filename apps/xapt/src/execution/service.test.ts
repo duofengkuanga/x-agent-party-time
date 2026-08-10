@@ -85,6 +85,21 @@ test('已有 Session 通过 resumeSessionId 继续原 Thread', async () => {
   expect(fixture.executor.inputs[0]?.resumeSessionId).toBe('thread-existing');
 });
 
+test('Repair 与 Update 使用免审批策略，其他 Execution 保持按需审批', async () => {
+  for (const kind of ['BUG_REPAIR', 'UPDATE_BATCH', 'CLEANUP']) {
+    const fixture = await createFixture({
+      owner: { namespace: 'cooking', kind, id: `${kind.toLowerCase()}-1` },
+    });
+
+    await fixture.service.cycle(session);
+    await fixture.service.waitForIdle();
+
+    expect(fixture.executor.inputs[0]?.approvalPolicy).toBe(
+      kind === 'CLEANUP' ? 'on-request' : 'never',
+    );
+  }
+});
+
 test('Codex 结构化结果失败只收敛当前 Execution，不退出服务', async () => {
   const fixture = await createFixture({
     executorFailure: new CodexAppServerError(
@@ -279,6 +294,7 @@ async function createFixture(
     failOutcome?: boolean;
     deferredExecutor?: boolean;
     interactionExecutor?: boolean;
+    owner?: ClaimedExecution['owner'];
   } = {},
 ) {
   const home = await mkdtemp(join(tmpdir(), 'xapt-execution-'));
@@ -291,7 +307,12 @@ async function createFixture(
   await mkdir(repositoryPath);
   await state.bind(bindingId, repositoryPath);
   const http = new FakeExecutionHttp(
-    claimedExecution(options.resumeSessionId ?? null),
+    claimedExecution(
+      options.resumeSessionId ?? null,
+      executionId,
+      bindingId,
+      options.owner,
+    ),
   );
   http.failOutcome = options.failOutcome ?? false;
   const executor = new FakeCodexExecutor(
@@ -494,10 +515,15 @@ function claimedExecution(
   resumeSessionId: string | null,
   id = executionId,
   localBindingId = bindingId,
+  owner: ClaimedExecution['owner'] = {
+    namespace: 'test',
+    kind: 'task',
+    id: 'task-1',
+  },
 ): ClaimedExecution {
   return {
     id,
-    owner: { namespace: 'test', kind: 'task', id: 'task-1' },
+    owner,
     attempt: 1,
     previousExecutionId: null,
     runnerId,

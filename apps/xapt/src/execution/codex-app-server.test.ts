@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -18,21 +18,26 @@ afterEach(async () => {
   );
 });
 
-test('Fake Codex 完成 initialize、thread/start、turn/start 与结构化结果', async () => {
+test('Fake Codex 完成 thread start/resume、turn/start 与结构化结果', async () => {
   const root = await mkdtemp(join(tmpdir(), 'xapt-fake-codex-'));
   directories.push(root);
   const executable = join(root, 'codex');
+  const requestLog = join(root, 'requests.jsonl');
   await writeFile(
     executable,
     `#!/usr/bin/env node
+const fs = require('node:fs');
 const readline = require('node:readline');
 const rl = readline.createInterface({ input: process.stdin });
 rl.on('line', (line) => {
+  fs.appendFileSync(${JSON.stringify(requestLog)}, line + '\\n');
   const message = JSON.parse(line);
   if (message.method === 'initialize')
     console.log(JSON.stringify({ jsonrpc: '2.0', id: message.id, result: {} }));
   else if (message.method === 'thread/start')
     console.log(JSON.stringify({ jsonrpc: '2.0', id: message.id, result: { thread: { id: 'thread-1' } } }));
+  else if (message.method === 'thread/resume')
+    console.log(JSON.stringify({ jsonrpc: '2.0', id: message.id, result: {} }));
   else if (message.method === 'turn/start') {
     console.log(JSON.stringify({ jsonrpc: '2.0', id: message.id, result: { turn: { id: 'turn-1' } } }));
     console.log(JSON.stringify({ jsonrpc: '2.0', method: 'unknown/notification', params: { ignored: true } }));
@@ -47,6 +52,7 @@ rl.on('line', (line) => {
 
   const started = await executor.begin(
     {
+      approvalPolicy: 'on-request',
       executionId: '00000000-0000-4000-8000-000000000601',
       repositoryPath: root,
       prompt: '只返回 JSON',
@@ -61,6 +67,36 @@ rl.on('line', (line) => {
 
   expect(started.sessionId).toBe('thread-1');
   expect(await started.completion).toEqual({ summary: 'ok' });
+
+  const resumed = await executor.begin(
+    {
+      approvalPolicy: 'on-request',
+      executionId: '00000000-0000-4000-8000-000000000602',
+      repositoryPath: root,
+      prompt: '继续并只返回 JSON',
+      outputSchema: { type: 'object' },
+      attachments: [],
+      artifactsDirectory: join(root, 'artifacts'),
+      resumeSessionId: 'thread-1',
+      onInteraction: async () => ({}),
+    },
+    new AbortController().signal,
+  );
+  expect(resumed.sessionId).toBe('thread-1');
+  expect(await resumed.completion).toEqual({ summary: 'ok' });
+
+  const requests = (await readFile(requestLog, 'utf8'))
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+  for (const method of ['thread/start', 'thread/resume']) {
+    const request = requests.find((entry) => entry.method === method);
+    expect(request?.params).toMatchObject({
+      approvalPolicy: 'on-request',
+      approvalsReviewer: 'auto_review',
+      sandbox: 'workspace-write',
+    });
+  }
   await executor.close();
 });
 

@@ -14,7 +14,10 @@ export type CodexInteraction = {
   payload: JsonValue;
 };
 
+export type CodexApprovalPolicy = 'never' | 'on-request';
+
 export type CodexExecutionInput = {
+  approvalPolicy: CodexApprovalPolicy;
   executionId: string;
   repositoryPath: string;
   prompt: string;
@@ -57,6 +60,11 @@ type ActiveTurn = {
   reject: (error: Error) => void;
 };
 
+const XAPT_THREAD_SECURITY = {
+  approvalsReviewer: 'auto_review',
+  sandbox: 'workspace-write',
+} as const;
+
 export class CodexAppServerError extends Error {
   constructor(
     message: string,
@@ -94,15 +102,15 @@ export class CodexAppServerExecutor implements CodexExecutor {
         await this.request('thread/resume', {
           threadId,
           cwd: input.repositoryPath,
-          approvalPolicy: 'on-request',
-          sandbox: 'workspace-write',
+          approvalPolicy: input.approvalPolicy,
+          ...XAPT_THREAD_SECURITY,
         });
       } else {
         const response = asRecord(
           await this.request('thread/start', {
             cwd: input.repositoryPath,
-            approvalPolicy: 'on-request',
-            sandbox: 'workspace-write',
+            approvalPolicy: input.approvalPolicy,
+            ...XAPT_THREAD_SECURITY,
           }),
         );
         threadId = requiredString(asRecord(response.thread), 'id');
