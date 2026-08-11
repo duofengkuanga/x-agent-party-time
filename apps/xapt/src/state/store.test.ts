@@ -337,6 +337,7 @@ function recoveryExecution(now: string): ClaimedExecution {
     runnerId,
     bindingId,
     priority: 0,
+    approvalPolicy: 'on-request',
     state: 'RUNNING',
     promptKind: 'test',
     promptVersion: 1,

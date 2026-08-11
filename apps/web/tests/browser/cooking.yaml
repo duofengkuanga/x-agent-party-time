@@ -1,0 +1,195 @@
+suite: Cooking architecture browser acceptance
+setup:
+  - open: __BASE_URL__/login?next=/cooking/__SUBMISSION_ID__
+  - fill: { sel: 'input[name="username"]', text: __USERNAME__ }
+  - fill: { sel: 'input[name="password"]', text: __PASSWORD__ }
+  - click: '.auth-submit'
+  - wait: { load: networkidle }
+cases:
+  - name: tester sees all seeded workflow states
+    steps:
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: { load: networkidle }
+    assert:
+      - url: { contains: /cooking/__SUBMISSION_ID__ }
+      - text: { sel: body, contains: 浏览器架构验收提测 }
+      - visible: 'article[data-stage="WAITING_FOR_REPAIR"]'
+      - visible: 'article[data-stage="WAITING_FOR_VERIFICATION"]'
+      - visible: 'article[data-stage="DONE"]'
+      - visible: 'article[data-visual-state="NEEDS_APPROVAL"]'
+
+  - name: invalid project deep link normalizes to nearest accessible parent
+    steps:
+      - open: __BASE_URL__/cooking/projects?project=__PROJECT_ID__&panel=engineering&engineering=missing&mode=members
+      - wait: { load: networkidle }
+    assert:
+      - url:
+          {
+            equals: __BASE_URL__/cooking/projects?project=__PROJECT_ID__&panel=engineering,
+          }
+
+  - name: attachment picker exposes unsupported-file feedback
+    steps:
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: { load: networkidle }
+      - eval: "[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('登记缺陷'))?.click(); true"
+      - wait: '#collab-bug-form'
+      - eval: >-
+          (() => { const input = document.querySelector('[aria-label="实际结果附件"] input[type="file"]');
+          const transfer = new DataTransfer(); transfer.items.add(new File(['pdf'], 'unsupported.pdf', { type: 'application/pdf' }));
+          Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
+          input.dispatchEvent(new Event('change', { bubbles: true })); return true; })()
+      - wait: 250
+    assert:
+      - text:
+          {
+            sel: '[aria-label="实际结果附件"] [role="status"]',
+            contains: 仅支持 PNG、JPG、WEBP、TXT 和 JSON 文件,
+          }
+
+  - name: bug registration keeps attachments and reports the five-file boundary
+    steps:
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: { load: networkidle }
+      - eval: "[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('登记缺陷'))?.click(); true"
+      - wait: '#collab-bug-form'
+      - fill:
+          {
+            sel: '#collab-bug-form input[maxlength="240"]',
+            text: 浏览器登记缺陷,
+          }
+      - fill:
+          {
+            sel: '#collab-bug-form .collab-bug-result-field:nth-of-type(1) textarea',
+            text: 应显示成功反馈,
+          }
+      - fill:
+          {
+            sel: '#collab-bug-form .collab-bug-result-field:nth-of-type(2) textarea',
+            text: 当前没有反馈,
+          }
+      - eval: >-
+          (() => { const input = document.querySelector('[aria-label="实际结果附件"] input[type="file"]');
+          const transfer = new DataTransfer(); for (let index = 1; index <= 6; index += 1)
+          transfer.items.add(new File([`proof-${index}`], `browser-proof-${index}.txt`, { type: 'text/plain' }));
+          Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
+          input.dispatchEvent(new Event('change', { bubbles: true })); return true; })()
+      - wait: 250
+      - click: 'button[form="collab-bug-form"]'
+      - wait: 1200
+      - eval: "[...document.querySelectorAll('button.collab-bug-card__open')].find((button) => button.getAttribute('aria-label')?.startsWith('浏览器登记缺陷，'))?.click(); true"
+      - wait: '[role="dialog"]'
+    assert:
+      - text: { sel: '[role="dialog"]', contains: browser-proof-1.txt }
+      - count:
+          { sel: '[role="dialog"] .collab-bug-detail-attachments li', eq: 5 }
+      - hidden: '[role="dialog"] [title="browser-proof-6.txt"]'
+
+  - name: drag cancel and undo restore the bug
+    steps:
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: { load: networkidle }
+      - eval: >-
+          (() => { const source = [...document.querySelectorAll('article.collab-bug-card')]
+          .find((card) => card.textContent?.includes('待取消缺陷')); const target = document.querySelector('button[title="已取消缺陷"]');
+          const transfer = new DataTransfer(); source.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: transfer }));
+          target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+          target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer })); return true; })()
+      - wait: 900
+      - eval: "[...document.querySelectorAll('[role=status] button')].find((button) => button.textContent?.includes('撤销'))?.click(); true"
+      - wait: 900
+    assert:
+      - visible: 'article[data-stage="WAITING_FOR_REPAIR"] button[aria-label^="待取消缺陷，"]'
+      - text: { sel: '[role="status"]', contains: 已恢复到待修复 }
+
+  - name: drag request repair moves the bug into engineering execution
+    steps:
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: { load: networkidle }
+      - eval: >-
+          (() => { const source = [...document.querySelectorAll('article.collab-bug-card')]
+          .find((card) => card.textContent?.includes('待请求修复缺陷')); const target = [...document.querySelectorAll('section.collab-column')]
+          .find((column) => column.querySelector('h2')?.textContent === '修复中'); const transfer = new DataTransfer();
+          source.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: transfer }));
+          target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+          target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer })); return true; })()
+      - wait: 1000
+    assert:
+      - visible: 'article[data-stage="REPAIRING"] button[aria-label^="待请求修复缺陷，"]'
+
+  - name: drag archive and undo unarchive the completed bug
+    steps:
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: { load: networkidle }
+      - eval: >-
+          (() => { const source = [...document.querySelectorAll('article.collab-bug-card')]
+          .find((card) => card.textContent?.includes('待归档与重开缺陷')); const target = document.querySelector('button[title="归档缺陷"]');
+          const transfer = new DataTransfer(); source.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: transfer }));
+          target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+          target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer })); return true; })()
+      - wait: 900
+      - eval: "[...document.querySelectorAll('[role=status] button')].find((button) => button.textContent?.includes('撤销'))?.click(); true"
+      - wait: 900
+    assert:
+      - visible: 'article[data-stage="DONE"] button[aria-label^="待归档与重开缺陷，"]'
+      - text: { sel: '[role="status"]', contains: 已移出归档 }
+
+  - name: verification failure creates a continuation repair
+    steps:
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: { load: networkidle }
+      - eval: "[...document.querySelectorAll('article.collab-bug-card')].find((card) => card.textContent?.includes('待验证返修缺陷'))?.querySelector('button:not(.collab-bug-card__open)')?.click(); true"
+      - wait: 'form[aria-label="不通过并返修"]'
+      - fill:
+          {
+            sel: 'form[aria-label="不通过并返修"] textarea',
+            text: 浏览器复测仍可复现,
+          }
+      - eval: '[...document.querySelectorAll(''form[aria-label="不通过并返修"] button'')].find((button) => button.textContent?.includes(''确认返修''))?.click(); true'
+      - wait: 1200
+    assert:
+      - visible: 'article[data-stage="REPAIRING"] button[aria-label^="待验证返修缺陷，"]'
+
+  - name: rework dialog starts focused with submit disabled
+    steps:
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: { load: networkidle }
+      - eval: "[...document.querySelectorAll('article.collab-bug-card')].find((card) => card.textContent?.includes('待归档与重开缺陷'))?.querySelector('button:not(.collab-bug-card__open)')?.click(); true"
+      - wait: 'form[aria-label="重新打开"]'
+    assert:
+      - eval: 'document.activeElement === document.querySelector(''form[aria-label="重新打开"] textarea'')'
+      - eval: '[...document.querySelectorAll(''form[aria-label="重新打开"] button'')].find((button) => button.textContent?.includes(''确认重新打开''))?.disabled === true'
+
+  - name: completed bug can be reopened with feedback
+    steps:
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: { load: networkidle }
+      - eval: "[...document.querySelectorAll('article.collab-bug-card')].find((card) => card.textContent?.includes('待归档与重开缺陷'))?.querySelector('button:not(.collab-bug-card__open)')?.click(); true"
+      - wait: 'form[aria-label="重新打开"]'
+      - fill:
+          {
+            sel: 'form[aria-label="重新打开"] textarea',
+            text: 浏览器回归时问题再次出现,
+          }
+      - eval: '[...document.querySelectorAll(''form[aria-label="重新打开"] button'')].find((button) => button.textContent?.includes(''确认重新打开''))?.click(); true'
+      - wait: 1200
+    assert:
+      - visible: 'article[data-stage="REPAIRING"] button[aria-label^="待归档与重开缺陷，"]'
+
+  - name: responsible developer resolves the native approval interaction
+    steps:
+      - eval: "[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('退出登录'))?.click(); true"
+      - wait: 'input[name="username"]'
+      - fill: { sel: 'input[name="username"]', text: __DEVELOPER_USERNAME__ }
+      - fill: { sel: 'input[name="password"]', text: __PASSWORD__ }
+      - click: '.auth-submit'
+      - wait: { load: networkidle }
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: { load: networkidle }
+      - click: 'button[aria-label^="等待审批缺陷，"]'
+      - wait: '[role="dialog"]'
+      - eval: "[...document.querySelectorAll('[role=dialog] button')].find((button) => button.textContent?.includes('仅允许这一次'))?.scrollIntoView({ block: 'center' }); true"
+      - eval: "[...document.querySelectorAll('[role=dialog] button')].find((button) => button.textContent?.includes('仅允许这一次'))?.click(); true"
+      - wait: 1000
+    assert:
+      - text: { sel: '[role="dialog"]', contains: 实际决定：仅允许这一次 }

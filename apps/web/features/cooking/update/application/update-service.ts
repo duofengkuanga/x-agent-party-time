@@ -3,6 +3,7 @@ import type { Execution } from '@agent-party-time/execution-contract';
 import type { AppDatabase } from '@/server/database';
 import { PlatformError } from '@/server/errors';
 import { ExecutionService } from '@/server/execution/service';
+import type { CookingExecutionProjectionEvent } from '@/features/cooking/execution/application/execution-projection';
 import { DeploymentMethodSchema } from '@/features/cooking/engineering/contract';
 import type {
   CookingInteractionView,
@@ -12,7 +13,7 @@ import {
   projectCookingInteraction,
   type CookingInteractionRow,
 } from '@/features/cooking/shared/interaction-projection';
-import { CookingWriteStore } from '@/features/cooking/shared/write-store';
+import { TestSubmissionWriteStore } from '@/features/cooking/submissions/application/test-submission-write-store';
 import {
   CiCdUpdateExecutionResultSchema,
   RetryUpdateInputSchema,
@@ -118,19 +119,21 @@ type FrozenBatch = {
 };
 
 export class UpdateService {
-  private readonly writes: CookingWriteStore;
+  private readonly writes: TestSubmissionWriteStore;
 
   constructor(
     private readonly db: AppDatabase,
     private readonly executions: ExecutionService = new ExecutionService(db),
     private readonly now: () => Date = () => new Date(),
     private readonly createId: () => string = randomUUID,
-    private readonly onInvalidated: (
-      submissionId: string,
-      revision: number,
-    ) => void = () => {},
+    onInvalidated: (submissionId: string, revision: number) => void = () => {},
   ) {
-    this.writes = new CookingWriteStore(db, now, createId);
+    this.writes = new TestSubmissionWriteStore(
+      db,
+      now,
+      createId,
+      onInvalidated,
+    );
   }
 
   recordCandidateAvailable(bugId: string, candidateAt: string): void {
@@ -191,7 +194,7 @@ export class UpdateService {
         });
     }
     for (const item of prepared)
-      this.onInvalidated(item.submissionId, item.revision);
+      this.writes.publishInvalidation(item.submissionId, item.revision);
     return prepared.map(({ executionId }) => executionId);
   }
 
@@ -201,13 +204,16 @@ export class UpdateService {
     inputValue: { mutationId: string },
   ): UpdateMutationResult {
     const input = FreezeUpdateInputSchema.parse(inputValue);
-    const replay = this.hasRecordedMutation(input.mutationId);
     const result = this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
       operation: 'UPDATE_BATCH_FREEZE',
       resourceType: 'UPDATE_BATCH',
       resultSchema: UpdateMutationResultSchema,
+      invalidation: (mutation) => ({
+        submissionId: this.itemSource(submissionItemId).submission_id,
+        revision: mutation.revision,
+      }),
       perform: () => {
         const source = this.requireResponsible(actorUserId, submissionItemId);
         DeploymentMethodSchema.parse(JSON.parse(source.deployment_json));
@@ -238,10 +244,6 @@ export class UpdateService {
         };
       },
     });
-    if (!replay) {
-      const source = this.itemSource(submissionItemId);
-      this.onInvalidated(source.submission_id, result.revision);
-    }
     return result;
   }
 
@@ -251,13 +253,16 @@ export class UpdateService {
     inputValue: RetryUpdateInput,
   ): UpdateMutationResult {
     const input = RetryUpdateInputSchema.parse(inputValue);
-    const replay = this.hasRecordedMutation(input.mutationId);
     const result = this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
       operation: 'UPDATE_BATCH_RETRY',
       resourceType: 'UPDATE_BATCH',
       resultSchema: UpdateMutationResultSchema,
+      invalidation: (mutation) => ({
+        submissionId: this.batch(batchId).submission_id,
+        revision: mutation.revision,
+      }),
       perform: () => {
         const batch = this.requireBatchResponsible(actorUserId, batchId);
         this.requireBatchVersion(batch, input.expectedVersion);
@@ -299,6 +304,7 @@ export class UpdateService {
           runnerId: source.runner_id,
           bindingId: source.binding_id,
           priority: 0,
+          approvalPolicy: 'never',
           promptKind: prompt.kind,
           promptVersion: prompt.version,
           renderedPrompt: prompt.renderedPrompt,
@@ -337,7 +343,7 @@ export class UpdateService {
           )
           .run(execution.id, now, batchId, input.expectedVersion);
         if (update.changes !== 1) throw staleBatch();
-        const revision = this.bumpRevision(batch.submission_id, now);
+        const revision = this.writes.bumpRevision(batch.submission_id, now);
         return {
           result: {
             batchId,
@@ -358,10 +364,6 @@ export class UpdateService {
         };
       },
     });
-    if (!replay) {
-      const batch = this.batch(batchId);
-      this.onInvalidated(batch.submission_id, result.revision);
-    }
     return result;
   }
 
@@ -371,13 +373,16 @@ export class UpdateService {
     inputValue: ExternalDeploymentReportInput,
   ): UpdateMutationResult {
     const input = ExternalDeploymentReportInputSchema.parse(inputValue);
-    const replay = this.hasRecordedMutation(input.mutationId);
     const result = this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
       operation: 'UPDATE_BATCH_REPORT_EXTERNAL',
       resourceType: 'UPDATE_BATCH',
       resultSchema: UpdateMutationResultSchema,
+      invalidation: (mutation) => ({
+        submissionId: this.batch(batchId).submission_id,
+        revision: mutation.revision,
+      }),
       perform: () => {
         const batch = this.requireBatchResponsible(actorUserId, batchId);
         this.requireBatchVersion(batch, input.expectedVersion);
@@ -434,7 +439,7 @@ export class UpdateService {
           .run(state, now, batchId, input.expectedVersion);
         if (batchUpdate.changes !== 1) throw staleBatch();
         if (input.outcome === 'SUCCEEDED') this.completeBatchBugs(batchId, now);
-        const revision = this.bumpRevision(batch.submission_id, now);
+        const revision = this.writes.bumpRevision(batch.submission_id, now);
         return {
           result: {
             batchId,
@@ -462,10 +467,6 @@ export class UpdateService {
         };
       },
     });
-    if (!replay) {
-      const batch = this.batch(batchId);
-      this.onInvalidated(batch.submission_id, result.revision);
-    }
     return result;
   }
 
@@ -476,13 +477,16 @@ export class UpdateService {
   ): UpdateMutationResult {
     const input = ResolveUpdateInteractionInputSchema.parse(inputValue);
     const source = this.interactionSource(interactionId);
-    const replay = this.hasRecordedMutation(input.mutationId);
     const result = this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
       operation: 'UPDATE_INTERACTION_RESOLVE',
       resourceType: 'EXECUTION_INTERACTION',
       resultSchema: UpdateMutationResultSchema,
+      invalidation: (mutation) => ({
+        submissionId: this.batch(source.batch_id).submission_id,
+        revision: mutation.revision,
+      }),
       perform: () => {
         const batch = this.requireBatchResponsible(
           actorUserId,
@@ -501,7 +505,7 @@ export class UpdateService {
           )
           .run(now, batch.id, input.expectedVersion);
         if (update.changes !== 1) throw staleBatch();
-        const revision = this.bumpRevision(batch.submission_id, now);
+        const revision = this.writes.bumpRevision(batch.submission_id, now);
         return {
           result: {
             batchId: batch.id,
@@ -522,14 +526,29 @@ export class UpdateService {
         };
       },
     });
-    if (!replay) {
-      const batch = this.batch(source.batch_id);
-      this.onInvalidated(batch.submission_id, result.revision);
-    }
     return result;
   }
 
-  applyStartedExecution(execution: Execution): void {
+  projectExecution(event: CookingExecutionProjectionEvent): void {
+    if (event.kind === 'INTERACTION_OPENED') {
+      if (event.phase === 'APPLY')
+        this.applyInteractionOpened(
+          event.interaction.executionId,
+          event.interaction.id,
+        );
+      else this.afterInteractionOpened(event.interaction.executionId);
+      return;
+    }
+    if (event.kind === 'STARTED') {
+      if (event.phase === 'APPLY') this.applyStartedExecution(event.execution);
+      else this.afterStartedExecution(event.execution);
+      return;
+    }
+    if (event.phase === 'APPLY') this.applyTerminalExecution(event.execution);
+    else this.afterTerminalExecution(event.execution);
+  }
+
+  private applyStartedExecution(execution: Execution): void {
     if (!isUpdateExecution(execution)) return;
     const attempt = this.attemptForExecution(execution.id);
     if (!attempt) return;
@@ -549,10 +568,10 @@ export class UpdateService {
       { executionId: execution.id, attempt: attempt.attempt },
       now,
     );
-    this.bumpRevision(batch.submission_id, now);
+    this.writes.bumpRevision(batch.submission_id, now);
   }
 
-  applyTerminalExecution(execution: Execution): void {
+  private applyTerminalExecution(execution: Execution): void {
     if (!isUpdateExecution(execution)) return;
     const attempt = this.attemptForExecution(execution.id);
     if (!attempt || attempt.outcome_json) return;
@@ -613,10 +632,13 @@ export class UpdateService {
       },
       now,
     );
-    this.bumpRevision(batch.submission_id, now);
+    this.writes.bumpRevision(batch.submission_id, now);
   }
 
-  applyInteractionOpened(executionId: string, interactionId: string): void {
+  private applyInteractionOpened(
+    executionId: string,
+    interactionId: string,
+  ): void {
     const attempt = this.attemptForExecution(executionId);
     if (!attempt) return;
     const batch = this.batch(attempt.batch_id);
@@ -627,18 +649,18 @@ export class UpdateService {
       { executionId, interactionId, attempt: attempt.attempt },
       now,
     );
-    this.bumpRevision(batch.submission_id, now);
+    this.writes.bumpRevision(batch.submission_id, now);
   }
 
-  afterStartedExecution(execution: Execution): void {
+  private afterStartedExecution(execution: Execution): void {
     if (isUpdateExecution(execution)) this.publishExecution(execution.id);
   }
 
-  afterTerminalExecution(execution: Execution): void {
+  private afterTerminalExecution(execution: Execution): void {
     if (isUpdateExecution(execution)) this.publishExecution(execution.id);
   }
 
-  afterInteractionOpened(executionId: string): void {
+  private afterInteractionOpened(executionId: string): void {
     this.publishExecution(executionId);
   }
 
@@ -926,6 +948,7 @@ export class UpdateService {
       runnerId: source.runner_id,
       bindingId: source.binding_id,
       priority: 0,
+      approvalPolicy: 'never',
       promptKind: prompt.kind,
       promptVersion: prompt.version,
       renderedPrompt: prompt.renderedPrompt,
@@ -969,7 +992,7 @@ export class UpdateService {
         'DELETE FROM cooking_pending_delivery WHERE submission_item_id = ?',
       )
       .run(submissionItemId);
-    const revision = this.bumpRevision(source.submission_id, now);
+    const revision = this.writes.bumpRevision(source.submission_id, now);
     return { batchId, executionId: execution.id, revision };
   }
 
@@ -1416,26 +1439,11 @@ export class UpdateService {
       )
       .get(executionId) as
       { submission_id: string; workspace_revision: number } | undefined;
-    if (row) this.onInvalidated(row.submission_id, row.workspace_revision);
-  }
-
-  private hasRecordedMutation(mutationId: string): boolean {
-    return Boolean(
-      this.db
-        .prepare('SELECT 1 recorded FROM cooking_mutation WHERE id = ?')
-        .get(mutationId),
-    );
-  }
-
-  private bumpRevision(submissionId: string, now: string): number {
-    const row = this.db
-      .prepare(
-        `UPDATE cooking_test_submission
-         SET workspace_revision = workspace_revision + 1, updated_at = ?
-         WHERE id = ? RETURNING workspace_revision`,
-      )
-      .get(now, submissionId) as { workspace_revision: number };
-    return row.workspace_revision;
+    if (row)
+      this.writes.publishInvalidation(
+        row.submission_id,
+        row.workspace_revision,
+      );
   }
 }
 

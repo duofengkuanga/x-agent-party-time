@@ -4,6 +4,7 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   sanitizeExecutionInteractionPayload,
+  type ExecutionApprovalPolicy,
   type JsonObject,
   type JsonValue,
 } from '@agent-party-time/execution-contract';
@@ -14,10 +15,8 @@ export type CodexInteraction = {
   payload: JsonValue;
 };
 
-export type CodexApprovalPolicy = 'never' | 'on-request';
-
 export type CodexExecutionInput = {
-  approvalPolicy: CodexApprovalPolicy;
+  approvalPolicy: ExecutionApprovalPolicy;
   executionId: string;
   repositoryPath: string;
   prompt: string;

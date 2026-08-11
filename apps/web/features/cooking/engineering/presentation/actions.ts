@@ -1,13 +1,17 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
-import { redirect, RedirectType } from 'next/navigation';
-import { requireCurrentUser } from '@/server/auth/server';
-import {
-  messageRedirectPath,
-  rethrowRedirectError,
-} from '@/server/http/message-redirect';
 import { engineeringService } from '@/features/cooking/application/server';
+import {
+  formField,
+  formStringList,
+  integerFormField,
+  runRedirectMutation,
+} from '@/features/cooking/shared/action-transport';
+import {
+  engineeringCreatePath,
+  engineeringSettingsPath,
+  engineeringViewPath,
+} from '@/features/cooking/projects/presentation/route-state';
 import {
   DeploymentMethodSchema,
   EngineeringTypeSchema,
@@ -15,335 +19,229 @@ import {
 } from '../contract';
 import { engineeringActionError } from './action-error';
 
+const REFRESH_PATHS = ['/cooking', '/cooking/projects'];
+
 export async function createEngineeringAction(
   formData: FormData,
 ): Promise<never> {
-  const user = await requireCurrentUser();
-  const projectId = field(formData, 'projectId');
-  try {
-    const engineering = engineeringService().createEngineeringSetup(
-      user.id,
-      projectId,
-      {
-        mutationId: field(formData, 'mutationId'),
-        name: field(formData, 'name'),
-        type: EngineeringTypeSchema.parse(field(formData, 'type')),
-        identifier: field(formData, 'identifier'),
-        creatorMembershipMutationId: field(
-          formData,
-          'creatorMembershipMutationId',
-        ),
-        members: stringFields(formData, 'memberUserId').map((userId) => ({
-          userId,
-          mutationId: field(formData, `memberMutationId:${userId}`),
-        })),
-        environments: stringFields(formData, 'environmentKey').map((key) => ({
-          mutationId: field(formData, `environmentMutationId:${key}`),
-          name: field(formData, `environmentName:${key}`),
-          deployment: keyedDeploymentField(formData, key),
-        })),
-      },
-    );
-    refreshProject(projectId);
-    redirectReplacingHistory(
-      messageRedirectPath(
-        engineeringPath(projectId, engineering.id),
-        'success',
-        '工程已创建',
-      ),
-    );
-  } catch (error) {
-    rethrowRedirectError(error);
-    redirectWithError(engineeringCreatePath(projectId), error);
-  }
+  const projectId = formField(formData, 'projectId');
+  return runEngineeringRedirect(
+    formData,
+    engineeringCreatePath(projectId),
+    (userId) => {
+      const engineering = engineeringService().createEngineeringSetup(
+        userId,
+        projectId,
+        {
+          mutationId: formField(formData, 'mutationId'),
+          name: formField(formData, 'name'),
+          type: EngineeringTypeSchema.parse(formField(formData, 'type')),
+          identifier: formField(formData, 'identifier'),
+          creatorMembershipMutationId: formField(
+            formData,
+            'creatorMembershipMutationId',
+          ),
+          members: formStringList(formData, 'memberUserId').map((memberId) => ({
+            userId: memberId,
+            mutationId: formField(formData, `memberMutationId:${memberId}`),
+          })),
+          environments: formStringList(formData, 'environmentKey').map(
+            (key) => ({
+              mutationId: formField(formData, `environmentMutationId:${key}`),
+              name: formField(formData, `environmentName:${key}`),
+              deployment: keyedDeploymentField(formData, key),
+            }),
+          ),
+        },
+      );
+      return {
+        path: engineeringSettingsPath(projectId, engineering.id),
+        message: '工程已创建',
+      };
+    },
+  );
 }
 
 export async function updateEngineeringAction(
   formData: FormData,
 ): Promise<never> {
-  const user = await requireCurrentUser();
-  const engineeringId = field(formData, 'engineeringId');
-  const projectId = field(formData, 'projectId');
-  try {
-    engineeringService().updateEngineering(user.id, engineeringId, {
-      mutationId: field(formData, 'mutationId'),
-      expectedVersion: numberField(formData, 'expectedVersion'),
-      name: field(formData, 'name'),
-      type: EngineeringTypeSchema.parse(field(formData, 'type')),
-      identifier: field(formData, 'identifier'),
+  const ids = engineeringIds(formData);
+  const path = engineeringViewPath(
+    ids.projectId,
+    ids.engineeringId,
+    'information',
+  );
+  return runEngineeringRedirect(formData, path, (userId) => {
+    engineeringService().updateEngineering(userId, ids.engineeringId, {
+      mutationId: formField(formData, 'mutationId'),
+      expectedVersion: integerFormField(formData, 'expectedVersion'),
+      name: formField(formData, 'name'),
+      type: EngineeringTypeSchema.parse(formField(formData, 'type')),
+      identifier: formField(formData, 'identifier'),
     });
-    refreshEngineering(projectId, engineeringId);
-    redirectReplacingHistory(
-      messageRedirectPath(
-        engineeringViewPath(projectId, engineeringId, 'information'),
-        'success',
-        '工程设置已更新',
-      ),
-    );
-  } catch (error) {
-    rethrowRedirectError(error);
-    redirectWithError(
-      engineeringViewPath(projectId, engineeringId, 'information'),
-      error,
-    );
-  }
+    return { path, message: '工程设置已更新' };
+  });
 }
 
 export async function archiveEngineeringAction(
   formData: FormData,
 ): Promise<never> {
-  const user = await requireCurrentUser();
-  const engineeringId = field(formData, 'engineeringId');
-  const projectId = field(formData, 'projectId');
-  try {
-    engineeringService().archiveEngineering(user.id, engineeringId, {
-      mutationId: field(formData, 'mutationId'),
-      expectedVersion: numberField(formData, 'expectedVersion'),
+  const ids = engineeringIds(formData);
+  const errorPath = engineeringViewPath(
+    ids.projectId,
+    ids.engineeringId,
+    'information',
+  );
+  return runEngineeringRedirect(formData, errorPath, (userId) => {
+    engineeringService().archiveEngineering(userId, ids.engineeringId, {
+      mutationId: formField(formData, 'mutationId'),
+      expectedVersion: integerFormField(formData, 'expectedVersion'),
     });
-    refreshEngineering(projectId, engineeringId);
-    redirectReplacingHistory(
-      messageRedirectPath(
-        engineeringPath(projectId, engineeringId),
-        'success',
-        '工程已归档，历史数据仍然保留',
-      ),
-    );
-  } catch (error) {
-    rethrowRedirectError(error);
-    redirectWithError(
-      engineeringViewPath(projectId, engineeringId, 'information'),
-      error,
-    );
-  }
+    return {
+      path: engineeringSettingsPath(ids.projectId, ids.engineeringId),
+      message: '工程已归档，历史数据仍然保留',
+    };
+  });
 }
 
 export async function addEngineeringMemberAction(
   formData: FormData,
 ): Promise<never> {
-  const user = await requireCurrentUser();
-  const engineeringId = field(formData, 'engineeringId');
-  const projectId = field(formData, 'projectId');
-  try {
+  const ids = engineeringIds(formData);
+  const path = engineeringViewPath(ids.projectId, ids.engineeringId, 'members');
+  return runEngineeringRedirect(formData, path, (userId) => {
     engineeringService().addMember(
-      user.id,
-      engineeringId,
-      field(formData, 'userId'),
-      { mutationId: field(formData, 'mutationId') },
+      userId,
+      ids.engineeringId,
+      formField(formData, 'userId'),
+      { mutationId: formField(formData, 'mutationId') },
     );
-    refreshEngineering(projectId, engineeringId);
-    redirectReplacingHistory(
-      messageRedirectPath(
-        engineeringViewPath(projectId, engineeringId, 'members'),
-        'success',
-        '工程成员已添加',
-      ),
-    );
-  } catch (error) {
-    rethrowRedirectError(error);
-    redirectWithError(
-      engineeringViewPath(projectId, engineeringId, 'members'),
-      error,
-    );
-  }
+    return { path, message: '工程成员已添加' };
+  });
 }
 
 export async function removeEngineeringMemberAction(
   formData: FormData,
 ): Promise<never> {
-  const user = await requireCurrentUser();
-  const engineeringId = field(formData, 'engineeringId');
-  const projectId = field(formData, 'projectId');
-  try {
+  const ids = engineeringIds(formData);
+  const path = engineeringViewPath(ids.projectId, ids.engineeringId, 'members');
+  return runEngineeringRedirect(formData, path, (userId) => {
     engineeringService().removeMember(
-      user.id,
-      engineeringId,
-      field(formData, 'userId'),
+      userId,
+      ids.engineeringId,
+      formField(formData, 'userId'),
       {
-        mutationId: field(formData, 'mutationId'),
-        expectedVersion: numberField(formData, 'expectedVersion'),
+        mutationId: formField(formData, 'mutationId'),
+        expectedVersion: integerFormField(formData, 'expectedVersion'),
       },
     );
-    refreshEngineering(projectId, engineeringId);
-    redirectReplacingHistory(
-      messageRedirectPath(
-        engineeringViewPath(projectId, engineeringId, 'members'),
-        'success',
-        '工程成员已移除',
-      ),
-    );
-  } catch (error) {
-    rethrowRedirectError(error);
-    redirectWithError(
-      engineeringViewPath(projectId, engineeringId, 'members'),
-      error,
-    );
-  }
+    return { path, message: '工程成员已移除' };
+  });
 }
 
 export async function createEnvironmentAction(
   formData: FormData,
 ): Promise<never> {
-  const user = await requireCurrentUser();
-  const engineeringId = field(formData, 'engineeringId');
-  const projectId = field(formData, 'projectId');
-  try {
+  const ids = engineeringIds(formData);
+  const path = engineeringViewPath(
+    ids.projectId,
+    ids.engineeringId,
+    'environments',
+  );
+  return runEngineeringRedirect(formData, path, (userId) => {
     engineeringService().createEnvironments(
-      user.id,
-      engineeringId,
-      stringFields(formData, 'environmentKey').map((key) => ({
-        mutationId: field(formData, `environmentMutationId:${key}`),
-        name: field(formData, `environmentName:${key}`),
+      userId,
+      ids.engineeringId,
+      formStringList(formData, 'environmentKey').map((key) => ({
+        mutationId: formField(formData, `environmentMutationId:${key}`),
+        name: formField(formData, `environmentName:${key}`),
         deployment: keyedDeploymentField(formData, key),
       })),
     );
-    refreshEngineering(projectId, engineeringId);
-    redirectReplacingHistory(
-      messageRedirectPath(
-        engineeringViewPath(projectId, engineeringId, 'environments'),
-        'success',
-        '测试环境已创建',
-      ),
-    );
-  } catch (error) {
-    rethrowRedirectError(error);
-    redirectWithError(
-      engineeringViewPath(projectId, engineeringId, 'environments'),
-      error,
-    );
-  }
+    return { path, message: '测试环境已创建' };
+  });
 }
 
 export async function updateEnvironmentAction(
   formData: FormData,
 ): Promise<never> {
-  const user = await requireCurrentUser();
-  const engineeringId = field(formData, 'engineeringId');
-  const projectId = field(formData, 'projectId');
-  try {
+  const ids = engineeringIds(formData);
+  const path = engineeringViewPath(
+    ids.projectId,
+    ids.engineeringId,
+    'environments',
+  );
+  return runEngineeringRedirect(formData, path, (userId) => {
     engineeringService().updateEnvironment(
-      user.id,
-      field(formData, 'environmentId'),
+      userId,
+      formField(formData, 'environmentId'),
       {
-        mutationId: field(formData, 'mutationId'),
-        expectedVersion: numberField(formData, 'expectedVersion'),
-        name: field(formData, 'name'),
+        mutationId: formField(formData, 'mutationId'),
+        expectedVersion: integerFormField(formData, 'expectedVersion'),
+        name: formField(formData, 'name'),
         deployment: deploymentField(formData),
       },
     );
-    refreshEngineering(projectId, engineeringId);
-    redirectReplacingHistory(
-      messageRedirectPath(
-        engineeringViewPath(projectId, engineeringId, 'environments'),
-        'success',
-        '测试环境已更新',
-      ),
-    );
-  } catch (error) {
-    rethrowRedirectError(error);
-    redirectWithError(
-      engineeringViewPath(projectId, engineeringId, 'environments'),
-      error,
-    );
-  }
+    return { path, message: '测试环境已更新' };
+  });
 }
 
 export async function deleteEnvironmentAction(
   formData: FormData,
 ): Promise<never> {
-  const user = await requireCurrentUser();
-  const engineeringId = field(formData, 'engineeringId');
-  const projectId = field(formData, 'projectId');
-  try {
+  const ids = engineeringIds(formData);
+  const path = engineeringViewPath(
+    ids.projectId,
+    ids.engineeringId,
+    'environments',
+  );
+  return runEngineeringRedirect(formData, path, (userId) => {
     engineeringService().deleteEnvironment(
-      user.id,
-      field(formData, 'environmentId'),
+      userId,
+      formField(formData, 'environmentId'),
       {
-        mutationId: field(formData, 'mutationId'),
-        expectedVersion: numberField(formData, 'expectedVersion'),
+        mutationId: formField(formData, 'mutationId'),
+        expectedVersion: integerFormField(formData, 'expectedVersion'),
       },
     );
-    refreshEngineering(projectId, engineeringId);
-    redirectReplacingHistory(
-      messageRedirectPath(
-        engineeringViewPath(projectId, engineeringId, 'environments'),
-        'success',
-        '测试环境已删除',
-      ),
-    );
-  } catch (error) {
-    rethrowRedirectError(error);
-    redirectWithError(
-      engineeringViewPath(projectId, engineeringId, 'environments'),
-      error,
-    );
-  }
+    return { path, message: '测试环境已删除' };
+  });
+}
+
+function runEngineeringRedirect(
+  formData: FormData,
+  errorPath: string,
+  command: (userId: string) => { path: string; message: string },
+): Promise<never> {
+  return runRedirectMutation({
+    formData,
+    errorPath: () => errorPath,
+    mapError: engineeringActionError,
+    command: (userId) => ({
+      ...command(userId),
+      refreshPaths: REFRESH_PATHS,
+    }),
+  });
+}
+
+function engineeringIds(formData: FormData) {
+  return {
+    projectId: formField(formData, 'projectId'),
+    engineeringId: formField(formData, 'engineeringId'),
+  };
 }
 
 function deploymentField(formData: FormData): DeploymentMethod {
-  const kind = field(formData, 'deploymentKind');
-  const command = field(formData, 'command').trim();
-  const raw = command ? { kind, command } : { kind };
-  return DeploymentMethodSchema.parse(raw);
+  const kind = formField(formData, 'deploymentKind');
+  const command = formField(formData, 'command').trim();
+  return DeploymentMethodSchema.parse(command ? { kind, command } : { kind });
 }
 
 function keyedDeploymentField(
   formData: FormData,
   key: string,
 ): DeploymentMethod {
-  const kind = field(formData, `deploymentKind:${key}`);
-  const command = field(formData, `command:${key}`).trim();
-  const raw = command ? { kind, command } : { kind };
-  return DeploymentMethodSchema.parse(raw);
-}
-
-function field(formData: FormData, name: string): string {
-  return String(formData.get(name) ?? '');
-}
-
-function numberField(formData: FormData, name: string): number {
-  return Number(field(formData, name));
-}
-
-function stringFields(formData: FormData, name: string): string[] {
-  return formData.getAll(name).map(String);
-}
-
-function projectPath(projectId: string): string {
-  return `/cooking/projects?project=${encodeURIComponent(projectId)}&panel=engineering`;
-}
-
-function engineeringPath(projectId: string, engineeringId: string): string {
-  return `${projectPath(projectId)}&engineering=${encodeURIComponent(engineeringId)}`;
-}
-
-function engineeringCreatePath(projectId: string): string {
-  return engineeringPath(projectId, 'new');
-}
-
-function engineeringViewPath(
-  projectId: string,
-  engineeringId: string,
-  view: 'members' | 'environments' | 'information',
-): string {
-  return `${engineeringPath(projectId, engineeringId)}&mode=${view}`;
-}
-
-function refreshProject(projectId: string): void {
-  revalidatePath('/cooking');
-  revalidatePath('/cooking/projects');
-}
-
-function refreshEngineering(projectId: string, engineeringId: string): void {
-  refreshProject(projectId);
-  revalidatePath('/cooking/projects');
-}
-
-function redirectWithError(path: string, error: unknown): never {
-  redirectReplacingHistory(
-    messageRedirectPath(path, 'error', engineeringActionError(error).message),
-  );
-}
-
-function redirectReplacingHistory(path: string): never {
-  redirect(path, RedirectType.replace);
+  const kind = formField(formData, `deploymentKind:${key}`);
+  const command = formField(formData, `command:${key}`).trim();
+  return DeploymentMethodSchema.parse(command ? { kind, command } : { kind });
 }

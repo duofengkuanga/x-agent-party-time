@@ -18,6 +18,20 @@ export type CookingWriteOutcome<T> = {
   audits?: CookingAuditInput[];
 };
 
+export type CookingWriteInput<T> = {
+  mutationId: string;
+  actorUserId: string;
+  operation: string;
+  resourceType: string;
+  resultSchema: z.ZodType<T>;
+  perform: () => CookingWriteOutcome<T>;
+};
+
+export type TrackedCookingWriteResult<T> = {
+  result: T;
+  replayed: boolean;
+};
+
 export class CookingWriteStore {
   constructor(
     private readonly db: AppDatabase,
@@ -25,14 +39,11 @@ export class CookingWriteStore {
     private readonly createId: () => string = randomUUID,
   ) {}
 
-  run<T>(input: {
-    mutationId: string;
-    actorUserId: string;
-    operation: string;
-    resourceType: string;
-    resultSchema: z.ZodType<T>;
-    perform: () => CookingWriteOutcome<T>;
-  }): T {
+  run<T>(input: CookingWriteInput<T>): T {
+    return this.runTracked(input).result;
+  }
+
+  runTracked<T>(input: CookingWriteInput<T>): TrackedCookingWriteResult<T> {
     const mutationId = CookingMutationIdSchema.parse(input.mutationId);
     return this.db.transaction(() => {
       const previous = this.db
@@ -52,7 +63,10 @@ export class CookingWriteStore {
             'RESOURCE_CONFLICT',
             '操作标识已用于其他操作',
           );
-        return input.resultSchema.parse(JSON.parse(previous.result_json));
+        return {
+          result: input.resultSchema.parse(JSON.parse(previous.result_json)),
+          replayed: true,
+        };
       }
 
       const outcome = input.perform();
@@ -92,7 +106,7 @@ export class CookingWriteStore {
           JSON.stringify(result),
           createdAt,
         );
-      return result;
+      return { result, replayed: false };
     })();
   }
 }

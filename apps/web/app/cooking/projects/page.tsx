@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { redirect, RedirectType } from 'next/navigation';
 import { requireCurrentUser } from '@/server/auth/server';
 import { PlatformError } from '@/server/errors';
 import { runnerService } from '@/server/runner/server';
@@ -30,6 +31,16 @@ import {
   revokeProjectInvitationAction,
   updateProjectAction,
 } from '@/features/cooking/projects/presentation/actions';
+import {
+  engineeringCreatePath,
+  engineeringSettingsPath,
+  engineeringViewPath as engineeringViewHref,
+  normalizeProjectSettingsRoute,
+  parseProjectSettingsRoute,
+  projectPanelPath,
+  projectSettingsPath,
+  projectSettingsRouteChanged,
+} from '@/features/cooking/projects/presentation/route-state';
 import { ProjectDialogEffects } from './project-dialog-effects';
 import { EngineeringCreateEnvironments } from './engineering-create-environments';
 import { BindingDeleteForm } from './binding-delete-form';
@@ -58,18 +69,37 @@ export default async function ProjectSettingsPage({
   const query = await searchParams;
   const projects = projectService().listProjects(user.id);
   const invitations = projectService().listReceivedInvitations(user.id);
-  const selected = query.project
-    ? projects.find(({ project }) => project.id === query.project)
+  const requestedRoute = parseProjectSettingsRoute(query);
+  const requestedProject = requestedRoute.projectId
+    ? projects.find(({ project }) => project.id === requestedRoute.projectId)
     : undefined;
-  const panel = query.panel;
+  const engineeringIds =
+    requestedProject && requestedRoute.panel === 'engineering'
+      ? engineeringService()
+          .listEngineering(user.id, requestedProject.project.id)
+          .map(({ id }) => id)
+      : undefined;
+  const route = normalizeProjectSettingsRoute(requestedRoute, {
+    projects: projects.map(({ project, membership }) => ({
+      id: project.id,
+      owner: membership.role === 'OWNER',
+    })),
+    engineeringIds,
+  });
+  if (projectSettingsRouteChanged(requestedRoute, route))
+    redirect(projectSettingsPath(route), RedirectType.replace);
+  const selected = route.projectId
+    ? projects.find(({ project }) => project.id === route.projectId)
+    : undefined;
+  const panel = route.panel;
 
   return (
     <>
       <ProjectSettingsControls
-        error={panel ? undefined : query.error}
+        error={panel ? undefined : route.error}
         hasProjects={projects.length > 0}
         mutationId={randomUUID()}
-        success={panel ? undefined : query.success}
+        success={panel ? undefined : route.success}
       >
         <ol className="project-settings__list">
           {projects.map(({ project, membership }) => (
@@ -108,35 +138,35 @@ export default async function ProjectSettingsPage({
 
       {panel === 'invitations' ? (
         <InvitationDialog
-          error={query.error}
+          error={route.error}
           invitations={invitations}
-          success={query.success}
+          success={route.success}
         />
       ) : null}
       {selected && panel === 'project' ? (
         <ProjectSettingsDialog
-          error={query.error}
+          error={route.error}
           projectId={selected.project.id}
-          success={query.success}
+          success={route.success}
           userId={user.id}
         />
       ) : null}
       {selected && panel === 'collaboration' ? (
         <CollaborationDialog
-          error={query.error}
+          error={route.error}
           projectId={selected.project.id}
-          success={query.success}
+          success={route.success}
           userId={user.id}
         />
       ) : null}
       {selected && panel === 'engineering' ? (
         <EngineeringDialog
-          engineeringId={query.engineering}
-          bindingRequestId={query.bindingRequest}
-          error={query.error}
-          mode={query.mode}
+          engineeringId={route.engineeringId}
+          bindingRequestId={route.bindingRequestId}
+          error={route.error}
+          mode={route.mode}
           projectId={selected.project.id}
-          success={query.bindingRequest ? undefined : query.success}
+          success={route.bindingRequestId ? undefined : route.success}
           userId={user.id}
         />
       ) : null}
@@ -1305,23 +1335,15 @@ function settingsHref(
   projectId: string,
   panel: 'project' | 'collaboration' | 'engineering',
 ): string {
-  return `/cooking/projects?project=${encodeURIComponent(projectId)}&panel=${panel}`;
+  return projectPanelPath(projectId, panel);
 }
 
 function engineeringHref(projectId: string, engineeringId: string): string {
-  return `${settingsHref(projectId, 'engineering')}&engineering=${encodeURIComponent(engineeringId)}`;
+  return engineeringSettingsPath(projectId, engineeringId);
 }
 
 function engineeringCreateHref(projectId: string): string {
-  return engineeringHref(projectId, 'new');
-}
-
-function engineeringViewHref(
-  projectId: string,
-  engineeringId: string,
-  mode: 'members' | 'environments' | 'information',
-): string {
-  return `${engineeringHref(projectId, engineeringId)}&mode=${mode}`;
+  return engineeringCreatePath(projectId);
 }
 
 function deploymentLabel(kind: 'LOCAL_SCRIPT' | 'CI_CD'): string {

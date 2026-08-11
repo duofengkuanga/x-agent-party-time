@@ -8,6 +8,7 @@ import { AuthService } from '@/server/auth/service';
 import type { AppDatabase } from '@/server/database';
 import { openDatabase } from '@/server/database';
 import { ProjectService } from '@/features/cooking/projects/application/project-service';
+import { TestSubmissionWriteStore } from '@/features/cooking/submissions/application/test-submission-write-store';
 import { CookingWriteStore } from './write-store';
 
 const directories: string[] = [];
@@ -105,4 +106,106 @@ describe('CookingWriteStore 冲突保护', () => {
       expect.objectContaining({ code: 'RESOURCE_CONFLICT' }),
     );
   });
+});
+
+test('TestSubmissionWriteStore 只在首次成功提交后发布 Revision', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'agent-party-time-write-'));
+  directories.push(directory);
+  const database = openDatabase(join(directory, 'server.sqlite'));
+  databases.push(database);
+  const auth = new AuthService(database);
+  const user = await auth.seedUser({
+    id: 'submission-write-user',
+    username: 'submission-write-user',
+    displayName: '提测写入用户',
+    password: 'password',
+  });
+  const project = new ProjectService(database).createProject(user.id, {
+    mutationId: randomUUID(),
+    name: '提测写入项目',
+  }).project;
+  const submissionId = randomUUID();
+  const createdAt = '2026-08-11T00:00:00.000Z';
+  database
+    .prepare(
+      `INSERT INTO cooking_test_submission(
+         id, project_id, title, requirement_description, tester_user_id,
+         status, version, workspace_revision, created_by_user_id,
+         created_at, updated_at, closed_at
+       ) VALUES (?, ?, '提测写入', '验证写入时序', ?, 'ACTIVE', 1, 1, ?, ?, ?, NULL)`,
+    )
+    .run(submissionId, project.id, user.id, user.id, createdAt, createdAt);
+  const invalidations: Array<{ submissionId: string; revision: number }> = [];
+  const store = new TestSubmissionWriteStore(
+    database,
+    () => new Date(createdAt),
+    randomUUID,
+    (id, revision) => invalidations.push({ submissionId: id, revision }),
+  );
+  const mutationId = randomUUID();
+  let executions = 0;
+  const command = () =>
+    store.run({
+      mutationId,
+      actorUserId: user.id,
+      operation: 'TEST_SUBMISSION_WRITE',
+      resourceType: 'TEST_SUBMISSION',
+      resultSchema: z.object({ revision: z.number().int() }),
+      invalidation: (result) => ({
+        submissionId,
+        revision: result.revision,
+      }),
+      perform: () => {
+        executions += 1;
+        const revision = store.bumpRevision(submissionId, createdAt);
+        return {
+          result: { revision },
+          resourceId: submissionId,
+          audits: [
+            {
+              projectId: project.id,
+              action: 'TEST_SUBMISSION_WRITTEN',
+              targetType: 'TEST_SUBMISSION',
+              targetId: submissionId,
+            },
+          ],
+        };
+      },
+    });
+
+  expect(command()).toEqual({ revision: 2 });
+  expect(command()).toEqual({ revision: 2 });
+  expect(executions).toBe(1);
+  expect(invalidations).toEqual([{ submissionId, revision: 2 }]);
+  expect(
+    database
+      .query<{ count: number }, []>(
+        `SELECT COUNT(*) count FROM cooking_audit_event
+         WHERE action = 'TEST_SUBMISSION_WRITTEN'`,
+      )
+      .get()?.count,
+  ).toBe(1);
+
+  expect(() =>
+    store.run({
+      mutationId: randomUUID(),
+      actorUserId: user.id,
+      operation: 'TEST_SUBMISSION_FAILURE',
+      resourceType: 'TEST_SUBMISSION',
+      resultSchema: z.object({ revision: z.number().int() }),
+      invalidation: (result) => ({ submissionId, revision: result.revision }),
+      perform: () => {
+        store.bumpRevision(submissionId, createdAt);
+        throw new Error('rollback');
+      },
+    }),
+  ).toThrow('rollback');
+  expect(
+    database
+      .query<{ workspace_revision: number }, [string]>(
+        `SELECT workspace_revision FROM cooking_test_submission WHERE id = ?`,
+      )
+      .get(submissionId)?.workspace_revision,
+  ).toBe(2);
+  expect(invalidations).toEqual([{ submissionId, revision: 2 }]);
 });

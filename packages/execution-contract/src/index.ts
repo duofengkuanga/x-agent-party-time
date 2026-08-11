@@ -22,6 +22,8 @@ export const ExecutionStateSchema = z.enum([
   'CANCELLED',
 ]);
 
+export const ExecutionApprovalPolicySchema = z.enum(['never', 'on-request']);
+
 export const ExecutionOwnerRefSchema = z.object({
   namespace: z.string().trim().min(1).max(80),
   kind: z.string().trim().min(1).max(80),
@@ -110,6 +112,7 @@ export const ExecutionSchema = z.object({
   runnerId: RunnerIdSchema,
   bindingId: BindingIdSchema,
   priority: z.number().int(),
+  approvalPolicy: ExecutionApprovalPolicySchema,
   state: ExecutionStateSchema,
   promptKind: z.string().trim().min(1).max(120),
   promptVersion: z.number().int().positive(),
@@ -137,6 +140,7 @@ export const EnqueueExecutionInputSchema = z.object({
   runnerId: RunnerIdSchema,
   bindingId: BindingIdSchema,
   priority: z.number().int().default(0),
+  approvalPolicy: ExecutionApprovalPolicySchema,
   promptKind: z.string().trim().min(1).max(120),
   promptVersion: z.number().int().positive(),
   renderedPrompt: z.string().min(1).max(200_000),
@@ -253,6 +257,9 @@ export type JsonValue = z.infer<typeof JsonValueSchema>;
 export type JsonObject = z.infer<typeof JsonObjectSchema>;
 export type Execution = z.infer<typeof ExecutionSchema>;
 export type ExecutionState = z.infer<typeof ExecutionStateSchema>;
+export type ExecutionApprovalPolicy = z.infer<
+  typeof ExecutionApprovalPolicySchema
+>;
 export type ExecutionOwnerRef = z.infer<typeof ExecutionOwnerRefSchema>;
 export type ExecutionAttachment = z.infer<typeof ExecutionAttachmentSchema>;
 export type ExecutionWorkspace = z.infer<typeof ExecutionWorkspaceSchema>;

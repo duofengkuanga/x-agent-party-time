@@ -85,18 +85,14 @@ test('已有 Session 通过 resumeSessionId 继续原 Thread', async () => {
   expect(fixture.executor.inputs[0]?.resumeSessionId).toBe('thread-existing');
 });
 
-test('Repair 与 Update 使用免审批策略，其他 Execution 保持按需审批', async () => {
-  for (const kind of ['BUG_REPAIR', 'UPDATE_BATCH', 'CLEANUP']) {
-    const fixture = await createFixture({
-      owner: { namespace: 'cooking', kind, id: `${kind.toLowerCase()}-1` },
-    });
+test('按 Execution 携带的审批约束启动 Codex', async () => {
+  for (const approvalPolicy of ['never', 'on-request'] as const) {
+    const fixture = await createFixture({ approvalPolicy });
 
     await fixture.service.cycle(session);
     await fixture.service.waitForIdle();
 
-    expect(fixture.executor.inputs[0]?.approvalPolicy).toBe(
-      kind === 'CLEANUP' ? 'on-request' : 'never',
-    );
+    expect(fixture.executor.inputs[0]?.approvalPolicy).toBe(approvalPolicy);
   }
 });
 
@@ -295,6 +291,7 @@ async function createFixture(
     deferredExecutor?: boolean;
     interactionExecutor?: boolean;
     owner?: ClaimedExecution['owner'];
+    approvalPolicy?: ClaimedExecution['approvalPolicy'];
   } = {},
 ) {
   const home = await mkdtemp(join(tmpdir(), 'xapt-execution-'));
@@ -312,6 +309,7 @@ async function createFixture(
       executionId,
       bindingId,
       options.owner,
+      options.approvalPolicy,
     ),
   );
   http.failOutcome = options.failOutcome ?? false;
@@ -520,6 +518,7 @@ function claimedExecution(
     kind: 'task',
     id: 'task-1',
   },
+  approvalPolicy: ClaimedExecution['approvalPolicy'] = 'on-request',
 ): ClaimedExecution {
   return {
     id,
@@ -529,6 +528,7 @@ function claimedExecution(
     runnerId,
     bindingId: localBindingId,
     priority: 0,
+    approvalPolicy,
     state: 'CLAIMED',
     promptKind: 'test',
     promptVersion: 1,

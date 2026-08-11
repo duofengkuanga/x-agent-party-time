@@ -3,7 +3,7 @@ import type { AppDatabase } from '@/server/database';
 import { PlatformError } from '@/server/errors';
 import { UserSchema, type User } from '@/server/auth/contract';
 import { ProjectIdSchema } from '@/features/cooking/projects/contract';
-import { CookingWriteStore } from '@/features/cooking/shared/write-store';
+import { TestSubmissionWriteStore } from './test-submission-write-store';
 import {
   CookingWorkspaceSnapshotSchema,
   CreateSubmissionInputSchema,
@@ -86,18 +86,20 @@ type ItemSnapshotSource = {
 };
 
 export class SubmissionService {
-  private readonly writes: CookingWriteStore;
+  private readonly writes: TestSubmissionWriteStore;
 
   constructor(
     private readonly db: AppDatabase,
     private readonly now: () => Date = () => new Date(),
     private readonly createId: () => string = randomUUID,
-    private readonly onInvalidated: (
-      submissionId: string,
-      revision: number,
-    ) => void = () => {},
+    onInvalidated: (submissionId: string, revision: number) => void = () => {},
   ) {
-    this.writes = new CookingWriteStore(db, now, createId);
+    this.writes = new TestSubmissionWriteStore(
+      db,
+      now,
+      createId,
+      onInvalidated,
+    );
   }
 
   createSubmission(
@@ -108,13 +110,16 @@ export class SubmissionService {
     const projectId = ProjectIdSchema.parse(projectIdInput);
     const parsed = CreateSubmissionInputSchema.parse(input);
     this.ensureDistinctItems(parsed);
-    const replay = this.hasRecordedMutation(parsed.mutationId);
     const result = this.writes.run({
       mutationId: parsed.mutationId,
       actorUserId,
       operation: 'SUBMISSION_CREATE',
       resourceType: 'TEST_SUBMISSION',
       resultSchema: TestSubmissionSchema,
+      invalidation: (submission) => ({
+        submissionId: submission.id,
+        revision: submission.workspaceRevision,
+      }),
       perform: () => {
         this.requireProjectMember(actorUserId, projectId);
         this.requireProjectMember(parsed.testerUserId, projectId);
@@ -218,7 +223,6 @@ export class SubmissionService {
         };
       },
     });
-    if (!replay) this.onInvalidated(result.id, result.workspaceRevision);
     return result;
   }
 
@@ -237,13 +241,16 @@ export class SubmissionService {
         'VALIDATION_FAILED',
         '同一提测工程不能重复提交目标分支',
       );
-    const replay = this.hasRecordedMutation(parsed.mutationId);
     const result = this.writes.run({
       mutationId: parsed.mutationId,
       actorUserId,
       operation: 'SUBMISSION_UPDATE',
       resourceType: 'TEST_SUBMISSION',
       resultSchema: TestSubmissionSchema,
+      invalidation: (submission) => ({
+        submissionId: submission.id,
+        revision: submission.workspaceRevision,
+      }),
       perform: () => {
         const current = this.requireSubmissionAccess(actorUserId, submissionId);
         const canEditDetails =
@@ -332,7 +339,6 @@ export class SubmissionService {
             `UPDATE cooking_test_submission
              SET title = ?, requirement_description = ?,
                  version = version + 1,
-                 workspace_revision = workspace_revision + 1,
                  updated_at = ?
              WHERE id = ? AND version = ? AND status = 'ACTIVE'`,
           )
@@ -345,12 +351,16 @@ export class SubmissionService {
           );
         if (update.changes !== 1)
           throw new PlatformError('STALE_STATE', '提测单已更新，请刷新后重试');
+        const workspaceRevision = this.writes.bumpRevision(
+          submissionId,
+          updatedAt,
+        );
         const result = TestSubmissionSchema.parse({
           ...mapSubmission(current),
           title: parsed.title,
           requirementDescription: parsed.requirementDescription,
           version: current.version + 1,
-          workspaceRevision: current.workspace_revision + 1,
+          workspaceRevision,
           updatedAt,
         });
         return {
@@ -372,7 +382,6 @@ export class SubmissionService {
         };
       },
     });
-    if (!replay) this.onInvalidated(result.id, result.workspaceRevision);
     return result;
   }
 
@@ -536,14 +545,6 @@ export class SubmissionService {
          ) LIMIT 1`,
       )
       .get(submissionId, submissionId);
-  }
-
-  private hasRecordedMutation(mutationId: string): boolean {
-    return Boolean(
-      this.db
-        .prepare('SELECT 1 FROM cooking_mutation WHERE id = ?')
-        .get(mutationId),
-    );
   }
 
   private ensureDistinctItems(input: CreateSubmissionInput): void {

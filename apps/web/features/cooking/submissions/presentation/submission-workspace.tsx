@@ -431,9 +431,9 @@ export function SubmissionWorkspace({
                 }
                 dispatch({
                   type: 'UPDATE_SUBMISSION',
-                  submission: result.submission,
+                  submission: result.result,
                 });
-                await refreshSnapshot(result.submission.workspaceRevision);
+                await refreshSnapshot(result.result.workspaceRevision);
                 setNotice('提测信息已更新。');
                 setError(null);
               } catch (actionError) {
