@@ -40,6 +40,12 @@ describe('Update Prompt', () => {
     expect(prompt.renderedPrompt).toContain(
       'Detached HEAD Integration Worktree',
     );
+    expect(prompt.renderedPrompt).toContain(
+      '不得仅因 package.json 中存在某个 script 就把它视为必跑质量门',
+    );
+    expect(prompt.renderedPrompt).toContain(
+      '执行前确认命令及其配置确实适用于当前工程',
+    );
     expect(prompt.renderedPrompt).toContain('completedActions');
     expect(prompt.renderedPrompt.indexOf('bbbbbbb')).toBeLessThan(
       prompt.renderedPrompt.indexOf('aaaaaaa'),
@@ -52,6 +58,9 @@ describe('Update Prompt', () => {
     const ci = buildRetryCiCdUpdatePrompt();
     for (const prompt of [local, ci]) {
       expect(prompt.renderedPrompt).toContain('上一轮结构化失败结果');
+      expect(prompt.renderedPrompt).toContain(
+        '不得仅因 package.json 中存在某个 script 就把它视为必跑质量门',
+      );
       expect(prompt.renderedPrompt).toContain(
         '冻结的缺陷、Commit、顺序、分支和环境保持不变',
       );
@@ -97,6 +106,37 @@ describe('Update Prompt', () => {
         pendingActions: ['修复部署配置'],
       }).success,
     ).toBe(true);
+    expect(
+      LocalScriptUpdateExecutionResultSchema.safeParse({
+        outcome: 'FAILED',
+        summary: '部署失败',
+        completedActions: ['完成集成'],
+        validations: [
+          {
+            name: 'TypeScript 静态检查',
+            status: 'FAILED',
+            detail: '仓库不存在 tsconfig.json',
+          },
+        ],
+        warnings: ['该失败不直接证明候选修改存在类型错误'],
+        failedStep: '运行部署脚本',
+        reason: '退出码为 1',
+        pendingActions: ['修复部署配置'],
+      }),
+    ).toMatchObject({
+      success: true,
+      data: {
+        outcome: 'FAILED',
+        validations: [
+          {
+            name: 'TypeScript 静态检查',
+            status: 'FAILED',
+            detail: '仓库不存在 tsconfig.json',
+          },
+        ],
+        warnings: ['该失败不直接证明候选修改存在类型错误'],
+      },
+    });
     expect(
       LocalScriptUpdateExecutionResultSchema.safeParse({
         outcome: 'FAILED',

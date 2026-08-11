@@ -2264,6 +2264,34 @@ function UpdateBatchDetails({
                         items={node.result.completedActions}
                         title="已完成操作"
                       />
+                      <div className="collab-repair-validations">
+                        <h4>验证结果</h4>
+                        {node.result.validations.length ? (
+                          <ul>
+                            {node.result.validations.map(
+                              (validation, index) => (
+                                <li
+                                  data-validation-status={validation.status}
+                                  key={`${validation.name}:${index}`}
+                                >
+                                  <strong>
+                                    {validationLabel(validation.status)}
+                                  </strong>
+                                  <span>{validation.name}</span>
+                                  {validation.detail ? (
+                                    <small>{validation.detail}</small>
+                                  ) : null}
+                                </li>
+                              ),
+                            )}
+                          </ul>
+                        ) : (
+                          <p>Codex 未报告验证项</p>
+                        )}
+                      </div>
+                      {node.result.warnings.length ? (
+                        <DetailList items={node.result.warnings} title="提醒" />
+                      ) : null}
                       <DetailList
                         items={node.result.pendingActions}
                         title="待处理事项"

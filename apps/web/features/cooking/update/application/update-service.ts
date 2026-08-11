@@ -1503,6 +1503,8 @@ function projectUpdateAttemptResult(outcomeJson: string, technical: boolean) {
             ? outcome.summary
             : '统一更新未完成',
     completedActions: stringArray(outcome.completedActions),
+    validations: Array.isArray(outcome.validations) ? outcome.validations : [],
+    warnings: stringArray(outcome.warnings),
     pendingActions: stringArray(outcome.pendingActions),
     failureCode:
       technical && typeof outcome.technicalFailure === 'string'

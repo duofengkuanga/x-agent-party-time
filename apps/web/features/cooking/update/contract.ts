@@ -59,6 +59,8 @@ const FailedUpdateExecutionResultSchema = z
     failedStep: z.string().trim().min(1).max(240),
     reason: z.string().trim().min(1).max(4_000),
     completedActions: z.array(z.string().trim().min(1).max(2_000)).max(100),
+    validations: z.array(UpdateValidationSchema).max(100).default([]),
+    warnings: z.array(z.string().trim().min(1).max(2_000)).max(100).default([]),
     pendingActions: z.array(z.string().trim().min(1).max(2_000)).max(100),
   })
   .strict();
@@ -115,6 +117,8 @@ const UpdateAttemptResultViewSchema = z.discriminatedUnion('outcome', [
     failedStep: z.string().trim().min(1),
     reason: z.string().trim().min(1),
     completedActions: z.array(z.string()),
+    validations: z.array(UpdateValidationSchema),
+    warnings: z.array(z.string()),
     pendingActions: z.array(z.string()),
     failureCode: z.string().nullable(),
     rawSummary: z.string().nullable(),
