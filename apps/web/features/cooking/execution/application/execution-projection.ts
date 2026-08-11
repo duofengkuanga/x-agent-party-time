@@ -8,7 +8,7 @@ import type { ExecutionLifecycleHooks } from '@/server/execution/service';
 export type CookingExecutionProjectionEvent =
   | {
       phase: 'APPLY' | 'AFTER';
-      kind: 'STARTED' | 'TERMINAL';
+      kind: 'STARTED' | 'RESUMED' | 'TERMINAL';
       execution: Execution;
     }
   | {
@@ -70,6 +70,18 @@ export function cookingExecutionProjection(
       projectExecution(execution.owner, {
         phase: 'AFTER',
         kind: 'STARTED',
+        execution,
+      }),
+    applyResumed: (execution) =>
+      projectExecution(execution.owner, {
+        phase: 'APPLY',
+        kind: 'RESUMED',
+        execution,
+      }),
+    afterResumed: (execution) =>
+      projectExecution(execution.owner, {
+        phase: 'AFTER',
+        kind: 'RESUMED',
         execution,
       }),
     applyTerminal: (execution) =>

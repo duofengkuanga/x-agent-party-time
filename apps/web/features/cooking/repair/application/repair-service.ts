@@ -294,6 +294,11 @@ export class RepairService {
       else this.afterStartedExecution(event.execution);
       return;
     }
+    if (event.kind === 'RESUMED') {
+      if (event.phase === 'APPLY') this.applyResumedExecution(event.execution);
+      else this.afterResumedExecution(event.execution);
+      return;
+    }
     if (event.phase === 'APPLY') this.applyTerminalExecution(event.execution);
     else this.afterTerminalExecution(event.execution);
   }
@@ -396,6 +401,13 @@ export class RepairService {
     this.writes.bumpRevisionForBug(attempt.bug_id, now);
   }
 
+  private applyResumedExecution(execution: Execution): void {
+    if (!isRepairExecution(execution)) return;
+    const attempt = this.attemptForExecution(execution.id);
+    if (!attempt) return;
+    this.writes.bumpRevisionForBug(attempt.bug_id, this.now().toISOString());
+  }
+
   private applyInteractionOpened(
     executionId: string,
     interactionId: string,
@@ -418,6 +430,11 @@ export class RepairService {
   }
 
   private afterStartedExecution(execution: Execution): void {
+    if (!isRepairExecution(execution)) return;
+    this.publishExecutionInvalidation(execution.id);
+  }
+
+  private afterResumedExecution(execution: Execution): void {
     if (!isRepairExecution(execution)) return;
     this.publishExecutionInvalidation(execution.id);
   }

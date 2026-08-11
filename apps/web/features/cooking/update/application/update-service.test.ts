@@ -1054,6 +1054,22 @@ describe('UpdateService', () => {
       resolution: 'ACCEPTED_FOR_SESSION',
       canResolve: false,
     });
+    const eventsBeforeResume = fixture.events.length;
+    const revisionBeforeResume = fixture.events.at(-1)!.revision;
+    const waited = await fixture.executions.waitInteraction(
+      fixture.runner.id,
+      running.executionId,
+      interaction.id,
+      running.leaseToken,
+      0,
+    );
+    expect(waited).toMatchObject({ laneAcquired: true });
+    expect(fixture.executions.get(running.executionId).state).toBe('RUNNING');
+    expect(fixture.events).toHaveLength(eventsBeforeResume + 1);
+    expect(fixture.events.at(-1)).toEqual({
+      submissionId: fixture.submission.id,
+      revision: revisionBeforeResume + 1,
+    });
     expect(() =>
       fixture.updates.resolveInteraction(
         fixture.users.developer.id,
