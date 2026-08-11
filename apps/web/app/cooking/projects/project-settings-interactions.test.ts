@@ -228,7 +228,9 @@ describe('项目与工程交互基线', () => {
     expect(css).toContain('.engineering-card__actions {');
     expect(css).toContain('.engineering-card[href]:not(:disabled):hover');
     expect(css).toContain('.engineering-task__heading {');
-    expect(css).toContain('.engineering-member-add form,');
+    expect(css).toContain('.engineering-member-add form {');
+    expect(css).toContain('.engineering-information-form__header {');
+    expect(css).toContain('.engineering-information-form__fields {');
     expect(css).toContain('.engineering-environment-row > form,');
     expect(css).toContain('height: 36px;');
   });

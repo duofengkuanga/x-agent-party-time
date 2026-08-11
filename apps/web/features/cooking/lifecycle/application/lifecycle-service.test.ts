@@ -314,7 +314,8 @@ describe('LifecycleService', () => {
         mutationId: randomUUID(),
         submissionItemId: fixture.items[1]!.id,
         title: '取消恢复时间线',
-        attachmentIds: [],
+        actualResultAttachmentIds: [],
+        expectedResultAttachmentIds: [],
       },
     ).bug;
     fixture.clock.set('2026-07-27T12:04:00.000Z');
@@ -682,7 +683,8 @@ describe('LifecycleService', () => {
         mutationId: randomUUID(),
         submissionItemId: fixture.items[0]!.id,
         title: '可取消缺陷',
-        attachmentIds: [],
+        actualResultAttachmentIds: [],
+        expectedResultAttachmentIds: [],
       },
     ).bug;
     expect(() =>
@@ -825,7 +827,8 @@ describe('LifecycleService', () => {
         mutationId: randomUUID(),
         submissionItemId: fixture.items[1]!.id,
         title: '取消缺陷',
-        attachmentIds: [],
+        actualResultAttachmentIds: [],
+        expectedResultAttachmentIds: [],
       },
     ).bug;
     fixture.lifecycle.cancelBug(fixture.users.tester.id, other.id, {
@@ -855,7 +858,8 @@ describe('LifecycleService', () => {
         mutationId: randomUUID(),
         submissionItemId: fixture.items[0]!.id,
         title: '关闭后新增',
-        attachmentIds: [],
+        actualResultAttachmentIds: [],
+        expectedResultAttachmentIds: [],
       }),
     ).toThrow(expect.objectContaining({ code: 'INVALID_TRANSITION' }));
   });
@@ -873,7 +877,8 @@ function createAndRequestBug(
       mutationId: randomUUID(),
       submissionItemId,
       title,
-      attachmentIds: [],
+      actualResultAttachmentIds: [],
+      expectedResultAttachmentIds: [],
     },
   ).bug;
   return fixture.bugs.requestRepair(

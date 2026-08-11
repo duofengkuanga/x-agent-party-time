@@ -239,7 +239,8 @@ async function setup(
       mutationId: randomUUID(),
       submissionItemId,
       title,
-      attachmentIds: [],
+      actualResultAttachmentIds: [],
+      expectedResultAttachmentIds: [],
     });
     return bugs.requestRepair(
       users.tester.id,
@@ -373,6 +374,38 @@ describe('UpdateService', () => {
       symbol: '…',
       aheadCount: 0,
     });
+  });
+
+  test('Workspace 忽略删除缺陷后遗留的空更新批次', async () => {
+    const fixture = await setup();
+    const now = fixture.clock.now().toISOString();
+    fixture.database
+      .prepare(
+        `INSERT INTO cooking_update_batch(
+           id, submission_id, submission_item_id, state, version,
+           active_execution_id, session_id, deployment_json, frozen_at,
+           created_at, updated_at
+         ) VALUES (?, ?, ?, 'COMPLETED', 1, NULL, NULL, ?, ?, ?, ?)`,
+      )
+      .run(
+        randomUUID(),
+        fixture.submission.id,
+        fixture.item.id,
+        JSON.stringify({
+          kind: 'LOCAL_SCRIPT',
+          command: 'bun run deploy:test',
+        }),
+        now,
+        now,
+        now,
+      );
+
+    expect(
+      fixture.updates.workspace(
+        fixture.users.developer.id,
+        fixture.submission.id,
+      ).updateBatches,
+    ).toEqual([]);
   });
 
   test('无权访问的 Workspace Query 不会触发到期冻结', async () => {

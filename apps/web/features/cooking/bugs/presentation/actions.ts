@@ -30,6 +30,11 @@ type ActionFailure = {
   error: { code: PlatformErrorCode; message: string };
 };
 
+type UploadedReportAttachments = {
+  actualResultAttachmentIds: string[];
+  expectedResultAttachmentIds: string[];
+};
+
 export type BugActionResult =
   { ok: true; result: BugMutationResult } | ActionFailure;
 
@@ -46,8 +51,7 @@ export async function createBugAction(
       operationPath: optionalField(formData, 'operationPath'),
       actualResult: optionalField(formData, 'actualResult'),
       expectedResult: optionalField(formData, 'expectedResult'),
-      notes: optionalField(formData, 'notes'),
-      attachmentIds,
+      ...attachmentIds,
     }),
   );
 }
@@ -57,7 +61,14 @@ export async function updateBugReportAction(
   formData: FormData,
 ): Promise<BugActionResult> {
   const user = await requireCurrentUser();
-  const existingAttachmentIds = stringList(formData, 'existingAttachmentIds');
+  const existingActualResultAttachmentIds = stringList(
+    formData,
+    'existingActualResultAttachmentIds',
+  );
+  const existingExpectedResultAttachmentIds = stringList(
+    formData,
+    'existingExpectedResultAttachmentIds',
+  );
   const result = await withUploadedFiles(
     user.id,
     formData,
@@ -70,8 +81,14 @@ export async function updateBugReportAction(
         operationPath: optionalField(formData, 'operationPath'),
         actualResult: optionalField(formData, 'actualResult'),
         expectedResult: optionalField(formData, 'expectedResult'),
-        notes: optionalField(formData, 'notes'),
-        attachmentIds: [...existingAttachmentIds, ...uploadedAttachmentIds],
+        actualResultAttachmentIds: [
+          ...existingActualResultAttachmentIds,
+          ...uploadedAttachmentIds.actualResultAttachmentIds,
+        ],
+        expectedResultAttachmentIds: [
+          ...existingExpectedResultAttachmentIds,
+          ...uploadedAttachmentIds.expectedResultAttachmentIds,
+        ],
       }),
   );
   if (result.ok)
@@ -118,32 +135,48 @@ async function withUploadedFiles(
   userId: string,
   formData: FormData,
   command: (
-    attachmentIds: string[],
+    attachmentIds: UploadedReportAttachments,
   ) => Promise<BugMutationResult> | BugMutationResult,
 ): Promise<BugActionResult> {
-  const files = formData
-    .getAll('attachments')
-    .filter(
-      (value): value is File =>
-        value instanceof File && value.size > 0 && Boolean(value.name),
-    );
+  const files = {
+    actualResultAttachmentIds: uploadedFiles(
+      formData,
+      'actualResultAttachments',
+    ),
+    expectedResultAttachmentIds: uploadedFiles(
+      formData,
+      'expectedResultAttachments',
+    ),
+  };
   const uploadedIds: string[] = [];
+  const uploadedAttachmentIds: UploadedReportAttachments = {
+    actualResultAttachmentIds: [],
+    expectedResultAttachmentIds: [],
+  };
   const store = cookingFileStore();
   try {
-    if (files.length > 5)
-      throw new PlatformError('VALIDATION_FAILED', '每次最多上传 5 个附件');
-    for (const file of files) {
-      if (file.size > MAX_FILE_BYTES)
-        throw new PlatformError('FILE_TOO_LARGE', '单个附件不能超过 10 MB');
-      const stored = await store.put({
-        bytes: new Uint8Array(await file.arrayBuffer()),
-        originalName: file.name,
-        mediaType: resolveAllowedMediaType(file),
-        uploadedByUserId: userId,
-      });
-      uploadedIds.push(stored.id);
+    for (const [attachmentKind, groupedFiles] of Object.entries(files) as Array<
+      [keyof UploadedReportAttachments, File[]]
+    >) {
+      if (groupedFiles.length > 5)
+        throw new PlatformError(
+          'VALIDATION_FAILED',
+          '实际结果和预期结果各最多上传 5 个附件',
+        );
+      for (const file of groupedFiles) {
+        if (file.size > MAX_FILE_BYTES)
+          throw new PlatformError('FILE_TOO_LARGE', '单个附件不能超过 10 MB');
+        const stored = await store.put({
+          bytes: new Uint8Array(await file.arrayBuffer()),
+          originalName: file.name,
+          mediaType: resolveAllowedMediaType(file),
+          uploadedByUserId: userId,
+        });
+        uploadedIds.push(stored.id);
+        uploadedAttachmentIds[attachmentKind].push(stored.id);
+      }
     }
-    const result = await command(uploadedIds);
+    const result = await command(uploadedAttachmentIds);
     await cleanupUnboundUploads(
       store,
       userId,
@@ -156,6 +189,15 @@ async function withUploadedFiles(
     await cleanupUnboundUploads(store, userId, uploadedIds, []);
     return actionError(error);
   }
+}
+
+function uploadedFiles(formData: FormData, name: string): File[] {
+  return formData
+    .getAll(name)
+    .filter(
+      (value): value is File =>
+        value instanceof File && value.size > 0 && Boolean(value.name),
+    );
 }
 
 async function cleanupUnboundUploads(

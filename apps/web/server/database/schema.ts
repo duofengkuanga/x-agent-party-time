@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { PlatformError } from '@/server/errors';
 
-export const SERVER_SCHEMA_VERSION = 18;
+export const SERVER_SCHEMA_VERSION = 19;
 
 const SCHEMA = `
 CREATE TABLE platform_user (
@@ -400,7 +400,6 @@ CREATE TABLE cooking_bug (
   operation_path TEXT,
   actual_result TEXT,
   expected_result TEXT,
-  notes TEXT,
   report_locked_at TEXT,
   archived_at TEXT,
   archived_by_user_id TEXT REFERENCES platform_user(id) ON DELETE RESTRICT,
@@ -432,12 +431,13 @@ CREATE INDEX cooking_bug_lifecycle_event_bug
 CREATE TABLE cooking_bug_attachment (
   file_id TEXT PRIMARY KEY REFERENCES platform_file(id) ON DELETE RESTRICT,
   bug_id TEXT NOT NULL REFERENCES cooking_bug(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK (role IN ('ACTUAL_RESULT', 'EXPECTED_RESULT')),
   position INTEGER NOT NULL CHECK (position >= 0),
   created_at TEXT NOT NULL,
-  UNIQUE(bug_id, position)
+  UNIQUE(bug_id, role, position)
 ) STRICT;
 CREATE INDEX cooking_bug_attachment_bug
-  ON cooking_bug_attachment(bug_id, position);
+  ON cooking_bug_attachment(bug_id, role, position);
 
 CREATE TABLE cooking_bug_repair_context (
   bug_id TEXT PRIMARY KEY REFERENCES cooking_bug(id) ON DELETE CASCADE,

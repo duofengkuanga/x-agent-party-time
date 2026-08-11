@@ -73,7 +73,7 @@ const IMAGE_ATTACHMENT_MEDIA_TYPES = new Set([
 ]);
 const MAX_ATTACHMENT_FILES = 5;
 
-type StoredAttachment = BugView['report']['attachments'][number];
+type StoredAttachment = BugView['report']['actualResultAttachments'][number];
 type ImagePreview = { name: string; src: string };
 
 type MainStage = (typeof STATUS_COLUMNS)[number]['status'];
@@ -1025,11 +1025,12 @@ function BugForm({
   const [expectedResult, setExpectedResult] = useState(
     bug?.report.expectedResult ?? '',
   );
-  const [notes, setNotes] = useState(bug?.report.notes ?? '');
-  const [keptAttachmentIds, setKeptAttachmentIds] = useState(
-    bug?.report.attachments.map(({ id }) => id) ?? [],
-  );
-  const [files, setFiles] = useState<File[]>([]);
+  const [keptActualResultAttachmentIds, setKeptActualResultAttachmentIds] =
+    useState(bug?.report.actualResultAttachments.map(({ id }) => id) ?? []);
+  const [keptExpectedResultAttachmentIds, setKeptExpectedResultAttachmentIds] =
+    useState(bug?.report.expectedResultAttachments.map(({ id }) => id) ?? []);
+  const [actualResultFiles, setActualResultFiles] = useState<File[]>([]);
+  const [expectedResultFiles, setExpectedResultFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, startSaving] = useTransition();
 
@@ -1058,10 +1059,14 @@ function BugForm({
         formData.set('operationPath', operationPath);
         formData.set('actualResult', actualResult);
         formData.set('expectedResult', expectedResult);
-        formData.set('notes', notes);
-        for (const fileId of keptAttachmentIds)
-          formData.append('existingAttachmentIds', fileId);
-        for (const file of files) formData.append('attachments', file);
+        for (const fileId of keptActualResultAttachmentIds)
+          formData.append('existingActualResultAttachmentIds', fileId);
+        for (const fileId of keptExpectedResultAttachmentIds)
+          formData.append('existingExpectedResultAttachmentIds', fileId);
+        for (const file of actualResultFiles)
+          formData.append('actualResultAttachments', file);
+        for (const file of expectedResultFiles)
+          formData.append('expectedResultAttachments', file);
         const result = bug
           ? await updateBugReportAction(bug.id, formData)
           : await createBugAction(snapshot.submission.submission.id, formData);
@@ -1080,111 +1085,124 @@ function BugForm({
   }
 
   return (
-    <form
-      className="collab-dialog__body collab-form collab-bug-drawer__body collab-bug-form"
-      onSubmit={submit}
-    >
-      <fieldset disabled={!canAssign || saving}>
-        <legend>问题归属</legend>
-        <label>
-          <span>具体工程</span>
-          <select
-            onChange={(event) => setSubmissionItemId(event.target.value)}
-            value={submissionItemId}
-          >
-            <option value="">暂不确定</option>
-            {frontendItems.length ? (
-              <optgroup label="前端">
-                {frontendItems.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.engineering.name}（{item.engineering.identifier}）
-                  </option>
-                ))}
-              </optgroup>
-            ) : null}
-            {backendItems.length ? (
-              <optgroup label="后端">
-                {backendItems.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.engineering.name}（{item.engineering.identifier}）
-                  </option>
-                ))}
-              </optgroup>
-            ) : null}
-          </select>
-        </label>
-      </fieldset>
-      <fieldset disabled={!canEditReport || saving}>
-        <legend>缺陷内容</legend>
-        <label>
-          <span>标题</span>
-          <input
-            maxLength={240}
-            onChange={(event) => setTitle(event.target.value)}
-            required
-            value={title}
-          />
-        </label>
-        <label>
-          <span>操作路径</span>
-          <textarea
-            maxLength={8_000}
-            onChange={(event) => setOperationPath(event.target.value)}
-            rows={3}
-            value={operationPath}
-          />
-        </label>
-        <div className="collab-form__grid collab-bug-form__grid">
+    <>
+      <form
+        className="collab-dialog__body collab-form collab-bug-drawer__body collab-bug-form"
+        id="collab-bug-form"
+        onSubmit={submit}
+      >
+        <fieldset disabled={!canAssign || saving}>
+          <legend>问题归属</legend>
           <label>
-            <span>实际结果</span>
-            <textarea
-              maxLength={8_000}
-              onChange={(event) => setActualResult(event.target.value)}
-              rows={4}
-              value={actualResult}
+            <span>具体工程</span>
+            <select
+              onChange={(event) => setSubmissionItemId(event.target.value)}
+              value={submissionItemId}
+            >
+              <option value="">暂不确定</option>
+              {frontendItems.length ? (
+                <optgroup label="前端">
+                  {frontendItems.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.engineering.name}（{item.engineering.identifier}）
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
+              {backendItems.length ? (
+                <optgroup label="后端">
+                  {backendItems.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.engineering.name}（{item.engineering.identifier}）
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
+            </select>
+          </label>
+        </fieldset>
+        <fieldset disabled={!canEditReport || saving}>
+          <legend>缺陷内容</legend>
+          <label>
+            <span>标题</span>
+            <input
+              maxLength={240}
+              onChange={(event) => setTitle(event.target.value)}
+              required
+              value={title}
             />
           </label>
+          <div className="collab-form__grid collab-bug-form__grid">
+            <fieldset className="collab-bug-result-field">
+              <legend>预期结果</legend>
+              <label>
+                <span>文本说明</span>
+                <textarea
+                  maxLength={8_000}
+                  onChange={(event) => setExpectedResult(event.target.value)}
+                  rows={4}
+                  value={expectedResult}
+                />
+              </label>
+              <AttachmentPicker
+                ariaLabel="预期结果附件"
+                existingAttachments={bug?.report.expectedResultAttachments}
+                files={expectedResultFiles}
+                keptExistingIds={keptExpectedResultAttachmentIds}
+                onChange={setExpectedResultFiles}
+                onExistingChange={setKeptExpectedResultAttachmentIds}
+              />
+            </fieldset>
+            <fieldset className="collab-bug-result-field">
+              <legend>实际结果</legend>
+              <label>
+                <span>文本说明</span>
+                <textarea
+                  maxLength={8_000}
+                  onChange={(event) => setActualResult(event.target.value)}
+                  rows={4}
+                  value={actualResult}
+                />
+              </label>
+              <AttachmentPicker
+                ariaLabel="实际结果附件"
+                existingAttachments={bug?.report.actualResultAttachments}
+                files={actualResultFiles}
+                keptExistingIds={keptActualResultAttachmentIds}
+                onChange={setActualResultFiles}
+                onExistingChange={setKeptActualResultAttachmentIds}
+              />
+            </fieldset>
+          </div>
           <label>
-            <span>预期结果</span>
+            <span>操作路径</span>
             <textarea
               maxLength={8_000}
-              onChange={(event) => setExpectedResult(event.target.value)}
-              rows={4}
-              value={expectedResult}
+              onChange={(event) => setOperationPath(event.target.value)}
+              rows={3}
+              value={operationPath}
             />
           </label>
-        </div>
-        <label>
-          <span>补充说明</span>
-          <textarea
-            maxLength={8_000}
-            onChange={(event) => setNotes(event.target.value)}
-            rows={3}
-            value={notes}
-          />
-        </label>
-        <AttachmentPicker
-          existingAttachments={bug?.report.attachments}
-          files={files}
-          keptExistingIds={keptAttachmentIds}
-          onChange={setFiles}
-          onExistingChange={setKeptAttachmentIds}
-        />
-      </fieldset>
-      {error ? (
-        <p className="collab-form__error" role="alert">
-          {error}
-        </p>
-      ) : null}
+        </fieldset>
+        {error ? (
+          <p className="collab-form__error" role="alert">
+            {error}
+          </p>
+        ) : null}
+      </form>
       <footer className="collab-dialog__actions collab-bug-drawer__actions">
         <button onClick={onCancel} type="button">
           取消
         </button>
-        <button disabled={saving || (!canEditReport && !canAssign)}>
+        <button
+          disabled={saving || (!canEditReport && !canAssign)}
+          form="collab-bug-form"
+          type="submit"
+        >
           {saving ? '保存中…' : bug ? '保存修改' : '登记缺陷'}
         </button>
       </footer>
-    </form>
+    </>
   );
 }
 
@@ -1325,6 +1343,24 @@ function BugDetail({
               <strong>需要你处理</strong>
             </Detail>
           ) : null}
+          {bug.report.expectedResult ||
+          bug.report.expectedResultAttachments.length ? (
+            <Detail label="预期结果">
+              <BugResultDetail
+                attachments={bug.report.expectedResultAttachments}
+                text={bug.report.expectedResult}
+              />
+            </Detail>
+          ) : null}
+          {bug.report.actualResult ||
+          bug.report.actualResultAttachments.length ? (
+            <Detail label="实际结果">
+              <BugResultDetail
+                attachments={bug.report.actualResultAttachments}
+                text={bug.report.actualResult}
+              />
+            </Detail>
+          ) : null}
           {bug.report.operationPath ? (
             <Detail label="操作路径">
               <span
@@ -1333,44 +1369,6 @@ function BugDetail({
               >
                 {bug.report.operationPath}
               </span>
-            </Detail>
-          ) : null}
-          {bug.report.actualResult ? (
-            <Detail label="实际结果">
-              <span
-                className="collab-bug-detail-fact"
-                title={bug.report.actualResult}
-              >
-                {bug.report.actualResult}
-              </span>
-            </Detail>
-          ) : null}
-          {bug.report.expectedResult ? (
-            <Detail label="预期结果">
-              <span
-                className="collab-bug-detail-fact"
-                title={bug.report.expectedResult}
-              >
-                {bug.report.expectedResult}
-              </span>
-            </Detail>
-          ) : null}
-          {bug.report.notes ? (
-            <Detail label="补充说明">
-              <span className="collab-bug-detail-fact" title={bug.report.notes}>
-                {bug.report.notes}
-              </span>
-            </Detail>
-          ) : null}
-          {bug.report.attachments.length ? (
-            <Detail label="附件">
-              <ul className="collab-bug-detail-attachments">
-                {bug.report.attachments.map((attachment) => (
-                  <li key={attachment.id}>
-                    <AttachmentLink attachment={attachment} />
-                  </li>
-                ))}
-              </ul>
             </Detail>
           ) : null}
           <Detail label="缺陷 ID">
@@ -1611,6 +1609,33 @@ function BugDetail({
         <p className="collab-form__error" role="alert">
           {error}
         </p>
+      ) : null}
+    </div>
+  );
+}
+
+function BugResultDetail({
+  attachments,
+  text,
+}: {
+  attachments: StoredAttachment[];
+  text?: string;
+}) {
+  return (
+    <div className="collab-bug-result-detail">
+      {text ? (
+        <span className="collab-bug-detail-fact" title={text}>
+          {text}
+        </span>
+      ) : null}
+      {attachments.length ? (
+        <ul className="collab-bug-detail-attachments">
+          {attachments.map((attachment) => (
+            <li key={attachment.id}>
+              <AttachmentLink attachment={attachment} />
+            </li>
+          ))}
+        </ul>
       ) : null}
     </div>
   );
@@ -1997,7 +2022,7 @@ function RepairAttemptTimelineArticle({
 function ProgressAttachments({
   attachments,
 }: {
-  attachments: BugView['report']['attachments'];
+  attachments: StoredAttachment[];
 }) {
   if (!attachments.length) return null;
   return (
@@ -2455,6 +2480,7 @@ function UpdateProgressSummaryNode({
 }
 
 function AttachmentPicker({
+  ariaLabel = '添加附件',
   existingAttachments = [],
   files,
   inputRef,
@@ -2462,6 +2488,7 @@ function AttachmentPicker({
   onChange,
   onExistingChange,
 }: {
+  ariaLabel?: string;
   existingAttachments?: StoredAttachment[];
   files: File[];
   inputRef?: RefObject<HTMLInputElement | null>;
@@ -2528,7 +2555,7 @@ function AttachmentPicker({
 
   return (
     <div
-      aria-label="添加附件"
+      aria-label={ariaLabel}
       className="collab-attachment-picker"
       onPaste={pasteFiles}
       role="group"

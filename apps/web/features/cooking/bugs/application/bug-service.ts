@@ -38,7 +38,6 @@ type BugRow = {
   operation_path: string | null;
   actual_result: string | null;
   expected_result: string | null;
-  notes: string | null;
   report_locked_at: string | null;
   archived_at: string | null;
   archived_by_user_id: string | null;
@@ -66,6 +65,13 @@ type ItemRow = {
   responsible_display_name: string;
   responsible_user_created_at: string;
   binding_id: string;
+};
+
+type BugAttachmentRole = 'ACTUAL_RESULT' | 'EXPECTED_RESULT';
+
+type ReportAttachmentIds = {
+  actualResultAttachmentIds: string[];
+  expectedResultAttachmentIds: string[];
 };
 
 const STAGE_LABELS: Record<Bug['stage'], string> = {
@@ -124,7 +130,8 @@ export class BugService {
             '只有测试负责人可以登记缺陷',
           );
         this.requireItem(submissionId, parsed.submissionItemId);
-        this.requireBindableFiles(actorUserId, parsed.attachmentIds);
+        const attachmentIds = reportAttachmentIds(parsed);
+        this.requireBindableFiles(actorUserId, attachmentIds);
         const now = this.now().toISOString();
         const bugId = this.createId();
         const shortId = this.nextShortId(submissionId);
@@ -133,9 +140,9 @@ export class BugService {
           .prepare(
             `INSERT INTO cooking_bug(
                id, short_id, submission_id, submission_item_id, stage,
-               title, operation_path, actual_result, expected_result, notes,
+               title, operation_path, actual_result, expected_result,
                report_locked_at, version, created_by_user_id, created_at, updated_at
-             ) VALUES (?, ?, ?, ?, 'WAITING_FOR_REPAIR', ?, ?, ?, ?, ?, NULL, 1, ?, ?, ?)`,
+             ) VALUES (?, ?, ?, ?, 'WAITING_FOR_REPAIR', ?, ?, ?, ?, NULL, 1, ?, ?, ?)`,
           )
           .run(
             bugId,
@@ -146,19 +153,29 @@ export class BugService {
             report.operationPath ?? null,
             report.actualResult ?? null,
             report.expectedResult ?? null,
-            report.notes ?? null,
             actorUserId,
             now,
             now,
           );
-        this.bindAttachments(bugId, parsed.attachmentIds, now);
+        this.bindAttachments(
+          bugId,
+          'ACTUAL_RESULT',
+          parsed.actualResultAttachmentIds,
+          now,
+        );
+        this.bindAttachments(
+          bugId,
+          'EXPECTED_RESULT',
+          parsed.expectedResultAttachmentIds,
+          now,
+        );
         const revision = this.bumpRevision(submissionId, now);
         const bug = this.requireBug(bugId);
         return {
           result: {
             bug,
             revision,
-            boundAttachmentIds: parsed.attachmentIds,
+            boundAttachmentIds: attachmentIds,
             unboundAttachmentIds: [],
           },
           resourceId: bugId,
@@ -171,7 +188,7 @@ export class BugService {
               details: {
                 shortId,
                 submissionItemId: parsed.submissionItemId,
-                attachmentCount: parsed.attachmentIds.length,
+                attachmentCount: attachmentIds.length,
               },
             },
           ],
@@ -201,13 +218,14 @@ export class BugService {
           );
         this.requireEditableReport(bug, parsed.expectedVersion);
         this.requireItem(bug.submissionId, parsed.submissionItemId);
-        this.requireBindableFiles(actorUserId, parsed.attachmentIds, bug.id);
+        const attachmentIds = reportAttachmentIds(parsed);
+        this.requireBindableFiles(actorUserId, attachmentIds, bug.id);
         const report = normalizedReport(parsed);
         const update = this.db
           .prepare(
             `UPDATE cooking_bug
              SET submission_item_id = ?, title = ?, operation_path = ?,
-                 actual_result = ?, expected_result = ?, notes = ?,
+                 actual_result = ?, expected_result = ?,
                  version = version + 1, updated_at = ?
              WHERE id = ? AND version = ? AND report_locked_at IS NULL`,
           )
@@ -217,22 +235,22 @@ export class BugService {
             report.operationPath ?? null,
             report.actualResult ?? null,
             report.expectedResult ?? null,
-            report.notes ?? null,
             now,
             bug.id,
             parsed.expectedVersion,
           );
         if (update.changes !== 1) throw staleBug();
-        this.replaceReportAttachments(bug.id, parsed.attachmentIds, now);
+        this.replaceReportAttachments(bug.id, parsed, now);
+        const previousAttachmentIds = reportAttachmentIds(bug.report);
         return {
           action: 'BUG_REPORT_UPDATED',
-          boundAttachmentIds: parsed.attachmentIds,
-          unboundAttachmentIds: bug.report.attachmentIds.filter(
-            (fileId) => !parsed.attachmentIds.includes(fileId),
+          boundAttachmentIds: attachmentIds,
+          unboundAttachmentIds: previousAttachmentIds.filter(
+            (fileId) => !attachmentIds.includes(fileId),
           ),
           details: {
             submissionItemId: parsed.submissionItemId,
-            attachmentCount: parsed.attachmentIds.length,
+            attachmentCount: attachmentIds.length,
           },
         };
       },
@@ -347,8 +365,11 @@ export class BugService {
           ...(bug.report.expectedResult
             ? { expectedResult: bug.report.expectedResult }
             : {}),
-          ...(bug.report.notes ? { notes: bug.report.notes } : {}),
-          attachments: this.attachments(row.id),
+          actualResultAttachments: this.attachments(row.id, 'ACTUAL_RESULT'),
+          expectedResultAttachments: this.attachments(
+            row.id,
+            'EXPECTED_RESULT',
+          ),
         },
         createdBy: this.getUser(bug.createdByUserId),
         assignment: item
@@ -594,42 +615,68 @@ export class BugService {
     }
   }
 
-  private bindAttachments(bugId: string, fileIds: string[], now: string): void {
+  private bindAttachments(
+    bugId: string,
+    role: BugAttachmentRole,
+    fileIds: string[],
+    now: string,
+  ): void {
     fileIds.forEach((fileId, position) =>
       this.db
         .prepare(
           `INSERT INTO cooking_bug_attachment(
-             file_id, bug_id, position, created_at
-           ) VALUES (?, ?, ?, ?)`,
+             file_id, bug_id, role, position, created_at
+           ) VALUES (?, ?, ?, ?, ?)`,
         )
-        .run(fileId, bugId, position, now),
+        .run(fileId, bugId, role, position, now),
     );
   }
 
   private replaceReportAttachments(
     bugId: string,
-    fileIds: string[],
+    attachmentIds: ReportAttachmentIds,
     now: string,
   ): void {
     this.db
       .prepare(`DELETE FROM cooking_bug_attachment WHERE bug_id = ?`)
       .run(bugId);
-    this.bindAttachments(bugId, fileIds, now);
+    this.bindAttachments(
+      bugId,
+      'ACTUAL_RESULT',
+      attachmentIds.actualResultAttachmentIds,
+      now,
+    );
+    this.bindAttachments(
+      bugId,
+      'EXPECTED_RESULT',
+      attachmentIds.expectedResultAttachmentIds,
+      now,
+    );
   }
 
-  private reportAttachmentIds(bugId: string): string[] {
-    return (
-      this.db
-        .prepare(
-          `SELECT file_id FROM cooking_bug_attachment
-           WHERE bug_id = ? ORDER BY position`,
-        )
-        .all(bugId) as Array<{ file_id: string }>
-    ).map(({ file_id }) => file_id);
+  private reportAttachmentIds(bugId: string): ReportAttachmentIds {
+    const rows = this.db
+      .prepare(
+        `SELECT file_id, role FROM cooking_bug_attachment
+         WHERE bug_id = ? ORDER BY role, position`,
+      )
+      .all(bugId) as Array<{
+      file_id: string;
+      role: BugAttachmentRole;
+    }>;
+    return {
+      actualResultAttachmentIds: rows
+        .filter(({ role }) => role === 'ACTUAL_RESULT')
+        .map(({ file_id }) => file_id),
+      expectedResultAttachmentIds: rows
+        .filter(({ role }) => role === 'EXPECTED_RESULT')
+        .map(({ file_id }) => file_id),
+    };
   }
 
   private attachments(
     bugId: string,
+    role: BugAttachmentRole,
   ): Array<
     Pick<
       StoredFile,
@@ -643,10 +690,10 @@ export class BugService {
                 file.created_at
          FROM cooking_bug_attachment attachment
          JOIN platform_file file ON file.id = attachment.file_id
-         WHERE attachment.bug_id = ?
+         WHERE attachment.bug_id = ? AND attachment.role = ?
          ORDER BY attachment.position`,
       )
-      .all(bugId) as Array<{
+      .all(bugId, role) as Array<{
       id: string;
       storage_key: string;
       original_name: string;
@@ -774,7 +821,8 @@ export class BugService {
     if (bugIds.length === 0)
       throw new PlatformError('NOT_FOUND', '没有可删除的缺陷');
     const bugs = bugIds.map((bugId) => this.requireBug(bugId));
-    const executionIds = this.bugExecutionIds(bugIds);
+    const batchIds = this.updateBatchIds(bugIds);
+    const executionIds = this.bugExecutionIds(bugIds, batchIds);
     if (!parsed.force && executionIds.length > 0) {
       const active = this.db
         .prepare(
@@ -794,6 +842,7 @@ export class BugService {
     }
     return this.db.transaction(() => {
       this.deleteBugRows(bugIds, executionIds);
+      this.deleteEmptyUpdateBatches(batchIds);
       const deletedExecutionIds = this.deleteExecutions(executionIds);
       this.bumpDeletedSubmissions(bugs);
       return {
@@ -803,7 +852,18 @@ export class BugService {
     })();
   }
 
-  private bugExecutionIds(bugIds: string[]): string[] {
+  private updateBatchIds(bugIds: string[]): string[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT DISTINCT batch_id FROM cooking_update_batch_entry
+           WHERE bug_id IN (${placeholders(bugIds.length)})`,
+        )
+        .all(...bugIds) as Array<{ batch_id: string }>
+    ).map(({ batch_id }) => batch_id);
+  }
+
+  private bugExecutionIds(bugIds: string[], batchIds: string[]): string[] {
     const ids = new Set<string>();
     for (const { execution_id } of this.db
       .prepare(
@@ -812,14 +872,6 @@ export class BugService {
       )
       .all(...bugIds) as Array<{ execution_id: string }>)
       ids.add(execution_id);
-    const batchIds = (
-      this.db
-        .prepare(
-          `SELECT DISTINCT batch_id FROM cooking_update_batch_entry
-           WHERE bug_id IN (${placeholders(bugIds.length)})`,
-        )
-        .all(...bugIds) as Array<{ batch_id: string }>
-    ).map(({ batch_id }) => batch_id);
     if (batchIds.length > 0) {
       for (const { execution_id } of this.db
         .prepare(
@@ -838,6 +890,20 @@ export class BugService {
         ids.add(active_execution_id);
     }
     return [...ids];
+  }
+
+  private deleteEmptyUpdateBatches(batchIds: string[]): void {
+    if (batchIds.length === 0) return;
+    this.db
+      .prepare(
+        `DELETE FROM cooking_update_batch
+         WHERE id IN (${placeholders(batchIds.length)})
+           AND NOT EXISTS (
+             SELECT 1 FROM cooking_update_batch_entry entry
+             WHERE entry.batch_id = cooking_update_batch.id
+           )`,
+      )
+      .run(...batchIds);
   }
 
   private deleteBugRows(bugIds: string[], executionIds: string[]): void {
@@ -970,14 +1036,12 @@ function normalizedReport(input: {
   operationPath?: string;
   actualResult?: string;
   expectedResult?: string;
-  notes?: string;
 }) {
   return {
     title: input.title.trim(),
     operationPath: normalizedOptional(input.operationPath),
     actualResult: normalizedOptional(input.actualResult),
     expectedResult: normalizedOptional(input.expectedResult),
-    notes: normalizedOptional(input.notes),
   };
 }
 
@@ -986,7 +1050,7 @@ function normalizedOptional(value: string | undefined): string | undefined {
   return normalized ? normalized : undefined;
 }
 
-function mapBug(row: BugRow, attachmentIds: string[]): Bug {
+function mapBug(row: BugRow, attachmentIds: ReportAttachmentIds): Bug {
   return BugSchema.parse({
     id: row.id,
     shortId: row.short_id,
@@ -998,8 +1062,7 @@ function mapBug(row: BugRow, attachmentIds: string[]): Bug {
       ...(row.operation_path ? { operationPath: row.operation_path } : {}),
       ...(row.actual_result ? { actualResult: row.actual_result } : {}),
       ...(row.expected_result ? { expectedResult: row.expected_result } : {}),
-      ...(row.notes ? { notes: row.notes } : {}),
-      attachmentIds,
+      ...attachmentIds,
     },
     reportLockedAt: row.report_locked_at,
     archivedAt: row.archived_at,
@@ -1009,6 +1072,13 @@ function mapBug(row: BugRow, attachmentIds: string[]): Bug {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
+}
+
+function reportAttachmentIds(report: ReportAttachmentIds): string[] {
+  return [
+    ...report.actualResultAttachmentIds,
+    ...report.expectedResultAttachmentIds,
+  ];
 }
 
 function itemUser(item: ItemRow): User {

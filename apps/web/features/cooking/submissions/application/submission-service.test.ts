@@ -733,10 +733,10 @@ function insertBug(
     .prepare(
       `INSERT INTO cooking_bug(
          id, short_id, submission_id, submission_item_id, stage, title,
-         operation_path, actual_result, expected_result, notes,
+         operation_path, actual_result, expected_result,
          report_locked_at, archived_at, archived_by_user_id, version,
          created_by_user_id, created_at, updated_at
-       ) VALUES (?, 1, ?, ?, 'WAITING_FOR_REPAIR', ?, ?, ?, ?, NULL,
+       ) VALUES (?, 1, ?, ?, 'WAITING_FOR_REPAIR', ?, ?, ?, ?,
                  NULL, NULL, NULL, 1, ?, ?, ?)`,
     )
     .run(

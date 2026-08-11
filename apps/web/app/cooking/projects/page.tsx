@@ -897,13 +897,17 @@ function EngineeringInformationManagement({
       />
 
       <section className="engineering-task__section">
-        <div className="engineering-task__section-title">
-          <strong>工程信息</strong>
-        </div>
         <form
           action={updateEngineeringAction}
           className="engineering-information-form"
         >
+          <header className="engineering-information-form__header">
+            <div>
+              <strong>工程信息</strong>
+              <small>维护工程在提测与缺陷协作中展示的基础信息。</small>
+            </div>
+            <button type="submit">保存工程信息</button>
+          </header>
           <EngineeringFields
             engineeringId={engineeringId}
             projectId={projectId}
@@ -913,47 +917,48 @@ function EngineeringInformationManagement({
             type="hidden"
             value={workspace.engineering.version}
           />
-          <label>
-            <span>名称</span>
-            <input
-              defaultValue={workspace.engineering.name}
-              name="name"
-              required
-            />
-          </label>
-          <label>
-            <span>归属</span>
-            <select defaultValue={workspace.engineering.type} name="type">
-              <option value="FRONTEND">前端</option>
-              <option value="BACKEND">后端</option>
-            </select>
-          </label>
-          <label>
-            <span>稳定标识</span>
-            <input
-              aria-describedby={
-                identifierLocked
-                  ? 'engineering-identifier-lock'
-                  : 'engineering-identifier-format'
-              }
-              defaultValue={workspace.engineering.identifier}
-              maxLength={40}
-              name="identifier"
-              pattern="[a-z\p{Script=Han}][a-z0-9\p{Script=Han}]*(?:-[a-z0-9\p{Script=Han}]+)*"
-              readOnly={identifierLocked}
-              required
-            />
-            {identifierLocked ? (
-              <small id="engineering-identifier-lock">
-                已被提测引用，不可修改。
-              </small>
-            ) : (
-              <small id="engineering-identifier-format">
-                支持中文、小写字母、数字和单个连字符，需以中文或小写字母开头。
-              </small>
-            )}
-          </label>
-          <button type="submit">保存工程信息</button>
+          <div className="engineering-information-form__fields">
+            <label className="engineering-information-form__name">
+              <span>名称</span>
+              <input
+                defaultValue={workspace.engineering.name}
+                name="name"
+                required
+              />
+            </label>
+            <label>
+              <span>归属</span>
+              <select defaultValue={workspace.engineering.type} name="type">
+                <option value="FRONTEND">前端</option>
+                <option value="BACKEND">后端</option>
+              </select>
+            </label>
+            <label>
+              <span>稳定标识</span>
+              <input
+                aria-describedby={
+                  identifierLocked
+                    ? 'engineering-identifier-lock'
+                    : 'engineering-identifier-format'
+                }
+                defaultValue={workspace.engineering.identifier}
+                maxLength={40}
+                name="identifier"
+                pattern="[a-z\p{Script=Han}][a-z0-9\p{Script=Han}]*(?:-[a-z0-9\p{Script=Han}]+)*"
+                readOnly={identifierLocked}
+                required
+              />
+              {identifierLocked ? (
+                <small id="engineering-identifier-lock">
+                  已被提测引用，不可修改。
+                </small>
+              ) : (
+                <small id="engineering-identifier-format">
+                  支持中文、小写字母、数字和单个连字符，需以中文或小写字母开头。
+                </small>
+              )}
+            </label>
+          </div>
         </form>
       </section>
 
