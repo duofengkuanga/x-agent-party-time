@@ -891,6 +891,68 @@ describe('UpdateService', () => {
     expect(latestBatch(fixture.database, fixture.item.id).state).toBe('FAILED');
   });
 
+  test('失败 Update Result 保留验证结果与警告', async () => {
+    const fixture = await setup();
+    fixture.createBug('质量门失败候选');
+    await completeNextRepair(fixture, 'repair-one', ['aaaaaaa']);
+    const frozen = fixture.updates.freezeNow(
+      fixture.users.developer.id,
+      fixture.item.id,
+      { mutationId: randomUUID() },
+    );
+    const running = await startExecution(
+      fixture,
+      frozen.executionId,
+      'failed-update-session',
+    );
+    fixture.executions.complete(fixture.runner.id, running.executionId, {
+      leaseToken: running.leaseToken,
+      sessionId: running.sessionId,
+      outcome: {
+        kind: 'SUCCEEDED',
+        result: {
+          outcome: 'FAILED',
+          summary: '质量门未通过',
+          failedStep: '质量门：pnpm run tsc',
+          reason: '仓库不存在 tsconfig.json',
+          completedActions: ['完成候选提交集成'],
+          validations: [
+            {
+              name: 'TypeScript 静态检查',
+              status: 'FAILED',
+              detail: 'pnpm run tsc 退出码为 1',
+            },
+          ],
+          warnings: ['该失败不直接证明候选修改存在类型错误'],
+          pendingActions: ['修复质量门后重新执行'],
+        },
+      },
+    });
+
+    const batch = latestBatch(fixture.database, fixture.item.id);
+    const attempt = fixture.updates
+      .batchView(fixture.users.developer.id, batch.id)
+      .timeline.find((node) => node.kind === 'UPDATE_ATTEMPT');
+    expect(batch.state).toBe('FAILED');
+    expect(attempt?.kind === 'UPDATE_ATTEMPT' ? attempt.result : null).toEqual({
+      outcome: 'FAILED',
+      failedStep: '质量门：pnpm run tsc',
+      reason: '仓库不存在 tsconfig.json',
+      completedActions: ['完成候选提交集成'],
+      validations: [
+        {
+          name: 'TypeScript 静态检查',
+          status: 'FAILED',
+          detail: 'pnpm run tsc 退出码为 1',
+        },
+      ],
+      warnings: ['该失败不直接证明候选修改存在类型错误'],
+      pendingActions: ['修复质量门后重新执行'],
+      failureCode: null,
+      rawSummary: '质量门未通过',
+    });
+  });
+
   test('Update Outcome 业务解释失败时整笔事务回滚', async () => {
     const ids = [
       '00000000-0000-4000-8000-000000000001',
