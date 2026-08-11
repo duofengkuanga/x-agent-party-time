@@ -6,18 +6,22 @@ import {
 } from './contract';
 
 export const LOCAL_SCRIPT_UPDATE_PROMPT_KIND = 'cooking.update.local-script';
-export const LOCAL_SCRIPT_UPDATE_PROMPT_VERSION = 4;
+export const LOCAL_SCRIPT_UPDATE_PROMPT_VERSION = 7;
 export const CI_CD_UPDATE_PROMPT_KIND = 'cooking.update.ci-cd';
-export const CI_CD_UPDATE_PROMPT_VERSION = 4;
+export const CI_CD_UPDATE_PROMPT_VERSION = 6;
 
 const QUALITY_GATE_RULES = `- 质量门以仓库内明确文档和与本次变更直接相关的检查为准；不得仅因 package.json 中存在某个 script 就把它视为必跑质量门。
 - 执行前确认命令及其配置确实适用于当前工程；例如 tsc 没有 tsconfig.json、jsconfig.json、显式输入文件或仓库明确要求时应记为 SKIPPED 并在 warnings 说明，不得据此判定失败。`;
+
+const RUNTIME_AND_RECOVERY_RULES = `- 执行测试、构建或 LOCAL_SCRIPT 前，先检查 \`.nvmrc\`、\`.node-version\`、\`.tool-versions\` 等项目运行时版本声明；存在时必须切换并核验实际运行时版本后再执行，不能沿用宿主默认版本。
+- 测试、构建或 LOCAL_SCRIPT 失败时，先根据输出诊断并修复可在本机安全处理的运行时、依赖、缓存、权限或命令配置问题，再以相同约束重试；只有问题无法自行修复或重试后仍失败时才返回 FAILED。`;
 
 const STABLE_PREFIX = `你是本机仓库中的统一更新执行者。请遵守仓库内 AGENTS.md 等规则，原子集成本批全部候选提交。
 
 安全与执行边界：
 - 在独立 Detached HEAD Integration Worktree 中基于目标分支最新远端状态工作。
 - 严格按冻结顺序集成每个候选 Commit，不得遗漏、拆批、squash、amend、rebase 或改写历史。
+${RUNTIME_AND_RECOVERY_RULES}
 - 解决冲突后运行仓库规则要求的测试和构建；任何一项失败都返回 FAILED。
 ${QUALITY_GATE_RULES}
 - 验证通过后只允许普通 push，禁止 force push。
@@ -61,6 +65,8 @@ export function buildInitialLocalScriptUpdatePrompt(
     LocalScriptUpdateOutputJsonSchema as JsonObject,
     `${STABLE_PREFIX}
 - 普通 push 成功后执行给定 LOCAL_SCRIPT；脚本失败返回 FAILED。
+- LOCAL_SCRIPT 询问是否继续、确认部署或类似的部署确认时，自动在交互终端输入单独一行 \`Y\` 后继续执行；不得因无交互而跳过部署。
+- 此规则仅适用于给定 LOCAL_SCRIPT 的部署确认；凭据、密钥、删除、覆盖生产数据或其他非部署确认仍不得自动输入。
 
 ${batchDetails(input)}
 - LOCAL_SCRIPT：${input.deploymentCommand}
@@ -92,7 +98,7 @@ export function buildRetryLocalScriptUpdatePrompt(): UpdatePromptSnapshot {
     LOCAL_SCRIPT_UPDATE_PROMPT_KIND,
     LOCAL_SCRIPT_UPDATE_PROMPT_VERSION,
     LocalScriptUpdateOutputJsonSchema as JsonObject,
-    '重新执行原批次，继续完成集成、验证、普通 Push 和 LOCAL_SCRIPT',
+    '重新执行原批次，继续完成集成、验证、普通 Push 和 LOCAL_SCRIPT；LOCAL_SCRIPT 询问是否继续、确认部署或类似的部署确认时，自动在交互终端输入单独一行 `Y` 后继续执行。此规则仅适用于给定 LOCAL_SCRIPT 的部署确认；凭据、密钥、删除、覆盖生产数据或其他非部署确认仍不得自动输入',
   );
 }
 
@@ -120,6 +126,7 @@ export function buildContinuationCiCdUpdatePrompt(input: {
     `临时补充执行约束：如需验证网页功能，跳过浏览器验证，不启动或等待浏览器验证流程；改用代码级测试、静态检查或其他无需浏览器的验证方式。
 
 ${QUALITY_GATE_RULES}
+${RUNTIME_AND_RECOVERY_RULES}
 
 继续当前统一更新批次。冻结的缺陷、Commit、顺序、分支和环境保持不变。
 
@@ -160,6 +167,7 @@ function retrySnapshot(
     `临时补充执行约束：如需验证网页功能，跳过浏览器验证，不启动或等待浏览器验证流程；改用代码级测试、静态检查或其他无需浏览器的验证方式。
 
 ${QUALITY_GATE_RULES}
+${RUNTIME_AND_RECOVERY_RULES}
 
 继续当前统一更新批次。冻结的缺陷、Commit、顺序、分支和环境保持不变。
 

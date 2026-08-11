@@ -2257,80 +2257,107 @@ function UpdateBatchDetails({
                   {node.result?.outcome === 'FAILED' ? (
                     <>
                       <div className="collab-structured-failure">
-                        <strong>{node.result.failedStep}</strong>
-                        <p>{node.result.reason}</p>
+                        <header>
+                          <span>本轮中断</span>
+                          <strong>{node.result.failedStep}</strong>
+                        </header>
+                        <p>
+                          <span>失败原因</span>
+                          {node.result.reason}
+                        </p>
                       </div>
-                      <DetailList
-                        items={node.result.completedActions}
-                        title="已完成操作"
-                      />
-                      <div className="collab-repair-validations">
-                        <h4>验证结果</h4>
-                        {node.result.validations.length ? (
-                          <ul>
-                            {node.result.validations.map(
-                              (validation, index) => (
-                                <li
-                                  data-validation-status={validation.status}
-                                  key={`${validation.name}:${index}`}
-                                >
-                                  <strong>
-                                    {validationLabel(validation.status)}
-                                  </strong>
-                                  <span>{validation.name}</span>
-                                  {validation.detail ? (
-                                    <small>{validation.detail}</small>
-                                  ) : null}
-                                </li>
-                              ),
-                            )}
-                          </ul>
-                        ) : (
-                          <p>Codex 未报告验证项</p>
-                        )}
+                      <div className="collab-update-attempt-results">
+                        <DetailList
+                          kind="completed"
+                          items={node.result.completedActions}
+                          title="已完成操作"
+                        />
+                        <div
+                          className="collab-repair-validations"
+                          data-result-kind="validation"
+                        >
+                          <h4>验证结果</h4>
+                          {node.result.validations.length ? (
+                            <ul>
+                              {node.result.validations.map(
+                                (validation, index) => (
+                                  <li
+                                    data-validation-status={validation.status}
+                                    key={`${validation.name}:${index}`}
+                                  >
+                                    <strong>
+                                      {validationLabel(validation.status)}
+                                    </strong>
+                                    <span>{validation.name}</span>
+                                    {validation.detail ? (
+                                      <small>{validation.detail}</small>
+                                    ) : null}
+                                  </li>
+                                ),
+                              )}
+                            </ul>
+                          ) : (
+                            <p>Codex 未报告验证项</p>
+                          )}
+                        </div>
+                        {node.result.warnings.length ? (
+                          <DetailList
+                            kind="warning"
+                            items={node.result.warnings}
+                            title="提醒"
+                          />
+                        ) : null}
+                        <DetailList
+                          kind="pending"
+                          items={node.result.pendingActions}
+                          title="待处理事项"
+                        />
                       </div>
-                      {node.result.warnings.length ? (
-                        <DetailList items={node.result.warnings} title="提醒" />
-                      ) : null}
-                      <DetailList
-                        items={node.result.pendingActions}
-                        title="待处理事项"
-                      />
                     </>
                   ) : node.result ? (
                     <>
-                      <DetailList
-                        items={node.result.completedActions}
-                        title="已完成操作"
-                      />
-                      <div className="collab-repair-validations">
-                        <h4>验证结果</h4>
-                        {node.result.validations.length ? (
-                          <ul>
-                            {node.result.validations.map(
-                              (validation, index) => (
-                                <li
-                                  data-validation-status={validation.status}
-                                  key={`${validation.name}:${index}`}
-                                >
-                                  <strong>
-                                    {validationLabel(validation.status)}
-                                  </strong>
-                                  <span>{validation.name}</span>
-                                  {validation.detail ? (
-                                    <small>{validation.detail}</small>
-                                  ) : null}
-                                </li>
-                              ),
-                            )}
-                          </ul>
-                        ) : (
-                          <p>Codex 未报告验证项</p>
-                        )}
+                      <div className="collab-update-attempt-results">
+                        <DetailList
+                          kind="completed"
+                          items={node.result.completedActions}
+                          title="已完成操作"
+                        />
+                        <div
+                          className="collab-repair-validations"
+                          data-result-kind="validation"
+                        >
+                          <h4>验证结果</h4>
+                          {node.result.validations.length ? (
+                            <ul>
+                              {node.result.validations.map(
+                                (validation, index) => (
+                                  <li
+                                    data-validation-status={validation.status}
+                                    key={`${validation.name}:${index}`}
+                                  >
+                                    <strong>
+                                      {validationLabel(validation.status)}
+                                    </strong>
+                                    <span>{validation.name}</span>
+                                    {validation.detail ? (
+                                      <small>{validation.detail}</small>
+                                    ) : null}
+                                  </li>
+                                ),
+                              )}
+                            </ul>
+                          ) : (
+                            <p>Codex 未报告验证项</p>
+                          )}
+                        </div>
+                        {node.result.warnings.length ? (
+                          <DetailList
+                            kind="warning"
+                            items={node.result.warnings}
+                            title="提醒"
+                          />
+                        ) : null}
                       </div>
-                      {node.result.warnings.length ? (
-                        <DetailList items={node.result.warnings} title="提醒" />
-                      ) : null}
                     </>
                   ) : (
                     <dl className="collab-bug-detail-list">
@@ -2828,16 +2855,24 @@ function UpdateBatchEntries({
   );
 }
 
-function DetailList({ items, title }: { items: string[]; title: string }) {
+function DetailList({
+  items,
+  kind,
+  title,
+}: {
+  items: string[];
+  kind: 'completed' | 'pending' | 'warning';
+  title: string;
+}) {
   return (
-    <div>
-      <strong>{title}</strong>
+    <section className="collab-update-result-list" data-result-kind={kind}>
+      <h4>{title}</h4>
       <ul>
         {items.map((item, index) => (
           <li key={`${item}:${index}`}>{item}</li>
         ))}
       </ul>
-    </div>
+    </section>
   );
 }
 

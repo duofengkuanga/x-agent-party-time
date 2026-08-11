@@ -46,7 +46,17 @@ describe('Update Prompt', () => {
     expect(prompt.renderedPrompt).toContain(
       '执行前确认命令及其配置确实适用于当前工程',
     );
+    expect(prompt.renderedPrompt).toContain(
+      '`.nvmrc`、`.node-version`、`.tool-versions`',
+    );
+    expect(prompt.renderedPrompt).toContain(
+      '修复可在本机安全处理的运行时、依赖、缓存、权限或命令配置问题',
+    );
     expect(prompt.renderedPrompt).toContain('completedActions');
+    expect(prompt.renderedPrompt).toContain(
+      '自动在交互终端输入单独一行 `Y` 后继续执行',
+    );
+    expect(prompt.renderedPrompt).toContain('非部署确认仍不得自动输入');
     expect(prompt.renderedPrompt.indexOf('bbbbbbb')).toBeLessThan(
       prompt.renderedPrompt.indexOf('aaaaaaa'),
     );
@@ -65,8 +75,18 @@ describe('Update Prompt', () => {
         '冻结的缺陷、Commit、顺序、分支和环境保持不变',
       );
       expect(prompt.renderedPrompt).toContain('跳过浏览器验证');
+      expect(prompt.renderedPrompt).toContain(
+        '`.nvmrc`、`.node-version`、`.tool-versions`',
+      );
+      expect(prompt.renderedPrompt).toContain(
+        '修复可在本机安全处理的运行时、依赖、缓存、权限或命令配置问题',
+      );
       expect(prompt.renderedPrompt).not.toContain('只处理以下增量信息');
     }
+    expect(local.renderedPrompt).toContain(
+      '自动在交互终端输入单独一行 `Y` 后继续执行',
+    );
+    expect(local.renderedPrompt).toContain('非部署确认仍不得自动输入');
   });
 
   test('结构化结果覆盖成功、Push、失败和格式无效', () => {

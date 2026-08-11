@@ -2972,6 +2972,14 @@
   top: auto;
 }
 
+/* Align the submission-list divider with the bug-board heading divider. */
+@media (min-width: 761px) {
+  .collab-rail__heading {
+    height: 60px;
+    padding-block: 0;
+  }
+}
+
 .collab-stage {
   display: flex;
   flex-direction: column;
@@ -7210,13 +7218,112 @@
 }
 
 .collab-update-timeline .collab-structured-failure {
+  background: color-mix(in srgb, var(--paper), var(--danger) 4%);
+  border: 1px solid color-mix(in srgb, var(--danger), var(--line) 42%);
   border-left: 3px solid var(--danger);
-  margin-top: 10px;
-  padding-left: 10px;
+  display: grid;
+  gap: 7px;
+  margin-top: 2px;
+  padding: 10px 12px;
 }
 
-.collab-update-timeline .collab-structured-failure > strong {
+.collab-update-timeline .collab-structured-failure > header {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 10px;
+  justify-content: flex-start;
+}
+
+.collab-update-timeline .collab-structured-failure > header > span,
+.collab-update-timeline .collab-structured-failure > p > span {
   color: var(--danger);
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.collab-update-timeline .collab-structured-failure > header > strong {
+  color: var(--ink);
+  font-size: 10px;
+}
+
+.collab-update-timeline .collab-structured-failure > p {
+  align-items: baseline;
+  display: grid;
+  gap: 6px;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.collab-update-attempt-results {
+  display: grid;
+  margin: 2px 0 0 4px;
+  padding-left: 13px;
+}
+
+.collab-update-attempt-results > * {
+  border-left: 1px solid var(--strong-line);
+  margin: 0;
+  padding: 0 0 16px 17px;
+  position: relative;
+}
+
+.collab-update-attempt-results > *::before {
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  content: '';
+  height: 8px;
+  left: -5px;
+  position: absolute;
+  top: 3px;
+  transform: rotate(45deg);
+  width: 8px;
+}
+
+.collab-update-attempt-results > *:last-child {
+  border-left-color: transparent;
+  padding-bottom: 0;
+}
+
+.collab-update-attempt-results > [data-result-kind='completed']::before {
+  border-color: var(--success);
+}
+
+.collab-update-attempt-results > [data-result-kind='warning']::before {
+  border-color: var(--warning);
+}
+
+.collab-update-attempt-results > [data-result-kind='pending']::before {
+  border-color: var(--accent);
+}
+
+.collab-update-attempt-results > .collab-repair-validations {
+  border-left: 1px solid var(--strong-line);
+  gap: 7px;
+  padding-left: 17px;
+}
+
+.collab-update-result-list {
+  display: grid;
+  gap: 7px;
+}
+
+.collab-update-result-list h4 {
+  color: var(--muted);
+  font-size: 9px;
+  margin: 0;
+}
+
+.collab-update-result-list ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.collab-update-result-list li {
+  font-size: 9px;
+  line-height: 1.6;
 }
 
 .collab-technical-details {
