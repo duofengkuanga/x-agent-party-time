@@ -185,7 +185,7 @@ afterEach(async () => {
 });
 
 describe('BugService', () => {
-  test('只有 Tester 可创建，空白可选字段不保存且附件绑定到报告', async () => {
+  test('只有 Tester 可创建，空白可选字段不保存且附件按实际与预期结果分组', async () => {
     const fixture = await setup();
     expect(() =>
       createBug(fixture, fixture.users.member.id, {
@@ -200,7 +200,10 @@ describe('BugService', () => {
           mutationId: randomUUID(),
           submissionItemId: null,
           title: '附件过多',
-          attachmentIds: Array.from({ length: 6 }, () => randomUUID()),
+          actualResultAttachmentIds: Array.from({ length: 6 }, () =>
+            randomUUID(),
+          ),
+          expectedResultAttachmentIds: [],
         },
       ),
     ).toThrow();
@@ -210,10 +213,43 @@ describe('BugService', () => {
       mediaType: 'text/plain',
       uploadedByUserId: fixture.users.tester.id,
     });
+    const expectedFile = await fixture.files.put({
+      bytes: new TextEncoder().encode('预期界面'),
+      originalName: '预期.txt',
+      mediaType: 'text/plain',
+      uploadedByUserId: fixture.users.tester.id,
+    });
+    expect(() =>
+      fixture.service.createBug(
+        fixture.users.tester.id,
+        fixture.submission.id,
+        {
+          mutationId: randomUUID(),
+          submissionItemId: null,
+          title: '附件不能跨结果重复使用',
+          actualResultAttachmentIds: [file.id],
+          expectedResultAttachmentIds: [file.id],
+        },
+      ),
+    ).toThrow(ZodError);
+    expect(() =>
+      fixture.service.createBug(
+        fixture.users.tester.id,
+        fixture.submission.id,
+        {
+          mutationId: randomUUID(),
+          submissionItemId: null,
+          title: '同一结果不能重复添加附件',
+          actualResultAttachmentIds: [file.id, file.id],
+          expectedResultAttachmentIds: [],
+        },
+      ),
+    ).toThrow(ZodError);
     const result = createBug(fixture, fixture.users.tester.id, {
       title: '  结算按钮无响应  ',
       operationPath: '   ',
-      attachmentIds: [file.id],
+      actualResultAttachmentIds: [file.id],
+      expectedResultAttachmentIds: [expectedFile.id],
     });
     expect(result.bug).toMatchObject({
       shortId: 1,
@@ -221,7 +257,8 @@ describe('BugService', () => {
       stage: 'WAITING_FOR_REPAIR',
       report: {
         title: '结算按钮无响应',
-        attachmentIds: [file.id],
+        actualResultAttachmentIds: [file.id],
+        expectedResultAttachmentIds: [expectedFile.id],
       },
       version: 1,
     });
@@ -239,8 +276,12 @@ describe('BugService', () => {
     ]);
     expect(
       fixture.service.workspace(fixture.users.tester.id, fixture.submission.id)
-        .bugs[0]?.report.attachments[0],
+        .bugs[0]?.report.actualResultAttachments[0],
     ).toMatchObject({ id: file.id, originalName: '复现.txt' });
+    expect(
+      fixture.service.workspace(fixture.users.tester.id, fixture.submission.id)
+        .bugs[0]?.report.expectedResultAttachments[0],
+    ).toMatchObject({ id: expectedFile.id, originalName: '预期.txt' });
     expect(() =>
       fixture.service.requireAttachmentAccess(fixture.users.member.id, file.id),
     ).not.toThrow();
@@ -258,12 +299,19 @@ describe('BugService', () => {
         expectedVersion: result.bug.version,
         submissionItemId: null,
         title: result.bug.report.title,
-        attachmentIds: [],
+        actualResultAttachmentIds: [],
+        expectedResultAttachmentIds: [],
       },
     );
-    expect(updated.unboundAttachmentIds).toEqual([file.id]);
+    expect(updated.unboundAttachmentIds).toEqual([file.id, expectedFile.id]);
     expect(
       await fixture.files.deleteUnbound(file.id, fixture.users.tester.id),
+    ).toBe(true);
+    expect(
+      await fixture.files.deleteUnbound(
+        expectedFile.id,
+        fixture.users.tester.id,
+      ),
     ).toBe(true);
   });
 
@@ -323,7 +371,8 @@ describe('BugService', () => {
         expectedVersion: repairing.version,
         submissionItemId: fixture.items.front,
         title: '不能覆盖',
-        attachmentIds: [],
+        actualResultAttachmentIds: [],
+        expectedResultAttachmentIds: [],
       }),
     ).toThrow(expect.objectContaining({ code: 'INVALID_TRANSITION' }));
     expect(
@@ -402,7 +451,8 @@ describe('BugService', () => {
       mutationId,
       submissionItemId: null,
       title: '幂等登记',
-      attachmentIds: [],
+      actualResultAttachmentIds: [],
+      expectedResultAttachmentIds: [],
     };
     const first = fixture.service.createBug(
       fixture.users.tester.id,
@@ -573,7 +623,7 @@ describe('BugService', () => {
     ).toBe(0);
   });
 
-  test('deleteBugs 清理统一更新批次引用与活动执行', async () => {
+  test('deleteBugs --all --force 清理空的统一更新批次与活动执行', async () => {
     const fixture = await setup();
     const bug = createAssignedBug(fixture, '批次内缺陷', fixture.items.front);
     const repairs = new RepairService(fixture.database);
@@ -618,10 +668,7 @@ describe('BugService', () => {
       )
       .run(randomUUID(), batchId, executionId, now);
 
-    const result = fixture.service.deleteBugs({
-      bugIds: [bug.id],
-      force: true,
-    });
+    const result = fixture.service.deleteBugs({ all: true, force: true });
     expect(result.deletedExecutionIds).toEqual([executionId]);
     expect(
       fixture.database
@@ -639,11 +686,11 @@ describe('BugService', () => {
     ).toBe(0);
     expect(
       fixture.database
-        .query<{ active_execution_id: string | null }, [string]>(
-          'SELECT active_execution_id FROM cooking_update_batch WHERE id = ?',
+        .query<{ count: number }, [string]>(
+          'SELECT COUNT(*) count FROM cooking_update_batch WHERE id = ?',
         )
-        .get(batchId)?.active_execution_id,
-    ).toBeNull();
+        .get(batchId)?.count,
+    ).toBe(0);
     expect(
       fixture.database
         .query<{ count: number }, [string]>(
@@ -675,7 +722,8 @@ function createBug(
   values: {
     title: string;
     operationPath?: string;
-    attachmentIds?: string[];
+    actualResultAttachmentIds?: string[];
+    expectedResultAttachmentIds?: string[];
   },
 ) {
   return fixture.service.createBug(actorUserId, fixture.submission.id, {
@@ -683,7 +731,8 @@ function createBug(
     submissionItemId: null,
     title: values.title,
     operationPath: values.operationPath,
-    attachmentIds: values.attachmentIds ?? [],
+    actualResultAttachmentIds: values.actualResultAttachmentIds ?? [],
+    expectedResultAttachmentIds: values.expectedResultAttachmentIds ?? [],
   });
 }
 
@@ -699,7 +748,8 @@ function createAssignedBug(
       mutationId: randomUUID(),
       submissionItemId,
       title,
-      attachmentIds: [],
+      actualResultAttachmentIds: [],
+      expectedResultAttachmentIds: [],
     },
   ).bug;
 }

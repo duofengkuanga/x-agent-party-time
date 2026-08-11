@@ -105,6 +105,20 @@ describe('Server SQLite schema', () => {
       ).toEqual(['cooking_bug_repair_context', 'cooking_repair_attempt']);
       expect(
         database
+          .query<{ name: string }, []>('PRAGMA table_info(cooking_bug)')
+          .all()
+          .map(({ name }) => name),
+      ).not.toContain('notes');
+      expect(
+        database
+          .query<{ sql: string }, []>(
+            `SELECT sql FROM sqlite_master
+             WHERE type = 'table' AND name = 'cooking_bug_attachment'`,
+          )
+          .get()?.sql,
+      ).toContain("role IN ('ACTUAL_RESULT', 'EXPECTED_RESULT')");
+      expect(
+        database
           .query<{ name: string }, []>(
             `SELECT name FROM sqlite_master
              WHERE type = 'table' AND name LIKE 'cooking_%update%'

@@ -15,6 +15,7 @@ import {
 } from '@/server/execution/http';
 import { ExecutionService } from '@/server/execution/service';
 import { RunnerService } from '@/server/runner/service';
+import { LocalFileStore } from '@/server/files/local-file-store';
 import { handleRunnerHeartbeat } from '@/server/runner/http';
 import { BindingService } from '@/features/cooking/bindings/application/binding-service';
 import { BugService } from '@/features/cooking/bugs/application/bug-service';
@@ -148,13 +149,27 @@ async function setup(options: { repairCreateId?: () => string } = {}) {
       requested: (bugId) => repairs.createInitialExecution(bugId),
     },
   );
+  const files = new LocalFileStore(database, join(directory, 'files'));
+  const actualResultAttachment = await files.put({
+    bytes: new TextEncoder().encode('实际结果截图'),
+    originalName: '实际结果.png',
+    mediaType: 'image/png',
+    uploadedByUserId: users.tester.id,
+  });
+  const expectedResultAttachment = await files.put({
+    bytes: new TextEncoder().encode('预期结果说明'),
+    originalName: '预期结果.txt',
+    mediaType: 'text/plain',
+    uploadedByUserId: users.tester.id,
+  });
   const created = bugs.createBug(users.tester.id, submission.id, {
     mutationId: randomUUID(),
     submissionItemId: item.id,
     title: '支付按钮无响应',
     actualResult: '点击后没有反应',
     expectedResult: '进入支付流程',
-    attachmentIds: [],
+    actualResultAttachmentIds: [actualResultAttachment.id],
+    expectedResultAttachmentIds: [expectedResultAttachment.id],
   });
   const requested = bugs.requestRepair(
     users.tester.id,
@@ -171,6 +186,10 @@ async function setup(options: { repairCreateId?: () => string } = {}) {
     otherRunner,
     pairedRunner,
     repairs,
+    resultAttachments: {
+      actual: actualResultAttachment,
+      expected: expectedResultAttachment,
+    },
     requested,
     runner,
     runners,
@@ -198,7 +217,8 @@ describe('RepairService', () => {
         mutationId: randomUUID(),
         submissionItemId: null,
         title: '暂未确定工程的缺陷',
-        attachmentIds: [],
+        actualResultAttachmentIds: [],
+        expectedResultAttachmentIds: [],
       },
     );
 
@@ -223,7 +243,7 @@ describe('RepairService', () => {
       bindingId: fixture.binding.id,
       priority: 0,
       promptKind: 'cooking.repair',
-      promptVersion: 3,
+      promptVersion: 4,
       resumeSessionId: null,
       workspace: {
         key: `bug-repair:${fixture.requested.bug.id}`,
@@ -233,6 +253,12 @@ describe('RepairService', () => {
       },
     });
     expect(execution.renderedPrompt).toContain('支付按钮无响应');
+    expect(execution.renderedPrompt).toContain('- 实际结果附件：实际结果.png');
+    expect(execution.renderedPrompt).toContain('- 预期结果附件：预期结果.txt');
+    expect(execution.attachments.map(({ id }) => id)).toEqual([
+      fixture.resultAttachments.actual.id,
+      fixture.resultAttachments.expected.id,
+    ]);
     expect(
       fixture.repairs.repairView(
         fixture.users.developer.id,

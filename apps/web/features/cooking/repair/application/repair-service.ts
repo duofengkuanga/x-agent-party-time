@@ -52,7 +52,6 @@ type RepairSourceRow = {
   operation_path: string | null;
   actual_result: string | null;
   expected_result: string | null;
-  notes: string | null;
   submission_title: string;
   requirement_description: string;
   engineering_name: string;
@@ -147,7 +146,8 @@ export class RepairService {
       operationPath: source.operation_path ?? undefined,
       actualResult: source.actual_result ?? undefined,
       expectedResult: source.expected_result ?? undefined,
-      notes: source.notes ?? undefined,
+      actualResultAttachments: this.attachmentNames(bugId, 'ACTUAL_RESULT'),
+      expectedResultAttachments: this.attachmentNames(bugId, 'EXPECTED_RESULT'),
       feedback: this.feedbackContents(bugId),
       pendingCommits: existingContext
         ? parseCommits(existingContext.pending_commits_json)
@@ -210,7 +210,11 @@ export class RepairService {
           operationPath: source.operation_path ?? undefined,
           actualResult: source.actual_result ?? undefined,
           expectedResult: source.expected_result ?? undefined,
-          notes: source.notes ?? undefined,
+          actualResultAttachments: this.attachmentNames(bugId, 'ACTUAL_RESULT'),
+          expectedResultAttachments: this.attachmentNames(
+            bugId,
+            'EXPECTED_RESULT',
+          ),
           feedback: [
             ...this.feedbackContents(bugId),
             ...(lifecycleContext ? [lifecycleContext] : []),
@@ -718,7 +722,7 @@ export class RepairService {
                 submission.project_id, submission.status submission_status,
                 bug.stage, bug.version bug_version,
                 bug.title, bug.operation_path, bug.actual_result,
-                bug.expected_result, bug.notes,
+                bug.expected_result,
                 submission.title submission_title,
                 submission.requirement_description,
                 item.engineering_name, item.repository_url, item.target_branch,
@@ -812,10 +816,31 @@ export class RepairService {
       this.db
         .prepare(
           `SELECT file_id FROM cooking_bug_attachment
-           WHERE bug_id = ? ORDER BY position`,
+           WHERE bug_id = ?
+           ORDER BY CASE role
+             WHEN 'ACTUAL_RESULT' THEN 0
+             WHEN 'EXPECTED_RESULT' THEN 1
+           END, position`,
         )
         .all(bugId) as Array<{ file_id: string }>
     ).map(({ file_id }) => file_id);
+  }
+
+  private attachmentNames(
+    bugId: string,
+    role: 'ACTUAL_RESULT' | 'EXPECTED_RESULT',
+  ): string[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT file.original_name
+           FROM cooking_bug_attachment attachment
+           JOIN platform_file file ON file.id = attachment.file_id
+           WHERE attachment.bug_id = ? AND attachment.role = ?
+           ORDER BY attachment.position`,
+        )
+        .all(bugId, role) as Array<{ original_name: string }>
+    ).map(({ original_name }) => original_name);
   }
 
   private requireSubmissionAccess(userId: string, submissionId: string): void {

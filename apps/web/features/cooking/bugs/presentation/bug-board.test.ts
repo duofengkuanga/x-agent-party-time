@@ -296,7 +296,7 @@ describe('缺陷看板展示', () => {
       readFile(attachmentRoutePath, 'utf8'),
     ]);
     expect(source).toContain('function AttachmentPicker(');
-    expect(source.match(/<AttachmentPicker/gu)).toHaveLength(4);
+    expect(source.match(/<AttachmentPicker/gu)).toHaveLength(5);
     expect(source.match(/type="file"/gu)).toHaveLength(1);
     expect(source).toContain('选择本地文件');
     expect(source).toContain('粘贴附件');
@@ -304,7 +304,13 @@ describe('缺陷看板展示', () => {
     expect(source).toContain('event.clipboardData.items');
     expect(source).toContain('item.getAsFile()');
     expect(source).toContain('移除附件');
-    expect(source).toContain('existingAttachments={bug?.report.attachments}');
+    expect(source).toContain(
+      'existingAttachments={bug?.report.actualResultAttachments}',
+    );
+    expect(source).toContain(
+      'existingAttachments={bug?.report.expectedResultAttachments}',
+    );
+    expect(source).not.toContain('<span>补充说明</span>');
     expect(source).toContain('function PendingAttachmentLink(');
     expect(source).toContain('function ImagePreviewDialog(');
     expect(source).toContain('createPortal(');
@@ -324,6 +330,22 @@ describe('缺陷看板展示', () => {
     expect(attachmentRoute).toContain(
       "previewRequested ? 'inline' : 'attachment'",
     );
+  });
+
+  test('登记缺陷按标题、预期结果、实际结果、操作路径顺序输入', async () => {
+    const source = await readFile(bugBoardPath, 'utf8');
+    const formSource = source.slice(
+      source.indexOf('function BugForm('),
+      source.indexOf('function BugDetail('),
+    );
+    const titleIndex = formSource.indexOf('<span>标题</span>');
+    const expectedIndex = formSource.indexOf('<legend>预期结果</legend>');
+    const actualIndex = formSource.indexOf('<legend>实际结果</legend>');
+    const pathIndex = formSource.indexOf('<span>操作路径</span>');
+    expect(titleIndex).toBeGreaterThan(-1);
+    expect(titleIndex).toBeLessThan(expectedIndex);
+    expect(expectedIndex).toBeLessThan(actualIndex);
+    expect(actualIndex).toBeLessThan(pathIndex);
   });
 
   test('测试负责人只查看修复和更新的摘要时间线', async () => {

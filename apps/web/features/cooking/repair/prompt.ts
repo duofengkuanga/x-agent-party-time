@@ -3,7 +3,7 @@ import type { JsonObject } from '@agent-party-time/execution-contract';
 import { RepairOutputJsonSchema } from './contract';
 
 export const REPAIR_PROMPT_KIND = 'cooking.repair';
-export const REPAIR_PROMPT_VERSION = 3;
+export const REPAIR_PROMPT_VERSION = 4;
 
 const STABLE_PREFIX = `你是本机仓库中的修复执行者。请只处理本次给出的缺陷，遵守仓库内 AGENTS.md 等规则。
 
@@ -30,7 +30,8 @@ export type InitialRepairPromptInput = {
   operationPath?: string;
   actualResult?: string;
   expectedResult?: string;
-  notes?: string;
+  actualResultAttachments: string[];
+  expectedResultAttachments: string[];
   feedback: string[];
   pendingCommits: string[];
 };
@@ -58,8 +59,9 @@ export function buildInitialRepairPrompt(
 - 缺陷标题：${input.bugTitle}
 ${optionalLine('操作路径', input.operationPath)}
 ${optionalLine('实际结果', input.actualResult)}
+${optionalList('实际结果附件', input.actualResultAttachments)}
 ${optionalLine('预期结果', input.expectedResult)}
-${optionalLine('补充说明', input.notes)}
+${optionalList('预期结果附件', input.expectedResultAttachments)}
 - 已有候选 Commit：${input.pendingCommits.join(', ') || '无'}
 - 新增反馈：${input.feedback.join('\n  - ') || '无'}
 
@@ -95,4 +97,8 @@ function snapshot(renderedPrompt: string): RepairPromptSnapshot {
 
 function optionalLine(label: string, value?: string): string {
   return value ? `- ${label}：${value}` : '';
+}
+
+function optionalList(label: string, values: string[]): string {
+  return values.length ? `- ${label}：${values.join('、')}` : '';
 }

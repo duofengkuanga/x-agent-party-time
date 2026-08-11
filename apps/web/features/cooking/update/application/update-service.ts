@@ -673,7 +673,12 @@ export class UpdateService {
       this.db
         .prepare(
           `SELECT id FROM cooking_update_batch
-           WHERE submission_id = ? ORDER BY created_at, id`,
+           WHERE submission_id = ?
+             AND EXISTS (
+               SELECT 1 FROM cooking_update_batch_entry entry
+               WHERE entry.batch_id = cooking_update_batch.id
+             )
+           ORDER BY created_at, id`,
         )
         .all(submissionId) as Array<{ id: string }>
     ).map(({ id }) => id);

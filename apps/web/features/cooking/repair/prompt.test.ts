@@ -20,6 +20,8 @@ describe('Repair prompt contract', () => {
       repositoryUrl: 'https://example.com/front.git',
       targetBranch: 'feature/payment',
       bugTitle: '支付按钮无响应',
+      actualResultAttachments: ['实际截图.png'],
+      expectedResultAttachments: ['预期稿.png'],
       feedback: ['请覆盖键盘操作'],
       pendingCommits: [],
     });
@@ -31,6 +33,8 @@ describe('Repair prompt contract', () => {
     expect(prompt.renderedPrompt).toContain('不得 push、部署、改写历史');
     expect(prompt.renderedPrompt).toContain('跳过浏览器验证');
     expect(prompt.renderedPrompt).toContain('支付按钮无响应');
+    expect(prompt.renderedPrompt).toContain('实际结果附件：实际截图.png');
+    expect(prompt.renderedPrompt).toContain('预期结果附件：预期稿.png');
     expect(prompt.renderedPrompt).not.toContain('Execution ID');
     expect(prompt.renderedPrompt).not.toContain('Prompt Version');
     expect(prompt.renderedPrompt).not.toContain(new Date().toISOString());
