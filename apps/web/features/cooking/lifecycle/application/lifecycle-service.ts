@@ -669,6 +669,11 @@ export class LifecycleService {
       else this.afterStartedExecution(event.execution);
       return;
     }
+    if (event.kind === 'RESUMED') {
+      if (event.phase === 'APPLY') this.applyResumedExecution(event.execution);
+      else this.afterResumedExecution(event.execution);
+      return;
+    }
     if (event.phase === 'APPLY') this.applyTerminalExecution(event.execution);
     else this.afterTerminalExecution(event.execution);
   }
@@ -688,6 +693,14 @@ export class LifecycleService {
       )
       .run(now, cleanup.id);
     this.writes.bumpRevision(cleanup.submission_id, now);
+  }
+
+  private applyResumedExecution(execution: Execution): void {
+    if (!isCleanupExecution(execution)) return;
+    const attempt = this.cleanupAttemptForExecution(execution.id);
+    if (!attempt) return;
+    const cleanup = this.cleanupSource(attempt.cleanup_id);
+    this.writes.bumpRevision(cleanup.submission_id, this.now().toISOString());
   }
 
   private applyInteractionOpened(
@@ -752,6 +765,10 @@ export class LifecycleService {
   }
 
   private afterStartedExecution(execution: Execution): void {
+    if (isCleanupExecution(execution)) this.publishExecution(execution.id);
+  }
+
+  private afterResumedExecution(execution: Execution): void {
     if (isCleanupExecution(execution)) this.publishExecution(execution.id);
   }
 

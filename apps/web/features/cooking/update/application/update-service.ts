@@ -544,6 +544,11 @@ export class UpdateService {
       else this.afterStartedExecution(event.execution);
       return;
     }
+    if (event.kind === 'RESUMED') {
+      if (event.phase === 'APPLY') this.applyResumedExecution(event.execution);
+      else this.afterResumedExecution(event.execution);
+      return;
+    }
     if (event.phase === 'APPLY') this.applyTerminalExecution(event.execution);
     else this.afterTerminalExecution(event.execution);
   }
@@ -569,6 +574,14 @@ export class UpdateService {
       now,
     );
     this.writes.bumpRevision(batch.submission_id, now);
+  }
+
+  private applyResumedExecution(execution: Execution): void {
+    if (!isUpdateExecution(execution)) return;
+    const attempt = this.attemptForExecution(execution.id);
+    if (!attempt) return;
+    const batch = this.batch(attempt.batch_id);
+    this.writes.bumpRevision(batch.submission_id, this.now().toISOString());
   }
 
   private applyTerminalExecution(execution: Execution): void {
@@ -653,6 +666,10 @@ export class UpdateService {
   }
 
   private afterStartedExecution(execution: Execution): void {
+    if (isUpdateExecution(execution)) this.publishExecution(execution.id);
+  }
+
+  private afterResumedExecution(execution: Execution): void {
     if (isUpdateExecution(execution)) this.publishExecution(execution.id);
   }
 

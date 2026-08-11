@@ -27,4 +27,11 @@ test('Cooking execution projection 同时按 namespace 与 kind 路由', () => {
   };
   hooks.applyStarted(execution);
   expect(projected).toEqual([{ phase: 'APPLY', kind: 'STARTED', execution }]);
+
+  hooks.applyResumed(execution);
+  hooks.afterResumed(execution);
+  expect(projected.slice(-2)).toEqual([
+    { phase: 'APPLY', kind: 'RESUMED', execution },
+    { phase: 'AFTER', kind: 'RESUMED', execution },
+  ]);
 });

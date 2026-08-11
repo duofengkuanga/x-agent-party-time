@@ -1,5 +1,5 @@
 import { handleWaitInteraction } from '@/server/execution/http';
-import { executionService } from '@/server/execution/server';
+import { cookingExecutionService } from '@/features/cooking/repair/application/server';
 import { runnerService } from '@/server/runner/server';
 
 export async function POST(
@@ -10,6 +10,6 @@ export async function POST(
     request,
     (await context.params).interactionId,
     runnerService(),
-    executionService(),
+    cookingExecutionService(),
   );
 }

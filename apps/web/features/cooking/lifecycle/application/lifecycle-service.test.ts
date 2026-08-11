@@ -579,6 +579,8 @@ describe('LifecycleService', () => {
         )
         .get(cleanupInteraction.id),
     ).toEqual({ state: 'RESOLVED' });
+    const eventsBeforeResume = fixture.events.length;
+    const revisionBeforeResume = fixture.events.at(-1)!.revision;
     expect(
       await fixture.executions.waitInteraction(
         fixture.runner.id,
@@ -588,6 +590,11 @@ describe('LifecycleService', () => {
         0,
       ),
     ).toMatchObject({ laneAcquired: true });
+    expect(fixture.events).toHaveLength(eventsBeforeResume + 1);
+    expect(fixture.events.at(-1)).toEqual({
+      submissionId: fixture.submission.id,
+      revision: revisionBeforeResume + 1,
+    });
     fixture.executions.complete(fixture.runner.id, claimedCleanup.id, {
       leaseToken: claimedCleanup.lease.token,
       sessionId: 'cleanup-session',

@@ -98,6 +98,8 @@ const POLL_INTERVAL_MS = 50;
 export type ExecutionLifecycleHooks = {
   applyStarted: (execution: Execution) => void;
   afterStarted: (execution: Execution) => void;
+  applyResumed: (execution: Execution) => void;
+  afterResumed: (execution: Execution) => void;
   applyTerminal: (execution: Execution) => void;
   afterTerminal: (execution: Execution) => void;
   applyInteractionOpened: (interaction: ExecutionInteraction) => void;
@@ -107,6 +109,8 @@ export type ExecutionLifecycleHooks = {
 const NOOP_HOOKS: ExecutionLifecycleHooks = {
   applyStarted: () => {},
   afterStarted: () => {},
+  applyResumed: () => {},
+  afterResumed: () => {},
   applyTerminal: () => {},
   afterTerminal: () => {},
   applyInteractionOpened: () => {},
@@ -694,13 +698,19 @@ export class ExecutionService {
 
   private tryAcquireResumeLane(executionId: string): boolean {
     this.expireLeases();
-    return this.db.transaction(() => {
-      const execution = this.getRow(executionId);
-      if (execution.state === 'RUNNING') return true;
-      if (execution.state !== 'WAITING_TO_RESUME') return false;
-      const update = this.db
-        .prepare(
-          `UPDATE platform_execution AS candidate
+    const result = this.db.transaction(
+      (): {
+        laneAcquired: boolean;
+        resumedExecution: Execution | null;
+      } => {
+        const execution = this.getRow(executionId);
+        if (execution.state === 'RUNNING')
+          return { laneAcquired: true, resumedExecution: null };
+        if (execution.state !== 'WAITING_TO_RESUME')
+          return { laneAcquired: false, resumedExecution: null };
+        const update = this.db
+          .prepare(
+            `UPDATE platform_execution AS candidate
            SET state = 'RUNNING', resume_requested_at = NULL
            WHERE candidate.id = ?
              AND candidate.state = 'WAITING_TO_RESUME'
@@ -733,10 +743,18 @@ export class ExecutionService {
                    )
                  )
              )`,
-        )
-        .run(executionId, this.now().toISOString());
-      return update.changes === 1;
-    })();
+          )
+          .run(executionId, this.now().toISOString());
+        if (update.changes !== 1)
+          return { laneAcquired: false, resumedExecution: null };
+        const resumedExecution = this.get(executionId);
+        this.hooks.applyResumed(resumedExecution);
+        return { laneAcquired: true, resumedExecution };
+      },
+    )();
+    if (result.resumedExecution)
+      this.hooks.afterResumed(result.resumedExecution);
+    return result.laneAcquired;
   }
 
   private claimAvailable(
