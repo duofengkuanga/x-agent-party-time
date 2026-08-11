@@ -94,7 +94,7 @@ rl.on('line', (line) => {
     expect(request?.params).toMatchObject({
       approvalPolicy: 'on-request',
       approvalsReviewer: 'auto_review',
-      sandbox: 'workspace-write',
+      sandbox: 'danger-full-access',
     });
   }
   await executor.close();

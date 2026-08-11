@@ -454,6 +454,8 @@ describe('LifecycleService', () => {
       },
     );
     expect(closed.cleanupExecutionIds).toHaveLength(2);
+    for (const executionId of closed.cleanupExecutionIds)
+      expect(fixture.executions.get(executionId).approvalPolicy).toBe('never');
     expect(
       submissionRow(fixture.database, fixture.submission.id),
     ).toMatchObject({
@@ -625,9 +627,10 @@ describe('LifecycleService', () => {
         expectedVersion: cleanup.version,
       },
     );
-    expect(fixture.executions.get(retried.executionId).resumeSessionId).toBe(
-      'cleanup-session',
-    );
+    expect(fixture.executions.get(retried.executionId)).toMatchObject({
+      approvalPolicy: 'never',
+      resumeSessionId: 'cleanup-session',
+    });
     await completeCleanup(fixture, retried.executionId, 'cleanup-session', {
       outcome: 'COMPLETED',
       summary: '重试完成',

@@ -61,7 +61,7 @@ type ActiveTurn = {
 
 const XAPT_THREAD_SECURITY = {
   approvalsReviewer: 'auto_review',
-  sandbox: 'workspace-write',
+  sandbox: 'danger-full-access',
 } as const;
 
 export class CodexAppServerError extends Error {
