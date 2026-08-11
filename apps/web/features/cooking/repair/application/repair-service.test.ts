@@ -14,6 +14,7 @@ import {
   handleExecutionStart,
 } from '@/server/execution/http';
 import { ExecutionService } from '@/server/execution/service';
+import { cookingExecutionProjection } from '@/features/cooking/execution/application/execution-projection';
 import { RunnerService } from '@/server/runner/service';
 import { LocalFileStore } from '@/server/files/local-file-store';
 import { handleRunnerHeartbeat } from '@/server/runner/http';
@@ -129,16 +130,11 @@ async function setup(options: { repairCreateId?: () => string } = {}) {
     undefined,
     () => `repair-lease-${++leaseIndex}`.padEnd(40, 'x'),
     15_000,
-    {
-      applyStarted: (execution) => repairs.applyStartedExecution(execution),
-      afterStarted: (execution) => repairs.afterStartedExecution(execution),
-      applyTerminal: (execution) => repairs.applyTerminalExecution(execution),
-      afterTerminal: (execution) => repairs.afterTerminalExecution(execution),
-      applyInteractionOpened: (interaction) =>
-        repairs.applyInteractionOpened(interaction.executionId, interaction.id),
-      afterInteractionOpened: (interaction) =>
-        repairs.afterInteractionOpened(interaction.executionId),
-    },
+    cookingExecutionProjection(database, {
+      BUG_REPAIR: repairs,
+      UPDATE_BATCH: { projectExecution: () => {} },
+      CLEANUP: { projectExecution: () => {} },
+    }),
   );
   const bugs = new BugService(
     database,

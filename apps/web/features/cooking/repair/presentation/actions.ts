@@ -1,10 +1,9 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
-import { ZodError } from 'zod';
-import { requireCurrentUser } from '@/server/auth/server';
-import { publicError, type PlatformErrorCode } from '@/server/errors';
-import { logger } from '@/server/logging';
+import {
+  runInteractiveMutation,
+  type InteractiveActionResult,
+} from '@/features/cooking/shared/action-transport';
 import { repairService } from '../application/server';
 import type {
   ContinueRepairInput,
@@ -12,13 +11,7 @@ import type {
   ResolveRepairInteractionInput,
 } from '../contract';
 
-type RepairActionFailure = {
-  ok: false;
-  error: { code: PlatformErrorCode; message: string };
-};
-
-export type RepairActionResult =
-  { ok: true; result: RepairMutationResult } | RepairActionFailure;
+export type RepairActionResult = InteractiveActionResult<RepairMutationResult>;
 
 export async function continueRepairAction(
   bugId: string,
@@ -38,34 +31,14 @@ export async function resolveRepairInteractionAction(
   );
 }
 
-async function runRepairAction(
+function runRepairAction(
   command: (userId: string) => RepairMutationResult,
 ): Promise<RepairActionResult> {
-  const user = await requireCurrentUser();
-  try {
-    const result = command(user.id);
-    revalidatePath('/cooking');
-    return { ok: true, result };
-  } catch (error) {
-    if (error instanceof ZodError) {
-      logger.error('cooking_repair_action_validation_failed', error, {
-        issues: error.issues.map(({ code, path }) => ({
-          code,
-          location: path.join('.'),
-        })),
-      });
-      return {
-        ok: false,
-        error: {
-          code: 'VALIDATION_FAILED',
-          message: '提交内容不完整或格式不正确，请检查后重试。',
-        },
-      };
-    }
-    const visible = publicError(error);
-    return {
-      ok: false,
-      error: { code: visible.code, message: visible.message },
-    };
-  }
+  return runInteractiveMutation({
+    validationEvent: 'cooking_repair_action_validation_failed',
+    command: ({ userId }) => ({
+      result: command(userId),
+      refreshPaths: ['/cooking'],
+    }),
+  });
 }

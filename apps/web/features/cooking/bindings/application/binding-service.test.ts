@@ -444,7 +444,8 @@ describe('删除未使用工程绑定', () => {
       .prepare(
         `INSERT INTO platform_execution(
            id, owner_namespace, owner_kind, owner_id, attempt,
-           previous_execution_id, runner_id, binding_id, priority, state,
+           previous_execution_id, runner_id, binding_id, priority,
+           approval_policy, state,
            prompt_kind, prompt_version, rendered_prompt, rendered_prompt_hash,
            output_json_schema, resume_session_id, session_id,
            lease_token_hash, lease_expires_at, outcome_json,
@@ -452,7 +453,7 @@ describe('删除未使用工程绑定', () => {
            claimed_at, started_at, finished_at
          ) VALUES (
            ?, 'COOKING', 'REPAIR', 'historical-owner', 1, NULL, ?, ?, 0,
-           'SUCCEEDED', 'REPAIR', 1, '历史任务', ?, '{}', NULL, NULL,
+           'on-request', 'SUCCEEDED', 'REPAIR', 1, '历史任务', ?, '{}', NULL, NULL,
            NULL, NULL, '{}', '{}', 0, ?, NULL, NULL, ?
          )`,
       )

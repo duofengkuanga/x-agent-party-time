@@ -31,6 +31,7 @@ type ExecutionRow = {
   runner_id: string;
   binding_id: string;
   priority: number;
+  approval_policy: Execution['approvalPolicy'];
   state: Execution['state'];
   prompt_kind: string;
   prompt_version: number;
@@ -144,7 +145,8 @@ export class ExecutionService {
           .prepare(
             `INSERT INTO platform_execution(
                id, owner_namespace, owner_kind, owner_id, attempt,
-               previous_execution_id, runner_id, binding_id, priority, state,
+               previous_execution_id, runner_id, binding_id, priority,
+               approval_policy, state,
                prompt_kind, prompt_version, rendered_prompt,
                rendered_prompt_hash, output_json_schema, resume_session_id,
                workspace_json, session_id, lease_token_hash, lease_expires_at,
@@ -152,7 +154,7 @@ export class ExecutionService {
                resume_requested_at, created_at, claimed_at, started_at,
                finished_at
              ) VALUES (
-               ?, ?, ?, ?, ?, ?, ?, ?, ?, 'QUEUED', ?, ?, ?, ?, ?, ?,
+               ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'QUEUED', ?, ?, ?, ?, ?, ?,
                ?, NULL, NULL, NULL, NULL, NULL, 0, NULL, ?, NULL, NULL, NULL
              )`,
           )
@@ -166,6 +168,7 @@ export class ExecutionService {
             input.runnerId,
             input.bindingId,
             input.priority,
+            input.approvalPolicy,
             input.promptKind,
             input.promptVersion,
             input.renderedPrompt,
@@ -972,6 +975,7 @@ export class ExecutionService {
       runnerId: current.runner_id,
       bindingId: current.binding_id,
       priority: current.priority,
+      approvalPolicy: current.approval_policy,
       state: current.state,
       promptKind: current.prompt_kind,
       promptVersion: current.prompt_version,

@@ -34,11 +34,13 @@ secrets.*
 
 # Build, test, and tool output
 .next/
+.next-browser-*/
 .open-next/
 .wrangler/
 dist/
 build/
 coverage/
+cu-test-artifacts/
 *.tsbuildinfo
 .gitnexus/
 

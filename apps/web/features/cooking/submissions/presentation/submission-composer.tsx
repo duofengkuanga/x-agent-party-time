@@ -123,7 +123,7 @@ export function SubmissionComposer({
         setError(result.error.message);
         return;
       }
-      onCreated(result.submission.id);
+      onCreated(result.result.id);
     } catch (actionError) {
       setError(messageOf(actionError, '创建提测单失败，请稍后重试。'));
     } finally {

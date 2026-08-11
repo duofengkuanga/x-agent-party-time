@@ -15,6 +15,7 @@ import { SubmissionService } from '@/features/cooking/submissions/application/su
 import { RepairService } from '@/features/cooking/repair/application/repair-service';
 import { ZodError } from 'zod';
 import { BugService } from './bug-service';
+import { BugRepairContextService } from './repair-context';
 
 const directories: string[] = [];
 const databases: AppDatabase[] = [];
@@ -185,6 +186,56 @@ afterEach(async () => {
 });
 
 describe('BugService', () => {
+  test('Repair Context 按报告角色投影附件与执行来源', async () => {
+    const fixture = await setup();
+    const actual = await fixture.files.put({
+      bytes: new TextEncoder().encode('实际结果'),
+      originalName: '实际.txt',
+      mediaType: 'text/plain',
+      uploadedByUserId: fixture.users.tester.id,
+    });
+    const expected = await fixture.files.put({
+      bytes: new TextEncoder().encode('预期结果'),
+      originalName: '预期.txt',
+      mediaType: 'text/plain',
+      uploadedByUserId: fixture.users.tester.id,
+    });
+    const bug = fixture.service.createBug(
+      fixture.users.tester.id,
+      fixture.submission.id,
+      {
+        mutationId: randomUUID(),
+        submissionItemId: fixture.items.front,
+        title: '角色化报告',
+        operationPath: '打开结算页',
+        actualResult: '按钮无响应',
+        expectedResult: '显示成功提示',
+        actualResultAttachmentIds: [actual.id],
+        expectedResultAttachmentIds: [expected.id],
+      },
+    ).bug;
+
+    expect(
+      new BugRepairContextService(fixture.database).get(bug.id),
+    ).toMatchObject({
+      bugId: bug.id,
+      submissionTitle: '双工程提测',
+      engineeringName: '前端工程',
+      targetBranch: 'feature/front',
+      report: {
+        title: '角色化报告',
+        operationPath: '打开结算页',
+        actualResult: '按钮无响应',
+        expectedResult: '显示成功提示',
+        attachments: {
+          actualResult: [{ id: actual.id, originalName: '实际.txt' }],
+          expectedResult: [{ id: expected.id, originalName: '预期.txt' }],
+        },
+      },
+      feedback: [],
+    });
+  });
+
   test('只有 Tester 可创建，空白可选字段不保存且附件按实际与预期结果分组', async () => {
     const fixture = await setup();
     expect(() =>

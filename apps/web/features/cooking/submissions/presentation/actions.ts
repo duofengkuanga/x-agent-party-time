@@ -1,9 +1,11 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
-import { ZodError } from 'zod';
 import { requireCurrentUser } from '@/server/auth/server';
 import { publicError, type PlatformErrorCode } from '@/server/errors';
+import {
+  runInteractiveMutation,
+  type InteractiveActionResult,
+} from '@/features/cooking/shared/action-transport';
 import {
   submissionCreationCatalog,
   submissionService,
@@ -20,8 +22,7 @@ type SubmissionActionFailure = {
   error: { code: PlatformErrorCode; message: string };
 };
 
-export type SubmissionActionResult =
-  { ok: true; submission: TestSubmission } | SubmissionActionFailure;
+export type SubmissionActionResult = InteractiveActionResult<TestSubmission>;
 
 export type SubmissionCatalogActionResult =
   { ok: true; catalog: SubmissionCreationCatalog } | SubmissionActionFailure;
@@ -42,56 +43,46 @@ export async function createSubmissionAction(
   projectId: string,
   input: CreateSubmissionInput,
 ): Promise<SubmissionActionResult> {
-  const user = await requireCurrentUser();
-  try {
-    const submission = submissionService().createSubmission(
-      user.id,
-      projectId,
-      input,
-    );
-    revalidateSubmission(submission.id);
-    return { ok: true, submission };
-  } catch (error) {
-    return actionError(error);
-  }
+  return runInteractiveMutation({
+    validationEvent: 'cooking_submission_action_validation_failed',
+    command: ({ userId }) => {
+      const result = submissionService().createSubmission(
+        userId,
+        projectId,
+        input,
+      );
+      return {
+        result,
+        refreshPaths: ['/cooking', `/cooking/${result.id}`],
+      };
+    },
+  });
 }
 
 export async function updateSubmissionAction(
   submissionId: string,
   input: UpdateSubmissionInput,
 ): Promise<SubmissionActionResult> {
-  const user = await requireCurrentUser();
-  try {
-    const submission = submissionService().updateSubmission(
-      user.id,
-      submissionId,
-      input,
-    );
-    revalidateSubmission(submission.id);
-    return { ok: true, submission };
-  } catch (error) {
-    return actionError(error);
-  }
+  return runInteractiveMutation({
+    validationEvent: 'cooking_submission_action_validation_failed',
+    command: ({ userId }) => {
+      const result = submissionService().updateSubmission(
+        userId,
+        submissionId,
+        input,
+      );
+      return {
+        result,
+        refreshPaths: ['/cooking', `/cooking/${result.id}`],
+      };
+    },
+  });
 }
 
 function actionError(error: unknown): SubmissionActionFailure {
-  if (error instanceof ZodError) {
-    return {
-      ok: false,
-      error: {
-        code: 'VALIDATION_FAILED',
-        message: '提交内容不完整或格式不正确，请检查后重试。',
-      },
-    };
-  }
   const visible = publicError(error);
   return {
     ok: false,
     error: { code: visible.code, message: visible.message },
   };
-}
-
-function revalidateSubmission(submissionId: string): void {
-  revalidatePath('/cooking');
-  revalidatePath(`/cooking/${submissionId}`);
 }

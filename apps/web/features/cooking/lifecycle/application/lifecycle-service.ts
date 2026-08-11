@@ -6,8 +6,9 @@ import {
 import type { AppDatabase } from '@/server/database';
 import { PlatformError } from '@/server/errors';
 import { ExecutionService } from '@/server/execution/service';
+import type { CookingExecutionProjectionEvent } from '@/features/cooking/execution/application/execution-projection';
 import type { RepairService } from '@/features/cooking/repair/application/repair-service';
-import { CookingWriteStore } from '@/features/cooking/shared/write-store';
+import { TestSubmissionWriteStore } from '@/features/cooking/submissions/application/test-submission-write-store';
 import {
   BugLifecycleMutationResultSchema,
   CleanupExecutionResultSchema,
@@ -90,7 +91,7 @@ type CleanupAttemptRow = {
 };
 
 export class LifecycleService {
-  private readonly writes: CookingWriteStore;
+  private readonly writes: TestSubmissionWriteStore;
 
   constructor(
     private readonly db: AppDatabase,
@@ -98,12 +99,14 @@ export class LifecycleService {
     private readonly executions: ExecutionService = new ExecutionService(db),
     private readonly now: () => Date = () => new Date(),
     private readonly createId: () => string = randomUUID,
-    private readonly onInvalidated: (
-      submissionId: string,
-      revision: number,
-    ) => void = () => {},
+    onInvalidated: (submissionId: string, revision: number) => void = () => {},
   ) {
-    this.writes = new CookingWriteStore(db, now, createId);
+    this.writes = new TestSubmissionWriteStore(
+      db,
+      now,
+      createId,
+      onInvalidated,
+    );
   }
 
   verifyBug(
@@ -112,13 +115,16 @@ export class LifecycleService {
     inputValue: VerifyBugInput,
   ): BugLifecycleMutationResult {
     const input = VerifyBugInputSchema.parse(inputValue);
-    const replay = this.hasRecordedMutation(input.mutationId);
     const result = this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
       operation: 'BUG_VERIFY',
       resourceType: 'BUG',
       resultSchema: BugLifecycleMutationResultSchema,
+      invalidation: (mutation) => ({
+        submissionId: this.bugSource(bugId).submission_id,
+        revision: mutation.revision,
+      }),
       perform: () => {
         const source = this.requireTester(actorUserId, bugId);
         this.requireBugVersion(source, input.expectedVersion);
@@ -152,7 +158,7 @@ export class LifecycleService {
               now,
             );
           this.updateBugStage(bugId, 'WAITING_FOR_VERIFICATION', 'DONE', now);
-          const revision = this.bumpRevision(source.submission_id, now);
+          const revision = this.writes.bumpRevision(source.submission_id, now);
           return {
             result: {
               bugId,
@@ -197,10 +203,6 @@ export class LifecycleService {
         };
       },
     });
-    if (!replay) {
-      const source = this.bugSource(bugId);
-      this.onInvalidated(source.submission_id, result.revision);
-    }
     return result;
   }
 
@@ -210,13 +212,16 @@ export class LifecycleService {
     inputValue: ReopenBugInput,
   ): BugLifecycleMutationResult {
     const input = ReopenBugInputSchema.parse(inputValue);
-    const replay = this.hasRecordedMutation(input.mutationId);
     const result = this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
       operation: 'BUG_REOPEN',
       resourceType: 'BUG',
       resultSchema: BugLifecycleMutationResultSchema,
+      invalidation: (mutation) => ({
+        submissionId: this.bugSource(bugId).submission_id,
+        revision: mutation.revision,
+      }),
       perform: () => {
         const source = this.requireTester(actorUserId, bugId);
         this.requireBugVersion(source, input.expectedVersion);
@@ -266,7 +271,7 @@ export class LifecycleService {
           `第 ${round} 次重新打开：${input.feedback.trim()}`,
           input.attachmentIds,
         );
-        const revision = this.bumpRevision(source.submission_id, now);
+        const revision = this.writes.bumpRevision(source.submission_id, now);
         return {
           result: {
             bugId,
@@ -287,10 +292,6 @@ export class LifecycleService {
         };
       },
     });
-    if (!replay) {
-      const source = this.bugSource(bugId);
-      this.onInvalidated(source.submission_id, result.revision);
-    }
     return result;
   }
 
@@ -300,13 +301,16 @@ export class LifecycleService {
     inputValue: LifecycleCommandInput,
   ): BugLifecycleMutationResult {
     const input = LifecycleCommandInputSchema.parse(inputValue);
-    const replay = this.hasRecordedMutation(input.mutationId);
     const result = this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
       operation: 'BUG_CANCEL',
       resourceType: 'BUG',
       resultSchema: BugLifecycleMutationResultSchema,
+      invalidation: (mutation) => ({
+        submissionId: this.bugSource(bugId).submission_id,
+        revision: mutation.revision,
+      }),
       perform: () => {
         const source = this.requireTester(actorUserId, bugId);
         this.requireBugVersion(source, input.expectedVersion);
@@ -325,7 +329,7 @@ export class LifecycleService {
           .run(now, bugId, input.expectedVersion, 'WAITING_FOR_REPAIR');
         if (update.changes !== 1) throw staleLifecycle('缺陷');
         this.recordBugTransition(bugId, 'CANCELLED', actorUserId, now);
-        const revision = this.bumpRevision(source.submission_id, now);
+        const revision = this.writes.bumpRevision(source.submission_id, now);
         return {
           result: {
             bugId,
@@ -339,10 +343,6 @@ export class LifecycleService {
         };
       },
     });
-    if (!replay) {
-      const source = this.bugSource(bugId);
-      this.onInvalidated(source.submission_id, result.revision);
-    }
     return result;
   }
 
@@ -385,13 +385,16 @@ export class LifecycleService {
     inputValue: LifecycleCommandInput,
   ): CloseSubmissionMutationResult {
     const input = LifecycleCommandInputSchema.parse(inputValue);
-    const replay = this.hasRecordedMutation(input.mutationId);
     const result = this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
       operation: 'SUBMISSION_CLOSE',
       resourceType: 'TEST_SUBMISSION',
       resultSchema: CloseSubmissionMutationResultSchema,
+      invalidation: (mutation) => ({
+        submissionId: mutation.submissionId,
+        revision: mutation.revision,
+      }),
       perform: () => {
         const submission = this.requireSubmissionTester(
           actorUserId,
@@ -432,14 +435,13 @@ export class LifecycleService {
           .prepare(
             `UPDATE cooking_test_submission
              SET status = 'CLOSED', version = version + 1,
-                 workspace_revision = workspace_revision + 1,
                  updated_at = ?, closed_at = ?
              WHERE id = ? AND status = 'ACTIVE' AND version = ?
-             RETURNING workspace_revision`,
+            `,
           )
-          .get(now, now, submissionId, input.expectedVersion) as
-          { workspace_revision: number } | undefined;
-        if (!update) throw staleLifecycle('提测单');
+          .run(now, now, submissionId, input.expectedVersion);
+        if (update.changes !== 1) throw staleLifecycle('提测单');
+        const revision = this.writes.bumpRevision(submissionId, now);
         this.db
           .prepare(
             'DELETE FROM cooking_submission_environment_lock WHERE submission_id = ?',
@@ -470,7 +472,7 @@ export class LifecycleService {
             submissionId,
             submissionVersion: input.expectedVersion + 1,
             cleanupExecutionIds,
-            revision: update.workspace_revision,
+            revision,
           },
           resourceId: submissionId,
           audits: [
@@ -485,7 +487,6 @@ export class LifecycleService {
         };
       },
     });
-    if (!replay) this.onInvalidated(submissionId, result.revision);
     return result;
   }
 
@@ -495,13 +496,16 @@ export class LifecycleService {
     inputValue: LifecycleCommandInput,
   ): CleanupMutationResult {
     const input = LifecycleCommandInputSchema.parse(inputValue);
-    const replay = this.hasRecordedMutation(input.mutationId);
     const result = this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
       operation: 'CLEANUP_RETRY',
       resourceType: 'CLEANUP',
       resultSchema: CleanupMutationResultSchema,
+      invalidation: (mutation) => ({
+        submissionId: this.cleanupSource(cleanupId).submission_id,
+        revision: mutation.revision,
+      }),
       perform: () => {
         const cleanup = this.requireCleanupResponsible(actorUserId, cleanupId);
         if (cleanup.version !== input.expectedVersion)
@@ -520,6 +524,7 @@ export class LifecycleService {
           runnerId: cleanup.runner_id,
           bindingId: cleanup.binding_id,
           priority: 0,
+          approvalPolicy: 'on-request',
           promptKind: prompt.kind,
           promptVersion: prompt.version,
           renderedPrompt: prompt.renderedPrompt,
@@ -555,7 +560,7 @@ export class LifecycleService {
           )
           .run(execution.id, now, cleanupId, input.expectedVersion);
         if (update.changes !== 1) throw staleLifecycle('清理任务');
-        const revision = this.bumpRevision(cleanup.submission_id, now);
+        const revision = this.writes.bumpRevision(cleanup.submission_id, now);
         return {
           result: {
             cleanupId,
@@ -579,10 +584,6 @@ export class LifecycleService {
         };
       },
     });
-    if (!replay) {
-      const cleanup = this.cleanupSource(cleanupId);
-      this.onInvalidated(cleanup.submission_id, result.revision);
-    }
     return result;
   }
 
@@ -593,13 +594,16 @@ export class LifecycleService {
   ): CleanupMutationResult {
     const input = ResolveCleanupInteractionInputSchema.parse(inputValue);
     const source = this.cleanupInteractionSource(interactionId);
-    const replay = this.hasRecordedMutation(input.mutationId);
     const result = this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
       operation: 'CLEANUP_INTERACTION_RESOLVE',
       resourceType: 'EXECUTION_INTERACTION',
       resultSchema: CleanupMutationResultSchema,
+      invalidation: (mutation) => ({
+        submissionId: this.cleanupSource(source.cleanup_id).submission_id,
+        revision: mutation.revision,
+      }),
       perform: () => {
         const cleanup = this.requireCleanupResponsible(
           actorUserId,
@@ -623,7 +627,7 @@ export class LifecycleService {
           )
           .run(now, cleanup.id, input.expectedVersion, source.execution_id);
         if (update.changes !== 1) throw staleLifecycle('清理任务');
-        const revision = this.bumpRevision(cleanup.submission_id, now);
+        const revision = this.writes.bumpRevision(cleanup.submission_id, now);
         return {
           result: {
             cleanupId: cleanup.id,
@@ -647,14 +651,29 @@ export class LifecycleService {
         };
       },
     });
-    if (!replay) {
-      const cleanup = this.cleanupSource(source.cleanup_id);
-      this.onInvalidated(cleanup.submission_id, result.revision);
-    }
     return result;
   }
 
-  applyStartedExecution(execution: Execution): void {
+  projectExecution(event: CookingExecutionProjectionEvent): void {
+    if (event.kind === 'INTERACTION_OPENED') {
+      if (event.phase === 'APPLY')
+        this.applyInteractionOpened(
+          event.interaction.executionId,
+          event.interaction.id,
+        );
+      else this.afterInteractionOpened(event.interaction.executionId);
+      return;
+    }
+    if (event.kind === 'STARTED') {
+      if (event.phase === 'APPLY') this.applyStartedExecution(event.execution);
+      else this.afterStartedExecution(event.execution);
+      return;
+    }
+    if (event.phase === 'APPLY') this.applyTerminalExecution(event.execution);
+    else this.afterTerminalExecution(event.execution);
+  }
+
+  private applyStartedExecution(execution: Execution): void {
     if (!isCleanupExecution(execution)) return;
     const attempt = this.cleanupAttemptForExecution(execution.id);
     if (!attempt) return;
@@ -668,10 +687,13 @@ export class LifecycleService {
          WHERE id = ? AND state = 'READY'`,
       )
       .run(now, cleanup.id);
-    this.bumpRevision(cleanup.submission_id, now);
+    this.writes.bumpRevision(cleanup.submission_id, now);
   }
 
-  applyInteractionOpened(executionId: string, interactionId: string): void {
+  private applyInteractionOpened(
+    executionId: string,
+    interactionId: string,
+  ): void {
     const attempt = this.cleanupAttemptForExecution(executionId);
     if (!attempt) return;
     const cleanup = this.cleanupSource(attempt.cleanup_id);
@@ -696,10 +718,10 @@ export class LifecycleService {
         }),
         now,
       );
-    this.bumpRevision(cleanup.submission_id, now);
+    this.writes.bumpRevision(cleanup.submission_id, now);
   }
 
-  applyTerminalExecution(execution: Execution): void {
+  private applyTerminalExecution(execution: Execution): void {
     if (!isCleanupExecution(execution)) return;
     const attempt = this.cleanupAttemptForExecution(execution.id);
     if (!attempt || attempt.outcome_json) return;
@@ -726,18 +748,18 @@ export class LifecycleService {
          SET outcome_json = ?, finished_at = ? WHERE id = ?`,
       )
       .run(JSON.stringify(interpreted.outcome), now, attempt.id);
-    this.bumpRevision(cleanup.submission_id, now);
+    this.writes.bumpRevision(cleanup.submission_id, now);
   }
 
-  afterStartedExecution(execution: Execution): void {
+  private afterStartedExecution(execution: Execution): void {
     if (isCleanupExecution(execution)) this.publishExecution(execution.id);
   }
 
-  afterInteractionOpened(executionId: string): void {
+  private afterInteractionOpened(executionId: string): void {
     this.publishExecution(executionId);
   }
 
-  afterTerminalExecution(execution: Execution): void {
+  private afterTerminalExecution(execution: Execution): void {
     if (isCleanupExecution(execution)) this.publishExecution(execution.id);
   }
 
@@ -841,13 +863,16 @@ export class LifecycleService {
     auditAction: string,
   ): BugLifecycleMutationResult {
     const input = LifecycleCommandInputSchema.parse(inputValue);
-    const replay = this.hasRecordedMutation(input.mutationId);
     const result = this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
       operation,
       resourceType: 'BUG',
       resultSchema: BugLifecycleMutationResultSchema,
+      invalidation: (mutation) => ({
+        submissionId: this.bugSource(bugId).submission_id,
+        revision: mutation.revision,
+      }),
       perform: () => {
         const source = this.requireTester(actorUserId, bugId);
         this.requireBugVersion(source, input.expectedVersion);
@@ -865,7 +890,7 @@ export class LifecycleService {
             '当前缺陷不能恢复到待修复',
           );
         this.recordBugTransition(bugId, transition, actorUserId, now);
-        const revision = this.bumpRevision(source.submission_id, now);
+        const revision = this.writes.bumpRevision(source.submission_id, now);
         return {
           result: {
             bugId,
@@ -879,8 +904,6 @@ export class LifecycleService {
         };
       },
     });
-    if (!replay)
-      this.onInvalidated(this.bugSource(bugId).submission_id, result.revision);
     return result;
   }
 
@@ -891,13 +914,16 @@ export class LifecycleService {
     archived: boolean,
   ): BugLifecycleMutationResult {
     const input = LifecycleCommandInputSchema.parse(inputValue);
-    const replay = this.hasRecordedMutation(input.mutationId);
     const result = this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
       operation: archived ? 'BUG_ARCHIVE' : 'BUG_UNARCHIVE',
       resourceType: 'BUG',
       resultSchema: BugLifecycleMutationResultSchema,
+      invalidation: (mutation) => ({
+        submissionId: this.bugSource(bugId).submission_id,
+        revision: mutation.revision,
+      }),
       perform: () => {
         const source = this.requireTester(actorUserId, bugId);
         this.requireBugVersion(source, input.expectedVersion);
@@ -928,7 +954,7 @@ export class LifecycleService {
             input.expectedVersion,
           );
         if (update.changes !== 1) throw staleLifecycle('缺陷');
-        const revision = this.bumpRevision(source.submission_id, now);
+        const revision = this.writes.bumpRevision(source.submission_id, now);
         return {
           result: {
             bugId,
@@ -948,8 +974,6 @@ export class LifecycleService {
         };
       },
     });
-    if (!replay)
-      this.onInvalidated(this.bugSource(bugId).submission_id, result.revision);
     return result;
   }
 
@@ -1017,7 +1041,7 @@ export class LifecycleService {
     );
     return {
       executionId,
-      revision: this.bumpRevision(source.submission_id, now),
+      revision: this.writes.bumpRevision(source.submission_id, now),
     };
   }
 
@@ -1080,6 +1104,7 @@ export class LifecycleService {
       runnerId: source.runner_id,
       bindingId: source.binding_id,
       priority: 0,
+      approvalPolicy: 'on-request',
       promptKind: prompt.kind,
       promptVersion: prompt.version,
       renderedPrompt: prompt.renderedPrompt,
@@ -1753,27 +1778,11 @@ export class LifecycleService {
       )
       .get(executionId) as
       { submission_id: string; workspace_revision: number } | undefined;
-    if (row) this.onInvalidated(row.submission_id, row.workspace_revision);
-  }
-
-  private hasRecordedMutation(mutationId: string): boolean {
-    return Boolean(
-      this.db
-        .prepare('SELECT 1 FROM cooking_mutation WHERE id = ?')
-        .get(mutationId),
-    );
-  }
-
-  private bumpRevision(submissionId: string, now: string): number {
-    return (
-      this.db
-        .prepare(
-          `UPDATE cooking_test_submission
-           SET workspace_revision = workspace_revision + 1, updated_at = ?
-           WHERE id = ? RETURNING workspace_revision revision`,
-        )
-        .get(now, submissionId) as { revision: number }
-    ).revision;
+    if (row)
+      this.writes.publishInvalidation(
+        row.submission_id,
+        row.workspace_revision,
+      );
   }
 }
 

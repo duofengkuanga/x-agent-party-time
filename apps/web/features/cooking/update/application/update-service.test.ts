@@ -14,6 +14,7 @@ import {
   handleExecutionStart,
 } from '@/server/execution/http';
 import { ExecutionService } from '@/server/execution/service';
+import { cookingExecutionProjection } from '@/features/cooking/execution/application/execution-projection';
 import { RunnerService } from '@/server/runner/service';
 import { handleRunnerHeartbeat } from '@/server/runner/http';
 import { BindingService } from '@/features/cooking/bindings/application/binding-service';
@@ -197,32 +198,11 @@ async function setup(
     undefined,
     () => `update-lease-${++leaseIndex}`.padEnd(40, 'x'),
     15_000,
-    {
-      applyStarted: (execution) => {
-        repairs.applyStartedExecution(execution);
-        updates.applyStartedExecution(execution);
-      },
-      afterStarted: (execution) => {
-        repairs.afterStartedExecution(execution);
-        updates.afterStartedExecution(execution);
-      },
-      applyTerminal: (execution) => {
-        repairs.applyTerminalExecution(execution);
-        updates.applyTerminalExecution(execution);
-      },
-      afterTerminal: (execution) => {
-        repairs.afterTerminalExecution(execution);
-        updates.afterTerminalExecution(execution);
-      },
-      applyInteractionOpened: (interaction) => {
-        repairs.applyInteractionOpened(interaction.executionId, interaction.id);
-        updates.applyInteractionOpened(interaction.executionId, interaction.id);
-      },
-      afterInteractionOpened: (interaction) => {
-        repairs.afterInteractionOpened(interaction.executionId);
-        updates.afterInteractionOpened(interaction.executionId);
-      },
-    },
+    cookingExecutionProjection(database, {
+      BUG_REPAIR: repairs,
+      UPDATE_BATCH: updates,
+      CLEANUP: { projectExecution: () => {} },
+    }),
   );
   const bugs = new BugService(
     database,

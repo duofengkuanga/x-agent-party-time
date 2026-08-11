@@ -521,6 +521,7 @@ function input(
     previousExecutionId: null,
     runnerId,
     bindingId: localBindingId,
+    approvalPolicy: 'on-request',
     promptKind: 'fixture.generic',
     promptVersion: 1,
     renderedPrompt: prompt,

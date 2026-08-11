@@ -7,6 +7,7 @@ import { AuthService } from '@/server/auth/service';
 import type { AppDatabase } from '@/server/database';
 import { openDatabase } from '@/server/database';
 import { ExecutionService } from '@/server/execution/service';
+import { cookingExecutionProjection } from '@/features/cooking/execution/application/execution-projection';
 import { LocalFileStore } from '@/server/files/local-file-store';
 import { RunnerService } from '@/server/runner/service';
 import { BindingService } from '@/features/cooking/bindings/application/binding-service';
@@ -186,35 +187,11 @@ async function setup() {
     undefined,
     () => `lifecycle-lease-${++leaseIndex}`.padEnd(48, 'x'),
     15_000,
-    {
-      applyStarted: (execution) => {
-        repairs.applyStartedExecution(execution);
-        updates.applyStartedExecution(execution);
-        lifecycle.applyStartedExecution(execution);
-      },
-      afterStarted: (execution) => {
-        repairs.afterStartedExecution(execution);
-        updates.afterStartedExecution(execution);
-        lifecycle.afterStartedExecution(execution);
-      },
-      applyTerminal: (execution) => {
-        repairs.applyTerminalExecution(execution);
-        updates.applyTerminalExecution(execution);
-        lifecycle.applyTerminalExecution(execution);
-      },
-      afterTerminal: (execution) => {
-        repairs.afterTerminalExecution(execution);
-        updates.afterTerminalExecution(execution);
-        lifecycle.afterTerminalExecution(execution);
-      },
-      applyInteractionOpened: (interaction) =>
-        lifecycle.applyInteractionOpened(
-          interaction.executionId,
-          interaction.id,
-        ),
-      afterInteractionOpened: (interaction) =>
-        lifecycle.afterInteractionOpened(interaction.executionId),
-    },
+    cookingExecutionProjection(database, {
+      BUG_REPAIR: repairs,
+      UPDATE_BATCH: updates,
+      CLEANUP: lifecycle,
+    }),
   );
   const bugs = new BugService(
     database,

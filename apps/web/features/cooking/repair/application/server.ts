@@ -1,5 +1,6 @@
 import { database } from '@/server/database';
 import { ExecutionService } from '@/server/execution/service';
+import { cookingExecutionProjection } from '@/features/cooking/execution/application/execution-projection';
 import { workspaceEvents } from '@/features/cooking/submissions/application/workspace-events';
 import { UpdateService } from '@/features/cooking/update/application/update-service';
 import { LifecycleService } from '@/features/cooking/lifecycle/application/lifecycle-service';
@@ -63,40 +64,10 @@ export function cookingExecutionService(): ExecutionService {
     undefined,
     undefined,
     undefined,
-    {
-      applyStarted: (execution) => {
-        repair.applyStartedExecution(execution);
-        updates.applyStartedExecution(execution);
-        lifecycle.applyStartedExecution(execution);
-      },
-      afterStarted: (execution) => {
-        repair.afterStartedExecution(execution);
-        updates.afterStartedExecution(execution);
-        lifecycle.afterStartedExecution(execution);
-      },
-      applyTerminal: (execution) => {
-        repair.applyTerminalExecution(execution);
-        updates.applyTerminalExecution(execution);
-        lifecycle.applyTerminalExecution(execution);
-      },
-      afterTerminal: (execution) => {
-        repair.afterTerminalExecution(execution);
-        updates.afterTerminalExecution(execution);
-        lifecycle.afterTerminalExecution(execution);
-      },
-      applyInteractionOpened: (interaction) => {
-        repair.applyInteractionOpened(interaction.executionId, interaction.id);
-        updates.applyInteractionOpened(interaction.executionId, interaction.id);
-        lifecycle.applyInteractionOpened(
-          interaction.executionId,
-          interaction.id,
-        );
-      },
-      afterInteractionOpened: (interaction) => {
-        repair.afterInteractionOpened(interaction.executionId);
-        updates.afterInteractionOpened(interaction.executionId);
-        lifecycle.afterInteractionOpened(interaction.executionId);
-      },
-    },
+    cookingExecutionProjection(appDatabase, {
+      BUG_REPAIR: repair,
+      UPDATE_BATCH: updates,
+      CLEANUP: lifecycle,
+    }),
   );
 }

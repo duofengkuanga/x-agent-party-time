@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { PlatformError } from '@/server/errors';
 
-export const SERVER_SCHEMA_VERSION = 19;
+export const SERVER_SCHEMA_VERSION = 20;
 
 const SCHEMA = `
 CREATE TABLE platform_user (
@@ -98,6 +98,7 @@ CREATE TABLE platform_execution (
   runner_id TEXT NOT NULL REFERENCES platform_runner(id) ON DELETE RESTRICT,
   binding_id TEXT NOT NULL,
   priority INTEGER NOT NULL DEFAULT 0,
+  approval_policy TEXT NOT NULL CHECK (approval_policy IN ('never', 'on-request')),
   state TEXT NOT NULL CHECK (state IN (
     'QUEUED',
     'CLAIMED',

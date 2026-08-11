@@ -6,7 +6,7 @@ import {
   type StoredFile,
 } from '@/server/files/local-file-store';
 import { UserSchema, type User } from '@/server/auth/contract';
-import { CookingWriteStore } from '@/features/cooking/shared/write-store';
+import { TestSubmissionWriteStore } from '@/features/cooking/submissions/application/test-submission-write-store';
 import {
   AssignBugInputSchema,
   BugMutationResultSchema,
@@ -93,19 +93,21 @@ const NOOP_REPAIR_HOOKS: BugRepairHooks = {
 };
 
 export class BugService {
-  private readonly writes: CookingWriteStore;
+  private readonly writes: TestSubmissionWriteStore;
 
   constructor(
     private readonly db: AppDatabase,
     private readonly now: () => Date = () => new Date(),
     private readonly createId: () => string = randomUUID,
-    private readonly onInvalidated: (
-      submissionId: string,
-      revision: number,
-    ) => void = () => {},
+    onInvalidated: (submissionId: string, revision: number) => void = () => {},
     private readonly repairHooks: BugRepairHooks = NOOP_REPAIR_HOOKS,
   ) {
-    this.writes = new CookingWriteStore(db, now, createId);
+    this.writes = new TestSubmissionWriteStore(
+      db,
+      now,
+      createId,
+      onInvalidated,
+    );
   }
 
   createBug(
@@ -114,13 +116,16 @@ export class BugService {
     input: CreateBugInput,
   ): BugMutationResult {
     const parsed = CreateBugInputSchema.parse(input);
-    const replay = this.hasRecordedMutation(parsed.mutationId);
     const result = this.writes.run({
       mutationId: parsed.mutationId,
       actorUserId,
       operation: 'BUG_CREATE',
       resourceType: 'BUG',
       resultSchema: BugMutationResultSchema,
+      invalidation: (mutation) => ({
+        submissionId: mutation.bug.submissionId,
+        revision: mutation.revision,
+      }),
       perform: () => {
         const access = this.requireAccess(actorUserId, submissionId);
         this.requireActive(access);
@@ -169,7 +174,7 @@ export class BugService {
           parsed.expectedResultAttachmentIds,
           now,
         );
-        const revision = this.bumpRevision(submissionId, now);
+        const revision = this.writes.bumpRevision(submissionId, now);
         const bug = this.requireBug(bugId);
         return {
           result: {
@@ -195,7 +200,6 @@ export class BugService {
         };
       },
     });
-    if (!replay) this.onInvalidated(result.bug.submissionId, result.revision);
     return result;
   }
 
@@ -448,20 +452,23 @@ export class BugService {
       unboundAttachmentIds?: string[];
     },
   ): BugMutationResult {
-    const replay = this.hasRecordedMutation(mutationId);
     const result = this.writes.run({
       mutationId,
       actorUserId,
       operation,
       resourceType: 'BUG',
       resultSchema: BugMutationResultSchema,
+      invalidation: (mutation) => ({
+        submissionId: mutation.bug.submissionId,
+        revision: mutation.revision,
+      }),
       perform: () => {
         const bug = this.requireBug(bugId);
         const access = this.requireAccess(actorUserId, bug.submissionId);
         this.requireActive(access);
         const now = this.now().toISOString();
         const audit = perform(bug, access, now);
-        const revision = this.bumpRevision(bug.submissionId, now);
+        const revision = this.writes.bumpRevision(bug.submissionId, now);
         return {
           result: {
             bug: this.requireBug(bugId),
@@ -482,7 +489,6 @@ export class BugService {
         };
       },
     });
-    if (!replay) this.onInvalidated(result.bug.submissionId, result.revision);
     return result;
   }
 
@@ -722,26 +728,6 @@ export class BugService {
         createdAt: file.createdAt,
       };
     });
-  }
-
-  private bumpRevision(submissionId: string, now: string): number {
-    const update = this.db
-      .prepare(
-        `UPDATE cooking_test_submission
-         SET workspace_revision = workspace_revision + 1, updated_at = ?
-         WHERE id = ? AND status = 'ACTIVE'`,
-      )
-      .run(now, submissionId);
-    if (update.changes !== 1)
-      throw new PlatformError('INVALID_TRANSITION', '已关闭提测单不能修改');
-    return (
-      this.db
-        .prepare(
-          `SELECT workspace_revision revision
-           FROM cooking_test_submission WHERE id = ?`,
-        )
-        .get(submissionId) as { revision: number }
-    ).revision;
   }
 
   private availableActions(
@@ -1004,30 +990,10 @@ export class BugService {
     const now = this.now().toISOString();
     const submissionIds = [...new Set(bugs.map((bug) => bug.submissionId))];
     for (const submissionId of submissionIds) {
-      const update = this.db
-        .prepare(
-          `UPDATE cooking_test_submission
-           SET workspace_revision = workspace_revision + 1, updated_at = ?
-           WHERE id = ? AND status = 'ACTIVE'`,
-        )
-        .run(now, submissionId);
-      if (update.changes !== 1) continue;
-      const row = this.db
-        .prepare(
-          `SELECT workspace_revision revision
-           FROM cooking_test_submission WHERE id = ?`,
-        )
-        .get(submissionId) as { revision: number };
-      this.onInvalidated(submissionId, row.revision);
+      const revision = this.writes.bumpActiveRevision(submissionId, now);
+      if (revision !== null)
+        this.writes.publishInvalidation(submissionId, revision);
     }
-  }
-
-  private hasRecordedMutation(mutationId: string): boolean {
-    return Boolean(
-      this.db
-        .prepare('SELECT 1 FROM cooking_mutation WHERE id = ?')
-        .get(mutationId),
-    );
   }
 }
 

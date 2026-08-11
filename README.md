@@ -148,7 +148,11 @@ bun run test
 bun run typecheck
 bun run format:check
 bun run build:app
+bun run test:browser
 ```
+
+`test:browser` 需要本机已安装 `chrome-use`。它使用独立临时数据目录和浏览器
+会话运行 Cooking 关键交互，不读取或修改开发数据库。
 
 常用分项：
 

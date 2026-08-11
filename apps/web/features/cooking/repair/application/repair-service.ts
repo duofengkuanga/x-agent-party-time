@@ -6,6 +6,8 @@ import {
 import type { AppDatabase } from '@/server/database';
 import { PlatformError } from '@/server/errors';
 import { ExecutionService } from '@/server/execution/service';
+import { BugRepairContextService } from '@/features/cooking/bugs/application/repair-context';
+import type { CookingExecutionProjectionEvent } from '@/features/cooking/execution/application/execution-projection';
 import {
   projectCookingInteraction,
   type CookingInteractionRow,
@@ -14,7 +16,7 @@ import type {
   CookingInteractionView,
   CookingVisualPresentation,
 } from '@/features/cooking/shared/contract';
-import { CookingWriteStore } from '@/features/cooking/shared/write-store';
+import { TestSubmissionWriteStore } from '@/features/cooking/submissions/application/test-submission-write-store';
 import {
   BugRepairViewSchema,
   ContinueRepairInputSchema,
@@ -48,17 +50,6 @@ type RepairSourceRow = {
     | 'DONE'
     | 'CANCELLED';
   bug_version: number;
-  title: string;
-  operation_path: string | null;
-  actual_result: string | null;
-  expected_result: string | null;
-  submission_title: string;
-  requirement_description: string;
-  engineering_name: string;
-  repository_url: string;
-  target_branch: string;
-  binding_id: string;
-  runner_id: string;
   responsible_user_id: string;
 };
 
@@ -97,24 +88,29 @@ const NOOP_DELIVERY_HOOKS: RepairDeliveryHooks = {
 };
 
 export class RepairService {
-  private readonly writes: CookingWriteStore;
+  private readonly writes: TestSubmissionWriteStore;
 
   constructor(
     private readonly db: AppDatabase,
     private readonly executions: ExecutionService = new ExecutionService(db),
     private readonly now: () => Date = () => new Date(),
     private readonly createId: () => string = randomUUID,
-    private readonly onInvalidated: (
-      submissionId: string,
-      revision: number,
-    ) => void = () => {},
+    onInvalidated: (submissionId: string, revision: number) => void = () => {},
     private readonly deliveryHooks: RepairDeliveryHooks = NOOP_DELIVERY_HOOKS,
+    private readonly bugContexts: BugRepairContextService = new BugRepairContextService(
+      db,
+    ),
   ) {
-    this.writes = new CookingWriteStore(db, now, createId);
+    this.writes = new TestSubmissionWriteStore(
+      db,
+      now,
+      createId,
+      onInvalidated,
+    );
   }
 
   createInitialExecution(bugId: string): string {
-    const source = this.source(bugId);
+    const repairContext = this.bugContexts.get(bugId);
     const existingContext = this.context(bugId);
     const latest = existingContext ? this.latestAttempt(bugId) : undefined;
     if (latest && !isTerminal(latest.state))
@@ -137,18 +133,24 @@ export class RepairService {
     const attempt = (latest?.attempt ?? 0) + 1;
     const prompt = buildInitialRepairPrompt({
       workspaceKey,
-      submissionTitle: source.submission_title,
-      requirementDescription: source.requirement_description,
-      engineeringName: source.engineering_name,
-      repositoryUrl: source.repository_url,
-      targetBranch: source.target_branch,
-      bugTitle: source.title,
-      operationPath: source.operation_path ?? undefined,
-      actualResult: source.actual_result ?? undefined,
-      expectedResult: source.expected_result ?? undefined,
-      actualResultAttachments: this.attachmentNames(bugId, 'ACTUAL_RESULT'),
-      expectedResultAttachments: this.attachmentNames(bugId, 'EXPECTED_RESULT'),
-      feedback: this.feedbackContents(bugId),
+      submissionTitle: repairContext.submissionTitle,
+      requirementDescription: repairContext.requirementDescription,
+      engineeringName: repairContext.engineeringName,
+      repositoryUrl: repairContext.repositoryUrl,
+      targetBranch: repairContext.targetBranch,
+      bugTitle: repairContext.report.title,
+      operationPath: repairContext.report.operationPath ?? undefined,
+      actualResult: repairContext.report.actualResult ?? undefined,
+      expectedResult: repairContext.report.expectedResult ?? undefined,
+      actualResultAttachments:
+        repairContext.report.attachments.actualResult.map(
+          ({ originalName }) => originalName,
+        ),
+      expectedResultAttachments:
+        repairContext.report.attachments.expectedResult.map(
+          ({ originalName }) => originalName,
+        ),
+      feedback: repairContext.feedback,
       pendingCommits: existingContext
         ? parseCommits(existingContext.pending_commits_json)
         : [],
@@ -157,9 +159,10 @@ export class RepairService {
       owner: { namespace: 'cooking', kind: 'BUG_REPAIR', id: attemptId },
       attempt,
       previousExecutionId: latest?.execution_id ?? null,
-      runnerId: source.runner_id,
-      bindingId: source.binding_id,
+      runnerId: repairContext.runnerId,
+      bindingId: repairContext.bindingId,
       priority: 0,
+      approvalPolicy: 'never',
       promptKind: prompt.kind,
       promptVersion: prompt.version,
       renderedPrompt: prompt.renderedPrompt,
@@ -168,10 +171,13 @@ export class RepairService {
       workspace: {
         key: workspaceKey,
         isolation: 'BRANCH_WORKTREE',
-        baseRef: `origin/${source.target_branch}`,
+        baseRef: `origin/${repairContext.targetBranch}`,
         branch: `apt/repair/${bugId}`,
       },
-      attachmentIds: this.attachmentIds(bugId),
+      attachmentIds: [
+        ...repairContext.report.attachments.actualResult,
+        ...repairContext.report.attachments.expectedResult,
+      ].map(({ id }) => id),
       resumeSessionId: null,
     });
     this.db
@@ -189,7 +195,7 @@ export class RepairService {
     lifecycleContext = '',
     attachmentIds: string[] = [],
   ): string {
-    const source = this.source(bugId);
+    const repairContext = this.bugContexts.get(bugId);
     const context = this.requireContext(bugId);
     const latest = this.latestAttempt(bugId);
     if (!latest || !isTerminal(latest.state))
@@ -201,22 +207,25 @@ export class RepairService {
     const prompt = startFreshSession
       ? buildInitialRepairPrompt({
           workspaceKey: context.workspace_key,
-          submissionTitle: source.submission_title,
-          requirementDescription: source.requirement_description,
-          engineeringName: source.engineering_name,
-          repositoryUrl: source.repository_url,
-          targetBranch: source.target_branch,
-          bugTitle: source.title,
-          operationPath: source.operation_path ?? undefined,
-          actualResult: source.actual_result ?? undefined,
-          expectedResult: source.expected_result ?? undefined,
-          actualResultAttachments: this.attachmentNames(bugId, 'ACTUAL_RESULT'),
-          expectedResultAttachments: this.attachmentNames(
-            bugId,
-            'EXPECTED_RESULT',
-          ),
+          submissionTitle: repairContext.submissionTitle,
+          requirementDescription: repairContext.requirementDescription,
+          engineeringName: repairContext.engineeringName,
+          repositoryUrl: repairContext.repositoryUrl,
+          targetBranch: repairContext.targetBranch,
+          bugTitle: repairContext.report.title,
+          operationPath: repairContext.report.operationPath ?? undefined,
+          actualResult: repairContext.report.actualResult ?? undefined,
+          expectedResult: repairContext.report.expectedResult ?? undefined,
+          actualResultAttachments:
+            repairContext.report.attachments.actualResult.map(
+              ({ originalName }) => originalName,
+            ),
+          expectedResultAttachments:
+            repairContext.report.attachments.expectedResult.map(
+              ({ originalName }) => originalName,
+            ),
           feedback: [
-            ...this.feedbackContents(bugId),
+            ...repairContext.feedback,
             ...(lifecycleContext ? [lifecycleContext] : []),
           ],
           pendingCommits,
@@ -229,9 +238,10 @@ export class RepairService {
       owner: { namespace: 'cooking', kind: 'BUG_REPAIR', id: attemptId },
       attempt,
       previousExecutionId: latest.execution_id,
-      runnerId: source.runner_id,
-      bindingId: source.binding_id,
+      runnerId: repairContext.runnerId,
+      bindingId: repairContext.bindingId,
       priority: 0,
+      approvalPolicy: 'never',
       promptKind: prompt.kind,
       promptVersion: prompt.version,
       renderedPrompt: prompt.renderedPrompt,
@@ -240,11 +250,21 @@ export class RepairService {
       workspace: {
         key: context.workspace_key,
         isolation: 'BRANCH_WORKTREE',
-        baseRef: `origin/${source.target_branch}`,
+        baseRef: `origin/${repairContext.targetBranch}`,
         branch: `apt/repair/${bugId}`,
       },
       attachmentIds: startFreshSession
-        ? [...new Set([...this.attachmentIds(bugId), ...attachmentIds])]
+        ? [
+            ...new Set([
+              ...repairContext.report.attachments.actualResult.map(
+                ({ id }) => id,
+              ),
+              ...repairContext.report.attachments.expectedResult.map(
+                ({ id }) => id,
+              ),
+              ...attachmentIds,
+            ]),
+          ]
         : attachmentIds,
       resumeSessionId: startFreshSession ? null : context.session_id,
     });
@@ -259,7 +279,26 @@ export class RepairService {
     return execution.id;
   }
 
-  applyTerminalExecution(execution: Execution): void {
+  projectExecution(event: CookingExecutionProjectionEvent): void {
+    if (event.kind === 'INTERACTION_OPENED') {
+      if (event.phase === 'APPLY')
+        this.applyInteractionOpened(
+          event.interaction.executionId,
+          event.interaction.id,
+        );
+      else this.afterInteractionOpened(event.interaction.executionId);
+      return;
+    }
+    if (event.kind === 'STARTED') {
+      if (event.phase === 'APPLY') this.applyStartedExecution(event.execution);
+      else this.afterStartedExecution(event.execution);
+      return;
+    }
+    if (event.phase === 'APPLY') this.applyTerminalExecution(event.execution);
+    else this.afterTerminalExecution(event.execution);
+  }
+
+  private applyTerminalExecution(execution: Execution): void {
     if (
       execution.owner.namespace !== 'cooking' ||
       execution.owner.kind !== 'BUG_REPAIR'
@@ -340,10 +379,10 @@ export class RepairService {
       },
       now,
     );
-    this.bumpRevision(attempt.bug_id, now);
+    this.writes.bumpRevisionForBug(attempt.bug_id, now);
   }
 
-  applyStartedExecution(execution: Execution): void {
+  private applyStartedExecution(execution: Execution): void {
     if (!isRepairExecution(execution)) return;
     const now = this.now().toISOString();
     const attempt = this.attemptForExecution(execution.id);
@@ -354,10 +393,13 @@ export class RepairService {
       { executionId: execution.id, attempt: attempt.attempt },
       now,
     );
-    this.bumpRevision(attempt.bug_id, now);
+    this.writes.bumpRevisionForBug(attempt.bug_id, now);
   }
 
-  applyInteractionOpened(executionId: string, interactionId: string): void {
+  private applyInteractionOpened(
+    executionId: string,
+    interactionId: string,
+  ): void {
     const attempt = this.attemptForExecution(executionId);
     if (!attempt) return;
     const now = this.now().toISOString();
@@ -367,20 +409,20 @@ export class RepairService {
       { executionId, interactionId, attempt: attempt.attempt },
       now,
     );
-    this.bumpRevision(attempt.bug_id, now);
+    this.writes.bumpRevisionForBug(attempt.bug_id, now);
   }
 
-  afterTerminalExecution(execution: Execution): void {
+  private afterTerminalExecution(execution: Execution): void {
     if (!isRepairExecution(execution)) return;
     this.publishExecutionInvalidation(execution.id);
   }
 
-  afterStartedExecution(execution: Execution): void {
+  private afterStartedExecution(execution: Execution): void {
     if (!isRepairExecution(execution)) return;
     this.publishExecutionInvalidation(execution.id);
   }
 
-  afterInteractionOpened(executionId: string): void {
+  private afterInteractionOpened(executionId: string): void {
     this.publishExecutionInvalidation(executionId);
   }
 
@@ -390,13 +432,16 @@ export class RepairService {
     inputValue: ContinueRepairInput,
   ): RepairMutationResult {
     const input = ContinueRepairInputSchema.parse(inputValue);
-    const replay = this.hasRecordedMutation(input.mutationId);
     const result = this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
       operation: 'REPAIR_CONTINUE',
       resourceType: 'BUG',
       resultSchema: RepairMutationResultSchema,
+      invalidation: (mutation) => ({
+        submissionId: this.source(bugId).submission_id,
+        revision: mutation.revision,
+      }),
       perform: () => {
         const source = this.requireResponsible(actorUserId, bugId);
         this.requireActiveVersion(source, input.expectedVersion);
@@ -428,7 +473,7 @@ export class RepairService {
           .run(now, bugId, input.expectedVersion);
         if (update.changes !== 1) throw staleRepair();
         this.deliveryHooks.candidateReconsidered(bugId);
-        const revision = this.bumpRevision(bugId, now);
+        const revision = this.writes.bumpRevisionForBug(bugId, now);
         return {
           result: {
             bugId,
@@ -449,8 +494,6 @@ export class RepairService {
         };
       },
     });
-    if (!replay)
-      this.onInvalidated(this.source(bugId).submission_id, result.revision);
     return result;
   }
 
@@ -461,13 +504,16 @@ export class RepairService {
   ): RepairMutationResult {
     const input = ResolveRepairInteractionInputSchema.parse(inputValue);
     const row = this.interactionSource(interactionId);
-    const replay = this.hasRecordedMutation(input.mutationId);
     const result = this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
       operation: 'REPAIR_INTERACTION_RESOLVE',
       resourceType: 'EXECUTION_INTERACTION',
       resultSchema: RepairMutationResultSchema,
+      invalidation: (mutation) => ({
+        submissionId: this.source(row.bug_id).submission_id,
+        revision: mutation.revision,
+      }),
       perform: () => {
         const source = this.requireResponsible(actorUserId, row.bug_id);
         this.requireActiveVersion(source, input.expectedVersion);
@@ -482,7 +528,7 @@ export class RepairService {
           )
           .run(now, row.bug_id, input.expectedVersion);
         if (update.changes !== 1) throw staleRepair();
-        const revision = this.bumpRevision(row.bug_id, now);
+        const revision = this.writes.bumpRevisionForBug(row.bug_id, now);
         return {
           result: {
             bugId: row.bug_id,
@@ -503,11 +549,6 @@ export class RepairService {
         };
       },
     });
-    if (!replay)
-      this.onInvalidated(
-        this.source(row.bug_id).submission_id,
-        result.revision,
-      );
     return result;
   }
 
@@ -540,7 +581,11 @@ export class RepairService {
       )
       .get(executionId) as
       { submission_id: string; workspace_revision: number } | undefined;
-    if (row) this.onInvalidated(row.submission_id, row.workspace_revision);
+    if (row)
+      this.writes.publishInvalidation(
+        row.submission_id,
+        row.workspace_revision,
+      );
   }
 
   repairView(userId: string, bugId: string): BugRepairView | null {
@@ -721,16 +766,10 @@ export class RepairService {
         `SELECT bug.id bug_id, bug.submission_id, bug.submission_item_id,
                 submission.project_id, submission.status submission_status,
                 bug.stage, bug.version bug_version,
-                bug.title, bug.operation_path, bug.actual_result,
-                bug.expected_result,
-                submission.title submission_title,
-                submission.requirement_description,
-                item.engineering_name, item.repository_url, item.target_branch,
-                item.binding_id, binding.runner_id, item.responsible_user_id
+                item.responsible_user_id
          FROM cooking_bug bug
          JOIN cooking_test_submission submission ON submission.id = bug.submission_id
          JOIN cooking_submission_item item ON item.id = bug.submission_item_id
-         JOIN cooking_engineering_binding binding ON binding.id = item.binding_id
          WHERE bug.id = ?`,
       )
       .get(bugId) as RepairSourceRow | undefined;
@@ -792,55 +831,6 @@ export class RepairService {
       .get(bugId) as { created_at: string } | undefined;
     if (!row) throw new PlatformError('NOT_FOUND', 'Repair Bug 不存在');
     return row.created_at;
-  }
-
-  private feedbackContents(bugId: string): string[] {
-    return (
-      this.db
-        .prepare(
-          `SELECT content FROM (
-             SELECT comment content, created_at, id
-             FROM cooking_verification_record
-             WHERE bug_id = ? AND result = 'FAILED'
-             UNION ALL
-             SELECT feedback content, created_at, id
-             FROM cooking_reopen_record WHERE bug_id = ?
-           ) ORDER BY created_at, id`,
-        )
-        .all(bugId, bugId) as Array<{ content: string }>
-    ).map(({ content }) => content);
-  }
-
-  private attachmentIds(bugId: string): string[] {
-    return (
-      this.db
-        .prepare(
-          `SELECT file_id FROM cooking_bug_attachment
-           WHERE bug_id = ?
-           ORDER BY CASE role
-             WHEN 'ACTUAL_RESULT' THEN 0
-             WHEN 'EXPECTED_RESULT' THEN 1
-           END, position`,
-        )
-        .all(bugId) as Array<{ file_id: string }>
-    ).map(({ file_id }) => file_id);
-  }
-
-  private attachmentNames(
-    bugId: string,
-    role: 'ACTUAL_RESULT' | 'EXPECTED_RESULT',
-  ): string[] {
-    return (
-      this.db
-        .prepare(
-          `SELECT file.original_name
-           FROM cooking_bug_attachment attachment
-           JOIN platform_file file ON file.id = attachment.file_id
-           WHERE attachment.bug_id = ? AND attachment.role = ?
-           ORDER BY attachment.position`,
-        )
-        .all(bugId, role) as Array<{ original_name: string }>
-    ).map(({ original_name }) => original_name);
   }
 
   private requireSubmissionAccess(userId: string, submissionId: string): void {
@@ -917,26 +907,6 @@ export class RepairService {
         JSON.stringify({ source: 'EXECUTION', ...asDetails(details) }),
         createdAt,
       );
-  }
-
-  private hasRecordedMutation(mutationId: string): boolean {
-    return Boolean(
-      this.db
-        .prepare('SELECT 1 recorded FROM cooking_mutation WHERE id = ?')
-        .get(mutationId),
-    );
-  }
-
-  private bumpRevision(bugId: string, now: string): number {
-    const row = this.db
-      .prepare(
-        `UPDATE cooking_test_submission
-         SET workspace_revision = workspace_revision + 1, updated_at = ?
-         WHERE id = (SELECT submission_id FROM cooking_bug WHERE id = ?)
-         RETURNING workspace_revision`,
-      )
-      .get(now, bugId) as { workspace_revision: number };
-    return row.workspace_revision;
   }
 }
 
