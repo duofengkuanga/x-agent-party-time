@@ -63,9 +63,9 @@ export class UpdateManager {
   async update(): Promise<UpdateResult> {
     const snapshot = await this.daemon.status();
     if (snapshot.service === 'UNRESPONSIVE')
-      throw new UpdateError('DAEMON_UNRESPONSIVE', 'daemon 本机控制无响应');
+      throw new UpdateError('DAEMON_UNRESPONSIVE', '本机服务无响应');
     if (snapshot.activity === 'BUSY')
-      throw new UpdateError('DAEMON_BUSY', 'daemon 正在处理任务');
+      throw new UpdateError('DAEMON_BUSY', '本机服务正在处理任务');
     await this.state.preflight();
     const install = await this.state.loadInstall();
     const currentVersion = install?.currentVersion ?? snapshot.version;
@@ -78,14 +78,14 @@ export class UpdateManager {
         daemonRestarted: false,
       };
     if (comparison < 0)
-      throw new UpdateError('DOWNGRADE_REFUSED', '稳定 Release 低于本机版本');
+      throw new UpdateError('DOWNGRADE_REFUSED', '稳定版本低于本机版本');
 
     const target = await this.downloadAndVerify(release);
     const targetVersion = await this.inspectTarget(target);
     if (targetVersion.version !== release.version)
       throw new UpdateError(
         'ASSET_VERSION_MISMATCH',
-        '资产版本与 Release 不一致',
+        '安装文件版本与稳定版本不一致',
       );
     const codex = await this.codex.check();
     if (compareVersions(codex.version, targetVersion.minimumCodexVersion) < 0)
@@ -167,7 +167,7 @@ export class UpdateManager {
       { headers: { accept: 'application/vnd.github+json' } },
     );
     if (!response.ok)
-      throw new UpdateError('RELEASE_UNAVAILABLE', '无法读取稳定 Release');
+      throw new UpdateError('RELEASE_UNAVAILABLE', '无法读取稳定版本信息');
     const value = (await response.json()) as {
       tag_name?: unknown;
       draft?: unknown;
@@ -175,10 +175,10 @@ export class UpdateManager {
       assets?: Array<{ name?: unknown; browser_download_url?: unknown }>;
     };
     if (value.draft || value.prerelease || typeof value.tag_name !== 'string')
-      throw new UpdateError('UNSTABLE_RELEASE', 'Release 不是稳定版本');
+      throw new UpdateError('UNSTABLE_RELEASE', '该版本不是稳定版本');
     const version = value.tag_name.replace(/^v/u, '');
     if (!/^\d+\.\d+\.\d+$/u.test(version))
-      throw new UpdateError('UNSTABLE_RELEASE', 'Release 版本格式无效');
+      throw new UpdateError('UNSTABLE_RELEASE', '稳定版本格式无效');
     const asset = value.assets?.find(({ name }) => name === ASSET_NAME);
     const checksum = value.assets?.find(
       ({ name }) => name === `${ASSET_NAME}.sha256`,
@@ -187,7 +187,7 @@ export class UpdateManager {
       typeof asset?.browser_download_url !== 'string' ||
       typeof checksum?.browser_download_url !== 'string'
     )
-      throw new UpdateError('ASSET_MISSING', 'Release 资产或 checksum 缺失');
+      throw new UpdateError('ASSET_MISSING', '稳定版本安装文件或校验信息缺失');
     return {
       tag: value.tag_name,
       version,
@@ -206,16 +206,16 @@ export class UpdateManager {
       this.fetchImplementation(release.checksumUrl),
     ]);
     if (!assetResponse.ok || !checksumResponse.ok)
-      throw new UpdateError('DOWNLOAD_FAILED', 'Release 下载失败');
+      throw new UpdateError('DOWNLOAD_FAILED', '稳定版本下载失败');
     const bytes = new Uint8Array(await assetResponse.arrayBuffer());
     const checksumText = await checksumResponse.text();
     const match = checksumText.match(
       /^([a-f0-9]{64})\s+xapt-darwin-arm64\.tar\.gz\s*$/u,
     );
-    if (!match) throw new UpdateError('CHECKSUM_INVALID', 'checksum 格式无效');
+    if (!match) throw new UpdateError('CHECKSUM_INVALID', '校验信息格式无效');
     const actual = createHash('sha256').update(bytes).digest('hex');
     if (actual !== match[1])
-      throw new UpdateError('CHECKSUM_MISMATCH', 'checksum 不匹配');
+      throw new UpdateError('CHECKSUM_MISMATCH', '校验信息不匹配');
 
     const temporary = join(this.paths.updateCache, randomUUID());
     const archive = join(temporary, ASSET_NAME);
@@ -231,11 +231,11 @@ export class UpdateManager {
         unpack,
       ]);
       if (extracted.exitCode !== 0)
-        throw new UpdateError('ARCHIVE_INVALID', 'Release 压缩包无法解压');
+        throw new UpdateError('ARCHIVE_INVALID', '稳定版本安装包无法解压');
       const executable = join(unpack, 'xapt');
       const info = await this.files.info(executable);
       if (!info || info.type !== 'file')
-        throw new UpdateError('ARCHIVE_INVALID', 'Release 缺少 xapt');
+        throw new UpdateError('ARCHIVE_INVALID', '稳定版本安装包缺少 xapt');
       await this.files.setMode(executable, 0o755);
       const signature = await this.commands.run('/usr/bin/codesign', [
         '--verify',
@@ -243,7 +243,7 @@ export class UpdateManager {
         executable,
       ]);
       if (signature.exitCode !== 0)
-        throw new UpdateError('SIGNATURE_INVALID', 'Release 签名校验失败');
+        throw new UpdateError('SIGNATURE_INVALID', '稳定版本签名校验失败');
       const targetDirectory = this.paths
         .versionExecutable(release.version)
         .replace(/\/xapt$/u, '');

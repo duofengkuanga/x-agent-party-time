@@ -1655,7 +1655,7 @@ export class LifecycleService {
           submission_title: string;
         }
       | undefined;
-    if (!row) throw new PlatformError('NOT_FOUND', 'Submission Item 不存在');
+    if (!row) throw new PlatformError('NOT_FOUND', '提测项不存在');
     return row;
   }
 
@@ -1721,8 +1721,7 @@ export class LifecycleService {
       )
       .get(interactionId) as
       { cleanup_id: string; execution_id: string } | undefined;
-    if (!row)
-      throw new PlatformError('NOT_FOUND', 'Cleanup Interaction 不存在');
+    if (!row) throw new PlatformError('NOT_FOUND', '清理操作请求不存在');
     return row;
   }
 

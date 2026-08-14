@@ -148,7 +148,7 @@ export class ExecutionService {
     if (execution.cancellationRequested) {
       await this.reportStartFailure(session, execution, {
         code: 'CANCELLED_BY_REQUEST',
-        message: 'Execution 已被取消，不再启动本机任务',
+        message: '处理任务已取消，不再启动本机任务',
         retryable: false,
       });
       return;
@@ -157,7 +157,7 @@ export class ExecutionService {
     if (!bindingPath) {
       await this.reportStartFailure(session, execution, {
         code: 'BINDING_NOT_FOUND',
-        message: '本机未登记该 Binding',
+        message: '本机未登记该关联',
         retryable: true,
       });
       return;
@@ -206,7 +206,7 @@ export class ExecutionService {
     } catch {
       await this.reportStartFailure(session, execution, {
         code: 'ATTACHMENT_DOWNLOAD_FAILED',
-        message: 'Execution 附件下载或校验失败',
+        message: '任务附件下载或校验失败',
         retryable: true,
       });
       return;
@@ -216,7 +216,7 @@ export class ExecutionService {
     if (!turn) {
       await this.reportStartFailure(session, execution, {
         code: 'CODEX_START_FAILED',
-        message: 'Execution 缺少 Codex Turn 输入',
+        message: '任务缺少 Codex 输入',
         retryable: false,
       });
       return;
@@ -229,9 +229,9 @@ export class ExecutionService {
           createHash('sha256').update(serialized).digest('hex') !==
           turn.executionBriefHash
         )
-          throw new Error('Execution Brief Hash 不匹配');
+          throw new Error('任务说明校验值不匹配');
         if (!XAPT_SKILL_NAMES.includes(turn.requiredSkillName as XaptSkillName))
-          throw new Error('Execution 请求了未知 Skill');
+          throw new Error('任务请求了未知规则');
         resolvedSkill = await this.skills.resolveCurrent(
           turn.requiredSkillName as XaptSkillName,
         );
@@ -245,7 +245,7 @@ export class ExecutionService {
       await this.reportStartFailure(session, execution, {
         code: 'CODEX_START_FAILED',
         message: failureMessage(
-          error instanceof Error ? error.message : 'Skill Bundle 解析失败',
+          error instanceof Error ? error.message : '规则包解析失败',
         ),
         retryable: false,
       });
@@ -281,8 +281,7 @@ export class ExecutionService {
           taskId: turn.kind === 'CONTINUATION' ? turn.taskId : null,
           onInteraction: async (interaction) => {
             await startGate;
-            if (!startAccepted)
-              throw new Error('Execution 启动状态尚未被 Server 接受');
+            if (!startAccepted) throw new Error('任务启动状态尚未被服务接受');
             if (
               recoveredInteraction &&
               recoveredInteraction.method === interaction.method &&
@@ -311,7 +310,7 @@ export class ExecutionService {
         message:
           error instanceof CodexAppServerError
             ? failureMessage(error.message)
-            : 'Codex App Server 启动任务失败',
+            : 'Codex 本机服务启动任务失败',
         retryable: true,
       });
       return;
@@ -447,11 +446,7 @@ export class ExecutionService {
         if (waited.interaction.state === 'RESOLVED' && waited.laneAcquired)
           return waited.interaction.resolution!;
         if (waited.interaction.state === 'INVALIDATED')
-          throw new RunnerHttpError(
-            'LEASE_EXPIRED',
-            'Execution Interaction 已失效',
-            409,
-          );
+          throw new RunnerHttpError('LEASE_EXPIRED', '任务操作请求已失效', 409);
       }
     } finally {
       this.waitingInteractionCount -= 1;
@@ -620,7 +615,9 @@ export class ExecutionService {
         timer = setTimeout(renew, 5_000);
       } catch (error) {
         controller.abort();
-        rejectLost(error instanceof Error ? error : new Error('Lease 已失效'));
+        rejectLost(
+          error instanceof Error ? error : new Error('任务领取凭据已失效'),
+        );
       }
     };
     timer = setTimeout(renew, 5_000);

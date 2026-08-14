@@ -40,7 +40,7 @@ const RepairExecutionResultValueSchema = z.discriminatedUnion('outcome', [
           context.addIssue({
             code: 'custom',
             path: ['commits'],
-            message: '有代码改动的 Repair 必须返回候选 Commit',
+            message: '有代码改动的修复必须返回候选本地提交',
           });
         return;
       }
@@ -54,7 +54,7 @@ const RepairExecutionResultValueSchema = z.discriminatedUnion('outcome', [
         context.addIssue({
           code: 'custom',
           path: ['commits'],
-          message: '目标分支已修复时不得返回候选 Commit',
+          message: '目标分支已修复时不得返回候选本地提交',
         });
       if (
         !result.validations.some(({ status }) => status === 'PASSED') ||

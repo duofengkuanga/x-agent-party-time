@@ -405,7 +405,7 @@ export class RunnerHttpClient
         },
       );
     } catch {
-      throw new RunnerHttpError('NETWORK_ERROR', '无法下载 Execution 文件', 0);
+      throw new RunnerHttpError('NETWORK_ERROR', '无法下载任务附件', 0);
     }
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
@@ -456,14 +456,14 @@ async function requestJson(
       signal: init.signal ?? AbortSignal.timeout(timeoutMs),
     });
   } catch {
-    throw new RunnerHttpError('NETWORK_ERROR', '无法连接 Server', 0);
+    throw new RunnerHttpError('NETWORK_ERROR', '无法连接服务', 0);
   }
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
     const record = asRecord(asRecord(body).error);
     throw new RunnerHttpError(
       typeof record.code === 'string' ? record.code : 'HTTP_ERROR',
-      typeof record.message === 'string' ? record.message : 'Server 请求失败',
+      typeof record.message === 'string' ? record.message : '服务请求失败',
       response.status,
     );
   }

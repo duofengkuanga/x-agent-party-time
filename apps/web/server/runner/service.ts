@@ -641,7 +641,7 @@ function invalidPairingCode(): PlatformError {
 }
 
 function invalidCredential(): PlatformError {
-  return new PlatformError('NOT_AUTHENTICATED', 'Runner 凭据无效或已撤销');
+  return new PlatformError('NOT_AUTHENTICATED', 'Agent 授权凭据无效或已撤销');
 }
 
 function authorizationBrowserView(

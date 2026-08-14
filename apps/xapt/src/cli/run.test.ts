@@ -30,7 +30,7 @@ describe('runCli', () => {
     });
   });
 
-  test.each([[[]], [['--help']], [['--version']]] as const)(
+  test.each([[[]], [['--help']], [['-h']], [['--version']], [['-v']]] as const)(
     'successful command %j uses exit code 0',
     async (args) => {
       expect((await runCli(args)).exitCode).toBe(EXIT_SUCCESS);
@@ -112,7 +112,7 @@ describe('runCli', () => {
 
     expect(await runCli(['daemon', 'start'], runtime)).toMatchObject({
       exitCode: EXIT_SUCCESS,
-      stdout: expect.stringContaining('daemon 已启动'),
+      stdout: expect.stringContaining('本机服务已启动'),
     });
     const status = await runCli(['daemon', 'status'], runtime);
     expect(status.exitCode).toBe(EXIT_FAILURE);
@@ -121,7 +121,7 @@ describe('runCli', () => {
     expect(status.stdout).not.toMatch(/credential|runnerId|\/Users\//i);
     expect(await runCli(['daemon', 'stop'], runtime)).toMatchObject({
       exitCode: EXIT_SUCCESS,
-      stdout: 'xapt daemon 已安全停止。',
+      stdout: 'xapt 本机服务已安全停止。',
     });
   });
 
@@ -130,14 +130,14 @@ describe('runCli', () => {
     runtime.daemonStart = async () => ({
       snapshot: runningSnapshot('UNCONFIGURED'),
       alreadyRunning: false,
-      skillWarning: 'Skill 未安装：GitHub 不可用',
+      skillWarning: '规则包未安装：GitHub 不可用',
     });
 
     const result = await runCli(['daemon', 'start'], runtime);
 
     expect(result.exitCode).toBe(EXIT_SUCCESS);
-    expect(result.stdout).toContain('daemon 已启动');
-    expect(result.stdout).toContain('警告：Skill 未安装');
+    expect(result.stdout).toContain('本机服务已启动');
+    expect(result.stdout).toContain('警告：规则包未安装');
   });
 
   test('skills update 渲染确定 source revision', async () => {
@@ -151,7 +151,7 @@ describe('runCli', () => {
 
     expect(result).toEqual({
       exitCode: EXIT_SUCCESS,
-      stdout: `Agent Party Time Skills 已更新（${'a'.repeat(40)}）。`,
+      stdout: `Agent Party Time 规则包已更新（${'a'.repeat(40)}）。`,
     });
   });
 
@@ -181,7 +181,7 @@ describe('runCli', () => {
     ]);
     expect(result).toEqual({
       exitCode: EXIT_SUCCESS,
-      stdout: 'Agent 已授权并连接 Server。',
+      stdout: 'Agent 已获授权并连接到服务。',
     });
   });
 
@@ -222,7 +222,7 @@ describe('runCli', () => {
     });
     expect(result.exitCode).toBe(EXIT_SUCCESS);
     expect(result.stdout).toContain('已删除缺陷 1 个');
-    expect(result.stdout).toContain('已删除关联 Execution 1 个');
+    expect(result.stdout).toContain('已删除关联处理任务 1 个');
     expect(result.stdout).not.toMatch(/credential|runnerId|\/Users\//i);
   });
 });

@@ -89,7 +89,7 @@ export class SkillBundleManager {
         installed: false,
         updated: false,
         sourceRevision: null,
-        warning: `Skill 未安装：${safeMessage(error)}`,
+        warning: `规则包未安装：${safeMessage(error)}`,
       };
     }
   }
@@ -131,7 +131,7 @@ export class SkillBundleManager {
 
   async resolveCurrent(skillName: XaptSkillName): Promise<ResolvedSkill> {
     const manifest = await this.currentManifest();
-    if (!manifest) throw new SkillBundleError('Skill 尚未安装');
+    if (!manifest) throw new SkillBundleError('规则包尚未安装');
     return await this.resolveBound({
       skillName,
       bundleHash: manifest.skills[skillName],
@@ -145,19 +145,19 @@ export class SkillBundleManager {
       !HASH_PATTERN.test(identity.bundleHash) ||
       !COMMIT_PATTERN.test(identity.sourceRevision)
     )
-      throw new SkillBundleError('Task Skill Binding 无效');
+      throw new SkillBundleError('任务规则关联无效');
     const generation = join(
       this.paths.skillGenerations,
       identity.sourceRevision,
     );
     const manifest = await readManifest(join(generation, 'manifest.json'));
     if (manifest.skills[identity.skillName] !== identity.bundleHash)
-      throw new SkillBundleError('Task Skill Binding 与安装清单不匹配');
+      throw new SkillBundleError('任务规则关联与安装清单不匹配');
     await validateGenerationLinks(generation, manifest, this.paths);
     const path = join(this.paths.skillBundles, identity.bundleHash);
     const files = await readBundleFiles(path);
     if (bundleHash(files) !== identity.bundleHash)
-      throw new SkillBundleError('Skill Bundle 内容校验失败');
+      throw new SkillBundleError('规则包内容校验失败');
     validateSkill(identity.skillName, files);
     return { ...identity, path };
   }
@@ -166,7 +166,7 @@ export class SkillBundleManager {
     const entry = await info(this.paths.skillNamespaceLink);
     if (!entry) return null;
     if (!entry.isSymbolicLink())
-      throw new SkillBundleError('Skill 命名空间已存在且不是 xapt 软链接');
+      throw new SkillBundleError('规则包目录已存在，且不由 xapt 管理');
     const target = resolve(
       dirname(this.paths.skillNamespaceLink),
       await readlink(this.paths.skillNamespaceLink),
@@ -186,15 +186,15 @@ export class SkillBundleManager {
     const treeRecord = recordValue(commitRecord, 'tree');
     const treeSha = recordString(treeRecord, 'sha');
     if (!COMMIT_PATTERN.test(sourceRevision) || !COMMIT_PATTERN.test(treeSha))
-      throw new SkillBundleError('Skill 仓库 Commit 或 Tree SHA 无效');
+      throw new SkillBundleError('规则包来源版本信息无效');
     const tree = await this.githubJson(
       `https://api.github.com/repos/${this.repository}/git/trees/${treeSha}?recursive=1`,
     );
     if (tree.truncated === true)
-      throw new SkillBundleError('Skill 仓库文件树被截断');
+      throw new SkillBundleError('规则包来源文件列表不完整');
     const treeEntries = tree.tree;
     if (!Array.isArray(treeEntries))
-      throw new SkillBundleError('Skill 仓库文件树无效');
+      throw new SkillBundleError('规则包来源文件列表无效');
     const skills = await Promise.all(
       XAPT_SKILL_NAMES.map(async (name): Promise<DownloadedSkill> => {
         const prefix = `skills/${name}/`;
@@ -205,7 +205,7 @@ export class SkillBundleManager {
             entry.path.startsWith(prefix),
         );
         if (entries.length === 0)
-          throw new SkillBundleError(`Skill 仓库缺少 ${name}`);
+          throw new SkillBundleError(`规则包来源缺少 ${name}`);
         const files: SkillFile[] = [];
         for (const entry of entries) {
           const fullPath = recordString(entry, 'path');
@@ -243,10 +243,10 @@ export class SkillBundleManager {
     });
     if (!response.ok)
       throw new SkillBundleError(
-        `Skill 仓库请求失败（HTTP ${response.status}）`,
+        `规则包来源请求失败（HTTP ${response.status}）`,
       );
     const value: unknown = await response.json();
-    if (!isRecord(value)) throw new SkillBundleError('Skill 仓库响应无效');
+    if (!isRecord(value)) throw new SkillBundleError('规则包来源响应无效');
     return value;
   }
 
@@ -255,9 +255,9 @@ export class SkillBundleManager {
     const existing = await info(destination);
     if (existing) {
       if (!existing.isDirectory())
-        throw new SkillBundleError('Bundle Hash 路径被未知文件占用');
+        throw new SkillBundleError('规则包版本目录被未知文件占用');
       if (bundleHash(await readBundleFiles(destination)) !== hash)
-        throw new SkillBundleError('已存在的 Skill Bundle 内容不一致');
+        throw new SkillBundleError('已存在的规则包内容不一致');
       return;
     }
     const temporary = join(
@@ -290,10 +290,10 @@ export class SkillBundleManager {
     const existing = await info(destination);
     if (existing) {
       if (!existing.isDirectory())
-        throw new SkillBundleError('Skill generation 路径被未知文件占用');
+        throw new SkillBundleError('规则包版本目录被未知文件占用');
       const current = await readManifest(join(destination, 'manifest.json'));
       if (JSON.stringify(current) !== JSON.stringify(manifest))
-        throw new SkillBundleError('已存在的 Skill generation 内容不一致');
+        throw new SkillBundleError('已存在的规则包版本内容不一致');
       await validateGenerationLinks(destination, manifest, this.paths);
       return destination;
     }
@@ -324,7 +324,7 @@ export class SkillBundleManager {
     await mkdir(this.paths.userSkills, { recursive: true, mode: 0o700 });
     const current = await info(this.paths.skillNamespaceLink);
     if (current && !current.isSymbolicLink())
-      throw new SkillBundleError('Skill 命名空间已存在，xapt 不会覆盖');
+      throw new SkillBundleError('规则包目录已存在，xapt 不会覆盖');
     if (current) {
       const target = resolve(
         dirname(this.paths.skillNamespaceLink),
@@ -350,7 +350,7 @@ export function bundleHash(files: SkillFile[]): string {
   )) {
     requireSafeRelativePath(file.path);
     if (paths.has(file.path))
-      throw new SkillBundleError(`Bundle 包含重复路径：${file.path}`);
+      throw new SkillBundleError(`规则包包含重复路径：${file.path}`);
     paths.add(file.path);
     const path = Buffer.from(file.path, 'utf8');
     const pathLength = Buffer.alloc(4);
@@ -376,7 +376,7 @@ function validateSkill(name: XaptSkillName, files: SkillFile[]): void {
   if (!frontmatter)
     throw new SkillBundleError(`${name} 的 SKILL.md frontmatter 无效`);
   if (!frontmatter.split('\n').includes(`name: ${name}`))
-    throw new SkillBundleError(`${name} 的 Skill 名称不匹配`);
+    throw new SkillBundleError(`${name} 的规则名称不匹配`);
   if (!/^description:\s*\S+/mu.test(frontmatter))
     throw new SkillBundleError(`${name} 缺少 description`);
   const openaiText = new TextDecoder().decode(openai.bytes);
@@ -386,8 +386,7 @@ function validateSkill(name: XaptSkillName, files: SkillFile[]): void {
 
 async function readBundleFiles(root: string): Promise<SkillFile[]> {
   const rootInfo = await info(root);
-  if (!rootInfo?.isDirectory())
-    throw new SkillBundleError('Skill Bundle 不存在');
+  if (!rootInfo?.isDirectory()) throw new SkillBundleError('规则包不存在');
   const result: SkillFile[] = [];
   await visit(root);
   return result;
@@ -397,13 +396,13 @@ async function readBundleFiles(root: string): Promise<SkillFile[]> {
       const path = join(directory, entry.name);
       const entryInfo = await lstat(path);
       if (entryInfo.isSymbolicLink())
-        throw new SkillBundleError('Skill Bundle 不允许软链接');
+        throw new SkillBundleError('规则包不允许软链接');
       if (entryInfo.isDirectory()) await visit(path);
       else if (entryInfo.isFile()) {
         const relativePath = relative(root, path).split(sep).join('/');
         if (relativePath.split('/').at(-1) === '.DS_Store') continue;
         result.push({ path: relativePath, bytes: await readFile(path) });
-      } else throw new SkillBundleError('Skill Bundle 包含无效文件类型');
+      } else throw new SkillBundleError('规则包包含无效文件类型');
     }
   }
 }
@@ -414,18 +413,18 @@ async function readManifest(path: string): Promise<GenerationManifest> {
     !isRecord(value) ||
     !COMMIT_PATTERN.test(recordString(value, 'sourceRevision'))
   )
-    throw new SkillBundleError('Skill generation 清单无效');
+    throw new SkillBundleError('规则包版本清单无效');
   const skills = recordValue(value, 'skills');
   const result = Object.fromEntries(
     XAPT_SKILL_NAMES.map((name) => {
       const hash = recordString(skills, name);
       if (!HASH_PATTERN.test(hash))
-        throw new SkillBundleError(`Skill generation 的 ${name} Hash 无效`);
+        throw new SkillBundleError(`规则包版本的 ${name} 标识无效`);
       return [name, hash];
     }),
   ) as Record<XaptSkillName, string>;
   if (Object.keys(skills).length !== XAPT_SKILL_NAMES.length)
-    throw new SkillBundleError('Skill generation 清单包含未知 Skill');
+    throw new SkillBundleError('规则包版本清单包含未知规则');
   return { sourceRevision: value.sourceRevision as string, skills: result };
 }
 
@@ -438,10 +437,10 @@ async function validateGenerationLinks(
     const linkPath = join(generation, name);
     const link = await info(linkPath);
     if (!link?.isSymbolicLink())
-      throw new SkillBundleError(`Skill generation 缺少 ${name}`);
+      throw new SkillBundleError(`规则包版本缺少 ${name}`);
     const bundle = resolve(dirname(linkPath), await readlink(linkPath));
     if (bundle !== join(paths.skillBundles, manifest.skills[name]))
-      throw new SkillBundleError(`Skill generation 的 ${name} 映射无效`);
+      throw new SkillBundleError(`规则包版本的 ${name} 映射无效`);
   }
 }
 
@@ -452,13 +451,13 @@ function requireSafeRelativePath(path: string): void {
     path.includes('\\') ||
     path.split('/').some((part) => part === '' || part === '.' || part === '..')
   )
-    throw new SkillBundleError(`Bundle 路径无效：${path}`);
+    throw new SkillBundleError(`规则包路径无效：${path}`);
 }
 
 function requireInside(root: string, path: string): void {
   const value = relative(resolve(root), resolve(path));
   if (value === '' || (!value.startsWith(`..${sep}`) && value !== '..')) return;
-  throw new SkillBundleError('Skill 命名空间软链接不属于 xapt');
+  throw new SkillBundleError('规则包目录不属于 xapt 管理');
 }
 
 async function info(

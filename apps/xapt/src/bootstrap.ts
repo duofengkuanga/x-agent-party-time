@@ -100,7 +100,7 @@ export function createCliRuntime(): CliRuntime {
       const connection = await state.loadConnection();
       if (!connection)
         throw new Error(
-          '尚未连接 Server，请先运行 xapt daemon connect <server-url>',
+          '尚未连接服务，请先运行 xapt daemon connect <server-url>',
         );
       const origin = normalizeServerOrigin(connection.serverUrl);
       const credential = await keychain.read(
@@ -108,7 +108,7 @@ export function createCliRuntime(): CliRuntime {
       );
       if (!credential)
         throw new Error(
-          '未找到本机 Credential，请先运行 xapt daemon connect <server-url>',
+          '未找到本机授权凭据，请先运行 xapt daemon connect <server-url>',
         );
       const keys = all
         ? await workspaces.workspaceKeys()

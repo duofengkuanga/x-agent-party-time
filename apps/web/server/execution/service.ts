@@ -139,7 +139,7 @@ export class ExecutionService {
            FROM platform_file WHERE id = ?`,
         )
         .get(fileId) as AttachmentRow | undefined;
-      if (!row) throw new PlatformError('NOT_FOUND', 'Execution 附件不存在');
+      if (!row) throw new PlatformError('NOT_FOUND', '处理任务附件不存在');
       return row;
     });
 
@@ -201,7 +201,7 @@ export class ExecutionService {
       if (isBindingReservationConstraint(error))
         throw new PlatformError(
           'RESOURCE_CONFLICT',
-          '该 Binding 已有活动 Execution',
+          '该本机关联已有正在处理的任务',
           { cause: error },
         );
       throw error;
@@ -335,7 +335,7 @@ export class ExecutionService {
           return mapInteraction(existing);
         throw new PlatformError(
           'RESOURCE_CONFLICT',
-          'Execution 已有待处理 Interaction',
+          '该任务已有待处理的操作请求',
         );
       }
       const id = this.createId();
@@ -388,7 +388,7 @@ export class ExecutionService {
       ]);
       const interaction = this.latestInteraction(executionId);
       if (!interaction || interaction.id !== interactionId)
-        throw new PlatformError('NOT_FOUND', 'Execution Interaction 不存在');
+        throw new PlatformError('NOT_FOUND', '任务操作请求不存在');
       if (interaction.state === 'RESOLVED') {
         const laneAcquired = this.tryAcquireResumeLane(executionId);
         if (laneAcquired || Date.now() >= deadline)
@@ -409,7 +409,7 @@ export class ExecutionService {
     } while (Date.now() <= deadline);
     const interaction = this.latestInteraction(executionId);
     if (!interaction || interaction.id !== interactionId)
-      throw new PlatformError('NOT_FOUND', 'Execution Interaction 不存在');
+      throw new PlatformError('NOT_FOUND', '任务操作请求不存在');
     return {
       interaction: mapInteraction(interaction),
       laneAcquired:
@@ -426,19 +426,13 @@ export class ExecutionService {
     return this.db.transaction(() => {
       const interaction = this.getInteractionRow(interactionId);
       if (interaction.state !== 'PENDING')
-        throw new PlatformError(
-          'STALE_STATE',
-          'Execution Interaction 已失效或已处理',
-        );
+        throw new PlatformError('STALE_STATE', '任务操作请求已失效或已处理');
       const execution = this.getRow(interaction.execution_id);
       if (
         execution.state !== 'WAITING_FOR_INTERACTION' ||
         execution.cancellation_requested === 1
       )
-        throw new PlatformError(
-          'STALE_STATE',
-          'Execution 已不再等待该 Interaction',
-        );
+        throw new PlatformError('STALE_STATE', '任务不再等待该操作请求');
       const parsedResolution = parseExecutionInteractionResolution(
         interaction.method,
         JSON.parse(interaction.payload_json) as JsonValue,
@@ -472,7 +466,7 @@ export class ExecutionService {
     const result = this.db.transaction(() => {
       const row = this.getRow(executionId);
       if (row.runner_id !== runnerId)
-        throw new PlatformError('NOT_FOUND', 'Execution 不存在');
+        throw new PlatformError('NOT_FOUND', '处理任务不存在');
       const tokenHash = hashSecret(request.leaseToken);
       if (isTerminal(row.state)) {
         if (
@@ -481,10 +475,7 @@ export class ExecutionService {
           row.reported_outcome_json === JSON.stringify(request.outcome)
         )
           return this.mapExecution(row);
-        throw new PlatformError(
-          'OUTCOME_CONFLICT',
-          'Execution Outcome 与已保存结果冲突',
-        );
+        throw new PlatformError('OUTCOME_CONFLICT', '任务结果与已保存结果冲突');
       }
       this.requireLeasedRow(row, request.leaseToken, [
         'RUNNING',
@@ -499,10 +490,10 @@ export class ExecutionService {
       )
         throw new PlatformError(
           'INVALID_TRANSITION',
-          '等待中的 Execution 只能以取消结束',
+          '等待中的任务只能以取消结束',
         );
       if (row.session_id !== request.sessionId)
-        throw new PlatformError('STALE_STATE', 'Execution Session 不匹配');
+        throw new PlatformError('STALE_STATE', '任务会话不匹配');
       const finishedAt = this.now().toISOString();
       this.db
         .prepare(
@@ -541,7 +532,7 @@ export class ExecutionService {
     if (update.changes !== 1)
       throw new PlatformError(
         'INVALID_TRANSITION',
-        '只有尚未领取的 Execution 可以取消',
+        '只有尚未领取的任务可以取消',
       );
     const execution = this.get(executionId);
     this.invalidatePendingInteractions(executionId, finishedAt);
@@ -611,7 +602,7 @@ export class ExecutionService {
          WHERE a.execution_id = ? AND a.file_id = ?`,
       )
       .get(executionId, fileId) as FileRow | undefined;
-    if (!row) throw new PlatformError('NOT_FOUND', 'Execution 附件不存在');
+    if (!row) throw new PlatformError('NOT_FOUND', '处理任务附件不存在');
     return row;
   }
 
@@ -919,7 +910,7 @@ export class ExecutionService {
         if (row.cancellation_requested === 1) {
           const outcome: ExecutionOutcome = {
             kind: 'CANCELLED',
-            reason: '取消中的 Execution 因 Agent 失联而终止',
+            reason: '取消中的任务因 Agent 失联而终止',
           };
           invalidate.run(now, row.id);
           cancelled.run(JSON.stringify(outcome), now, row.id);
@@ -943,7 +934,7 @@ export class ExecutionService {
   ): ExecutionRow {
     const row = this.getRow(executionId);
     if (row.runner_id !== runnerId)
-      throw new PlatformError('NOT_FOUND', 'Execution 不存在');
+      throw new PlatformError('NOT_FOUND', '处理任务不存在');
     this.requireLeasedRow(row, leaseToken, states);
     return row;
   }
@@ -959,16 +950,16 @@ export class ExecutionService {
       row.lease_token_hash !== hashSecret(leaseToken) ||
       !row.lease_expires_at
     )
-      throw new PlatformError('LEASE_EXPIRED', 'Execution Lease 已失效');
+      throw new PlatformError('LEASE_EXPIRED', '任务领取凭据已失效');
     if (Date.parse(row.lease_expires_at) <= this.now().getTime())
-      throw new PlatformError('LEASE_EXPIRED', 'Execution Lease 已失效');
+      throw new PlatformError('LEASE_EXPIRED', '任务领取凭据已失效');
   }
 
   private getRow(executionId: string): ExecutionRow {
     const row = this.db
       .prepare('SELECT * FROM platform_execution WHERE id = ?')
       .get(executionId) as ExecutionRow | undefined;
-    if (!row) throw new PlatformError('NOT_FOUND', 'Execution 不存在');
+    if (!row) throw new PlatformError('NOT_FOUND', '处理任务不存在');
     return row;
   }
 
@@ -1047,8 +1038,7 @@ export class ExecutionService {
     const row = this.db
       .prepare('SELECT * FROM platform_execution_interaction WHERE id = ?')
       .get(interactionId) as InteractionRow | undefined;
-    if (!row)
-      throw new PlatformError('NOT_FOUND', 'Execution Interaction 不存在');
+    if (!row) throw new PlatformError('NOT_FOUND', '任务操作请求不存在');
     return row;
   }
 
@@ -1134,15 +1124,12 @@ function validateStartedSkillBinding(
     if (actual)
       throw new PlatformError(
         'INVALID_TRANSITION',
-        '不启动 Codex 的 Execution 不能绑定 Skill',
+        '非 Codex 任务不能关联规则',
       );
     return;
   }
   if (!actual)
-    throw new PlatformError(
-      'INVALID_TRANSITION',
-      'Codex Task 缺少 Skill Binding',
-    );
+    throw new PlatformError('INVALID_TRANSITION', 'Codex 任务缺少规则关联');
   const expectedName =
     turn.kind === 'INITIAL'
       ? turn.requiredSkillName
@@ -1153,10 +1140,7 @@ function validateStartedSkillBinding(
       (actual.bundleHash !== turn.taskSkillBinding.bundleHash ||
         actual.sourceRevision !== turn.taskSkillBinding.sourceRevision))
   )
-    throw new PlatformError(
-      'INVALID_TRANSITION',
-      'Codex Task Skill Binding 不匹配',
-    );
+    throw new PlatformError('INVALID_TRANSITION', 'Codex 任务的规则关联不匹配');
 }
 
 function isTerminal(state: Execution['state']): boolean {

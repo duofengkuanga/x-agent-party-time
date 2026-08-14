@@ -157,7 +157,7 @@ describe('SkillBundleManager', () => {
     const result = await manager.initialize();
 
     expect(result.installed).toBe(false);
-    expect(result.warning).toContain('不是 xapt 软链接');
+    expect(result.warning).toContain('不由 xapt 管理');
     expect(
       await readFile(join(paths.skillNamespaceLink, 'mine.txt'), 'utf8'),
     ).toBe('keep');
@@ -231,7 +231,7 @@ describe('SkillBundleManager', () => {
     await rm(original.path, { recursive: true });
 
     await expect(manager.resolveBound(original)).rejects.toThrow(
-      'Skill Bundle 不存在',
+      '规则包不存在',
     );
     expect(await manager.resolveCurrent('agent-party-time-repair-bug')).toEqual(
       current,

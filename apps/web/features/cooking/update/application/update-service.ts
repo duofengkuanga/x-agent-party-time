@@ -295,7 +295,7 @@ export class UpdateService {
         if (!batch.session_id)
           throw new PlatformError(
             'INVALID_TRANSITION',
-            '原 Update Task 不存在，不能自动重建',
+            '原更新任务不存在，不能自动重建',
           );
         const previousExecution = this.executions.get(latest.execution_id);
         const continuationInput = externalReport
@@ -1347,7 +1347,7 @@ export class UpdateService {
     const row = this.db
       .prepare('SELECT * FROM cooking_update_batch WHERE id = ?')
       .get(batchId) as BatchRow | undefined;
-    if (!row) throw new PlatformError('NOT_FOUND', 'Update Batch 不存在');
+    if (!row) throw new PlatformError('NOT_FOUND', '更新批次不存在');
     return row;
   }
 
@@ -1440,7 +1440,7 @@ export class UpdateService {
       )
       .get(interactionId) as
       { batch_id: string; execution_id: string } | undefined;
-    if (!row) throw new PlatformError('NOT_FOUND', 'Update Interaction 不存在');
+    if (!row) throw new PlatformError('NOT_FOUND', '更新操作请求不存在');
     return row;
   }
 
@@ -1491,7 +1491,7 @@ export class UpdateService {
 function parseCommits(value: string): string[] {
   const parsed = JSON.parse(value);
   if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== 'string'))
-    throw new PlatformError('INTERNAL_ERROR', 'Pending Commit Chain 无效');
+    throw new PlatformError('INTERNAL_ERROR', '待提交记录无效');
   return parsed;
 }
 
@@ -1557,7 +1557,7 @@ function requireTaskSkillBinding(execution: Execution) {
   if (!binding)
     throw new PlatformError(
       'INVALID_TRANSITION',
-      '原 Update Task 缺少 Skill Binding，不能继续执行',
+      '原更新任务缺少规则关联，不能继续',
     );
   return binding;
 }
@@ -1590,15 +1590,12 @@ function updateVisual(
   if (pending.length > 1)
     throw new PlatformError(
       'INTERNAL_ERROR',
-      '同一 Update Attempt 存在多个待处理 Interaction',
+      '同一更新记录存在多个待处理操作请求',
     );
   const interaction = pending[0];
   if (interaction) {
     if (!latest || latest.state !== 'WAITING_FOR_INTERACTION')
-      throw new PlatformError(
-        'INTERNAL_ERROR',
-        'Update Interaction 与 Execution state 不一致',
-      );
+      throw new PlatformError('INTERNAL_ERROR', '更新操作请求与任务状态不一致');
     return interaction.kind === 'APPROVAL'
       ? {
           state: 'NEEDS_APPROVAL',
@@ -1614,7 +1611,7 @@ function updateVisual(
   if (latest?.state === 'WAITING_FOR_INTERACTION')
     throw new PlatformError(
       'INTERNAL_ERROR',
-      '等待 Interaction 的 Update Execution 缺少待处理记录',
+      '等待操作请求的更新任务缺少待处理记录',
     );
   if (batch.state === 'FAILED' || latest?.state === 'FAILED')
     return { state: 'FAILED', label: '统一更新未完成', symbol: '×' };

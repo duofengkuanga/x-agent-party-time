@@ -38,7 +38,7 @@ export class UninstallManager {
         );
       if (
         !(await this.confirmation.confirm(
-          '强制卸载可能遗留 Lease、Workspace 和远程 Credential。',
+          '强制卸载可能遗留任务领取状态、本机工作区和远程授权状态。',
         ))
       )
         throw new UninstallError('CANCELLED', '已取消强制卸载');
@@ -47,12 +47,9 @@ export class UninstallManager {
     let snapshot = await this.daemon.status();
     if (!force) {
       if (snapshot.service === 'UNRESPONSIVE')
-        throw new UninstallError(
-          'DAEMON_UNRESPONSIVE',
-          'daemon 本机控制无响应',
-        );
+        throw new UninstallError('DAEMON_UNRESPONSIVE', '本机服务无响应');
       if (snapshot.activity === 'BUSY')
-        throw new UninstallError('DAEMON_BUSY', 'daemon 正在处理任务');
+        throw new UninstallError('DAEMON_BUSY', '本机服务正在处理任务');
       const [outbox, executions, unsettledWorkspaces] = await Promise.all([
         this.state.loadOutbox(),
         this.state.loadExecutions(),
@@ -61,7 +58,7 @@ export class UninstallManager {
       if (outbox.length || executions.length || unsettledWorkspaces)
         throw new UninstallError(
           'UNSETTLED_STATE',
-          '仍有 Outbox、Execution 或 Workspace 需要保留',
+          '仍有待发送结果、处理任务或本机工作区需要保留',
         );
     }
 
@@ -77,9 +74,9 @@ export class UninstallManager {
         remoteRevoked = true;
       } catch (error) {
         if (!force) throw error;
-        warnings.push('Server Credential 未确认撤销');
+        warnings.push('服务端授权凭据未确认撤销');
       }
-    } else if (force) warnings.push('Server 离线，远程 Credential 状态未知');
+    } else if (force) warnings.push('服务离线，远程授权状态未知');
 
     await this.daemon.stop(force, force);
     if (connection)
@@ -92,10 +89,10 @@ export class UninstallManager {
         );
       } catch (error) {
         if (!force) throw error;
-        warnings.push('Keychain Credential 未删除');
+        warnings.push('系统钥匙串中的授权凭据未删除');
       }
     if (!(await this.removeManagedSkillNamespace()))
-      warnings.push('Skill 命名空间不是 xapt 管理，未删除');
+      warnings.push('规则包目录不由 xapt 管理，未删除');
     for (const path of [
       this.paths.commandLink,
       this.paths.launchAgentPlist,

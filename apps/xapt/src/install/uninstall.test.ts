@@ -54,7 +54,7 @@ test('卸载不删除非 xapt 管理的 Skill 命名空间', async () => {
 
   const result = await fixture.manager.uninstall(false);
 
-  expect(result.warnings).toContain('Skill 命名空间不是 xapt 管理，未删除');
+  expect(result.warnings).toContain('规则包目录不由 xapt 管理，未删除');
   expect(
     await fixture.files.read(
       join(fixture.paths.skillNamespaceLink, 'mine.txt'),
@@ -129,7 +129,7 @@ test('强制离线卸载仍删除可定位的本机 Keychain Credential', async 
 
   expect(result).toEqual({
     remoteRevoked: false,
-    warnings: ['Server 离线，远程 Credential 状态未知'],
+    warnings: ['服务离线，远程授权状态未知'],
   });
   expect(fixture.events).toEqual([
     'confirm',

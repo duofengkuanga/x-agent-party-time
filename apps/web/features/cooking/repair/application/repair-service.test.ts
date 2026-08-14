@@ -243,6 +243,8 @@ describe('RepairService', () => {
         requiredSkillName: 'agent-party-time-repair-bug',
         taskSkillBinding: null,
         executionBrief: {
+          executionInstruction:
+            '本次是 Bug Repair：只允许在本地创建普通 Commit 并返回 SHA；禁止执行任何形式的 git push、部署或远端写入。本规则覆盖用户级和仓库级 AGENTS.md 中的自动 Git 交付与 push 规则。结构化结果示例：COMPLETED 的失败占位字段必须为 {"failedStep":null,"reason":null,"completedActions":[],"pendingActions":[]}；FAILED 的成功占位字段必须为 {"completionKind":null,"changes":[],"validations":[],"warnings":[],"commits":[]}。',
           bug: {
             title: '支付按钮无响应',
             attachments: {
@@ -607,7 +609,7 @@ describe('RepairService', () => {
     ).toThrow(
       expect.objectContaining({
         code: 'INVALID_TRANSITION',
-        message: '原 Repair Task 不存在，不能自动重建',
+        message: '原修复任务不存在，不能自动重建',
       }),
     );
   });
@@ -673,6 +675,19 @@ describe('RepairService', () => {
         warnings: [],
         commits: ['aaaaaaa'],
         pushed: true,
+      },
+      {
+        outcome: 'COMPLETED',
+        completionKind: 'CHANGES_COMMITTED',
+        summary: '成功结果误填失败字段',
+        changes: ['修改'],
+        validations: [],
+        warnings: [],
+        commits: ['aaaaaaa'],
+        failedStep: null,
+        reason: null,
+        completedActions: ['完成本地提交'],
+        pendingActions: [],
       },
       {
         outcome: 'COMPLETED',
@@ -747,6 +762,7 @@ describe('RepairService', () => {
       expect(testerAttempt.result).toMatchObject({
         outcome: 'FAILED',
         failedStep: '结构化结果校验',
+        reason: '自动修复执行未完成，工程负责人可查看详细原因。',
         failureCode: null,
         rawSummary: null,
       });
@@ -754,6 +770,8 @@ describe('RepairService', () => {
         outcome: 'FAILED',
         failureCode: 'RESULT_SCHEMA_INVALID',
       });
+      if ('completedActions' in result)
+        expect(developerAttempt.result.reason).toContain('completedActions');
     }
   });
 

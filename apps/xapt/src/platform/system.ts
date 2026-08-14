@@ -73,7 +73,7 @@ export class CurrentUserEnvironment implements UserEnvironment {
 
   userId(): number {
     const id = process.getuid?.();
-    if (id === undefined) throw new Error('当前平台不支持用户级 daemon');
+    if (id === undefined) throw new Error('当前平台不支持用户级本机服务');
     return id;
   }
 

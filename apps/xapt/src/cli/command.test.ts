@@ -5,7 +5,9 @@ describe('parseCommand', () => {
   test.each([
     [[], { kind: 'help' }],
     [['--help'], { kind: 'help' }],
+    [['-h'], { kind: 'help' }],
     [['--version'], { kind: 'version' }],
+    [['-v'], { kind: 'version' }],
     [['daemon', 'start'], { kind: 'daemon-start' }],
     [
       ['daemon', 'connect', 'https://apt.example.com'],

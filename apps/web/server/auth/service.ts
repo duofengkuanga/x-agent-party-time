@@ -95,7 +95,7 @@ export class AuthService {
   createSession(userId: string, durationMs: number): SessionToken {
     UserIdSchema.parse(userId);
     if (!Number.isSafeInteger(durationMs) || durationMs <= 0)
-      throw new PlatformError('VALIDATION_FAILED', 'Session 有效期无效');
+      throw new PlatformError('VALIDATION_FAILED', '登录会话有效期无效');
 
     const token = randomBytes(32).toString('base64url');
     const tokenHash = hashToken(token);

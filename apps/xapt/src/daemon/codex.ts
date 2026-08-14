@@ -34,13 +34,13 @@ export class MacOsCodexPreflight implements CodexPreflight {
       throw new CodexPreflightError(
         'VERSION_UNAVAILABLE',
         '无法读取 Codex 版本',
-        '请更新官方 Codex standalone 后重试',
+        '请更新官方 Codex 独立版后重试',
       );
     if (compareVersions(version, this.minimumVersion) < 0)
       throw new CodexPreflightError(
         'VERSION_TOO_OLD',
         `Codex ${version} 低于最低要求 ${this.minimumVersion}`,
-        '请更新官方 Codex standalone 后重试',
+        '请更新官方 Codex 独立版后重试',
       );
     const login = await this.commands.run(executable, ['login', 'status']);
     if (login.exitCode !== 0)
@@ -54,7 +54,7 @@ export class MacOsCodexPreflight implements CodexPreflight {
     } catch {
       throw new CodexPreflightError(
         'INITIALIZE_FAILED',
-        'Codex App Server initialize 失败',
+        'Codex 本机服务初始化失败',
         '请更新 Codex 或检查 codex app-server 后重试',
       );
     }
@@ -74,8 +74,8 @@ export class MacOsCodexPreflight implements CodexPreflight {
       return fallback;
     throw new CodexPreflightError(
       'NOT_FOUND',
-      '未找到官方 Codex standalone',
-      '请安装官方 Codex standalone 后重试',
+      '未找到官方 Codex 独立版',
+      '请安装官方 Codex 独立版后重试',
     );
   }
 }

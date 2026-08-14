@@ -53,7 +53,7 @@ export class DaemonManager {
       if (socket.type !== 'socket')
         throw new DaemonLifecycleError(
           'SOCKET_OCCUPIED',
-          'control socket 位置被未知文件占用',
+          '本机服务通信文件被未知文件占用',
         );
       try {
         return {
@@ -63,7 +63,7 @@ export class DaemonManager {
       } catch {
         throw new DaemonLifecycleError(
           'UNRESPONSIVE',
-          'daemon 已存在但本机控制无响应',
+          '本机服务已存在但无响应',
           '请运行 xapt daemon stop --force',
         );
       }
@@ -110,7 +110,7 @@ export class DaemonManager {
       } catch (cleanupError) {
         throw new AggregateError(
           [error, cleanupError],
-          'daemon 启动失败，且 LaunchAgent 清理失败',
+          '本机服务启动失败，且启动项清理失败',
         );
       }
       throw error;
@@ -138,11 +138,11 @@ export class DaemonManager {
       if (!this.options.environment.isTerminal())
         throw new DaemonLifecycleError(
           'TTY_REQUIRED',
-          'daemon stop --force 只允许在真实 TTY 中执行',
+          'xapt daemon stop --force 只允许在真实终端中执行',
         );
       if (
         !(await this.options.confirmation.confirm(
-          '强制停止可能遗留 Lease、Workspace 和远程状态。',
+          '强制停止可能遗留任务领取状态、本机工作区和远程状态。',
         ))
       )
         throw new DaemonLifecycleError('CANCELLED', '已取消强制停止');
@@ -171,7 +171,7 @@ export class DaemonManager {
       }
       throw new DaemonLifecycleError(
         'UNRESPONSIVE',
-        'daemon 本机控制无响应',
+        '本机服务无响应',
         '请运行 xapt daemon stop --force',
       );
     }
@@ -183,7 +183,7 @@ export class DaemonManager {
     if (snapshot.activity === 'BUSY' && !force)
       throw new DaemonLifecycleError(
         'BUSY',
-        'daemon 正在处理任务，不能安全停止',
+        '本机服务正在处理任务，不能安全停止',
       );
     await this.options.control.stop(force);
     await this.waitUntilStopped();
@@ -231,8 +231,8 @@ export class DaemonManager {
     } while (this.options.clock.now().getTime() < deadline);
     throw new DaemonLifecycleError(
       'START_TIMEOUT',
-      'daemon 启动后未能完成本机控制握手',
-      '请查看 xapt daemon 错误日志后重试',
+      '本机服务启动后未能完成本机连接',
+      '请查看 xapt 本机服务错误日志后重试',
       lastError,
     );
   }
@@ -246,7 +246,7 @@ export class DaemonManager {
     } while (this.options.clock.now().getTime() < deadline);
     throw new DaemonLifecycleError(
       'STOP_TIMEOUT',
-      'daemon 未在超时前停止',
+      '本机服务未在超时前停止',
       '请运行 xapt daemon stop --force',
     );
   }

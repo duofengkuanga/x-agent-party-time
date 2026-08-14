@@ -618,7 +618,7 @@ describe('UpdateService', () => {
     ).toThrow(
       expect.objectContaining({
         code: 'INVALID_TRANSITION',
-        message: '原 Update Task 不存在，不能自动重建',
+        message: '原更新任务不存在，不能自动重建',
       }),
     );
   });

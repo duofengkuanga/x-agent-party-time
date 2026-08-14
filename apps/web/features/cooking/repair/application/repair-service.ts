@@ -119,10 +119,7 @@ export class RepairService {
     const existingContext = this.context(bugId);
     const latest = existingContext ? this.latestAttempt(bugId) : undefined;
     if (latest && !isTerminal(latest.state))
-      throw new PlatformError(
-        'RESOURCE_CONFLICT',
-        '缺陷已有活动 Repair Attempt',
-      );
+      throw new PlatformError('RESOURCE_CONFLICT', '该缺陷已有正在进行的修复');
     const now = this.now().toISOString();
     const workspaceKey = `bug-repair:${bugId}`;
     const attemptId = this.createId();
@@ -208,14 +205,14 @@ export class RepairService {
     const context = this.requireContext(bugId);
     const latest = this.latestAttempt(bugId);
     if (!latest || !isTerminal(latest.state))
-      throw new PlatformError('RESOURCE_CONFLICT', '当前修复 Attempt 尚未结束');
+      throw new PlatformError('RESOURCE_CONFLICT', '当前修复尚未结束');
     const attempt = latest.attempt + 1;
     const attemptId = this.createId();
     const executionId = this.createId();
     if (!context.session_id)
       throw new PlatformError(
         'INVALID_TRANSITION',
-        '原 Repair Task 不存在，不能自动重建',
+        '原修复任务不存在，不能自动重建',
       );
     const previousExecution = this.executions.get(latest.execution_id);
     const codexTurn = createContinuationCodexTurn({
@@ -713,14 +710,17 @@ export class RepairService {
           kind: 'FAILED',
           attemptOutcome: parsed.data,
         };
+      const invalidReason = parsed.success
+        ? 'Codex 返回的候选本地提交记录无效。'
+        : `Codex 返回的修复结果格式不符合要求。具体问题：${formatRepairContractIssues(parsed.error.issues)}`;
       this.markExecutionResultInvalid(execution.id);
       return {
         kind: 'FAILED',
         attemptOutcome: {
           outcome: 'FAILED',
-          summary: '修复结果格式或候选 Commit 链无效。',
+          summary: '修复结果格式或候选本地提交记录无效。',
           failedStep: '结构化结果校验',
-          reason: 'Codex 返回的结构化结果不符合 Repair Contract。',
+          reason: invalidReason,
           completedActions: [],
           pendingActions: ['修复缺陷并返回有效的结构化结果'],
           technicalFailure: 'RESULT_SCHEMA_INVALID',
@@ -782,7 +782,7 @@ export class RepairService {
          WHERE bug.id = ?`,
       )
       .get(bugId) as RepairSourceRow | undefined;
-    if (!row) throw new PlatformError('NOT_FOUND', 'Repair Bug 不存在');
+    if (!row) throw new PlatformError('NOT_FOUND', '修复缺陷不存在');
     return row;
   }
 
@@ -794,7 +794,7 @@ export class RepairService {
 
   private requireContext(bugId: string): ContextRow {
     const row = this.context(bugId);
-    if (!row) throw new PlatformError('NOT_FOUND', 'Repair Context 不存在');
+    if (!row) throw new PlatformError('NOT_FOUND', '修复上下文不存在');
     return row;
   }
 
@@ -838,7 +838,7 @@ export class RepairService {
     const row = this.db
       .prepare('SELECT created_at FROM cooking_bug WHERE id = ?')
       .get(bugId) as { created_at: string } | undefined;
-    if (!row) throw new PlatformError('NOT_FOUND', 'Repair Bug 不存在');
+    if (!row) throw new PlatformError('NOT_FOUND', '修复缺陷不存在');
     return row.created_at;
   }
 
@@ -889,7 +889,7 @@ export class RepairService {
       )
       .get(interactionId) as
       { bug_id: string; execution_id: string } | undefined;
-    if (!row) throw new PlatformError('NOT_FOUND', 'Repair Interaction 不存在');
+    if (!row) throw new PlatformError('NOT_FOUND', '修复操作请求不存在');
     return row;
   }
 
@@ -919,15 +919,24 @@ export class RepairService {
   }
 }
 
+function formatRepairContractIssues(
+  issues: ReadonlyArray<{ path: readonly PropertyKey[]; message: string }>,
+): string {
+  return issues
+    .map(
+      ({ path, message }) =>
+        `${path.length ? path.map(String).join('.') : '$'}: ${message}`,
+    )
+    .join('; ')
+    .slice(0, 3_500);
+}
+
 function projectAttemptResult(outcomeJson: string, technical: boolean) {
   const raw = JSON.parse(outcomeJson) as Record<string, unknown>;
   const { technicalFailure: _technicalFailure, ...contractResult } = raw;
   const parsed = RepairExecutionResultSchema.safeParse(contractResult);
   if (!parsed.success)
-    throw new PlatformError(
-      'INTERNAL_ERROR',
-      '已存储的 Repair Attempt 结构化结果无效',
-    );
+    throw new PlatformError('INTERNAL_ERROR', '已保存的修复记录结果格式无效');
   if (parsed.data.outcome === 'COMPLETED')
     return {
       outcome: parsed.data.outcome,
@@ -970,15 +979,12 @@ function repairVisual(
   if (pending.length > 1)
     throw new PlatformError(
       'INTERNAL_ERROR',
-      '同一 Repair Attempt 存在多个待处理 Interaction',
+      '同一修复记录存在多个待处理操作请求',
     );
   const interaction = pending[0];
   if (interaction) {
     if (!latest || latest.state !== 'WAITING_FOR_INTERACTION')
-      throw new PlatformError(
-        'INTERNAL_ERROR',
-        'Repair Interaction 与 Execution state 不一致',
-      );
+      throw new PlatformError('INTERNAL_ERROR', '修复操作请求与任务状态不一致');
     return interaction.kind === 'APPROVAL'
       ? {
           state: 'NEEDS_APPROVAL',
@@ -994,7 +1000,7 @@ function repairVisual(
   if (latest?.state === 'WAITING_FOR_INTERACTION')
     throw new PlatformError(
       'INTERNAL_ERROR',
-      '等待 Interaction 的 Repair Execution 缺少待处理记录',
+      '等待操作请求的修复任务缺少待处理记录',
     );
   if (
     latest?.state === 'FAILED' ||
@@ -1031,7 +1037,7 @@ function requireTaskSkillBinding(execution: Execution) {
   if (!binding)
     throw new PlatformError(
       'INVALID_TRANSITION',
-      '原 Repair Task 缺少 Skill Binding，不能继续执行',
+      '原修复任务缺少规则关联，不能继续',
     );
   return binding;
 }
@@ -1039,7 +1045,7 @@ function requireTaskSkillBinding(execution: Execution) {
 function parseCommits(value: string): string[] {
   const parsed = JSON.parse(value);
   if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== 'string'))
-    throw new PlatformError('INTERNAL_ERROR', 'Pending Commit Chain 无效');
+    throw new PlatformError('INTERNAL_ERROR', '待提交记录无效');
   return parsed;
 }
 

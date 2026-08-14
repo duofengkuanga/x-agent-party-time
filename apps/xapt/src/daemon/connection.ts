@@ -160,7 +160,7 @@ export class ConnectionCoordinator {
       if (existingOrigin !== origin)
         throw new ConnectionError(
           'DIFFERENT_SERVER',
-          'xapt 已连接另一台 Server，不会隐式切换',
+          'xapt 已连接另一项服务，不会自动切换',
         );
       const credential = await this.keychain.read(
         keychainAccount(existingOrigin, existing.runnerId),
@@ -240,7 +240,7 @@ export class ConnectionCoordinator {
           } catch (cleanupError) {
             throw new AggregateError(
               [error, cleanupError],
-              '连接状态写入失败，且临时 Credential 清理失败',
+              '连接状态写入失败，且临时授权凭据清理失败',
             );
           }
           throw error;
@@ -276,15 +276,15 @@ export function normalizeServerOrigin(input: string): string {
   try {
     url = new URL(input);
   } catch {
-    throw new ConnectionError('INVALID_SERVER_URL', 'Server URL 无效');
+    throw new ConnectionError('INVALID_SERVER_URL', '服务地址无效');
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:')
     throw new ConnectionError(
       'INVALID_SERVER_URL',
-      'Server URL 必须使用 HTTP 或 HTTPS',
+      '服务地址必须使用 HTTP 或 HTTPS',
     );
   if (url.username || url.password)
-    throw new ConnectionError('INVALID_SERVER_URL', 'Server URL 不得包含凭据');
+    throw new ConnectionError('INVALID_SERVER_URL', '服务地址不得包含凭据');
   return url.origin;
 }
 

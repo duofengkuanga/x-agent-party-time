@@ -255,7 +255,7 @@ export class CodexAppServerExecutor implements CodexExecutor {
           new Error(
             typeof error.message === 'string'
               ? error.message
-              : 'Codex App Server 请求失败',
+              : 'Codex 本机服务请求失败',
           ),
         );
       else pending.resolve(message.result);
@@ -376,7 +376,7 @@ export class CodexAppServerExecutor implements CodexExecutor {
   private write(message: unknown): void {
     const child = this.child;
     if (!child || child.exitCode !== null)
-      throw new Error('Codex App Server 尚未运行');
+      throw new Error('Codex 本机服务尚未运行');
     child.stdin.write(`${JSON.stringify(message)}\n`);
   }
 
@@ -615,7 +615,7 @@ function asRecord(value: unknown): Record<string, any> {
 function requiredString(value: Record<string, unknown>, key: string): string {
   const result = value[key];
   if (typeof result !== 'string' || !result)
-    throw new Error(`Codex App Server 响应缺少 ${key}`);
+    throw new Error(`Codex 本机服务响应缺少 ${key}`);
   return result;
 }
 
@@ -645,5 +645,5 @@ function parseStructuredResult(message: string): JsonValue | undefined {
 }
 
 function safeMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'Codex App Server 请求失败';
+  return error instanceof Error ? error.message : 'Codex 本机服务请求失败';
 }

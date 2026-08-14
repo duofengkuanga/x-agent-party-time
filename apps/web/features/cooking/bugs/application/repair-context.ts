@@ -74,7 +74,7 @@ export class BugRepairContextService {
          WHERE bug.id = ?`,
       )
       .get(bugId) as ContextRow | undefined;
-    if (!row) throw new PlatformError('NOT_FOUND', 'Repair Bug 不存在');
+    if (!row) throw new PlatformError('NOT_FOUND', '待修复缺陷不存在');
     const attachments = this.db
       .prepare(
         `SELECT file.id, file.original_name, attachment.role

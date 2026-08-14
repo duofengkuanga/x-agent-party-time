@@ -69,7 +69,7 @@ export class DaemonControlServer {
   constructor(private readonly options: ControlServerOptions) {}
 
   async start(): Promise<void> {
-    if (this.server) throw new Error('daemon control server 已启动');
+    if (this.server) throw new Error('本机服务控制端已启动');
     await this.options.files.ensureDirectory(
       dirname(this.options.socketPath),
       0o700,
@@ -136,7 +136,7 @@ export class DaemonControlServer {
     try {
       if (request.method === 'connect') {
         if (!this.options.connect)
-          throw new ControlSocketError('NOT_SUPPORTED', 'daemon 尚不支持连接');
+          throw new ControlSocketError('NOT_SUPPORTED', '本机服务尚不支持连接');
         await this.options.connect(request.serverUrl, (value) =>
           socket.write(
             `${JSON.stringify({
@@ -157,9 +157,9 @@ export class DaemonControlServer {
       if (request.method === 'revoke') {
         const snapshot = await this.options.snapshot();
         if (snapshot.activity === 'BUSY')
-          throw new ControlSocketError('DAEMON_BUSY', 'daemon 正在处理任务');
+          throw new ControlSocketError('DAEMON_BUSY', '本机服务正在处理任务');
         if (!this.options.revoke)
-          throw new ControlSocketError('NOT_SUPPORTED', 'daemon 尚不支持撤销');
+          throw new ControlSocketError('NOT_SUPPORTED', '本机服务尚不支持撤销');
         await this.options.revoke();
         sendFinal(socket, {
           id: request.id,
@@ -175,7 +175,7 @@ export class DaemonControlServer {
         snapshot.activity === 'BUSY' &&
         !request.force
       )
-        throw new ControlSocketError('DAEMON_BUSY', 'daemon 正在处理任务');
+        throw new ControlSocketError('DAEMON_BUSY', '本机服务正在处理任务');
       if (request.method === 'stop' && request.force)
         await this.options.forceStop?.();
       sendFinal(
@@ -262,7 +262,7 @@ export class DaemonControlClient {
       const timeout = setTimeout(() => {
         socket.destroy();
         settle(() =>
-          reject(new ControlSocketError('TIMEOUT', 'daemon 本机控制无响应')),
+          reject(new ControlSocketError('TIMEOUT', '本机服务无响应')),
         );
       }, timeoutMs);
       const settle = (callback: () => void) => {
@@ -275,11 +275,7 @@ export class DaemonControlClient {
       socket.once('error', (error) =>
         settle(() =>
           reject(
-            new ControlSocketError(
-              'UNREACHABLE',
-              '无法连接 daemon 本机控制',
-              error,
-            ),
+            new ControlSocketError('UNREACHABLE', '无法连接本机服务', error),
           ),
         ),
       );
@@ -288,7 +284,7 @@ export class DaemonControlClient {
         if (Buffer.byteLength(input) > MAX_CONTROL_MESSAGE_BYTES) {
           settle(() =>
             reject(
-              new ControlSocketError('INVALID_RESPONSE', 'daemon 响应过大'),
+              new ControlSocketError('INVALID_RESPONSE', '本机服务响应过大'),
             ),
           );
           socket.destroy();
@@ -344,14 +340,14 @@ function parseRequest(line: string): ControlRequest {
 function parseFrame(line: string, id: string): ControlResponse | ControlEvent {
   const value = JSON.parse(line) as ControlResponse | ControlEvent;
   if (value.id !== id)
-    throw new ControlSocketError('INVALID_RESPONSE', 'daemon 响应无效');
+    throw new ControlSocketError('INVALID_RESPONSE', '本机服务响应无效');
   if ('event' in value) {
     if (value.event !== 'connect-progress')
-      throw new ControlSocketError('INVALID_RESPONSE', 'daemon 事件无效');
+      throw new ControlSocketError('INVALID_RESPONSE', '本机服务事件无效');
     return value;
   }
   if (typeof value.ok !== 'boolean')
-    throw new ControlSocketError('INVALID_RESPONSE', 'daemon 响应无效');
+    throw new ControlSocketError('INVALID_RESPONSE', '本机服务响应无效');
   return value;
 }
 

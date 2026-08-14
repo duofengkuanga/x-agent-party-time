@@ -91,14 +91,14 @@ export async function runCli(
         });
         return {
           exitCode: EXIT_SUCCESS,
-          stdout: 'Agent 已授权并连接 Server。',
+          stdout: 'Agent 已获授权并连接到服务。',
         };
       case 'daemon-start': {
         if (!runtime) return notImplemented('daemon start');
         const result = await runtime.daemonStart();
         const message = result.alreadyRunning
-          ? 'xapt daemon 已在运行。'
-          : 'xapt daemon 已启动，但尚未连接 Server。\n下一步：xapt daemon connect <server-url>';
+          ? 'xapt 本机服务已在运行。'
+          : 'xapt 本机服务已启动，但尚未连接服务。\n下一步：xapt daemon connect <server-url>';
         return {
           exitCode: EXIT_SUCCESS,
           stdout: result.skillWarning
@@ -112,8 +112,8 @@ export async function runCli(
         return {
           exitCode: EXIT_SUCCESS,
           stdout: result.alreadyStopped
-            ? 'xapt daemon 已停止。'
-            : 'xapt daemon 已安全停止。',
+            ? 'xapt 本机服务已停止。'
+            : 'xapt 本机服务已安全停止。',
         };
       }
       case 'daemon-status': {
@@ -142,15 +142,15 @@ export async function runCli(
         return {
           exitCode: EXIT_SUCCESS,
           stdout: result.updated
-            ? `Agent Party Time Skills 已更新（${result.sourceRevision}）。`
-            : `Agent Party Time Skills 已是当前 main（${result.sourceRevision}）。`,
+            ? `Agent Party Time 规则包已更新（${result.sourceRevision}）。`
+            : `Agent Party Time 规则包已是当前版本（${result.sourceRevision}）。`,
         };
       }
       case 'uninstall':
         if (!runtime) return notImplemented('uninstall');
         {
           progressOutput(
-            '将删除 xapt 程序、版本、LaunchAgent、Credential、本机状态、Cache 与日志；不会修改 Codex 或 ~/.codex。',
+            '将删除 xapt 程序、版本、本机服务、授权凭据、本机状态、缓存与日志；不会修改 Codex 或 ~/.codex。',
           );
           const result = await runtime.uninstall(command.force);
           return {
@@ -168,7 +168,7 @@ export async function runCli(
           return {
             exitCode: EXIT_SUCCESS,
             stdout: result.updated
-              ? `xapt 已更新到 ${result.version}${result.daemonRestarted ? '，daemon 已恢复运行' : ''}。`
+              ? `xapt 已更新到 ${result.version}${result.daemonRestarted ? '，本机服务已恢复运行' : ''}。`
               : `xapt ${result.version} 已是最新稳定版本。`,
           };
         }
@@ -206,7 +206,7 @@ function renderBugsDeleteResult(result: BugsDeleteResult): string {
     result.deletedBugIds.length > 0
       ? `已删除缺陷 ${result.deletedBugIds.length} 个：${result.deletedBugIds.join('、')}`
       : '没有需要删除的缺陷。',
-    `已删除关联 Execution ${result.deletedExecutionIds.length} 个。`,
+    `已删除关联处理任务 ${result.deletedExecutionIds.length} 个。`,
   ];
   return lines.join('\n');
 }
@@ -222,16 +222,16 @@ function renderDaemonStatus(snapshot: DaemonSnapshot): string {
     CONNECTING: '连接中',
     CONNECTED: '已连接',
     DEGRADED: '连接降级',
-    REVOKED: 'Credential 已撤销',
+    REVOKED: '授权凭据已撤销',
   }[snapshot.connection];
   const lines = [
-    `Daemon        ${service}`,
+    `本机服务      ${service}`,
     `版本          ${snapshot.version}`,
     `Codex         ${snapshot.codexVersion ?? '不可用'}`,
     `连接          ${connection}`,
   ];
   if (snapshot.serverOrigin)
-    lines.push(`Server         ${snapshot.serverOrigin}`);
+    lines.push(`服务地址      ${snapshot.serverOrigin}`);
   if (snapshot.agentName) lines.push(`Agent          ${snapshot.agentName}`);
   if (snapshot.lastHeartbeatAt)
     lines.push(`最近心跳      ${relativeHeartbeat(snapshot.lastHeartbeatAt)}`);
@@ -239,7 +239,7 @@ function renderDaemonStatus(snapshot: DaemonSnapshot): string {
     `执行槽位      ${snapshot.activeSlots} / ${snapshot.totalSlots} 使用中`,
     `等待交互      ${snapshot.waitingInteractions}`,
     `待发送结果    ${snapshot.outboxCount}`,
-    `Binding       ${snapshot.bindingCount} 个`,
+    `本机关联      ${snapshot.bindingCount} 个`,
   );
   if (snapshot.connection === 'UNCONFIGURED' && snapshot.service === 'RUNNING')
     lines.push('下一步：xapt daemon connect <server-url>');

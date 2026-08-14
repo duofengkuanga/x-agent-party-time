@@ -293,7 +293,7 @@ describe('Execution lifecycle', () => {
       state: 'CANCELLED',
       outcome: {
         kind: 'CANCELLED',
-        reason: '取消中的 Execution 因 Agent 失联而终止',
+        reason: '取消中的任务因 Agent 失联而终止',
       },
     });
   });

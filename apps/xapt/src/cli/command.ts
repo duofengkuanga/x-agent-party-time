@@ -29,8 +29,10 @@ export class CliUsageError extends Error {
 }
 
 export function parseCommand(args: readonly string[]): XaptCommand {
-  if (args.length === 0 || isExactly(args, '--help')) return { kind: 'help' };
-  if (isExactly(args, '--version')) return { kind: 'version' };
+  if (args.length === 0 || isExactly(args, '--help') || isExactly(args, '-h'))
+    return { kind: 'help' };
+  if (isExactly(args, '--version') || isExactly(args, '-v'))
+    return { kind: 'version' };
 
   const [command, ...rest] = args;
   switch (command) {

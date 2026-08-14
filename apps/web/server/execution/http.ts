@@ -157,7 +157,7 @@ export async function handleExecutionFile(
     const runner = runners.authenticateCredential(bearerCredential(request));
     const leaseToken = request.headers.get('x-execution-lease-token');
     if (!leaseToken)
-      throw new PlatformError('LEASE_EXPIRED', 'Execution Lease 已失效');
+      throw new PlatformError('LEASE_EXPIRED', '任务领取凭据已失效');
     const allowed = executions.authorizeFile(
       runner.id,
       executionId,
@@ -169,7 +169,7 @@ export async function handleExecutionFile(
       stored.file.sha256 !== allowed.sha256 ||
       stored.file.sizeBytes !== allowed.size_bytes
     )
-      throw new PlatformError('INTERNAL_ERROR', 'Execution 附件校验失败');
+      throw new PlatformError('INTERNAL_ERROR', '任务附件校验失败');
     return new Response(new Blob([Uint8Array.from(stored.bytes)]), {
       status: 200,
       headers: {

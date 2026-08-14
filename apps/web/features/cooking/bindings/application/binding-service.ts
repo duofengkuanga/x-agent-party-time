@@ -405,7 +405,10 @@ export class BindingService {
       )
       .get(bindingId, runnerId) as RepositoryConfirmationRow | undefined;
     if (!row)
-      throw new PlatformError('NOT_FOUND', 'Binding 不存在或不属于当前 Runner');
+      throw new PlatformError(
+        'NOT_FOUND',
+        '本机 Agent 关联不存在或不属于当前 Agent',
+      );
     return row;
   }
 }

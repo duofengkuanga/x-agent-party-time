@@ -12,10 +12,10 @@ export const HELP_TEXT = `xapt — Agent Party Time 本机 Agent
   xapt skills update
   xapt update
   xapt uninstall [--force]
-  xapt --help
-  xapt --version
+  xapt --help, -h
+  xapt --version, -v
 
-下一步：运行 xapt daemon start 启动本机 daemon。`;
+下一步：运行 xapt daemon start 启动本机服务。`;
 
 export function renderVersion(): string {
   return `xapt ${XAPT_VERSION}\n最低 Codex 版本 ${MINIMUM_CODEX_VERSION}`;
@@ -26,5 +26,5 @@ export function renderUsageError(message: string): string {
 }
 
 export function renderNotImplemented(command: string): string {
-  return `错误：${command} 尚未实现。\n下一步：请等待对应 xapt 实施 Ticket 完成。`;
+  return `错误：${command} 尚未实现。\n下一步：请等待对应功能完成。`;
 }

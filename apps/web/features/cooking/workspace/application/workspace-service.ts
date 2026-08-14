@@ -141,10 +141,7 @@ function deriveBugVisuals(
       if (bug.stage === 'REPAIRING') {
         const visual = repairs.repairByBug[bug.id]?.presentation.visual;
         if (!visual)
-          throw new PlatformError(
-            'INTERNAL_ERROR',
-            '修复中 Bug 缺少 Repair visual state',
-          );
+          throw new PlatformError('INTERNAL_ERROR', '修复中的缺陷缺少界面状态');
         return [bug.id, visual];
       }
       if (bug.stage === 'WAITING_FOR_UPDATE')
