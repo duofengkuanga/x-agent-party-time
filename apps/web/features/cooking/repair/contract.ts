@@ -22,6 +22,28 @@ export const RepairValidationSchema = z.object({
   detail: z.string().trim().min(1).max(2_000).optional(),
 });
 
+const RepositoryRelativePathSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(2_000)
+  .refine(
+    (path) =>
+      !path.startsWith('/') &&
+      !path.includes('\\') &&
+      !path.split('/').some((segment) => segment === '..'),
+    '必须是仓库内的相对路径',
+  );
+
+export const ManualOperationSchema = z
+  .object({
+    kind: z.literal('DATABASE_SQL'),
+    paths: z.array(RepositoryRelativePathSchema).min(1).max(100),
+  })
+  .strict();
+
+export const ManualOperationsSchema = z.array(ManualOperationSchema).max(100);
+
 const RepairExecutionResultValueSchema = z.discriminatedUnion('outcome', [
   z
     .object({
@@ -32,6 +54,7 @@ const RepairExecutionResultValueSchema = z.discriminatedUnion('outcome', [
       validations: z.array(RepairValidationSchema).max(100),
       warnings: z.array(z.string().trim().min(1).max(2_000)).max(100),
       commits: z.array(CommitShaSchema).max(100),
+      manualOperations: ManualOperationsSchema,
     })
     .strict()
     .superRefine((result, context) => {
@@ -55,6 +78,12 @@ const RepairExecutionResultValueSchema = z.discriminatedUnion('outcome', [
           code: 'custom',
           path: ['commits'],
           message: '目标分支已修复时不得返回候选本地提交',
+        });
+      if (result.manualOperations.length > 0)
+        context.addIssue({
+          code: 'custom',
+          path: ['manualOperations'],
+          message: '目标分支已修复时不得报告待执行的人工操作',
         });
       if (
         !result.validations.some(({ status }) => status === 'PASSED') ||
@@ -123,7 +152,8 @@ export const RepairExecutionResultSchema = z.preprocess((value) => {
       !isEmptyArrayPlaceholder(source.changes) ||
       !isEmptyArrayPlaceholder(source.validations) ||
       !isEmptyArrayPlaceholder(source.warnings) ||
-      !isEmptyArrayPlaceholder(source.commits)
+      !isEmptyArrayPlaceholder(source.commits) ||
+      !isEmptyArrayPlaceholder(source.manualOperations)
     )
       return value;
     const {
@@ -132,6 +162,7 @@ export const RepairExecutionResultSchema = z.preprocess((value) => {
       validations: _validations,
       warnings: _warnings,
       commits: _commits,
+      manualOperations: _manualOperations,
       ...normalized
     } = source;
     return normalized;
@@ -193,6 +224,24 @@ export const RepairOutputJsonSchema: JsonObject = {
       minItems: 0,
       maxItems: 100,
     },
+    manualOperations: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          kind: { type: 'string', enum: ['DATABASE_SQL'] },
+          paths: {
+            type: 'array',
+            items: { type: 'string', minLength: 1, maxLength: 2_000 },
+            minItems: 1,
+            maxItems: 100,
+          },
+        },
+        required: ['kind', 'paths'],
+        additionalProperties: false,
+      },
+      maxItems: 100,
+    },
     failedStep: {
       type: ['string', 'null'],
       minLength: 1,
@@ -222,6 +271,7 @@ export const RepairOutputJsonSchema: JsonObject = {
     'validations',
     'warnings',
     'commits',
+    'manualOperations',
     'failedStep',
     'reason',
     'completedActions',

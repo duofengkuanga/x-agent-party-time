@@ -930,6 +930,7 @@ async function completeClaimedRepair(
         validations: [{ name: '定向测试', status: 'PASSED' }],
         warnings: [],
         commits,
+        manualOperations: [],
       },
     },
   });
@@ -965,7 +966,6 @@ async function completeUpdate(
         completedActions: ['集成候选并完成更新'],
         validations: [{ name: '定向检查', status: 'PASSED' }],
         warnings: [],
-        changedFiles: [],
       },
     },
   });

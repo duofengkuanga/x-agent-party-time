@@ -96,31 +96,6 @@ test('已有 Task 通过 codexTurn 继续原 Thread', async () => {
   expect(fixture.executor.inputs[0]?.skill).toBeNull();
 });
 
-test('Update 完成时附加隔离工作区中收集的变更文件', async () => {
-  const fixture = await createFixture({
-    owner: { namespace: 'cooking', kind: 'UPDATE_BATCH', id: 'batch-1' },
-    workspace: {
-      key: 'update-batch:batch-1',
-      isolation: 'DETACHED_WORKTREE',
-      baseRef: 'origin/main',
-    },
-    changedFiles: ['src/service.ts', 'sql/add-index.sql'],
-  });
-
-  await fixture.service.cycle(session);
-  await fixture.service.waitForIdle();
-
-  expect(fixture.http.outcomes[0]).toMatchObject({
-    outcome: {
-      kind: 'SUCCEEDED',
-      result: {
-        summary: 'done',
-        changedFiles: ['src/service.ts', 'sql/add-index.sql'],
-      },
-    },
-  });
-});
-
 test('按 Execution 携带的审批约束启动 Codex', async () => {
   for (const approvalPolicy of ['never', 'on-request'] as const) {
     const fixture = await createFixture({ approvalPolicy });
@@ -329,7 +304,6 @@ async function createFixture(
     owner?: ClaimedExecution['owner'];
     approvalPolicy?: ClaimedExecution['approvalPolicy'];
     workspace?: ClaimedExecution['workspace'];
-    changedFiles?: string[];
   } = {},
 ) {
   const home = await mkdtemp(join(tmpdir(), 'xapt-execution-'));
@@ -370,9 +344,6 @@ async function createFixture(
       } as unknown as AttachmentMaterializer,
       {
         prepare: async () => ({ kind: 'EXECUTE', cwd: repositoryPath }),
-        changedFiles: options.changedFiles
-          ? async () => options.changedFiles!
-          : undefined,
       } as ExecutionWorkspaceManager,
       executor,
       {

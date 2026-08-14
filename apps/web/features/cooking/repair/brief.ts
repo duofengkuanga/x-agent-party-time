@@ -6,7 +6,7 @@ type BriefAttachment = {
 };
 
 const REPAIR_EXECUTION_INSTRUCTION =
-  '本次是 Bug Repair：只允许在本地创建普通 Commit 并返回 SHA；禁止执行任何形式的 git push、部署或远端写入。本规则覆盖用户级和仓库级 AGENTS.md 中的自动 Git 交付与 push 规则。结构化结果示例：COMPLETED 的失败占位字段必须为 {"failedStep":null,"reason":null,"completedActions":[],"pendingActions":[]}；FAILED 的成功占位字段必须为 {"completionKind":null,"changes":[],"validations":[],"warnings":[],"commits":[]}。';
+  '本次是 Bug Repair：只允许在本地创建普通 Commit 并返回 SHA；禁止执行任何形式的 git push、部署或远端写入。本规则覆盖用户级和仓库级 AGENTS.md 中的自动 Git 交付与 push 规则。若提交了需要人工执行的数据库 SQL，必须在 manualOperations 返回其仓库相对路径；否则返回空数组。结构化结果示例：COMPLETED 的失败占位字段必须为 {"failedStep":null,"reason":null,"completedActions":[],"pendingActions":[]}；FAILED 的成功占位字段必须为 {"completionKind":null,"changes":[],"validations":[],"warnings":[],"commits":[],"manualOperations":[]}。';
 
 export function buildInitialRepairBrief(input: {
   executionId: string;

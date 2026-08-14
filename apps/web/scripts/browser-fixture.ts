@@ -181,6 +181,7 @@ export async function seedBrowserFixture(
             validations: [{ name: '夹具验证', status: 'PASSED' }],
             warnings: [],
             commits: ['abcdef1'],
+            manualOperations: [],
           },
         },
       });

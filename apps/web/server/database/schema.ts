@@ -456,6 +456,7 @@ CREATE TABLE cooking_bug_repair_context (
   workspace_key TEXT NOT NULL UNIQUE,
   session_id TEXT,
   pending_commits_json TEXT NOT NULL,
+  pending_manual_operations_json TEXT NOT NULL,
   last_candidate_at TEXT,
   version INTEGER NOT NULL CHECK (version > 0),
   created_at TEXT NOT NULL,
@@ -509,6 +510,7 @@ CREATE TABLE cooking_update_batch_entry (
   bug_id TEXT NOT NULL REFERENCES cooking_bug(id) ON DELETE RESTRICT,
   position INTEGER NOT NULL CHECK (position >= 0),
   commits_json TEXT NOT NULL,
+  manual_operations_json TEXT NOT NULL,
   PRIMARY KEY(batch_id, bug_id),
   UNIQUE(batch_id, position)
 ) STRICT;

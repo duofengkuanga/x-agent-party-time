@@ -244,7 +244,7 @@ describe('RepairService', () => {
         taskSkillBinding: null,
         executionBrief: {
           executionInstruction:
-            '本次是 Bug Repair：只允许在本地创建普通 Commit 并返回 SHA；禁止执行任何形式的 git push、部署或远端写入。本规则覆盖用户级和仓库级 AGENTS.md 中的自动 Git 交付与 push 规则。结构化结果示例：COMPLETED 的失败占位字段必须为 {"failedStep":null,"reason":null,"completedActions":[],"pendingActions":[]}；FAILED 的成功占位字段必须为 {"completionKind":null,"changes":[],"validations":[],"warnings":[],"commits":[]}。',
+            '本次是 Bug Repair：只允许在本地创建普通 Commit 并返回 SHA；禁止执行任何形式的 git push、部署或远端写入。本规则覆盖用户级和仓库级 AGENTS.md 中的自动 Git 交付与 push 规则。若提交了需要人工执行的数据库 SQL，必须在 manualOperations 返回其仓库相对路径；否则返回空数组。结构化结果示例：COMPLETED 的失败占位字段必须为 {"failedStep":null,"reason":null,"completedActions":[],"pendingActions":[]}；FAILED 的成功占位字段必须为 {"completionKind":null,"changes":[],"validations":[],"warnings":[],"commits":[],"manualOperations":[]}。',
           bug: {
             title: '支付按钮无响应',
             attachments: {
@@ -317,6 +317,7 @@ describe('RepairService', () => {
             ],
             warnings: [],
             commits: ['aaaaaaa', 'bbbbbbb'],
+            manualOperations: [],
           },
         },
       }).state,
@@ -403,6 +404,7 @@ describe('RepairService', () => {
             ],
             warnings: [],
             commits: [],
+            manualOperations: [],
           },
         },
       }).state,
@@ -488,6 +490,7 @@ describe('RepairService', () => {
             validations: [{ name: '定向检查', status: 'PASSED' }],
             warnings: [],
             commits: ['abcdef1'],
+            manualOperations: [],
           },
         };
       },
@@ -665,6 +668,7 @@ describe('RepairService', () => {
         validations: [],
         warnings: [],
         commits: ['aaaaaaa', 'aaaaaaa'],
+        manualOperations: [],
       },
       {
         outcome: 'COMPLETED',
@@ -674,6 +678,7 @@ describe('RepairService', () => {
         validations: [],
         warnings: [],
         commits: ['aaaaaaa'],
+        manualOperations: [],
         pushed: true,
       },
       {
@@ -684,6 +689,7 @@ describe('RepairService', () => {
         validations: [],
         warnings: [],
         commits: ['aaaaaaa'],
+        manualOperations: [],
         failedStep: null,
         reason: null,
         completedActions: ['完成本地提交'],
@@ -697,6 +703,7 @@ describe('RepairService', () => {
         validations: [{ name: '目标分支检查', status: 'PASSED' }],
         warnings: [],
         commits: [],
+        manualOperations: [],
       },
       {
         outcome: 'COMPLETED',
@@ -706,6 +713,7 @@ describe('RepairService', () => {
         validations: [],
         warnings: [],
         commits: [],
+        manualOperations: [],
       },
       {
         outcome: 'COMPLETED',
@@ -715,6 +723,7 @@ describe('RepairService', () => {
         validations: [{ name: '目标分支检查', status: 'FAILED' }],
         warnings: [],
         commits: [],
+        manualOperations: [],
       },
       { outcome: 'UNKNOWN', summary: '非法状态', commits: ['aaaaaaa'] },
     ];
@@ -802,6 +811,7 @@ describe('RepairService', () => {
             validations: [],
             warnings: [],
             commits: ['ddddddd'],
+            manualOperations: [],
           },
         },
       }),

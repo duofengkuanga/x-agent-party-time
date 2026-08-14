@@ -266,10 +266,15 @@ afterEach(async () => {
 });
 
 describe('UpdateService', () => {
-  test('最终更新结果包含 SQL 文件时向工作台暴露人工数据库操作标识', async () => {
+  test('冻结 Repair 候选中的数据库人工操作并向工作台暴露标识', async () => {
     const fixture = await setup();
     fixture.createBug('需要数据库脚本的更新');
-    await completeNextRepair(fixture, 'repair-with-sql', ['aaaaaaa']);
+    await completeNextRepair(
+      fixture,
+      'repair-with-sql',
+      ['aaaaaaa'],
+      [{ kind: 'DATABASE_SQL', paths: ['sql/add-payment-index.sql'] }],
+    );
     const frozen = fixture.updates.freezeNow(
       fixture.users.developer.id,
       fixture.item.id,
@@ -285,18 +290,43 @@ describe('UpdateService', () => {
       sessionId: started.sessionId,
       outcome: {
         kind: 'SUCCEEDED',
-        result: {
-          ...completedUpdate('统一更新完成，SQL 交由人工执行'),
-          changedFiles: ['src/payment.ts', 'sql/add-payment-index.sql'],
-        },
+        result: completedUpdate('统一更新完成，SQL 交由人工执行'),
       },
     });
 
     const batch = latestBatch(fixture.database, fixture.item.id);
     expect(
       fixture.updates.batchView(fixture.users.developer.id, batch.id)
-        .hasSqlChanges,
+        .hasManualDatabaseOperation,
     ).toBe(true);
+  });
+
+  test('候选未声明人工数据库操作时不展示标识', async () => {
+    const fixture = await setup();
+    fixture.createBug('未收集变更文件的更新');
+    await completeNextRepair(fixture, 'repair-without-changes', ['aaaaaaa']);
+    const frozen = fixture.updates.freezeNow(
+      fixture.users.developer.id,
+      fixture.item.id,
+      { mutationId: randomUUID() },
+    );
+    const started = await startExecution(
+      fixture,
+      frozen.executionId,
+      'update-without-changes',
+    );
+    fixture.executions.complete(fixture.runner.id, started.executionId, {
+      leaseToken: started.leaseToken,
+      sessionId: started.sessionId,
+      outcome: { kind: 'SUCCEEDED', result: completedUpdate('统一更新完成') },
+    });
+
+    const batch = latestBatch(fixture.database, fixture.item.id);
+    expect(batch.state).toBe('COMPLETED');
+    expect(
+      fixture.updates.batchView(fixture.users.developer.id, batch.id)
+        .hasManualDatabaseOperation,
+    ).toBe(false);
   });
 
   test('候选提交重算两分钟截止，重启后由惰性准备原子冻结', async () => {
@@ -1014,7 +1044,6 @@ describe('UpdateService', () => {
           ],
           warnings: ['该失败不直接证明候选修改存在类型错误'],
           pendingActions: ['修复质量门后重新执行'],
-          changedFiles: [],
         },
       },
     });
@@ -1285,7 +1314,6 @@ function completedUpdate(summary: string) {
     completedActions: ['集成候选并完成部署'],
     validations: [{ name: '定向检查', status: 'PASSED' as const }],
     warnings: [],
-    changedFiles: [],
   };
 }
 
@@ -1296,7 +1324,6 @@ function pushedUpdate(summary: string) {
     completedActions: ['集成候选并普通 Push'],
     validations: [{ name: '定向检查', status: 'PASSED' as const }],
     warnings: [],
-    changedFiles: [],
   };
 }
 
@@ -1308,7 +1335,6 @@ function failedUpdate(summary: string) {
     reason: summary,
     completedActions: [],
     pendingActions: ['修正失败原因后重新执行'],
-    changedFiles: [],
   };
 }
 
@@ -1316,6 +1342,7 @@ async function completeNextRepair(
   fixture: Awaited<ReturnType<typeof setup>>,
   sessionId: string,
   commits: string[],
+  manualOperations: Array<{ kind: 'DATABASE_SQL'; paths: string[] }> = [],
 ): Promise<void> {
   const claimed = (await fixture.executions.claim(fixture.runner.id, 1, 0))[0]!;
   fixture.executions.start(fixture.runner.id, claimed.id, {
@@ -1337,6 +1364,7 @@ async function completeNextRepair(
         validations: [{ name: '定向测试', status: 'PASSED' }],
         warnings: [],
         commits,
+        manualOperations,
       },
     },
   });

@@ -24,6 +24,7 @@ import { TestSubmissionWriteStore } from '@/features/cooking/submissions/applica
 import {
   BugRepairViewSchema,
   ContinueRepairInputSchema,
+  ManualOperationsSchema,
   RepairExecutionResultSchema,
   RepairOutputJsonSchema,
   RepairMutationResultSchema,
@@ -78,6 +79,7 @@ type ContextRow = {
   workspace_key: string;
   session_id: string | null;
   pending_commits_json: string;
+  pending_manual_operations_json: string;
   last_candidate_at: string | null;
   version: number;
 };
@@ -129,8 +131,9 @@ export class RepairService {
         .prepare(
           `INSERT INTO cooking_bug_repair_context(
              bug_id, workspace_key, session_id, pending_commits_json,
+             pending_manual_operations_json,
              last_candidate_at, version, created_at, updated_at
-           ) VALUES (?, ?, NULL, '[]', NULL, 1, ?, ?)`,
+           ) VALUES (?, ?, NULL, '[]', '[]', NULL, 1, ?, ?)`,
         )
         .run(bugId, workspaceKey, now, now);
     const attempt = (latest?.attempt ?? 0) + 1;
@@ -306,12 +309,14 @@ export class RepairService {
         .prepare(
           `UPDATE cooking_bug_repair_context
            SET session_id = ?, pending_commits_json = ?,
+               pending_manual_operations_json = ?,
                last_candidate_at = ?, version = version + 1, updated_at = ?
            WHERE bug_id = ?`,
         )
         .run(
           execution.sessionId,
           JSON.stringify(interpreted.pendingCommits),
+          JSON.stringify(interpreted.pendingManualOperations),
           deliveryRequired ? now : null,
           now,
           attempt.bug_id,
@@ -323,9 +328,7 @@ export class RepairService {
            WHERE id = ? AND stage = 'REPAIRING'`,
         )
         .run(
-          deliveryRequired
-            ? 'WAITING_FOR_UPDATE'
-            : 'WAITING_FOR_VERIFICATION',
+          deliveryRequired ? 'WAITING_FOR_UPDATE' : 'WAITING_FOR_VERIFICATION',
           now,
           attempt.bug_id,
         );
@@ -679,6 +682,10 @@ export class RepairService {
         kind: 'COMPLETED';
         deliveryRequired: boolean;
         pendingCommits: string[];
+        pendingManualOperations: Array<{
+          kind: 'DATABASE_SQL';
+          paths: string[];
+        }>;
         attemptOutcome: unknown;
       }
     | {
@@ -691,6 +698,9 @@ export class RepairService {
       );
       if (parsed.success && parsed.data.outcome === 'COMPLETED') {
         const current = parseCommits(context.pending_commits_json);
+        const currentManualOperations = parseManualOperations(
+          context.pending_manual_operations_json,
+        );
         if (
           new Set(parsed.data.commits).size === parsed.data.commits.length &&
           !parsed.data.commits.some((commit) => current.includes(commit)) &&
@@ -702,6 +712,10 @@ export class RepairService {
             deliveryRequired:
               parsed.data.completionKind === 'CHANGES_COMMITTED',
             pendingCommits: [...current, ...parsed.data.commits],
+            pendingManualOperations: [
+              ...currentManualOperations,
+              ...parsed.data.manualOperations,
+            ],
             attemptOutcome: parsed.data,
           };
       }
@@ -1047,6 +1061,17 @@ function parseCommits(value: string): string[] {
   if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== 'string'))
     throw new PlatformError('INTERNAL_ERROR', '待提交记录无效');
   return parsed;
+}
+
+function parseManualOperations(value: string): Array<{
+  kind: 'DATABASE_SQL';
+  paths: string[];
+}> {
+  try {
+    return ManualOperationsSchema.parse(JSON.parse(value));
+  } catch {
+    throw new PlatformError('INTERNAL_ERROR', '待执行的人工操作记录无效');
+  }
 }
 
 function isTerminal(state: Execution['state']): boolean {

@@ -12,6 +12,7 @@ import {
 } from '@/server/execution/codex-turn';
 import type { CookingExecutionProjectionEvent } from '@/features/cooking/execution/application/execution-projection';
 import { DeploymentMethodSchema } from '@/features/cooking/engineering/contract';
+import { ManualOperationsSchema } from '@/features/cooking/repair/contract';
 import type {
   CookingInteractionView,
   CookingVisualPresentation,
@@ -32,7 +33,6 @@ import {
   ResolveUpdateInteractionInputSchema,
   UpdateBatchCommandInputSchema,
   UpdateBatchViewSchema,
-  hasSqlChanges,
   UpdateMutationResultSchema,
   UpdateWorkspaceProjectionSchema,
   type RetryUpdateInput,
@@ -72,6 +72,7 @@ type CandidateRow = {
   short_id: number;
   title: string;
   pending_commits_json: string;
+  pending_manual_operations_json: string;
   last_candidate_at: string;
 };
 
@@ -759,8 +760,10 @@ export class UpdateService {
     const deployment = DeploymentMethodSchema.parse(
       JSON.parse(batch.deployment_json),
     );
-    const hasBatchSqlChanges = attempts.some((attempt) =>
-      hasSqlChangesFromOutcome(attempt.outcome_json),
+    const hasManualDatabaseOperation = entries.some((entry) =>
+      parseManualOperations(entry.manual_operations_json).some(
+        (operation) => operation.kind === 'DATABASE_SQL',
+      ),
     );
     const projectedInteractions = this.interactionsForBatch(batchId).map(
       (row) => ({
@@ -831,7 +834,7 @@ export class UpdateService {
       targetBranch: source.target_branch,
       environmentName: source.environment_name,
       deploymentKind: deployment.kind,
-      hasSqlChanges: hasBatchSqlChanges,
+      hasManualDatabaseOperation,
       entries: entries.map((entry) => ({
         bugId: entry.bug_id,
         bugShortId: entry.short_id,
@@ -973,8 +976,8 @@ export class UpdateService {
       );
     const insertEntry = this.db.prepare(
       `INSERT INTO cooking_update_batch_entry(
-         batch_id, bug_id, position, commits_json
-       ) VALUES (?, ?, ?, ?)`,
+         batch_id, bug_id, position, commits_json, manual_operations_json
+       ) VALUES (?, ?, ?, ?, ?)`,
     );
     candidates.forEach((candidate, position) =>
       insertEntry.run(
@@ -982,6 +985,7 @@ export class UpdateService {
         candidate.bug_id,
         position,
         candidate.pending_commits_json,
+        candidate.pending_manual_operations_json,
       ),
     );
     const execution = this.executions.enqueue({
@@ -1137,7 +1141,8 @@ export class UpdateService {
     const contextUpdate = this.db
       .prepare(
         `UPDATE cooking_bug_repair_context
-         SET pending_commits_json = '[]', last_candidate_at = NULL,
+         SET pending_commits_json = '[]',
+             pending_manual_operations_json = '[]', last_candidate_at = NULL,
              version = version + 1, updated_at = ?
          WHERE bug_id IN (
            SELECT bug_id FROM cooking_update_batch_entry WHERE batch_id = ?
@@ -1296,7 +1301,9 @@ export class UpdateService {
     return this.db
       .prepare(
         `SELECT bug.id bug_id, bug.short_id, bug.title,
-                context.pending_commits_json, context.last_candidate_at
+                context.pending_commits_json,
+                context.pending_manual_operations_json,
+                context.last_candidate_at
          FROM cooking_bug bug
          JOIN cooking_bug_repair_context context ON context.bug_id = bug.id
          WHERE bug.submission_item_id = ?
@@ -1313,10 +1320,12 @@ export class UpdateService {
     short_id: number;
     title: string;
     commits_json: string;
+    manual_operations_json: string;
   }> {
     return this.db
       .prepare(
-        `SELECT entry.bug_id, bug.short_id, bug.title, entry.commits_json
+        `SELECT entry.bug_id, bug.short_id, bug.title, entry.commits_json,
+                entry.manual_operations_json
          FROM cooking_update_batch_entry entry
          JOIN cooking_bug bug ON bug.id = entry.bug_id
          WHERE entry.batch_id = ? ORDER BY entry.position`,
@@ -1326,6 +1335,7 @@ export class UpdateService {
       short_id: number;
       title: string;
       commits_json: string;
+      manual_operations_json: string;
     }>;
   }
 
@@ -1500,6 +1510,14 @@ function parseCommits(value: string): string[] {
   return parsed;
 }
 
+function parseManualOperations(value: string) {
+  try {
+    return ManualOperationsSchema.parse(JSON.parse(value));
+  } catch {
+    throw new PlatformError('INTERNAL_ERROR', '更新批次的人工操作记录无效');
+  }
+}
+
 function projectUpdateAttemptResult(outcomeJson: string, technical: boolean) {
   const outcome = JSON.parse(outcomeJson) as Record<string, unknown>;
   if (outcome.outcome === 'COMPLETED' || outcome.outcome === 'PUSHED')
@@ -1542,23 +1560,6 @@ function projectUpdateAttemptResult(outcomeJson: string, technical: boolean) {
     rawSummary:
       technical && typeof outcome.summary === 'string' ? outcome.summary : null,
   };
-}
-
-function hasSqlChangesFromOutcome(outcomeJson: string | null): boolean {
-  if (!outcomeJson) return false;
-  try {
-    const value: unknown = JSON.parse(outcomeJson);
-    if (!value || typeof value !== 'object' || Array.isArray(value))
-      return false;
-    const changedFiles = Reflect.get(value, 'changedFiles');
-    return (
-      Array.isArray(changedFiles) &&
-      changedFiles.every((file) => typeof file === 'string') &&
-      hasSqlChanges(changedFiles)
-    );
-  } catch {
-    return false;
-  }
 }
 
 function stringArray(value: unknown): string[] {

@@ -43,10 +43,6 @@ export interface ExecutionWorkspaceManager {
     repositoryPath: string,
     workspace: ExecutionWorkspace,
   ): Promise<PreparedExecutionWorkspace>;
-  changedFiles?(
-    repositoryPath: string,
-    workspace: ExecutionWorkspace,
-  ): Promise<string[]>;
 }
 
 export type PreparedExecutionWorkspace =
@@ -63,35 +59,6 @@ export class GitExecutionWorkspaceManager implements ExecutionWorkspaceManager {
   ) {
     this.worktreeRoot = resolve(paths.workspaces);
     this.statePath = join(this.worktreeRoot, 'state.json');
-  }
-
-  async changedFiles(
-    repositoryPath: string,
-    workspace: ExecutionWorkspace,
-  ): Promise<string[]> {
-    if (workspace.isolation === 'CLEANUP_WORKTREES')
-      throw new Error('清理工作区不包含可比较的代码变更');
-    const resolvedRepositoryPath = resolve(repositoryPath);
-    const current = await this.readState();
-    const record = current.workspaces[workspace.key];
-    if (
-      !record ||
-      record.repositoryPath !== resolvedRepositoryPath ||
-      !(await isExpectedGitWorktree(
-        resolvedRepositoryPath,
-        record,
-        this.worktreeRoot,
-      ))
-    )
-      throw new Error('更新工作区不存在或身份不匹配，无法读取代码变更');
-    const output = await git(record.worktreePath, [
-      'diff',
-      '--name-only',
-      '-z',
-      workspace.baseRef,
-      'HEAD',
-    ]);
-    return output.split('\0').filter((file) => file.length > 0);
   }
 
   async prepare(

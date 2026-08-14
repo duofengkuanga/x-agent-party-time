@@ -360,11 +360,7 @@ export class ExecutionService {
         sessionId: started.sessionId,
         outcome: {
           kind: 'SUCCEEDED',
-          result: await this.attachUpdateChangedFiles(
-            execution,
-            repositoryPath,
-            result,
-          ),
+          result,
         },
       };
     } catch (error) {
@@ -398,33 +394,6 @@ export class ExecutionService {
     if (await this.persistAndDeliver(session, 'OUTCOME', execution.id, request))
       await this.state.removeExecution(execution.id);
     this.controllers.delete(execution.id);
-  }
-
-  private async attachUpdateChangedFiles(
-    execution: ClaimedExecution,
-    repositoryPath: string,
-    result: JsonValue,
-  ): Promise<JsonValue> {
-    if (
-      execution.owner.namespace !== 'cooking' ||
-      execution.owner.kind !== 'UPDATE_BATCH' ||
-      !execution.workspace ||
-      execution.workspace.isolation === 'CLEANUP_WORKTREES' ||
-      !this.workspaces.changedFiles
-    )
-      return result;
-    let changedFiles: string[];
-    try {
-      changedFiles = await this.workspaces.changedFiles(
-        repositoryPath,
-        execution.workspace,
-      );
-    } catch {
-      return result;
-    }
-    if (!result || typeof result !== 'object' || Array.isArray(result))
-      return result;
-    return { ...result, changedFiles };
   }
 
   private async handleInteraction(
