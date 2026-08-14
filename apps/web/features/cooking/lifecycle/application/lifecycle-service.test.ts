@@ -965,6 +965,7 @@ async function completeUpdate(
         completedActions: ['集成候选并完成更新'],
         validations: [{ name: '定向检查', status: 'PASSED' }],
         warnings: [],
+        changedFiles: [],
       },
     },
   });

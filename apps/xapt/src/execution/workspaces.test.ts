@@ -252,6 +252,54 @@ describe('GitExecutionWorkspaceManager', () => {
     );
   });
 
+  test('Update 从隔离工作区的 baseRef 到 HEAD 收集变更文件', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'apt-workspaces-'));
+    directories.push(root);
+    const remote = join(root, 'remote.git');
+    const source = join(root, 'source');
+    const binding = join(root, 'binding');
+    await run(['git', 'init', '--bare', remote]);
+    await run(['git', 'init', source]);
+    await run([
+      'git',
+      '-C',
+      source,
+      'config',
+      'user.email',
+      'test@example.com',
+    ]);
+    await run(['git', '-C', source, 'config', 'user.name', 'Test']);
+    await writeFile(join(source, 'README.md'), 'baseline\n');
+    await run(['git', '-C', source, 'add', 'README.md']);
+    await run(['git', '-C', source, 'commit', '-m', 'baseline']);
+    await run(['git', '-C', source, 'branch', '-M', 'main']);
+    await run(['git', '-C', source, 'remote', 'add', 'origin', remote]);
+    await run(['git', '-C', source, 'push', '-u', 'origin', 'main']);
+    await run(['git', 'clone', remote, binding]);
+    await run(['git', '-C', binding, 'switch', 'main']);
+
+    const manager = new GitExecutionWorkspaceManager(xaptPaths(root));
+    const workspace = {
+      key: 'update-batch:batch-1',
+      isolation: 'DETACHED_WORKTREE' as const,
+      baseRef: 'origin/main',
+    };
+    const update = cwd(await manager.prepare(binding, workspace));
+    await mkdir(join(update, 'sql'));
+    await writeFile(
+      join(update, 'sql', 'add-index.sql'),
+      'CREATE INDEX test;\n',
+    );
+    await writeFile(join(update, 'service.ts'), 'export {};\n');
+    await run(['git', '-C', update, 'add', 'sql/add-index.sql', 'service.ts']);
+    await run(['git', '-C', update, 'commit', '-m', 'update']);
+
+    expect(await manager.changedFiles(binding, workspace)).toEqual([
+      'service.ts',
+      'sql/add-index.sql',
+    ]);
+  });
+
   test('removeWorkspaces 先全量校验再删除，force 覆盖未提交修改', async () => {
     const root = await mkdtemp(join(tmpdir(), 'apt-workspaces-'));
     directories.push(root);

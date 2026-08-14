@@ -32,6 +32,21 @@ export const UpdateValidationSchema = z.object({
   detail: z.string().trim().min(1).max(2_000).optional(),
 });
 
+const UpdateChangedFilesSchema = z
+  .array(z.string().min(1).max(2_000))
+  .max(5_000);
+
+export function hasSqlChanges(changedFiles: string[]): boolean {
+  return changedFiles.some((file) => {
+    const normalized = file.replaceAll('\\', '/').replace(/^\.\//u, '');
+    const lower = normalized.toLowerCase();
+    return (
+      (lower.startsWith('sql/') || !lower.includes('/')) &&
+      lower.endsWith('.sql')
+    );
+  });
+}
+
 const CompletedUpdateExecutionResultSchema = z
   .object({
     outcome: z.literal('COMPLETED'),
@@ -39,6 +54,7 @@ const CompletedUpdateExecutionResultSchema = z
     completedActions: z.array(z.string().trim().min(1).max(2_000)).max(100),
     validations: z.array(UpdateValidationSchema).max(100),
     warnings: z.array(z.string().trim().min(1).max(2_000)).max(100),
+    changedFiles: UpdateChangedFilesSchema,
   })
   .strict();
 
@@ -49,6 +65,7 @@ const PushedUpdateExecutionResultSchema = z
     completedActions: z.array(z.string().trim().min(1).max(2_000)).max(100),
     validations: z.array(UpdateValidationSchema).max(100),
     warnings: z.array(z.string().trim().min(1).max(2_000)).max(100),
+    changedFiles: UpdateChangedFilesSchema,
   })
   .strict();
 
@@ -62,6 +79,7 @@ const FailedUpdateExecutionResultSchema = z
     validations: z.array(UpdateValidationSchema).max(100).default([]),
     warnings: z.array(z.string().trim().min(1).max(2_000)).max(100).default([]),
     pendingActions: z.array(z.string().trim().min(1).max(2_000)).max(100),
+    changedFiles: UpdateChangedFilesSchema,
   })
   .strict();
 
@@ -181,6 +199,7 @@ export const UpdateBatchViewSchema = z.object({
   targetBranch: z.string().trim().min(1),
   environmentName: z.string().trim().min(1),
   deploymentKind: z.enum(['LOCAL_SCRIPT', 'CI_CD']),
+  hasSqlChanges: z.boolean(),
   entries: z.array(UpdateBatchEntryViewSchema).min(1),
   timeline: z.array(UpdateBatchTimelineNodeSchema),
   availableActions: z.array(z.enum(['RETRY_UPDATE', 'REPORT_EXTERNAL'])),

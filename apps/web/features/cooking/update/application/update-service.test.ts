@@ -266,6 +266,39 @@ afterEach(async () => {
 });
 
 describe('UpdateService', () => {
+  test('最终更新结果包含 SQL 文件时向工作台暴露人工数据库操作标识', async () => {
+    const fixture = await setup();
+    fixture.createBug('需要数据库脚本的更新');
+    await completeNextRepair(fixture, 'repair-with-sql', ['aaaaaaa']);
+    const frozen = fixture.updates.freezeNow(
+      fixture.users.developer.id,
+      fixture.item.id,
+      { mutationId: randomUUID() },
+    );
+    const started = await startExecution(
+      fixture,
+      frozen.executionId,
+      'update-with-sql',
+    );
+    fixture.executions.complete(fixture.runner.id, started.executionId, {
+      leaseToken: started.leaseToken,
+      sessionId: started.sessionId,
+      outcome: {
+        kind: 'SUCCEEDED',
+        result: {
+          ...completedUpdate('统一更新完成，SQL 交由人工执行'),
+          changedFiles: ['src/payment.ts', 'sql/add-payment-index.sql'],
+        },
+      },
+    });
+
+    const batch = latestBatch(fixture.database, fixture.item.id);
+    expect(
+      fixture.updates.batchView(fixture.users.developer.id, batch.id)
+        .hasSqlChanges,
+    ).toBe(true);
+  });
+
   test('候选提交重算两分钟截止，重启后由惰性准备原子冻结', async () => {
     const fixture = await setup();
     const first = fixture.createBug('支付按钮无响应');
@@ -981,6 +1014,7 @@ describe('UpdateService', () => {
           ],
           warnings: ['该失败不直接证明候选修改存在类型错误'],
           pendingActions: ['修复质量门后重新执行'],
+          changedFiles: [],
         },
       },
     });
@@ -1251,6 +1285,7 @@ function completedUpdate(summary: string) {
     completedActions: ['集成候选并完成部署'],
     validations: [{ name: '定向检查', status: 'PASSED' as const }],
     warnings: [],
+    changedFiles: [],
   };
 }
 
@@ -1261,6 +1296,7 @@ function pushedUpdate(summary: string) {
     completedActions: ['集成候选并普通 Push'],
     validations: [{ name: '定向检查', status: 'PASSED' as const }],
     warnings: [],
+    changedFiles: [],
   };
 }
 
@@ -1272,6 +1308,7 @@ function failedUpdate(summary: string) {
     reason: summary,
     completedActions: [],
     pendingActions: ['修正失败原因后重新执行'],
+    changedFiles: [],
   };
 }
 

@@ -2128,6 +2128,9 @@ function UpdateBatchDetails({
       <Detail label="目标分支">{batch.targetBranch}</Detail>
       <Detail label="部署方式">{deploymentLabel(batch.deploymentKind)}</Detail>
       <Detail label="环境">{batch.environmentName}</Detail>
+      {batch.hasSqlChanges ? (
+        <Detail label="数据库操作">请人工执行代码仓库中的 SQL</Detail>
+      ) : null}
     </dl>
   );
 

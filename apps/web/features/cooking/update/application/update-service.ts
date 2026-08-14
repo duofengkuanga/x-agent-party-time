@@ -32,6 +32,7 @@ import {
   ResolveUpdateInteractionInputSchema,
   UpdateBatchCommandInputSchema,
   UpdateBatchViewSchema,
+  hasSqlChanges,
   UpdateMutationResultSchema,
   UpdateWorkspaceProjectionSchema,
   type RetryUpdateInput,
@@ -758,6 +759,9 @@ export class UpdateService {
     const deployment = DeploymentMethodSchema.parse(
       JSON.parse(batch.deployment_json),
     );
+    const hasBatchSqlChanges = attempts.some((attempt) =>
+      hasSqlChangesFromOutcome(attempt.outcome_json),
+    );
     const projectedInteractions = this.interactionsForBatch(batchId).map(
       (row) => ({
         executionId: row.execution_id,
@@ -827,6 +831,7 @@ export class UpdateService {
       targetBranch: source.target_branch,
       environmentName: source.environment_name,
       deploymentKind: deployment.kind,
+      hasSqlChanges: hasBatchSqlChanges,
       entries: entries.map((entry) => ({
         bugId: entry.bug_id,
         bugShortId: entry.short_id,
@@ -1537,6 +1542,23 @@ function projectUpdateAttemptResult(outcomeJson: string, technical: boolean) {
     rawSummary:
       technical && typeof outcome.summary === 'string' ? outcome.summary : null,
   };
+}
+
+function hasSqlChangesFromOutcome(outcomeJson: string | null): boolean {
+  if (!outcomeJson) return false;
+  try {
+    const value: unknown = JSON.parse(outcomeJson);
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+      return false;
+    const changedFiles = Reflect.get(value, 'changedFiles');
+    return (
+      Array.isArray(changedFiles) &&
+      changedFiles.every((file) => typeof file === 'string') &&
+      hasSqlChanges(changedFiles)
+    );
+  } catch {
+    return false;
+  }
 }
 
 function stringArray(value: unknown): string[] {
