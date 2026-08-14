@@ -6,7 +6,7 @@ import {
 import { isAbsolute } from 'node:path';
 import { z } from 'zod';
 
-export const STATE_SCHEMA_VERSION = 1;
+export const STATE_SCHEMA_VERSION = 2;
 
 export const ConnectionStateSchema = z
   .object({

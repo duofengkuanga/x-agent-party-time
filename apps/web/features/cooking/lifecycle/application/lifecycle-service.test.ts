@@ -393,9 +393,16 @@ describe('LifecycleService', () => {
     );
     expect(currentBug(fixture.database, localBug.id).stage).toBe('REPAIRING');
     const continued = fixture.executions.get(failed.executionId!);
-    expect(continued.resumeSessionId).toBe('repair-local');
+    expect(continued.codexTurn).toMatchObject({
+      kind: 'CONTINUATION',
+      taskId: 'repair-local',
+    });
     expect(continued.priority).toBe(0);
-    expect(continued.renderedPrompt).toContain('第 1 轮验证未通过');
+    expect(
+      continued.codexTurn?.kind === 'CONTINUATION'
+        ? continued.codexTurn.input
+        : '',
+    ).toContain('第 1 轮验证未通过');
     expect(
       fixture.database
         .prepare(
@@ -504,6 +511,7 @@ describe('LifecycleService', () => {
       kind: 'STARTED',
       leaseToken: claimedCleanup.lease.token,
       sessionId: 'cleanup-session',
+      taskSkillBinding: null,
     });
     const cleanupInteraction = fixture.executions.openInteraction(
       fixture.runner.id,
@@ -636,7 +644,7 @@ describe('LifecycleService', () => {
     );
     expect(fixture.executions.get(retried.executionId)).toMatchObject({
       approvalPolicy: 'never',
-      resumeSessionId: 'cleanup-session',
+      codexTurn: null,
     });
     await completeCleanup(fixture, retried.executionId, 'cleanup-session', {
       outcome: 'COMPLETED',
@@ -779,9 +787,9 @@ describe('LifecycleService', () => {
       },
     );
     expect(currentBug(fixture.database, bug.id).stage).toBe('REPAIRING');
-    expect(fixture.executions.get(reopened.executionId!).resumeSessionId).toBe(
-      'repair-reopen',
-    );
+    expect(
+      fixture.executions.get(reopened.executionId!).codexTurn,
+    ).toMatchObject({ kind: 'CONTINUATION', taskId: 'repair-reopen' });
     expect(
       fixture.lifecycle.workspace(
         fixture.users.tester.id,
@@ -907,6 +915,7 @@ async function completeClaimedRepair(
     kind: 'STARTED',
     leaseToken,
     sessionId,
+    taskSkillBinding: testSkillBinding('agent-party-time-repair-bug'),
   });
   fixture.executions.complete(fixture.runner.id, executionId, {
     leaseToken,
@@ -941,6 +950,9 @@ async function completeUpdate(
     kind: 'STARTED',
     leaseToken: claimed.lease.token,
     sessionId: `update-${submissionItemId}`,
+    taskSkillBinding: testSkillBinding(
+      'agent-party-time-integrate-update-batch',
+    ),
   });
   fixture.executions.complete(fixture.runner.id, claimed.id, {
     leaseToken: claimed.lease.token,
@@ -972,6 +984,7 @@ async function completeCleanup(
     kind: 'STARTED',
     leaseToken: claimed.lease.token,
     sessionId,
+    taskSkillBinding: null,
   });
   fixture.executions.complete(fixture.runner.id, executionId, {
     leaseToken: claimed.lease.token,
@@ -986,6 +999,14 @@ async function completeCleanup(
        WHERE attempt.execution_id = ?`,
     )
     .get(executionId) as { cleanupId: string; state: string };
+}
+
+function testSkillBinding(skillName: string) {
+  return {
+    skillName,
+    bundleHash: 'a'.repeat(64),
+    sourceRevision: 'b'.repeat(40),
+  };
 }
 
 function latestBatch(database: AppDatabase, submissionItemId: string) {

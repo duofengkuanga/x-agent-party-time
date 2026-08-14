@@ -16,6 +16,18 @@ test('xapt 路径按生命周期分层且版本入口稳定', () => {
   expect(paths.applicationSupport).toBe(
     join(home, 'Library/Application Support', XAPT_IDENTIFIER),
   );
+  expect(paths.skillBundles).toBe(
+    join(
+      home,
+      'Library/Application Support',
+      XAPT_IDENTIFIER,
+      'skills/bundles',
+    ),
+  );
+  expect(paths.skillGenerations).toEndWith('/skills/generations');
+  expect(paths.skillNamespaceLink).toBe(
+    join(home, '.agents/skills/x-agent-party-time'),
+  );
   expect(paths.outbox).toContain('/Application Support/');
   expect(paths.outbox).not.toContain('/Caches/');
   expect(paths.workspaces).not.toContain('/Caches/');

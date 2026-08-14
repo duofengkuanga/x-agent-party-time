@@ -549,10 +549,16 @@ describe('UpdateService', () => {
     const continuation = fixture.executions.get(continued.executionId);
     expect(continuation).toMatchObject({
       previousExecutionId: failed.executionId,
-      resumeSessionId: 'update-session',
+      codexTurn: {
+        kind: 'CONTINUATION',
+        taskId: 'update-session',
+      },
       priority: 0,
     });
-    expect(continuation.renderedPrompt).toContain('上一轮结构化失败结果');
+    expect(continuation.codexTurn?.kind).toBe('CONTINUATION');
+    if (continuation.codexTurn?.kind !== 'CONTINUATION')
+      throw new Error('需要继续 Turn');
+    expect(continuation.codexTurn.input).toBe('继续完成上次未完成的任务。');
     const resumed = await startExecution(
       fixture,
       continuation.id,
@@ -576,6 +582,45 @@ describe('UpdateService', () => {
     );
     expect(pendingCommits(fixture.database, first.id)).toEqual([]);
     expect(pendingCommits(fixture.database, second.id)).toEqual([]);
+  });
+
+  test('首次启动失败且原 Task 不存在时不自动重建 Update Task', async () => {
+    const fixture = await setup();
+    fixture.createBug('启动失败候选');
+    await completeNextRepair(fixture, 'repair-before-start-failure', [
+      'aaaaaaa',
+    ]);
+    const frozen = fixture.updates.freezeNow(
+      fixture.users.developer.id,
+      fixture.item.id,
+      { mutationId: randomUUID() },
+    );
+    const claimed = (
+      await fixture.executions.claim(fixture.runner.id, 1, 0)
+    )[0]!;
+    expect(claimed.id).toBe(frozen.executionId);
+    fixture.executions.start(fixture.runner.id, claimed.id, {
+      kind: 'START_FAILED',
+      leaseToken: claimed.lease.token,
+      failure: {
+        code: 'CODEX_START_FAILED',
+        message: 'Codex Task 未创建',
+        retryable: true,
+      },
+    });
+    const batch = latestBatch(fixture.database, fixture.item.id);
+
+    expect(() =>
+      fixture.updates.retryUpdate(fixture.users.developer.id, batch.id, {
+        mutationId: randomUUID(),
+        expectedVersion: batch.version,
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        code: 'INVALID_TRANSITION',
+        message: '原 Update Task 不存在，不能自动重建',
+      }),
+    );
   });
 
   test('CI/CD Push 后等待外部结果，失败报告携带附件在原 Batch 与 Session 继续', async () => {
@@ -706,9 +751,14 @@ describe('UpdateService', () => {
     const continuationExecution = fixture.executions.get(
       continued.executionId!,
     );
-    expect(continuationExecution.resumeSessionId).toBe('update-ci-session');
-    expect(continuationExecution.renderedPrompt).toContain('流水线测试失败');
-    expect(continuationExecution.renderedPrompt).not.toContain('仓库逻辑地址');
+    expect(continuationExecution.codexTurn?.kind).toBe('CONTINUATION');
+    if (continuationExecution.codexTurn?.kind !== 'CONTINUATION')
+      throw new Error('需要继续 Turn');
+    expect(continuationExecution.codexTurn.taskId).toBe('update-ci-session');
+    expect(continuationExecution.codexTurn.input).toContain('流水线测试失败');
+    expect(continuationExecution.codexTurn.input).not.toContain(
+      'repositoryUrl',
+    );
     expect(
       fixture.database
         .prepare(
@@ -837,11 +887,17 @@ describe('UpdateService', () => {
       await fixture.executions.claim(fixture.runner.id, 1, 0)
     )[0]!;
     expect(reclaimed.id).toBe(first.executionId);
-    expect(reclaimed.resumeSessionId).toBe('lease-update-session');
+    expect(reclaimed.codexTurn).toMatchObject({
+      kind: 'CONTINUATION',
+      taskId: 'lease-update-session',
+    });
     fixture.executions.start(fixture.runner.id, reclaimed.id, {
       kind: 'STARTED',
       leaseToken: reclaimed.lease.token,
       sessionId: 'lease-update-session',
+      taskSkillBinding: testSkillBinding(
+        'agent-party-time-integrate-update-batch',
+      ),
     });
     expect(
       fixture.database
@@ -959,7 +1015,8 @@ describe('UpdateService', () => {
       '00000000-0000-4000-8000-000000000002',
       '00000000-0000-4000-8000-000000000003',
       '00000000-0000-4000-8000-000000000004',
-      '00000000-0000-4000-8000-000000000004',
+      '00000000-0000-4000-8000-000000000005',
+      '00000000-0000-4000-8000-000000000005',
     ];
     let idIndex = 0;
     const fixture = await setup({
@@ -1163,10 +1220,14 @@ describe('UpdateService', () => {
       fetch: updateProtocolFetch(fixture),
       credential: fixture.pairedRunner.credential,
     });
-    let claimedPrompt = '';
+    let claimedCommits: string[] = [];
     const completed = await agent.runNext(
       async (execution) => {
-        claimedPrompt = execution.renderedPrompt;
+        if (execution.codexTurn?.kind !== 'INITIAL')
+          throw new Error('需要首次 Update Turn');
+        const candidates = execution.codexTurn.executionBrief
+          .frozenCandidates as Array<{ commits: string[] }>;
+        claimedCommits = candidates.flatMap((candidate) => candidate.commits);
         return {
           kind: 'SUCCEEDED',
           result: completedUpdate('普通 Push 和本地脚本完成'),
@@ -1176,9 +1237,7 @@ describe('UpdateService', () => {
     );
 
     expect(completed?.id).toBe(frozen.executionId);
-    expect(claimedPrompt.indexOf(commits[0]!)).toBeLessThan(
-      claimedPrompt.indexOf(commits[1]!),
-    );
+    expect(claimedCommits).toEqual(commits);
     expect(latestBatch(fixture.database, fixture.item.id).state).toBe(
       'COMPLETED',
     );
@@ -1226,6 +1285,7 @@ async function completeNextRepair(
     kind: 'STARTED',
     leaseToken: claimed.lease.token,
     sessionId,
+    taskSkillBinding: testSkillBinding('agent-party-time-repair-bug'),
   });
   fixture.executions.complete(fixture.runner.id, claimed.id, {
     leaseToken: claimed.lease.token,
@@ -1244,6 +1304,14 @@ async function completeNextRepair(
   });
 }
 
+function testSkillBinding(skillName: string) {
+  return {
+    skillName,
+    bundleHash: 'a'.repeat(64),
+    sourceRevision: 'b'.repeat(40),
+  };
+}
+
 async function startExecution(
   fixture: Awaited<ReturnType<typeof setup>>,
   executionId: string,
@@ -1255,6 +1323,9 @@ async function startExecution(
     kind: 'STARTED',
     leaseToken: claimed.lease.token,
     sessionId,
+    taskSkillBinding: testSkillBinding(
+      'agent-party-time-integrate-update-batch',
+    ),
   });
   return {
     executionId,

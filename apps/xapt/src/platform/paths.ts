@@ -12,6 +12,11 @@ export interface XaptPaths {
   currentExecutable: string;
   installState: string;
   applicationSupport: string;
+  skills: string;
+  skillBundles: string;
+  skillGenerations: string;
+  userSkills: string;
+  skillNamespaceLink: string;
   connection: string;
   bindings: string;
   run: string;
@@ -42,6 +47,7 @@ export function xaptPaths(home: string): XaptPaths {
     XAPT_IDENTIFIER,
   );
   const state = join(applicationSupport, 'state');
+  const skills = join(applicationSupport, 'skills');
   const caches = join(normalizedHome, 'Library', 'Caches', XAPT_IDENTIFIER);
   const logs = join(normalizedHome, 'Library', 'Logs', XAPT_IDENTIFIER);
   const versions = join(installRoot, 'versions');
@@ -56,6 +62,16 @@ export function xaptPaths(home: string): XaptPaths {
     currentExecutable: join(currentLink, 'xapt'),
     installState: join(installRoot, 'install.json'),
     applicationSupport,
+    skills,
+    skillBundles: join(skills, 'bundles'),
+    skillGenerations: join(skills, 'generations'),
+    userSkills: join(normalizedHome, '.agents', 'skills'),
+    skillNamespaceLink: join(
+      normalizedHome,
+      '.agents',
+      'skills',
+      'x-agent-party-time',
+    ),
     connection: join(applicationSupport, 'connection.json'),
     bindings: join(applicationSupport, 'bindings.json'),
     run: join(applicationSupport, 'run'),

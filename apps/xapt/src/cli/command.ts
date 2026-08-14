@@ -5,6 +5,7 @@ export type XaptCommand =
   | { kind: 'daemon-connect'; serverUrl: string }
   | { kind: 'daemon-stop'; force: boolean }
   | { kind: 'daemon-status' }
+  | { kind: 'skills-update' }
   | { kind: 'update' }
   | { kind: 'uninstall'; force: boolean }
   | {
@@ -32,6 +33,8 @@ export function parseCommand(args: readonly string[]): XaptCommand {
       return parseDaemonCommand(rest);
     case 'bugs':
       return parseBugsCommand(rest);
+    case 'skills':
+      return parseSkillsCommand(rest);
     case 'update':
       requireNoArguments('update', rest);
       return { kind: 'update' };
@@ -46,6 +49,16 @@ export function parseCommand(args: readonly string[]): XaptCommand {
     default:
       throw new CliUsageError(`未知命令“${command}”`);
   }
+}
+
+function parseSkillsCommand(args: readonly string[]): XaptCommand {
+  const [command, ...rest] = args;
+  if (command === 'update') {
+    requireNoArguments('skills update', rest);
+    return { kind: 'skills-update' };
+  }
+  if (command === undefined) throw new CliUsageError('缺少 skills 子命令');
+  throw new CliUsageError(`未知 skills 子命令“${command}”`);
 }
 
 function parseDaemonCommand(args: readonly string[]): XaptCommand {

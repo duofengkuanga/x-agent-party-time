@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { PlatformError } from '@/server/errors';
 
-export const SERVER_SCHEMA_VERSION = 20;
+export const SERVER_SCHEMA_VERSION = 21;
 
 const SCHEMA = `
 CREATE TABLE platform_user (
@@ -110,15 +110,19 @@ CREATE TABLE platform_execution (
     'FAILED',
     'CANCELLED'
   )),
-  prompt_kind TEXT NOT NULL,
-  prompt_version INTEGER NOT NULL CHECK (prompt_version > 0),
-  rendered_prompt TEXT NOT NULL,
-  rendered_prompt_hash TEXT NOT NULL CHECK (length(rendered_prompt_hash) = 64),
-  output_json_schema TEXT NOT NULL,
+  codex_turn_json TEXT CHECK (
+    codex_turn_json IS NULL OR json_valid(codex_turn_json)
+  ),
+  skill_name TEXT,
+  skill_bundle_hash TEXT CHECK (
+    skill_bundle_hash IS NULL OR length(skill_bundle_hash) = 64
+  ),
+  skill_source_revision TEXT CHECK (
+    skill_source_revision IS NULL OR length(skill_source_revision) = 40
+  ),
   workspace_json TEXT CHECK (
     workspace_json IS NULL OR json_valid(workspace_json)
   ),
-  resume_session_id TEXT,
   session_id TEXT,
   lease_token_hash TEXT,
   lease_expires_at TEXT,

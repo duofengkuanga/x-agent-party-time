@@ -1,7 +1,9 @@
 import { afterEach, expect, test } from 'bun:test';
 import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { serializeDeterministicJson } from '@agent-party-time/execution-contract';
 import type {
   ClaimedExecution,
   CompleteExecutionRequest,
@@ -24,6 +26,7 @@ import type {
 } from './codex-app-server';
 import { CodexAppServerError } from './codex-app-server';
 import { ExecutionService } from './service';
+import type { SkillBundleManager } from '../skills/manager';
 import type {
   ExecutionWorkspaceManager,
   PreparedExecutionWorkspace,
@@ -34,6 +37,11 @@ const executionId = '00000000-0000-4000-8000-000000000301';
 const bindingId = '00000000-0000-4000-8000-000000000302';
 const runnerId = '00000000-0000-4000-8000-000000000303';
 const leaseToken = 'lease-token-at-least-thirty-two-characters';
+const skillBinding = {
+  skillName: 'agent-party-time-repair-bug' as const,
+  bundleHash: 'a'.repeat(64),
+  sourceRevision: 'b'.repeat(40),
+};
 const session: AuthenticatedRunnerSession = {
   serverOrigin: 'https://apt.example.com',
   credential: 'credential-secret-at-least-thirty-two-characters',
@@ -57,6 +65,7 @@ test('单槽完成领取、Codex Session、START 与结构化 Outcome happy path
       kind: 'STARTED',
       leaseToken,
       sessionId: 'thread-new',
+      taskSkillBinding: skillBinding,
     },
   ]);
   expect(fixture.http.outcomes).toEqual([
@@ -68,21 +77,23 @@ test('单槽完成领取、Codex Session、START 与结构化 Outcome happy path
   ]);
   expect(fixture.executor.inputs[0]).toMatchObject({
     repositoryPath: fixture.repositoryPath,
-    prompt: '只返回 JSON',
-    resumeSessionId: null,
+    text: '{"instruction":"只返回 JSON"}',
+    taskId: null,
+    skill: { name: skillBinding.skillName },
   });
   expect(await fixture.state.loadExecutions()).toEqual([]);
   expect(await fixture.state.loadOutbox()).toEqual([]);
   expect(fixture.service.projection.activeExecutionCount).toBe(0);
 });
 
-test('已有 Session 通过 resumeSessionId 继续原 Thread', async () => {
-  const fixture = await createFixture({ resumeSessionId: 'thread-existing' });
+test('已有 Task 通过 codexTurn 继续原 Thread', async () => {
+  const fixture = await createFixture({ taskId: 'thread-existing' });
 
   await fixture.service.cycle(session);
   await fixture.service.waitForIdle();
 
-  expect(fixture.executor.inputs[0]?.resumeSessionId).toBe('thread-existing');
+  expect(fixture.executor.inputs[0]?.taskId).toBe('thread-existing');
+  expect(fixture.executor.inputs[0]?.skill).toBeNull();
 });
 
 test('按 Execution 携带的审批约束启动 Codex', async () => {
@@ -207,7 +218,7 @@ test('恢复后的已解决 Interaction 直接回填给恢复的 Codex Session',
   };
   fixture.http.claimed[0] = {
     ...fixture.http.claimed[0]!,
-    resumeSessionId: 'thread-recovered',
+    codexTurn: continuationTurn('thread-recovered'),
     recoveredInteraction: {
       method: 'item/tool/requestUserInput',
       payload: { questions: [{ id: 'question' }] },
@@ -218,7 +229,7 @@ test('恢复后的已解决 Interaction 直接回填给恢复的 Codex Session',
   await fixture.service.cycle(session);
   await fixture.service.waitForIdle();
 
-  expect(fixture.executor.inputs[0]?.resumeSessionId).toBe('thread-recovered');
+  expect(fixture.executor.inputs[0]?.taskId).toBe('thread-recovered');
   expect(fixture.http.openedInteractions).toEqual([]);
   expect(fixture.http.outcomes[0]).toMatchObject({
     outcome: { kind: 'SUCCEEDED', result: resolution },
@@ -285,7 +296,7 @@ test('续租将最新 Lease 过期时间写入崩溃恢复记录', async () => {
 
 async function createFixture(
   options: {
-    resumeSessionId?: string;
+    taskId?: string;
     executorFailure?: Error;
     failOutcome?: boolean;
     deferredExecutor?: boolean;
@@ -305,7 +316,7 @@ async function createFixture(
   await state.bind(bindingId, repositoryPath);
   const http = new FakeExecutionHttp(
     claimedExecution(
-      options.resumeSessionId ?? null,
+      options.taskId ?? null,
       executionId,
       bindingId,
       options.owner,
@@ -333,6 +344,16 @@ async function createFixture(
         prepare: async () => ({ kind: 'EXECUTE', cwd: repositoryPath }),
       } as ExecutionWorkspaceManager,
       executor,
+      {
+        resolveCurrent: async () => ({
+          ...skillBinding,
+          path: join(home, 'skills', skillBinding.bundleHash),
+        }),
+        resolveBound: async (identity: typeof skillBinding) => ({
+          ...identity,
+          path: join(home, 'skills', identity.bundleHash),
+        }),
+      } as unknown as SkillBundleManager,
       () => now,
       () => `00000000-0000-4000-8000-${String(nextId++).padStart(12, '0')}`,
     );
@@ -491,7 +512,7 @@ class FakeCodexExecutor implements CodexExecutor {
             )
           : Promise.resolve({ summary: 'done' });
     return {
-      sessionId: input.resumeSessionId ?? 'thread-new',
+      sessionId: input.taskId ?? 'thread-new',
       completion,
     };
   }
@@ -510,7 +531,7 @@ class FakeCodexExecutor implements CodexExecutor {
 }
 
 function claimedExecution(
-  resumeSessionId: string | null,
+  taskId: string | null,
   id = executionId,
   localBindingId = bindingId,
   owner: ClaimedExecution['owner'] = {
@@ -530,14 +551,9 @@ function claimedExecution(
     priority: 0,
     approvalPolicy,
     state: 'CLAIMED',
-    promptKind: 'test',
-    promptVersion: 1,
-    renderedPrompt: '只返回 JSON',
-    renderedPromptHash: 'a'.repeat(64),
-    outputJsonSchema: { type: 'object' },
+    codexTurn: taskId ? continuationTurn(taskId) : initialTurn(),
     workspace: null,
     attachments: [],
-    resumeSessionId,
     sessionId: null,
     lease: {
       token: leaseToken,
@@ -550,6 +566,30 @@ function claimedExecution(
     startedAt: null,
     finishedAt: null,
     recoveredInteraction: null,
+  };
+}
+
+function initialTurn(): ClaimedExecution['codexTurn'] {
+  const executionBrief = { instruction: '只返回 JSON' };
+  return {
+    kind: 'INITIAL',
+    requiredSkillName: skillBinding.skillName,
+    executionBrief,
+    executionBriefHash: createHash('sha256')
+      .update(serializeDeterministicJson(executionBrief))
+      .digest('hex'),
+    outputJsonSchema: { type: 'object' },
+    taskSkillBinding: null,
+  };
+}
+
+function continuationTurn(taskId: string): ClaimedExecution['codexTurn'] {
+  return {
+    kind: 'CONTINUATION',
+    taskId,
+    taskSkillBinding: skillBinding,
+    input: '继续完成上次未完成的任务。',
+    outputJsonSchema: { type: 'object' },
   };
 }
 

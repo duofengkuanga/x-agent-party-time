@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { createHash } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,6 +9,7 @@ import { openDatabase } from '@/server/database';
 import { LocalFileStore } from '@/server/files/local-file-store';
 import { RunnerService } from '@/server/runner/service';
 import { ExecutionService } from './service';
+import { createInitialCodexTurn } from './codex-turn';
 
 const directories: string[] = [];
 const databases: AppDatabase[] = [];
@@ -178,7 +178,7 @@ describe('Execution lifecycle', () => {
     setNow('2026-07-27T08:00:02.000Z');
     executions.resolveInteraction(interaction.id, { decision: 'accept' });
     expect(executions.get(first.id).state).toBe('WAITING_TO_RESUME');
-    expect(executions.get(first.id).resumeSessionId).toBe('session-first');
+    expect(executions.get(first.id).sessionId).toBe('session-first');
     expect(
       await executions.waitInteraction(
         runnerId,
@@ -244,7 +244,7 @@ describe('Execution lifecycle', () => {
     expect(executions.get(queued.id)).toMatchObject({
       state: 'WAITING_FOR_INTERACTION',
       lease: null,
-      resumeSessionId: 'session-resume',
+      sessionId: 'session-resume',
     });
     expect(
       database
@@ -256,7 +256,7 @@ describe('Execution lifecycle', () => {
     executions.resolveInteraction(interaction.id, { decision: 'accept' });
     const reclaimed = (await executions.claim(runnerId, 1, 0))[0]!;
     expect(reclaimed.id).toBe(queued.id);
-    expect(reclaimed.resumeSessionId).toBe('session-resume');
+    expect(reclaimed.sessionId).toBe('session-resume');
     expect(reclaimed.lease.token).not.toBe(firstClaim.lease.token);
     expect(reclaimed.recoveredInteraction).toEqual({
       method: 'item/commandExecution/requestApproval',
@@ -443,7 +443,7 @@ describe('Execution lifecycle', () => {
     expect(executions.get(first.id)).toMatchObject({
       state: 'WAITING_TO_RESUME',
       lease: null,
-      resumeSessionId: 'session-persisted-resume',
+      sessionId: 'session-persisted-resume',
     });
     executions.complete(runnerId, second.id, {
       leaseToken: secondClaim.lease.token,
@@ -452,7 +452,7 @@ describe('Execution lifecycle', () => {
     });
     const reclaimed = (await executions.claim(runnerId, 1, 0))[0]!;
     expect(reclaimed.id).toBe(first.id);
-    expect(reclaimed.resumeSessionId).toBe('session-persisted-resume');
+    expect(reclaimed.sessionId).toBe('session-persisted-resume');
     expect(reclaimed.recoveredInteraction).toEqual({
       method: 'item/commandExecution/requestApproval',
       payload: { command: 'bun test' },
@@ -507,6 +507,36 @@ describe('Execution lifecycle', () => {
       ),
     ).toThrow(expect.objectContaining({ code: 'LEASE_EXPIRED' }));
   });
+
+  test('首次 Codex Start 校验并持久化 Task Skill Binding', async () => {
+    const { executions, runnerId } = await setup();
+    const queued = executions.enqueue({
+      ...input(runnerId, bindingId(6), 'skill-binding'),
+      codexTurn: createInitialCodexTurn({
+        requiredSkillName: 'agent-party-time-repair-bug',
+        executionBrief: { bug: { id: 'bug-1' } },
+        outputJsonSchema: { type: 'object' },
+      }),
+    });
+    const claimed = (await executions.claim(runnerId, 1, 0))[0]!;
+    const binding = {
+      skillName: 'agent-party-time-repair-bug',
+      bundleHash: 'a'.repeat(64),
+      sourceRevision: 'b'.repeat(40),
+    };
+
+    const started = executions.start(runnerId, queued.id, {
+      kind: 'STARTED',
+      leaseToken: claimed.lease.token,
+      sessionId: 'task-one',
+      taskSkillBinding: binding,
+    });
+
+    expect(started.codexTurn).toMatchObject({
+      kind: 'INITIAL',
+      taskSkillBinding: binding,
+    });
+  });
 });
 
 function input(
@@ -514,7 +544,6 @@ function input(
   localBindingId: string,
   ownerId: string,
 ): EnqueueExecutionInput {
-  const prompt = `通用任务 ${ownerId}`;
   return {
     owner: { namespace: 'fixture', kind: 'generic', id: ownerId },
     attempt: 1,
@@ -522,14 +551,9 @@ function input(
     runnerId,
     bindingId: localBindingId,
     approvalPolicy: 'on-request',
-    promptKind: 'fixture.generic',
-    promptVersion: 1,
-    renderedPrompt: prompt,
-    renderedPromptHash: createHash('sha256').update(prompt).digest('hex'),
-    outputJsonSchema: { type: 'object' },
+    codexTurn: null,
     workspace: null,
     attachmentIds: [],
-    resumeSessionId: null,
   };
 }
 

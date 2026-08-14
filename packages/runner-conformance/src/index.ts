@@ -262,12 +262,24 @@ export class ProtocolAgent {
     if (!claimed) return null;
     const sessionId =
       options.sessionId?.(claimed) ??
-      claimed.resumeSessionId ??
+      (claimed.codexTurn?.kind === 'CONTINUATION'
+        ? claimed.codexTurn.taskId
+        : null) ??
       `conformance-${claimed.id}`;
     await this.startExecution(claimed.id, {
       kind: 'STARTED',
       leaseToken: claimed.lease.token,
       sessionId,
+      taskSkillBinding:
+        claimed.codexTurn?.kind === 'CONTINUATION'
+          ? claimed.codexTurn.taskSkillBinding
+          : claimed.codexTurn?.kind === 'INITIAL'
+            ? {
+                skillName: claimed.codexTurn.requiredSkillName,
+                bundleHash: 'a'.repeat(64),
+                sourceRevision: 'b'.repeat(40),
+              }
+            : null,
     });
     const outcome = await execute(claimed);
     return await this.completeExecution(claimed.id, {

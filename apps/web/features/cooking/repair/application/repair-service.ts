@@ -1,11 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import {
-  ExecutionOutcomeSchema,
-  type Execution,
+import type {
+  Execution,
+  JsonObject,
 } from '@agent-party-time/execution-contract';
 import type { AppDatabase } from '@/server/database';
 import { PlatformError } from '@/server/errors';
 import { ExecutionService } from '@/server/execution/service';
+import {
+  createContinuationCodexTurn,
+  createInitialCodexTurn,
+} from '@/server/execution/codex-turn';
 import { BugRepairContextService } from '@/features/cooking/bugs/application/repair-context';
 import type { CookingExecutionProjectionEvent } from '@/features/cooking/execution/application/execution-projection';
 import {
@@ -21,6 +25,7 @@ import {
   BugRepairViewSchema,
   ContinueRepairInputSchema,
   RepairExecutionResultSchema,
+  RepairOutputJsonSchema,
   RepairMutationResultSchema,
   RepairWorkspaceProjectionSchema,
   ResolveRepairInteractionInputSchema,
@@ -31,9 +36,9 @@ import {
   type ContinueRepairInput,
 } from '../contract';
 import {
-  buildContinuationRepairPrompt,
-  buildInitialRepairPrompt,
-} from '../prompt';
+  buildInitialRepairBrief,
+  buildRepairContinuationInput,
+} from '../brief';
 
 type RepairSourceRow = {
   bug_id: string;
@@ -121,6 +126,7 @@ export class RepairService {
     const now = this.now().toISOString();
     const workspaceKey = `bug-repair:${bugId}`;
     const attemptId = this.createId();
+    const executionId = this.createId();
     if (!existingContext)
       this.db
         .prepare(
@@ -131,24 +137,27 @@ export class RepairService {
         )
         .run(bugId, workspaceKey, now, now);
     const attempt = (latest?.attempt ?? 0) + 1;
-    const prompt = buildInitialRepairPrompt({
+    const executionBrief = buildInitialRepairBrief({
+      executionId,
       workspaceKey,
+      submissionId: repairContext.submissionId,
       submissionTitle: repairContext.submissionTitle,
       requirementDescription: repairContext.requirementDescription,
       engineeringName: repairContext.engineeringName,
       repositoryUrl: repairContext.repositoryUrl,
       targetBranch: repairContext.targetBranch,
       bugTitle: repairContext.report.title,
-      operationPath: repairContext.report.operationPath ?? undefined,
-      actualResult: repairContext.report.actualResult ?? undefined,
-      expectedResult: repairContext.report.expectedResult ?? undefined,
+      bugId,
+      operationPath: repairContext.report.operationPath,
+      actualResult: repairContext.report.actualResult,
+      expectedResult: repairContext.report.expectedResult,
       actualResultAttachments:
         repairContext.report.attachments.actualResult.map(
-          ({ originalName }) => originalName,
+          ({ id, originalName }) => ({ fileId: id, originalName }),
         ),
       expectedResultAttachments:
         repairContext.report.attachments.expectedResult.map(
-          ({ originalName }) => originalName,
+          ({ id, originalName }) => ({ fileId: id, originalName }),
         ),
       feedback: repairContext.feedback,
       pendingCommits: existingContext
@@ -156,6 +165,7 @@ export class RepairService {
         : [],
     });
     const execution = this.executions.enqueue({
+      id: executionId,
       owner: { namespace: 'cooking', kind: 'BUG_REPAIR', id: attemptId },
       attempt,
       previousExecutionId: latest?.execution_id ?? null,
@@ -163,11 +173,11 @@ export class RepairService {
       bindingId: repairContext.bindingId,
       priority: 0,
       approvalPolicy: 'never',
-      promptKind: prompt.kind,
-      promptVersion: prompt.version,
-      renderedPrompt: prompt.renderedPrompt,
-      renderedPromptHash: prompt.renderedPromptHash,
-      outputJsonSchema: prompt.outputJsonSchema,
+      codexTurn: createInitialCodexTurn({
+        requiredSkillName: 'agent-party-time-repair-bug',
+        executionBrief,
+        outputJsonSchema: RepairOutputJsonSchema as JsonObject,
+      }),
       workspace: {
         key: workspaceKey,
         isolation: 'BRANCH_WORKTREE',
@@ -178,7 +188,6 @@ export class RepairService {
         ...repairContext.report.attachments.actualResult,
         ...repairContext.report.attachments.expectedResult,
       ].map(({ id }) => id),
-      resumeSessionId: null,
     });
     this.db
       .prepare(
@@ -202,39 +211,23 @@ export class RepairService {
       throw new PlatformError('RESOURCE_CONFLICT', '当前修复 Attempt 尚未结束');
     const attempt = latest.attempt + 1;
     const attemptId = this.createId();
-    const pendingCommits = parseCommits(context.pending_commits_json);
-    const startFreshSession = requiresFreshRepairSession(latest);
-    const prompt = startFreshSession
-      ? buildInitialRepairPrompt({
-          workspaceKey: context.workspace_key,
-          submissionTitle: repairContext.submissionTitle,
-          requirementDescription: repairContext.requirementDescription,
-          engineeringName: repairContext.engineeringName,
-          repositoryUrl: repairContext.repositoryUrl,
-          targetBranch: repairContext.targetBranch,
-          bugTitle: repairContext.report.title,
-          operationPath: repairContext.report.operationPath ?? undefined,
-          actualResult: repairContext.report.actualResult ?? undefined,
-          expectedResult: repairContext.report.expectedResult ?? undefined,
-          actualResultAttachments:
-            repairContext.report.attachments.actualResult.map(
-              ({ originalName }) => originalName,
-            ),
-          expectedResultAttachments:
-            repairContext.report.attachments.expectedResult.map(
-              ({ originalName }) => originalName,
-            ),
-          feedback: [
-            ...repairContext.feedback,
-            ...(lifecycleContext ? [lifecycleContext] : []),
-          ],
-          pendingCommits,
-        })
-      : buildContinuationRepairPrompt({
-          lifecycleContext: lifecycleContext || undefined,
-          pendingCommits,
-        });
+    const executionId = this.createId();
+    if (!context.session_id)
+      throw new PlatformError(
+        'INVALID_TRANSITION',
+        '原 Repair Task 不存在，不能自动重建',
+      );
+    const previousExecution = this.executions.get(latest.execution_id);
+    const codexTurn = createContinuationCodexTurn({
+      taskId: context.session_id,
+      taskSkillBinding: requireTaskSkillBinding(previousExecution),
+      text: buildRepairContinuationInput({
+        lifecycleContext: lifecycleContext || undefined,
+      }),
+      outputJsonSchema: RepairOutputJsonSchema as JsonObject,
+    });
     const execution = this.executions.enqueue({
+      id: executionId,
       owner: { namespace: 'cooking', kind: 'BUG_REPAIR', id: attemptId },
       attempt,
       previousExecutionId: latest.execution_id,
@@ -242,31 +235,14 @@ export class RepairService {
       bindingId: repairContext.bindingId,
       priority: 0,
       approvalPolicy: 'never',
-      promptKind: prompt.kind,
-      promptVersion: prompt.version,
-      renderedPrompt: prompt.renderedPrompt,
-      renderedPromptHash: prompt.renderedPromptHash,
-      outputJsonSchema: prompt.outputJsonSchema,
+      codexTurn,
       workspace: {
         key: context.workspace_key,
         isolation: 'BRANCH_WORKTREE',
         baseRef: `origin/${repairContext.targetBranch}`,
         branch: `apt/repair/${bugId}`,
       },
-      attachmentIds: startFreshSession
-        ? [
-            ...new Set([
-              ...repairContext.report.attachments.actualResult.map(
-                ({ id }) => id,
-              ),
-              ...repairContext.report.attachments.expectedResult.map(
-                ({ id }) => id,
-              ),
-              ...attachmentIds,
-            ]),
-          ]
-        : attachmentIds,
-      resumeSessionId: startFreshSession ? null : context.session_id,
+      attachmentIds,
     });
     const now = this.now().toISOString();
     this.db
@@ -1034,23 +1010,14 @@ function isFailedAttemptOutcome(outcomeJson: string): boolean {
   return raw.outcome === 'FAILED';
 }
 
-function requiresFreshRepairSession(attempt: AttemptRow): boolean {
-  if (!attempt.outcome) return false;
-  let raw: unknown;
-  try {
-    raw = JSON.parse(attempt.outcome);
-  } catch {
-    return false;
-  }
-  const outcome = ExecutionOutcomeSchema.safeParse(raw);
-  return (
-    outcome.success &&
-    outcome.data.kind === 'FAILED' &&
-    outcome.data.failure.code === 'CODEX_START_FAILED' &&
-    /^failed to load configuration: Model provider `[^`]+` not found$/u.test(
-      outcome.data.failure.message,
-    )
-  );
+function requireTaskSkillBinding(execution: Execution) {
+  const binding = execution.codexTurn?.taskSkillBinding;
+  if (!binding)
+    throw new PlatformError(
+      'INVALID_TRANSITION',
+      '原 Repair Task 缺少 Skill Binding，不能继续执行',
+    );
+  return binding;
 }
 
 function parseCommits(value: string): string[] {

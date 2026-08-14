@@ -9,6 +9,8 @@ import type {
   UserEnvironment,
 } from '../platform/contracts';
 import { keychainAccount } from '../platform/macos/keychain';
+import { lstat, readlink } from 'node:fs/promises';
+import { dirname, relative, resolve, sep } from 'node:path';
 
 export interface UninstallResult {
   remoteRevoked: boolean;
@@ -92,6 +94,8 @@ export class UninstallManager {
         if (!force) throw error;
         warnings.push('Keychain Credential 未删除');
       }
+    if (!(await this.removeManagedSkillNamespace()))
+      warnings.push('Skill 命名空间不是 xapt 管理，未删除');
     for (const path of [
       this.paths.commandLink,
       this.paths.launchAgentPlist,
@@ -102,6 +106,25 @@ export class UninstallManager {
     ])
       await this.files.remove(path, { recursive: true });
     return { remoteRevoked, warnings };
+  }
+
+  private async removeManagedSkillNamespace(): Promise<boolean> {
+    let entry: Awaited<ReturnType<typeof lstat>>;
+    try {
+      entry = await lstat(this.paths.skillNamespaceLink);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return true;
+      throw error;
+    }
+    if (!entry.isSymbolicLink()) return false;
+    const target = resolve(
+      dirname(this.paths.skillNamespaceLink),
+      await readlink(this.paths.skillNamespaceLink),
+    );
+    const location = relative(resolve(this.paths.skillGenerations), target);
+    if (location === '..' || location.startsWith(`..${sep}`)) return false;
+    await this.files.remove(this.paths.skillNamespaceLink);
+    return true;
   }
 
   private async hasUnsettledWorkspaces(): Promise<boolean> {

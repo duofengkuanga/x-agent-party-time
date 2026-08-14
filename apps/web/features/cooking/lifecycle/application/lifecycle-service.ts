@@ -30,10 +30,6 @@ import {
   type ResolveCleanupInteractionInput,
   type VerifyBugInput,
 } from '../contract';
-import {
-  buildContinuationCleanupPrompt,
-  buildInitialCleanupPrompt,
-} from '../prompt';
 
 type BugSourceRow = {
   id: string;
@@ -515,7 +511,6 @@ export class LifecycleService {
         const latest = this.latestCleanupAttempt(cleanupId);
         if (!latest || !isTerminal(latest.state))
           throw new PlatformError('RESOURCE_CONFLICT', '当前清理执行尚未结束');
-        const prompt = buildContinuationCleanupPrompt();
         const attemptId = this.createId();
         const execution = this.executions.enqueue({
           owner: { namespace: 'cooking', kind: 'CLEANUP', id: attemptId },
@@ -525,11 +520,7 @@ export class LifecycleService {
           bindingId: cleanup.binding_id,
           priority: 0,
           approvalPolicy: 'never',
-          promptKind: prompt.kind,
-          promptVersion: prompt.version,
-          renderedPrompt: prompt.renderedPrompt,
-          renderedPromptHash: prompt.renderedPromptHash,
-          outputJsonSchema: prompt.outputJsonSchema,
+          codexTurn: null,
           workspace: {
             key: `cleanup:${cleanup.id}`,
             isolation: 'CLEANUP_WORKTREES',
@@ -540,7 +531,6 @@ export class LifecycleService {
             },
           },
           attachmentIds: [],
-          resumeSessionId: cleanup.session_id,
         });
         const now = this.now().toISOString();
         this.db
@@ -1089,13 +1079,6 @@ export class LifecycleService {
     const source = this.itemCleanupSource(input.submissionItemId);
     const cleanupId = this.createId();
     const attemptId = this.createId();
-    const prompt = buildInitialCleanupPrompt({
-      reason: input.reason,
-      submissionTitle: source.submission_title,
-      engineeringName: source.engineering_name,
-      targetBranch: source.target_branch,
-      workspaceKeys: [...new Set(input.workspaceKeys)],
-    });
     this.db
       .prepare(
         `INSERT INTO cooking_cleanup(
@@ -1122,11 +1105,7 @@ export class LifecycleService {
       bindingId: source.binding_id,
       priority: 0,
       approvalPolicy: 'never',
-      promptKind: prompt.kind,
-      promptVersion: prompt.version,
-      renderedPrompt: prompt.renderedPrompt,
-      renderedPromptHash: prompt.renderedPromptHash,
-      outputJsonSchema: prompt.outputJsonSchema,
+      codexTurn: null,
       workspace: {
         key: `cleanup:${cleanupId}`,
         isolation: 'CLEANUP_WORKTREES',
@@ -1137,7 +1116,6 @@ export class LifecycleService {
         },
       },
       attachmentIds: [],
-      resumeSessionId: null,
     });
     this.db
       .prepare(

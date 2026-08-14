@@ -7,6 +7,7 @@ import {
   ExecutionSchema,
   RunnerActivitySchema,
   type ClaimedExecution,
+  type CodexTurn,
   type CompleteExecutionRequest,
   type EnqueueExecutionInput,
   type Execution,
@@ -16,6 +17,7 @@ import {
   type JsonValue,
   type OpenInteractionRequest,
   type RunnerActivity,
+  type TaskSkillBinding,
   type WaitInteractionResponse,
 } from '@agent-party-time/execution-contract';
 import type { AppDatabase } from '@/server/database';
@@ -33,13 +35,11 @@ type ExecutionRow = {
   priority: number;
   approval_policy: Execution['approvalPolicy'];
   state: Execution['state'];
-  prompt_kind: string;
-  prompt_version: number;
-  rendered_prompt: string;
-  rendered_prompt_hash: string;
-  output_json_schema: string;
+  codex_turn_json: string | null;
+  skill_name: string | null;
+  skill_bundle_hash: string | null;
+  skill_source_revision: string | null;
   workspace_json: string | null;
-  resume_session_id: string | null;
   session_id: string | null;
   lease_token_hash: string | null;
   lease_expires_at: string | null;
@@ -150,15 +150,14 @@ export class ExecutionService {
             `INSERT INTO platform_execution(
                id, owner_namespace, owner_kind, owner_id, attempt,
                previous_execution_id, runner_id, binding_id, priority,
-               approval_policy, state,
-               prompt_kind, prompt_version, rendered_prompt,
-               rendered_prompt_hash, output_json_schema, resume_session_id,
+               approval_policy, state, codex_turn_json, skill_name,
+               skill_bundle_hash, skill_source_revision,
                workspace_json, session_id, lease_token_hash, lease_expires_at,
                outcome_json, reported_outcome_json, cancellation_requested,
                resume_requested_at, created_at, claimed_at, started_at,
                finished_at
              ) VALUES (
-               ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'QUEUED', ?, ?, ?, ?, ?, ?,
+               ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'QUEUED', ?, ?, ?, ?,
                ?, NULL, NULL, NULL, NULL, NULL, 0, NULL, ?, NULL, NULL, NULL
              )`,
           )
@@ -173,12 +172,10 @@ export class ExecutionService {
             input.bindingId,
             input.priority,
             input.approvalPolicy,
-            input.promptKind,
-            input.promptVersion,
-            input.renderedPrompt,
-            input.renderedPromptHash,
-            JSON.stringify(input.outputJsonSchema),
-            input.resumeSessionId,
+            input.codexTurn ? JSON.stringify(input.codexTurn) : null,
+            input.codexTurn?.taskSkillBinding?.skillName ?? null,
+            input.codexTurn?.taskSkillBinding?.bundleHash ?? null,
+            input.codexTurn?.taskSkillBinding?.sourceRevision ?? null,
             input.workspace ? JSON.stringify(input.workspace) : null,
             createdAt,
           );
@@ -257,6 +254,10 @@ export class ExecutionService {
           .run(JSON.stringify(outcome), now, executionId);
         this.invalidatePendingInteractions(executionId, now);
       } else {
+        const turn = row.codex_turn_json
+          ? (JSON.parse(row.codex_turn_json) as CodexTurn)
+          : null;
+        validateStartedSkillBinding(turn, request.taskSkillBinding);
         this.db
           .prepare(
             `UPDATE platform_execution
@@ -264,10 +265,19 @@ export class ExecutionService {
                    WHEN cancellation_requested = 1 THEN 'CANCEL_REQUESTED'
                    ELSE 'RUNNING'
                  END,
-                 session_id = ?, started_at = COALESCE(started_at, ?)
+                 session_id = ?, skill_name = ?, skill_bundle_hash = ?,
+                 skill_source_revision = ?,
+                 started_at = COALESCE(started_at, ?)
              WHERE id = ?`,
           )
-          .run(request.sessionId, now, executionId);
+          .run(
+            request.sessionId,
+            request.taskSkillBinding?.skillName ?? null,
+            request.taskSkillBinding?.bundleHash ?? null,
+            request.taskSkillBinding?.sourceRevision ?? null,
+            now,
+            executionId,
+          );
       }
       const execution = this.get(executionId);
       if (request.kind === 'START_FAILED') this.hooks.applyTerminal(execution);
@@ -445,8 +455,7 @@ export class ExecutionService {
       this.db
         .prepare(
           `UPDATE platform_execution
-           SET state = 'WAITING_TO_RESUME', resume_requested_at = ?,
-               resume_session_id = COALESCE(session_id, resume_session_id)
+           SET state = 'WAITING_TO_RESUME', resume_requested_at = ?
            WHERE id = ?`,
         )
         .run(resolvedAt, interaction.execution_id);
@@ -847,8 +856,10 @@ export class ExecutionService {
                AND state IN ('QUEUED', 'WAITING_TO_RESUME')`,
           )
           .run(hashSecret(leaseToken), expiresAt, claimedAt, row.id);
+        const execution = this.get(row.id);
         return ClaimedExecutionSchema.parse({
-          ...this.get(row.id),
+          ...execution,
+          codexTurn: codexTurnForClaim(execution),
           lease: { token: leaseToken, expiresAt },
           outcome: null,
           recoveredInteraction:
@@ -894,7 +905,6 @@ export class ExecutionService {
                ) THEN state
                ELSE 'QUEUED'
              END,
-             resume_session_id = COALESCE(session_id, resume_session_id),
              lease_token_hash = NULL, lease_expires_at = NULL
          WHERE id = ?`,
       );
@@ -995,16 +1005,11 @@ export class ExecutionService {
       priority: current.priority,
       approvalPolicy: current.approval_policy,
       state: current.state,
-      promptKind: current.prompt_kind,
-      promptVersion: current.prompt_version,
-      renderedPrompt: current.rendered_prompt,
-      renderedPromptHash: current.rendered_prompt_hash,
-      outputJsonSchema: JSON.parse(current.output_json_schema),
+      codexTurn: mapCodexTurn(current),
       workspace: current.workspace_json
         ? JSON.parse(current.workspace_json)
         : null,
       attachments,
-      resumeSessionId: current.resume_session_id,
       sessionId: current.session_id,
       lease: current.lease_expires_at
         ? { expiresAt: current.lease_expires_at }
@@ -1085,6 +1090,73 @@ function mapInteraction(row: InteractionRow): ExecutionInteraction {
 
 function hashSecret(value: string): string {
   return createHash('sha256').update(value).digest('hex');
+}
+
+function mapCodexTurn(row: ExecutionRow): CodexTurn | null {
+  if (!row.codex_turn_json) return null;
+  const turn = JSON.parse(row.codex_turn_json) as CodexTurn;
+  const taskSkillBinding = persistedSkillBinding(row);
+  return taskSkillBinding ? { ...turn, taskSkillBinding } : turn;
+}
+
+function persistedSkillBinding(row: ExecutionRow): TaskSkillBinding | null {
+  if (!row.skill_name || !row.skill_bundle_hash || !row.skill_source_revision)
+    return null;
+  return {
+    skillName: row.skill_name,
+    bundleHash: row.skill_bundle_hash,
+    sourceRevision: row.skill_source_revision,
+  };
+}
+
+function codexTurnForClaim(execution: Execution): CodexTurn | null {
+  const turn = execution.codexTurn;
+  if (
+    turn?.kind !== 'INITIAL' ||
+    !execution.sessionId ||
+    !turn.taskSkillBinding
+  )
+    return turn;
+  return {
+    kind: 'CONTINUATION',
+    taskId: execution.sessionId,
+    taskSkillBinding: turn.taskSkillBinding,
+    input: '继续完成上次未完成的任务。',
+    outputJsonSchema: turn.outputJsonSchema,
+  };
+}
+
+function validateStartedSkillBinding(
+  turn: CodexTurn | null,
+  actual: TaskSkillBinding | null,
+): void {
+  if (!turn) {
+    if (actual)
+      throw new PlatformError(
+        'INVALID_TRANSITION',
+        '不启动 Codex 的 Execution 不能绑定 Skill',
+      );
+    return;
+  }
+  if (!actual)
+    throw new PlatformError(
+      'INVALID_TRANSITION',
+      'Codex Task 缺少 Skill Binding',
+    );
+  const expectedName =
+    turn.kind === 'INITIAL'
+      ? turn.requiredSkillName
+      : turn.taskSkillBinding.skillName;
+  if (
+    actual.skillName !== expectedName ||
+    (turn.kind === 'CONTINUATION' &&
+      (actual.bundleHash !== turn.taskSkillBinding.bundleHash ||
+        actual.sourceRevision !== turn.taskSkillBinding.sourceRevision))
+  )
+    throw new PlatformError(
+      'INVALID_TRANSITION',
+      'Codex Task Skill Binding 不匹配',
+    );
 }
 
 function isTerminal(state: Execution['state']): boolean {

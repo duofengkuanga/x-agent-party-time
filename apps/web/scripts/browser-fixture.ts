@@ -166,6 +166,7 @@ export async function seedBrowserFixture(
         kind: 'STARTED',
         leaseToken: claimed.lease.token,
         sessionId: `browser-session-${bug.id}`,
+        taskSkillBinding: fixtureSkillBinding('agent-party-time-repair-bug'),
       });
       executions.complete(paired.runner.id, claimed.id, {
         leaseToken: claimed.lease.token,
@@ -202,6 +203,7 @@ export async function seedBrowserFixture(
       kind: 'STARTED',
       leaseToken: claimed.lease.token,
       sessionId: `browser-interaction-${interactionBug.id}`,
+      taskSkillBinding: fixtureSkillBinding('agent-party-time-repair-bug'),
     });
     executions.openInteraction(paired.runner.id, claimed.id, {
       leaseToken: claimed.lease.token,
@@ -223,4 +225,12 @@ export async function seedBrowserFixture(
   } finally {
     db.close();
   }
+}
+
+function fixtureSkillBinding(skillName: string) {
+  return {
+    skillName,
+    bundleHash: 'a'.repeat(64),
+    sourceRevision: 'b'.repeat(40),
+  };
 }

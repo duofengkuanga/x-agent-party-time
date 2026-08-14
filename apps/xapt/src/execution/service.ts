@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type {
   ClaimedExecution,
   CompleteExecutionRequest,
@@ -6,6 +6,7 @@ import type {
   ExecutionStartRequest,
   JsonValue,
 } from '@agent-party-time/execution-contract';
+import { serializeDeterministicJson } from '@agent-party-time/execution-contract';
 import type { LocalFileSystem } from '../platform/files';
 import { STATE_SCHEMA_VERSION, type OutboxEntry } from '../state/schemas';
 import type { LocalStateStore } from '../state/store';
@@ -19,6 +20,11 @@ import {
   type StartedCodexExecution,
 } from './codex-app-server';
 import type { ExecutionWorkspaceManager } from './workspaces';
+import {
+  SkillBundleManager,
+  XAPT_SKILL_NAMES,
+  type XaptSkillName,
+} from '../skills/manager';
 
 const MAX_FAILURE_MESSAGE_LENGTH = 1_000;
 
@@ -52,6 +58,7 @@ export class ExecutionService {
     private readonly attachments: AttachmentMaterializer,
     private readonly workspaces: ExecutionWorkspaceManager,
     private readonly executor: CodexExecutor,
+    private readonly skills: SkillBundleManager,
     private readonly now: () => Date = () => new Date(),
     private readonly createId: () => string = randomUUID,
   ) {}
@@ -201,6 +208,46 @@ export class ExecutionService {
       return;
     }
 
+    const turn = execution.codexTurn;
+    if (!turn) {
+      await this.reportStartFailure(session, execution, {
+        code: 'CODEX_START_FAILED',
+        message: 'Execution 缺少 Codex Turn 输入',
+        retryable: false,
+      });
+      return;
+    }
+    let resolvedSkill;
+    try {
+      if (turn.kind === 'INITIAL') {
+        const serialized = serializeDeterministicJson(turn.executionBrief);
+        if (
+          createHash('sha256').update(serialized).digest('hex') !==
+          turn.executionBriefHash
+        )
+          throw new Error('Execution Brief Hash 不匹配');
+        if (!XAPT_SKILL_NAMES.includes(turn.requiredSkillName as XaptSkillName))
+          throw new Error('Execution 请求了未知 Skill');
+        resolvedSkill = await this.skills.resolveCurrent(
+          turn.requiredSkillName as XaptSkillName,
+        );
+      } else
+        resolvedSkill = await this.skills.resolveBound({
+          skillName: turn.taskSkillBinding.skillName as XaptSkillName,
+          bundleHash: turn.taskSkillBinding.bundleHash,
+          sourceRevision: turn.taskSkillBinding.sourceRevision,
+        });
+    } catch (error) {
+      await this.reportStartFailure(session, execution, {
+        code: 'CODEX_START_FAILED',
+        message: failureMessage(
+          error instanceof Error ? error.message : 'Skill Bundle 解析失败',
+        ),
+        retryable: false,
+      });
+      return;
+    }
+
     const controller = new AbortController();
     this.controllers.set(execution.id, controller);
     let recoveredInteraction = execution.recoveredInteraction;
@@ -216,11 +263,18 @@ export class ExecutionService {
           approvalPolicy: execution.approvalPolicy,
           executionId: execution.id,
           repositoryPath,
-          prompt: execution.renderedPrompt,
-          outputSchema: execution.outputJsonSchema,
+          text:
+            turn.kind === 'INITIAL'
+              ? serializeDeterministicJson(turn.executionBrief)
+              : turn.input,
+          skill:
+            turn.kind === 'INITIAL'
+              ? { name: resolvedSkill.skillName, path: resolvedSkill.path }
+              : null,
+          outputSchema: turn.outputJsonSchema,
           attachments: materialized,
           artifactsDirectory: this.attachments.artifactsDirectory(execution.id),
-          resumeSessionId: execution.resumeSessionId,
+          taskId: turn.kind === 'CONTINUATION' ? turn.taskId : null,
           onInteraction: async (interaction) => {
             await startGate;
             if (!startAccepted)
@@ -263,6 +317,11 @@ export class ExecutionService {
       kind: 'STARTED',
       leaseToken: execution.lease.token,
       sessionId: started.sessionId,
+      taskSkillBinding: {
+        skillName: resolvedSkill.skillName,
+        bundleHash: resolvedSkill.bundleHash,
+        sourceRevision: resolvedSkill.sourceRevision,
+      },
     };
     if (
       !(await this.persistAndDeliver(
@@ -421,6 +480,7 @@ export class ExecutionService {
         kind: 'STARTED',
         leaseToken: execution.lease.token,
         sessionId,
+        taskSkillBinding: null,
       }))
     )
       return;

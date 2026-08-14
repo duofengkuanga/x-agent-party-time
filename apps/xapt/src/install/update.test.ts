@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import type { Clock, CommandRunner } from '../platform/contracts';
 import { NodeLocalFileSystem } from '../platform/files';
 import { xaptPaths } from '../platform/paths';
+import { STATE_SCHEMA_VERSION } from '../state/schemas';
 import { LocalStateStore } from '../state/store';
 import { stoppedSnapshot, type DaemonSnapshot } from '../daemon/status';
 import { UpdateManager } from './update';
@@ -115,7 +116,7 @@ async function createFixture(currentVersion: string, running = false) {
   );
   await symlink(`versions/${currentVersion}`, paths.currentLink);
   await state.saveInstall({
-    schemaVersion: 1,
+    schemaVersion: STATE_SCHEMA_VERSION,
     currentVersion,
     previousVersion: null,
     installedAt: '2026-08-01T00:00:00.000Z',

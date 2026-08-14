@@ -134,6 +134,11 @@ test('连接、Binding、Execution、Outbox 与安装状态可重启读取且不
       kind: 'STARTED',
       leaseToken: `lease-${'x'.repeat(32)}`,
       sessionId: 'session-one',
+      taskSkillBinding: {
+        skillName: 'agent-party-time-repair-bug',
+        bundleHash: 'a'.repeat(64),
+        sourceRevision: 'b'.repeat(40),
+      },
     },
     createdAt: now,
   });
@@ -201,7 +206,7 @@ test('删除全部 Cache 不影响长期状态或恢复状态', async () => {
 describe('状态失败关闭', () => {
   test.each([
     ['CORRUPT_STATE', '{not-json'],
-    ['UNSUPPORTED_SCHEMA', '{"schemaVersion":2}'],
+    ['UNSUPPORTED_SCHEMA', '{"schemaVersion":1}'],
   ] as const)('%s 时说明状态和下一步', async (code, content) => {
     const { paths, store } = await initializedStore();
     await writeFile(paths.connection, content, { mode: 0o600 });
@@ -339,14 +344,19 @@ function recoveryExecution(now: string): ClaimedExecution {
     priority: 0,
     approvalPolicy: 'on-request',
     state: 'RUNNING',
-    promptKind: 'test',
-    promptVersion: 1,
-    renderedPrompt: 'test prompt',
-    renderedPromptHash: 'a'.repeat(64),
-    outputJsonSchema: { type: 'object' },
+    codexTurn: {
+      kind: 'CONTINUATION',
+      taskId: 'session-one',
+      taskSkillBinding: {
+        skillName: 'agent-party-time-repair-bug',
+        bundleHash: 'a'.repeat(64),
+        sourceRevision: 'b'.repeat(40),
+      },
+      input: '继续完成上次未完成的任务。',
+      outputJsonSchema: { type: 'object' },
+    },
     workspace: null,
     attachments: [],
-    resumeSessionId: null,
     sessionId: 'session-one',
     lease: {
       token: `lease-${'x'.repeat(32)}`,

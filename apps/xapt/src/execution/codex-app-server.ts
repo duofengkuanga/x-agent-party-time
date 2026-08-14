@@ -19,11 +19,12 @@ export type CodexExecutionInput = {
   approvalPolicy: ExecutionApprovalPolicy;
   executionId: string;
   repositoryPath: string;
-  prompt: string;
+  text: string;
+  skill: { name: string; path: string } | null;
   outputSchema: JsonObject;
   attachments: MaterializedAttachment[];
   artifactsDirectory: string;
-  resumeSessionId: string | null;
+  taskId: string | null;
   onInteraction: (interaction: CodexInteraction) => Promise<JsonValue>;
 };
 
@@ -95,7 +96,7 @@ export class CodexAppServerExecutor implements CodexExecutor {
   ): Promise<StartedCodexExecution> {
     await mkdir(input.artifactsDirectory, { recursive: true, mode: 0o700 });
     await this.ensureStarted();
-    let threadId = input.resumeSessionId;
+    let threadId = input.taskId;
     try {
       if (threadId) {
         await this.request('thread/resume', {
@@ -117,13 +118,7 @@ export class CodexAppServerExecutor implements CodexExecutor {
       const response = asRecord(
         await this.request('turn/start', {
           threadId,
-          input: [
-            {
-              type: 'text',
-              text: promptWithAttachments(input.prompt, input.attachments),
-              text_elements: [],
-            },
-          ],
+          input: codexUserInput(input),
           outputSchema: input.outputSchema,
         }),
       );
@@ -402,17 +397,36 @@ export class CodexAppServerExecutor implements CodexExecutor {
   }
 }
 
-function promptWithAttachments(
-  prompt: string,
-  attachments: MaterializedAttachment[],
-): string {
-  if (!attachments.length) return prompt;
-  const lines = attachments.map(
-    ({ originalName, path }) => `- ${originalName}: ${path}`,
+function codexUserInput(input: CodexExecutionInput): unknown[] {
+  const text = textWithAttachments(
+    input.text,
+    input.attachments,
+    Boolean(input.skill),
   );
-  return `${prompt}\n\n本次 Execution 的附件已物化到以下本机文件：\n${lines.join(
-    '\n',
-  )}`;
+  return [
+    ...(input.skill
+      ? [{ type: 'skill', name: input.skill.name, path: input.skill.path }]
+      : []),
+    { type: 'text', text, text_elements: [] },
+  ];
+}
+
+function textWithAttachments(
+  text: string,
+  attachments: MaterializedAttachment[],
+  initial: boolean,
+): string {
+  if (!attachments.length) return text;
+  const mappings = attachments.map(({ fileId, originalName, path }) => ({
+    fileId,
+    originalName,
+    path,
+  }));
+  if (initial) {
+    const brief = JSON.parse(text) as Record<string, unknown>;
+    return JSON.stringify({ ...brief, localAttachmentPaths: mappings });
+  }
+  return `${text}\n\n新增附件本机路径：${JSON.stringify(mappings)}`;
 }
 
 function isInteractionMethod(method: string): boolean {

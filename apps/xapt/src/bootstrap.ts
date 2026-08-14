@@ -29,6 +29,7 @@ import { ExecutionService } from './execution/service';
 import { GitExecutionWorkspaceManager } from './execution/workspaces';
 import { UpdateManager } from './install/update';
 import { UninstallManager } from './install/uninstall';
+import { SkillBundleManager } from './skills/manager';
 
 export function createCliRuntime(): CliRuntime {
   const environment = new CurrentUserEnvironment();
@@ -73,8 +74,15 @@ export function createCliRuntime(): CliRuntime {
   );
   const http = new RunnerHttpClient();
   const workspaces = new GitExecutionWorkspaceManager(paths);
+  const skills = new SkillBundleManager(paths);
   return {
-    daemonStart: () => manager.start(),
+    daemonStart: async () => {
+      const skillInstall = await skills.initialize();
+      return {
+        ...(await manager.start()),
+        skillWarning: skillInstall.warning,
+      };
+    },
     daemonStatus: () => manager.status(),
     daemonConnect: (serverUrl, progress) =>
       control.connect(serverUrl, progress),
@@ -105,6 +113,13 @@ export function createCliRuntime(): CliRuntime {
         force,
       });
     },
+    skillsUpdate: async () => {
+      const result = await skills.update();
+      return {
+        updated: result.updated,
+        sourceRevision: result.sourceRevision!,
+      };
+    },
     internalDaemon: async () => {
       if (
         environment.platform() !== 'darwin' ||
@@ -133,6 +148,7 @@ export function createCliRuntime(): CliRuntime {
           new AttachmentMaterializer(http, paths),
           workspaces,
           new CodexAppServerExecutor(installation.executable),
+          skills,
         ),
       );
       await new DaemonRuntime({

@@ -139,10 +139,10 @@ describe('Server SQLite schema', () => {
     reopened.close();
   });
 
-  test('版本不匹配时明确失败且不执行迁移', async () => {
+  test('旧版本数据库明确失败且不执行迁移', async () => {
     const path = await temporaryDatabasePath();
     const raw = new Database(path, { create: true });
-    raw.exec('PRAGMA user_version = 99');
+    raw.exec('PRAGMA user_version = 20');
     raw.close();
 
     expect(() => openDatabase(path)).toThrow(PlatformError);

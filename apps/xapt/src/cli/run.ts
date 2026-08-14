@@ -31,7 +31,11 @@ export interface BugsDeleteResult {
 }
 
 export interface CliRuntime {
-  daemonStart(): Promise<{ snapshot: DaemonSnapshot; alreadyRunning: boolean }>;
+  daemonStart(): Promise<{
+    snapshot: DaemonSnapshot;
+    alreadyRunning: boolean;
+    skillWarning?: string | null;
+  }>;
   daemonStatus(): Promise<DaemonSnapshot>;
   daemonConnect(
     serverUrl: string,
@@ -48,6 +52,10 @@ export interface CliRuntime {
     warnings: string[];
   }>;
   bugsDelete(input: BugsDeleteInput): Promise<BugsDeleteResult>;
+  skillsUpdate(): Promise<{
+    updated: boolean;
+    sourceRevision: string;
+  }>;
   internalDaemon(): Promise<void>;
 }
 
@@ -84,11 +92,14 @@ export async function runCli(
       case 'daemon-start': {
         if (!runtime) return notImplemented('daemon start');
         const result = await runtime.daemonStart();
+        const message = result.alreadyRunning
+          ? 'xapt daemon 已在运行。'
+          : 'xapt daemon 已启动，但尚未连接 Server。\n下一步：xapt daemon connect <server-url>';
         return {
           exitCode: EXIT_SUCCESS,
-          stdout: result.alreadyRunning
-            ? 'xapt daemon 已在运行。'
-            : 'xapt daemon 已启动，但尚未连接 Server。\n下一步：xapt daemon connect <server-url>',
+          stdout: result.skillWarning
+            ? `${message}\n警告：${result.skillWarning}`
+            : message,
         };
       }
       case 'daemon-stop': {
@@ -119,6 +130,16 @@ export async function runCli(
         return {
           exitCode: EXIT_SUCCESS,
           stdout: renderBugsDeleteResult(result),
+        };
+      }
+      case 'skills-update': {
+        if (!runtime) return notImplemented('skills update');
+        const result = await runtime.skillsUpdate();
+        return {
+          exitCode: EXIT_SUCCESS,
+          stdout: result.updated
+            ? `Agent Party Time Skills 已更新（${result.sourceRevision}）。`
+            : `Agent Party Time Skills 已是当前 main（${result.sourceRevision}）。`,
         };
       }
       case 'uninstall':

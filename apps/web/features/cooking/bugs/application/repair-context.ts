@@ -9,6 +9,7 @@ const BugReportAttachmentSchema = z.object({
 
 const BugRepairContextSchema = z.object({
   bugId: z.string().min(1),
+  submissionId: z.string().min(1),
   submissionTitle: z.string().min(1),
   requirementDescription: z.string(),
   engineeringName: z.string().min(1),
@@ -34,6 +35,7 @@ export type BugRepairContext = z.infer<typeof BugRepairContextSchema>;
 
 type ContextRow = {
   bug_id: string;
+  submission_id: string;
   title: string;
   operation_path: string | null;
   actual_result: string | null;
@@ -59,7 +61,7 @@ export class BugRepairContextService {
   get(bugId: string): BugRepairContext {
     const row = this.db
       .prepare(
-        `SELECT bug.id bug_id, bug.title, bug.operation_path,
+        `SELECT bug.id bug_id, bug.submission_id, bug.title, bug.operation_path,
                 bug.actual_result, bug.expected_result,
                 submission.title submission_title,
                 submission.requirement_description,
@@ -108,6 +110,7 @@ export class BugRepairContextService {
 
     return BugRepairContextSchema.parse({
       bugId: row.bug_id,
+      submissionId: row.submission_id,
       submissionTitle: row.submission_title,
       requirementDescription: row.requirement_description,
       engineeringName: row.engineering_name,

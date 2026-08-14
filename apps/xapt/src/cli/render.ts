@@ -9,6 +9,7 @@ export const HELP_TEXT = `xapt — Agent Party Time 本机 Agent
   xapt daemon status
   xapt bugs delete <bug-id...> [--force]
   xapt bugs delete --all [--force]
+  xapt skills update
   xapt update
   xapt uninstall [--force]
   xapt --help

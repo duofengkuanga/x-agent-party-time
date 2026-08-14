@@ -16,6 +16,7 @@ describe('runCli', () => {
     expect(result.exitCode).toBe(EXIT_SUCCESS);
     expect(result.stdout).toContain('daemon connect <server-url>');
     expect(result.stdout).toContain('uninstall [--force]');
+    expect(result.stdout).toContain('skills update');
     expect(result.stdout).not.toMatch(
       /internal-daemon|pair|heartbeat|bindings|daemon logs|daemon restart/,
     );
@@ -46,6 +47,7 @@ describe('runCli', () => {
     [['uninstall']],
     [['uninstall', '--force']],
     [['bugs', 'delete', '944d519c-1ed0-4711-a3b1-325bec5bbe56']],
+    [['skills', 'update']],
     [['internal-daemon']],
   ] as const)(
     'recognized but unimplemented command %j fails explicitly',
@@ -103,6 +105,36 @@ describe('runCli', () => {
     expect(await runCli(['daemon', 'stop'], runtime)).toMatchObject({
       exitCode: EXIT_SUCCESS,
       stdout: 'xapt daemon 已安全停止。',
+    });
+  });
+
+  test('daemon start 不因首次 Skill 安装失败而失败', async () => {
+    const runtime = fakeRuntime(runningSnapshot('UNCONFIGURED'));
+    runtime.daemonStart = async () => ({
+      snapshot: runningSnapshot('UNCONFIGURED'),
+      alreadyRunning: false,
+      skillWarning: 'Skill 未安装：GitHub 不可用',
+    });
+
+    const result = await runCli(['daemon', 'start'], runtime);
+
+    expect(result.exitCode).toBe(EXIT_SUCCESS);
+    expect(result.stdout).toContain('daemon 已启动');
+    expect(result.stdout).toContain('警告：Skill 未安装');
+  });
+
+  test('skills update 渲染确定 source revision', async () => {
+    const runtime = fakeRuntime(runningSnapshot('CONNECTED'));
+    runtime.skillsUpdate = async () => ({
+      updated: true,
+      sourceRevision: 'a'.repeat(40),
+    });
+
+    const result = await runCli(['skills', 'update'], runtime);
+
+    expect(result).toEqual({
+      exitCode: EXIT_SUCCESS,
+      stdout: `Agent Party Time Skills 已更新（${'a'.repeat(40)}）。`,
     });
   });
 
@@ -199,6 +231,10 @@ function fakeRuntime(snapshot: DaemonSnapshot): CliRuntime {
     }),
     uninstall: async () => ({ remoteRevoked: true, warnings: [] }),
     bugsDelete: async () => ({ deletedBugIds: [], deletedExecutionIds: [] }),
+    skillsUpdate: async () => ({
+      updated: false,
+      sourceRevision: 'a'.repeat(40),
+    }),
     internalDaemon: async () => {},
   };
 }

@@ -1,8 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import type { Execution } from '@agent-party-time/execution-contract';
+import type {
+  Execution,
+  JsonObject,
+} from '@agent-party-time/execution-contract';
 import type { AppDatabase } from '@/server/database';
 import { PlatformError } from '@/server/errors';
 import { ExecutionService } from '@/server/execution/service';
+import {
+  createContinuationCodexTurn,
+  createInitialCodexTurn,
+} from '@/server/execution/codex-turn';
 import type { CookingExecutionProjectionEvent } from '@/features/cooking/execution/application/execution-projection';
 import { DeploymentMethodSchema } from '@/features/cooking/engineering/contract';
 import type {
@@ -16,10 +23,12 @@ import {
 import { TestSubmissionWriteStore } from '@/features/cooking/submissions/application/test-submission-write-store';
 import {
   CiCdUpdateExecutionResultSchema,
+  CiCdUpdateOutputJsonSchema,
   RetryUpdateInputSchema,
   ExternalDeploymentReportInputSchema,
   FreezeUpdateInputSchema,
   LocalScriptUpdateExecutionResultSchema,
+  LocalScriptUpdateOutputJsonSchema,
   ResolveUpdateInteractionInputSchema,
   UpdateBatchCommandInputSchema,
   UpdateBatchViewSchema,
@@ -34,12 +43,10 @@ import {
   type UpdateWorkspaceProjection,
 } from '../contract';
 import {
-  buildContinuationCiCdUpdatePrompt,
-  buildInitialCiCdUpdatePrompt,
-  buildInitialLocalScriptUpdatePrompt,
-  buildRetryCiCdUpdatePrompt,
-  buildRetryLocalScriptUpdatePrompt,
-} from '../prompt';
+  buildInitialUpdateBrief,
+  buildUpdateExternalFailureInput,
+  buildUpdateRetryInput,
+} from '../brief';
 
 const QUIET_WINDOW_MS = 2 * 60 * 1_000;
 
@@ -285,17 +292,24 @@ export class UpdateService {
         const attachmentIds = externalReport
           ? this.externalReportAttachmentIds(externalReport.id)
           : [];
-        const prompt = externalReport
-          ? buildContinuationCiCdUpdatePrompt({
+        if (!batch.session_id)
+          throw new PlatformError(
+            'INVALID_TRANSITION',
+            '原 Update Task 不存在，不能自动重建',
+          );
+        const previousExecution = this.executions.get(latest.execution_id);
+        const continuationInput = externalReport
+          ? buildUpdateExternalFailureInput({
               reportRound: externalReport.round,
               summary: externalReport.summary!,
-              attachmentNames: this.externalReportAttachments(
+              attachments: this.externalReportAttachments(
                 externalReport.id,
-              ).map(({ original_name }) => original_name),
+              ).map(({ id, original_name }) => ({
+                fileId: id,
+                originalName: original_name,
+              })),
             })
-          : deployment.kind === 'LOCAL_SCRIPT'
-            ? buildRetryLocalScriptUpdatePrompt()
-            : buildRetryCiCdUpdatePrompt();
+          : buildUpdateRetryInput();
         const attemptId = this.createId();
         const execution = this.executions.enqueue({
           owner: { namespace: 'cooking', kind: 'UPDATE_BATCH', id: attemptId },
@@ -305,18 +319,21 @@ export class UpdateService {
           bindingId: source.binding_id,
           priority: 0,
           approvalPolicy: 'never',
-          promptKind: prompt.kind,
-          promptVersion: prompt.version,
-          renderedPrompt: prompt.renderedPrompt,
-          renderedPromptHash: prompt.renderedPromptHash,
-          outputJsonSchema: prompt.outputJsonSchema,
+          codexTurn: createContinuationCodexTurn({
+            taskId: batch.session_id,
+            taskSkillBinding: requireTaskSkillBinding(previousExecution),
+            text: continuationInput,
+            outputJsonSchema:
+              deployment.kind === 'LOCAL_SCRIPT'
+                ? (LocalScriptUpdateOutputJsonSchema as JsonObject)
+                : (CiCdUpdateOutputJsonSchema as JsonObject),
+          }),
           workspace: {
             key: `update-batch:${batchId}`,
             isolation: 'DETACHED_WORKTREE',
             baseRef: `origin/${source.target_branch}`,
           },
           attachmentIds,
-          resumeSessionId: batch.session_id,
         });
         const now = this.now().toISOString();
         this.db
@@ -908,26 +925,30 @@ export class UpdateService {
     }
     const batchId = this.createId();
     const attemptId = this.createId();
-    const promptInput = {
-      workspaceKey: `update-batch:${batchId}`,
+    const executionId = this.createId();
+    const workspaceKey = `update-batch:${batchId}`;
+    const executionBrief = buildInitialUpdateBrief({
+      executionId,
+      batchId,
+      submissionId: source.submission_id,
+      submissionItemId,
+      workspaceKey,
       submissionTitle: source.submission_title,
       engineeringName: source.engineering_name,
       repositoryUrl: source.repository_url,
       targetBranch: source.target_branch,
       environmentName: source.environment_name,
       entries: candidates.map((candidate) => ({
+        bugId: candidate.bug_id,
         bugShortId: candidate.short_id,
         bugTitle: candidate.title,
         commits: parseCommits(candidate.pending_commits_json),
       })),
-    };
-    const prompt =
-      deployment.kind === 'LOCAL_SCRIPT'
-        ? buildInitialLocalScriptUpdatePrompt({
-            ...promptInput,
-            deploymentCommand: deployment.command,
-          })
-        : buildInitialCiCdUpdatePrompt(promptInput);
+      deployment:
+        deployment.kind === 'LOCAL_SCRIPT'
+          ? { mode: 'LOCAL_SCRIPT', command: deployment.command }
+          : { mode: 'CI_CD' },
+    });
     this.db
       .prepare(
         `INSERT INTO cooking_update_batch(
@@ -959,6 +980,7 @@ export class UpdateService {
       ),
     );
     const execution = this.executions.enqueue({
+      id: executionId,
       owner: { namespace: 'cooking', kind: 'UPDATE_BATCH', id: attemptId },
       attempt: 1,
       previousExecutionId: null,
@@ -966,18 +988,20 @@ export class UpdateService {
       bindingId: source.binding_id,
       priority: 0,
       approvalPolicy: 'never',
-      promptKind: prompt.kind,
-      promptVersion: prompt.version,
-      renderedPrompt: prompt.renderedPrompt,
-      renderedPromptHash: prompt.renderedPromptHash,
-      outputJsonSchema: prompt.outputJsonSchema,
+      codexTurn: createInitialCodexTurn({
+        requiredSkillName: 'agent-party-time-integrate-update-batch',
+        executionBrief,
+        outputJsonSchema:
+          deployment.kind === 'LOCAL_SCRIPT'
+            ? (LocalScriptUpdateOutputJsonSchema as JsonObject)
+            : (CiCdUpdateOutputJsonSchema as JsonObject),
+      }),
       workspace: {
-        key: promptInput.workspaceKey,
+        key: workspaceKey,
         isolation: 'DETACHED_WORKTREE',
         baseRef: `origin/${source.target_branch}`,
       },
       attachmentIds: [],
-      resumeSessionId: null,
     });
     this.db
       .prepare(
@@ -1526,6 +1550,16 @@ function isUpdateExecution(execution: Execution): boolean {
     execution.owner.namespace === 'cooking' &&
     execution.owner.kind === 'UPDATE_BATCH'
   );
+}
+
+function requireTaskSkillBinding(execution: Execution) {
+  const binding = execution.codexTurn?.taskSkillBinding;
+  if (!binding)
+    throw new PlatformError(
+      'INVALID_TRANSITION',
+      '原 Update Task 缺少 Skill Binding，不能继续执行',
+    );
+  return binding;
 }
 
 function isTerminal(state: Execution['state']): boolean {

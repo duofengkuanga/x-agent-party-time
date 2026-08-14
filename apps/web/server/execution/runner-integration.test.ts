@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { createHash } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -199,6 +198,7 @@ describe('Runner Contract Conformance Harness', () => {
       kind: 'STARTED',
       leaseToken: claimed.lease.token,
       sessionId,
+      taskSkillBinding: null,
     });
     const interaction = await fixture.agent.openInteraction(claimed.id, {
       leaseToken: claimed.lease.token,
@@ -247,6 +247,7 @@ describe('Runner Contract Conformance Harness', () => {
       kind: 'STARTED',
       leaseToken: next.lease.token,
       sessionId: 'invalid-session',
+      taskSkillBinding: null,
     });
     await expect(
       fixture.agent.completeExecution(execution.id, {
@@ -349,7 +350,6 @@ function input(
   localBindingId: string,
   ownerId: string,
 ): EnqueueExecutionInput {
-  const prompt = `fixture ${ownerId}`;
   return {
     owner: { namespace: 'fixture', kind: 'generic', id: ownerId },
     attempt: 1,
@@ -357,13 +357,8 @@ function input(
     runnerId,
     bindingId: localBindingId,
     approvalPolicy: 'on-request',
-    promptKind: 'fixture.generic',
-    promptVersion: 1,
-    renderedPrompt: prompt,
-    renderedPromptHash: createHash('sha256').update(prompt).digest('hex'),
-    outputJsonSchema: { type: 'object' },
+    codexTurn: null,
     attachmentIds: [],
-    resumeSessionId: null,
   };
 }
 

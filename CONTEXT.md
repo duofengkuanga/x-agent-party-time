@@ -42,6 +42,18 @@ _Avoid_: Path、Runner Binding
 与 Cooking 业务无关的一次本机 Codex 执行尝试，承载领取、租约、会话、交互和结果。
 _Avoid_: Repair、Task、Job
 
+**Execution Brief**:
+一次 Execution 首次启动 Codex Task 时提供的结构化事实快照；稳定执行规则属于 Skill，后续 Turn 只补充继续指令或新增事实。
+_Avoid_: Prompt、Rendered Prompt
+
+**Skill Bundle**:
+xapt 安装在用户本机、由内容 Hash 标识的一份不可变 Codex Skill 文件集合。
+_Avoid_: Skill Version、Prompt Version
+
+**Task Skill Binding**:
+一个 Codex Task 与首次调用的 Skill Bundle 之间的固定关联；Task 后续 Turn 和恢复继续使用同一 Bundle。
+_Avoid_: Binding、Latest Skill
+
 **Interaction**:
 Execution 过程中 Codex 明确请求用户输入或权限决定的等待点。
 _Avoid_: Feedback、Chat Message

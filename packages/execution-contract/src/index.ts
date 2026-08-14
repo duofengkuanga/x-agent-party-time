@@ -74,6 +74,36 @@ export const ExecutionWorkspaceSchema = z.discriminatedUnion('isolation', [
     .strict(),
 ]);
 
+export const TaskSkillBindingSchema = z
+  .object({
+    skillName: z.string().trim().min(1).max(120),
+    bundleHash: z.string().regex(/^[a-f0-9]{64}$/u),
+    sourceRevision: z.string().regex(/^[a-f0-9]{40}$/u),
+  })
+  .strict();
+
+export const CodexTurnSchema = z.discriminatedUnion('kind', [
+  z
+    .object({
+      kind: z.literal('INITIAL'),
+      requiredSkillName: z.string().trim().min(1).max(120),
+      executionBrief: JsonObjectSchema,
+      executionBriefHash: z.string().regex(/^[a-f0-9]{64}$/u),
+      outputJsonSchema: JsonObjectSchema,
+      taskSkillBinding: TaskSkillBindingSchema.nullable().default(null),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('CONTINUATION'),
+      taskId: SessionIdSchema,
+      taskSkillBinding: TaskSkillBindingSchema,
+      input: z.string().trim().min(1).max(200_000),
+      outputJsonSchema: JsonObjectSchema,
+    })
+    .strict(),
+]);
+
 export const ExecutionFailureCodeSchema = z.enum([
   'BINDING_NOT_FOUND',
   'REPOSITORY_NOT_FOUND',
@@ -114,14 +144,9 @@ export const ExecutionSchema = z.object({
   priority: z.number().int(),
   approvalPolicy: ExecutionApprovalPolicySchema,
   state: ExecutionStateSchema,
-  promptKind: z.string().trim().min(1).max(120),
-  promptVersion: z.number().int().positive(),
-  renderedPrompt: z.string().min(1).max(200_000),
-  renderedPromptHash: z.string().regex(/^[a-f0-9]{64}$/u),
-  outputJsonSchema: JsonObjectSchema,
+  codexTurn: CodexTurnSchema.nullable(),
   workspace: ExecutionWorkspaceSchema.nullable(),
   attachments: z.array(ExecutionAttachmentSchema).max(25),
-  resumeSessionId: SessionIdSchema.nullable(),
   sessionId: SessionIdSchema.nullable(),
   lease: ExecutionLeaseSchema.nullable(),
   outcome: ExecutionOutcomeSchema.nullable(),
@@ -141,14 +166,9 @@ export const EnqueueExecutionInputSchema = z.object({
   bindingId: BindingIdSchema,
   priority: z.number().int().default(0),
   approvalPolicy: ExecutionApprovalPolicySchema,
-  promptKind: z.string().trim().min(1).max(120),
-  promptVersion: z.number().int().positive(),
-  renderedPrompt: z.string().min(1).max(200_000),
-  renderedPromptHash: z.string().regex(/^[a-f0-9]{64}$/u),
-  outputJsonSchema: JsonObjectSchema,
+  codexTurn: CodexTurnSchema.nullable().default(null),
   workspace: ExecutionWorkspaceSchema.nullable().default(null),
   attachmentIds: z.array(FileIdSchema).max(25),
-  resumeSessionId: SessionIdSchema.nullable().default(null),
 });
 
 export const ClaimedExecutionSchema = ExecutionSchema.extend({
@@ -180,6 +200,7 @@ export const ExecutionStartRequestSchema = z.discriminatedUnion('kind', [
     kind: z.literal('STARTED'),
     leaseToken: LeaseTokenSchema,
     sessionId: SessionIdSchema,
+    taskSkillBinding: TaskSkillBindingSchema.nullable(),
   }),
   z.object({
     kind: z.literal('START_FAILED'),
@@ -263,6 +284,8 @@ export type ExecutionApprovalPolicy = z.infer<
 export type ExecutionOwnerRef = z.infer<typeof ExecutionOwnerRefSchema>;
 export type ExecutionAttachment = z.infer<typeof ExecutionAttachmentSchema>;
 export type ExecutionWorkspace = z.infer<typeof ExecutionWorkspaceSchema>;
+export type TaskSkillBinding = z.infer<typeof TaskSkillBindingSchema>;
+export type CodexTurn = z.infer<typeof CodexTurnSchema>;
 export type ExecutionFailure = z.infer<typeof ExecutionFailureSchema>;
 export type ExecutionOutcome = z.infer<typeof ExecutionOutcomeSchema>;
 export type EnqueueExecutionInput = z.infer<typeof EnqueueExecutionInputSchema>;
@@ -290,6 +313,19 @@ export type CompleteExecutionRequest = z.infer<
   typeof CompleteExecutionRequestSchema
 >;
 export type RunnerActivity = z.infer<typeof RunnerActivitySchema>;
+
+export function serializeDeterministicJson(value: JsonValue): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value))
+    return `[${value.map((item) => serializeDeterministicJson(item)).join(',')}]`;
+  return `{${Object.keys(value)
+    .sort()
+    .map(
+      (key) =>
+        `${JSON.stringify(key)}:${serializeDeterministicJson(value[key]!)}`,
+    )
+    .join(',')}}`;
+}
 
 const ApprovalResolutionSchema = z
   .object({

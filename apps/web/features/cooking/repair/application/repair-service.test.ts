@@ -238,9 +238,30 @@ describe('RepairService', () => {
       runnerId: fixture.runner.id,
       bindingId: fixture.binding.id,
       priority: 0,
-      promptKind: 'cooking.repair',
-      promptVersion: 4,
-      resumeSessionId: null,
+      codexTurn: {
+        kind: 'INITIAL',
+        requiredSkillName: 'agent-party-time-repair-bug',
+        taskSkillBinding: null,
+        executionBrief: {
+          bug: {
+            title: '支付按钮无响应',
+            attachments: {
+              actualResult: [
+                {
+                  fileId: fixture.resultAttachments.actual.id,
+                  originalName: '实际结果.png',
+                },
+              ],
+              expectedResult: [
+                {
+                  fileId: fixture.resultAttachments.expected.id,
+                  originalName: '预期结果.txt',
+                },
+              ],
+            },
+          },
+        },
+      },
       workspace: {
         key: `bug-repair:${fixture.requested.bug.id}`,
         isolation: 'BRANCH_WORKTREE',
@@ -248,9 +269,10 @@ describe('RepairService', () => {
         branch: `apt/repair/${fixture.requested.bug.id}`,
       },
     });
-    expect(execution.renderedPrompt).toContain('支付按钮无响应');
-    expect(execution.renderedPrompt).toContain('- 实际结果附件：实际结果.png');
-    expect(execution.renderedPrompt).toContain('- 预期结果附件：预期结果.txt');
+    expect(execution.codexTurn?.kind).toBe('INITIAL');
+    if (execution.codexTurn?.kind !== 'INITIAL')
+      throw new Error('需要首次 Turn');
+    expect(execution.codexTurn.executionBriefHash).toMatch(/^[a-f0-9]{64}$/u);
     expect(execution.attachments.map(({ id }) => id)).toEqual([
       fixture.resultAttachments.actual.id,
       fixture.resultAttachments.expected.id,
@@ -411,13 +433,19 @@ describe('RepairService', () => {
     );
 
     expect(claimed).toHaveLength(2);
-    expect(claimed[0]?.resumeSessionId).toBeNull();
+    expect(claimed[0]?.codexTurn?.kind).toBe('INITIAL');
     expect(claimed[1]).toMatchObject({
       id: continued.executionId,
-      resumeSessionId: 'repair-conformance-session',
+      codexTurn: {
+        kind: 'CONTINUATION',
+        taskId: 'repair-conformance-session',
+      },
     });
-    expect(claimed[1]?.renderedPrompt).toContain('不要求用户补充文本');
-    expect(claimed[1]?.renderedPrompt).not.toContain('点击后没有反应');
+    expect(claimed[1]?.codexTurn?.kind).toBe('CONTINUATION');
+    if (claimed[1]?.codexTurn?.kind !== 'CONTINUATION')
+      throw new Error('需要继续 Turn');
+    expect(claimed[1].codexTurn.input).toBe('继续完成上次未完成的任务。');
+    expect(claimed[1].codexTurn.input).not.toContain('点击后没有反应');
     expect(
       fixture.repairs.repairView(
         fixture.users.developer.id,
@@ -507,9 +535,24 @@ describe('RepairService', () => {
         rawSummary: 'Agent 重启后原生 Codex Interaction Turn 已不可恢复',
       },
     });
+    expect(() =>
+      fixture.repairs.continueRepair(
+        fixture.users.developer.id,
+        fixture.requested.bug.id,
+        {
+          mutationId: randomUUID(),
+          expectedVersion: 3,
+        },
+      ),
+    ).toThrow(
+      expect.objectContaining({
+        code: 'INVALID_TRANSITION',
+        message: '原 Repair Task 不存在，不能自动重建',
+      }),
+    );
   });
 
-  test('旧 Session 的 Model Provider 已移除时使用完整上下文新建 Session', async () => {
+  test('旧 Task 无法恢复时仍保持原 Task 与 Skill Binding，不自动重建', async () => {
     const fixture = await setup();
     const started = await startLatest(fixture, 'legacy-custom-session');
     fixture.database
@@ -542,11 +585,12 @@ describe('RepairService', () => {
     );
     const execution = fixture.executions.get(continued.executionId);
 
-    expect(execution.resumeSessionId).toBeNull();
-    expect(execution.renderedPrompt).toContain('支付按钮无响应');
-    expect(execution.renderedPrompt).toContain('点击后没有反应');
-    expect(execution.renderedPrompt).toContain('进入支付流程');
-    expect(execution.renderedPrompt).toContain('aaaaaaa');
+    expect(execution.codexTurn).toMatchObject({
+      kind: 'CONTINUATION',
+      taskId: 'legacy-custom-session',
+      taskSkillBinding: testSkillBinding('agent-party-time-repair-bug'),
+      input: '继续完成上次未完成的任务。',
+    });
   });
 
   test('Schema 非法、缺失或重复 Commit 时 Execution FAILED 且 Bug 保持修复中', async () => {
@@ -879,11 +923,20 @@ async function startLatest(
     kind: 'STARTED',
     leaseToken: claimed.lease.token,
     sessionId,
+    taskSkillBinding: testSkillBinding('agent-party-time-repair-bug'),
   });
   return {
     executionId: claimed.id,
     leaseToken: claimed.lease.token,
     sessionId,
+  };
+}
+
+function testSkillBinding(skillName: string) {
+  return {
+    skillName,
+    bundleHash: 'a'.repeat(64),
+    sourceRevision: 'b'.repeat(40),
   };
 }
 

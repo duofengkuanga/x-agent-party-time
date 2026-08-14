@@ -1,10 +1,11 @@
 import { afterEach, expect, test } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Keychain, UserEnvironment } from '../platform/contracts';
 import { NodeLocalFileSystem } from '../platform/files';
 import { xaptPaths } from '../platform/paths';
+import { STATE_SCHEMA_VERSION } from '../state/schemas';
 import { LocalStateStore } from '../state/store';
 import { stoppedSnapshot, type DaemonSnapshot } from '../daemon/status';
 import { UninstallManager } from './uninstall';
@@ -25,6 +26,10 @@ test('安全卸载先撤销远程 Credential，并只删除 xapt 自有资源', 
     'preserve',
     0o600,
   );
+  const generation = join(fixture.paths.skillGenerations, 'a'.repeat(40));
+  await mkdir(generation, { recursive: true });
+  await mkdir(fixture.paths.userSkills, { recursive: true });
+  await symlink(generation, fixture.paths.skillNamespaceLink);
 
   const result = await fixture.manager.uninstall(false);
 
@@ -33,15 +38,31 @@ test('安全卸载先撤销远程 Credential，并只删除 xapt 自有资源', 
   expect(await fixture.files.info(fixture.paths.applicationSupport)).toBeNull();
   expect(await fixture.files.info(fixture.paths.installRoot)).toBeNull();
   expect(await fixture.files.info(fixture.paths.commandLink)).toBeNull();
+  expect(await fixture.files.info(fixture.paths.skillNamespaceLink)).toBeNull();
   expect(
     await fixture.files.read(join(fixture.home, '.codex', 'auth.json')),
+  ).not.toBeNull();
+});
+
+test('卸载不删除非 xapt 管理的 Skill 命名空间', async () => {
+  const fixture = await createFixture();
+  await mkdir(fixture.paths.skillNamespaceLink, { recursive: true });
+  await writeFile(join(fixture.paths.skillNamespaceLink, 'mine.txt'), 'keep');
+
+  const result = await fixture.manager.uninstall(false);
+
+  expect(result.warnings).toContain('Skill 命名空间不是 xapt 管理，未删除');
+  expect(
+    await fixture.files.read(
+      join(fixture.paths.skillNamespaceLink, 'mine.txt'),
+    ),
   ).not.toBeNull();
 });
 
 test('普通卸载在 Outbox 未收敛时不启动、不撤销也不删除', async () => {
   const fixture = await createFixture();
   await fixture.state.saveOutbox({
-    schemaVersion: 1,
+    schemaVersion: STATE_SCHEMA_VERSION,
     id: '00000000-0000-4000-8000-000000000001',
     kind: 'START',
     executionId: '00000000-0000-4000-8000-000000000002',
@@ -49,6 +70,7 @@ test('普通卸载在 Outbox 未收敛时不启动、不撤销也不删除', asy
       kind: 'STARTED',
       leaseToken: 'lease-token-000000000000000000000000',
       sessionId: 'session-1',
+      taskSkillBinding: null,
     },
     createdAt: '2026-08-03T00:00:00.000Z',
   });
@@ -95,7 +117,7 @@ test('强制卸载在任何副作用前要求真实 TTY 且允许取消', async 
 test('强制离线卸载仍删除可定位的本机 Keychain Credential', async () => {
   const fixture = await createFixture({ terminal: true, confirmed: true });
   await fixture.state.saveConnection({
-    schemaVersion: 1,
+    schemaVersion: STATE_SCHEMA_VERSION,
     serverUrl: 'https://apt.example.com',
     runnerId: '00000000-0000-4000-8000-000000000009',
   });

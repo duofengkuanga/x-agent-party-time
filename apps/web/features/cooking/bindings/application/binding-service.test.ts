@@ -444,24 +444,18 @@ describe('删除未使用工程绑定', () => {
       .prepare(
         `INSERT INTO platform_execution(
            id, owner_namespace, owner_kind, owner_id, attempt,
-           previous_execution_id, runner_id, binding_id, priority,
-           approval_policy, state,
-           prompt_kind, prompt_version, rendered_prompt, rendered_prompt_hash,
-           output_json_schema, resume_session_id, session_id,
-           lease_token_hash, lease_expires_at, outcome_json,
-           reported_outcome_json, cancellation_requested, created_at,
-           claimed_at, started_at, finished_at
+           runner_id, binding_id, priority, approval_policy, state,
+           outcome_json, reported_outcome_json, cancellation_requested,
+           created_at, finished_at
          ) VALUES (
-           ?, 'COOKING', 'REPAIR', 'historical-owner', 1, NULL, ?, ?, 0,
-           'on-request', 'SUCCEEDED', 'REPAIR', 1, '历史任务', ?, '{}', NULL, NULL,
-           NULL, NULL, '{}', '{}', 0, ?, NULL, NULL, ?
+           ?, 'COOKING', 'REPAIR', 'historical-owner', 1, ?, ?, 0,
+           'on-request', 'SUCCEEDED', '{}', '{}', 0, ?, ?
          )`,
       )
       .run(
         executionId,
         runners.member.runner.id,
         binding.id,
-        'a'.repeat(64),
         '2026-07-26T11:00:00.000Z',
         '2026-07-26T11:01:00.000Z',
       );

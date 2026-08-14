@@ -55,11 +55,18 @@ rl.on('line', (line) => {
       approvalPolicy: 'on-request',
       executionId: '00000000-0000-4000-8000-000000000601',
       repositoryPath: root,
-      prompt: '只返回 JSON',
+      text: '{"task":"只返回 JSON"}',
+      skill: { name: 'agent-party-time-repair-bug', path: '/tmp/repair-skill' },
       outputSchema: { type: 'object' },
-      attachments: [],
+      attachments: [
+        {
+          fileId: '00000000-0000-4000-8000-000000000603',
+          originalName: 'evidence.txt',
+          path: join(root, 'evidence.txt'),
+        },
+      ],
       artifactsDirectory: join(root, 'artifacts'),
-      resumeSessionId: null,
+      taskId: null,
       onInteraction: async () => ({}),
     },
     new AbortController().signal,
@@ -73,11 +80,12 @@ rl.on('line', (line) => {
       approvalPolicy: 'on-request',
       executionId: '00000000-0000-4000-8000-000000000602',
       repositoryPath: root,
-      prompt: '继续并只返回 JSON',
+      text: '继续并只返回 JSON',
+      skill: null,
       outputSchema: { type: 'object' },
       attachments: [],
       artifactsDirectory: join(root, 'artifacts'),
-      resumeSessionId: 'thread-1',
+      taskId: 'thread-1',
       onInteraction: async () => ({}),
     },
     new AbortController().signal,
@@ -97,6 +105,35 @@ rl.on('line', (line) => {
       sandbox: 'danger-full-access',
     });
   }
+  const turns = requests.filter((entry) => entry.method === 'turn/start');
+  expect((turns[0]?.params as { input: unknown[] }).input).toEqual([
+    {
+      type: 'skill',
+      name: 'agent-party-time-repair-bug',
+      path: '/tmp/repair-skill',
+    },
+    {
+      type: 'text',
+      text: JSON.stringify({
+        task: '只返回 JSON',
+        localAttachmentPaths: [
+          {
+            fileId: '00000000-0000-4000-8000-000000000603',
+            originalName: 'evidence.txt',
+            path: join(root, 'evidence.txt'),
+          },
+        ],
+      }),
+      text_elements: [],
+    },
+  ]);
+  expect((turns[1]?.params as { input: unknown[] }).input).toEqual([
+    {
+      type: 'text',
+      text: '继续并只返回 JSON',
+      text_elements: [],
+    },
+  ]);
   await executor.close();
 });
 
