@@ -74,7 +74,7 @@ bun install --frozen-lockfile
 bun run dev
 ```
 
-`bun run dev` 会在空数据库中自动创建上述本地开发用户。
+`bun run dev` 会在仓库 `.scratch/development/` 中准备数据库并自动创建上述本地开发用户。开发数据库的 Schema 过期时会自动重建，不读取或删除仓库外的数据。
 
 `bun run dev` 前台管理两个进程：
 
@@ -115,12 +115,18 @@ bun run dev:xapt
 
 ## 本地数据
 
+仓库开发数据：
+
 ```text
-~/.agent-party-time/
+.scratch/development/
 ├── server/
 │   ├── server.sqlite
 │   └── files/
 ```
+
+`bun run dev`、`bun run dev:app` 和 `bun run seed:app` 只处理这个可丢弃目录。Schema 版本不匹配时，开发启动流程会自动重建 `server/`；如果 `AGENT_PARTY_TIME_HOME` 指向仓库 `.scratch/` 之外，开发准备脚本会拒绝删除。
+
+正式 Server 数据默认位于 `~/.agent-party-time/`，也可以通过 `AGENT_PARTY_TIME_HOME` 指定。正式启动不会自动重建数据库；上线前需要提供对应的迁移策略。
 
 xapt 本机状态：
 
@@ -128,14 +134,6 @@ xapt 本机状态：
 ~/Library/Application Support/com.agentpartytime.xapt/
 ├── connection.json
 └── state/{bindings.json,executions/,outbox/,workspaces/}
-```
-
-项目处于开发期，不提供旧 Schema 迁移。数据库版本不匹配时：
-
-```bash
-bun run stop
-rm -rf ~/.agent-party-time/server
-bun run seed:app
 ```
 
 不要手工删除 xapt 状态；使用 `xapt uninstall`，避免丢失未发送 Outcome。

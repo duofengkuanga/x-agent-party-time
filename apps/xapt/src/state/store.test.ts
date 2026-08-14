@@ -12,7 +12,13 @@ import { join } from 'node:path';
 import type { ClaimedExecution } from '@agent-party-time/execution-contract';
 import { NodeLocalFileSystem, type LocalFileSystem } from '../platform/files';
 import { xaptPaths } from '../platform/paths';
-import { STATE_SCHEMA_VERSION } from './schemas';
+import {
+  BINDING_STATE_SCHEMA_VERSION,
+  CONNECTION_STATE_SCHEMA_VERSION,
+  EXECUTION_STATE_SCHEMA_VERSION,
+  INSTALL_STATE_SCHEMA_VERSION,
+  OUTBOX_STATE_SCHEMA_VERSION,
+} from './schemas';
 import { BindingStateError, LocalStateError, LocalStateStore } from './store';
 
 const homes: string[] = [];
@@ -25,6 +31,14 @@ afterEach(async () => {
   await Promise.all(
     homes.splice(0).map((home) => rm(home, { recursive: true, force: true })),
   );
+});
+
+test('各类持久化状态独立演进 Schema', () => {
+  expect(CONNECTION_STATE_SCHEMA_VERSION).toBe(1);
+  expect(BINDING_STATE_SCHEMA_VERSION).toBe(1);
+  expect(INSTALL_STATE_SCHEMA_VERSION).toBe(1);
+  expect(EXECUTION_STATE_SCHEMA_VERSION).toBe(2);
+  expect(OUTBOX_STATE_SCHEMA_VERSION).toBe(2);
 });
 
 test('全新 Home 初始化权限并且不读取或修改旧 Runner 目录', async () => {
@@ -49,7 +63,7 @@ test('全新 Home 初始化权限并且不读取或修改旧 Runner 目录', asy
   expect(await readFile(legacyMarker, 'utf8')).toBe('legacy');
   expect(await store.loadConnection()).toBeNull();
   expect(await store.loadBindings()).toEqual({
-    schemaVersion: STATE_SCHEMA_VERSION,
+    schemaVersion: BINDING_STATE_SCHEMA_VERSION,
     bindings: {},
   });
 });
@@ -102,12 +116,12 @@ test('连接、Binding、Execution、Outbox 与安装状态可重启读取且不
   const { paths, store } = await initializedStore();
   const now = '2026-08-03T08:00:00.000Z';
   await store.saveConnection({
-    schemaVersion: STATE_SCHEMA_VERSION,
+    schemaVersion: CONNECTION_STATE_SCHEMA_VERSION,
     serverUrl: 'https://apt.example.com',
     runnerId,
   });
   await store.saveBindings({
-    schemaVersion: STATE_SCHEMA_VERSION,
+    schemaVersion: BINDING_STATE_SCHEMA_VERSION,
     bindings: {
       [bindingId]: {
         bindingId,
@@ -117,7 +131,7 @@ test('连接、Binding、Execution、Outbox 与安装状态可重启读取且不
     },
   });
   await store.saveExecution({
-    schemaVersion: STATE_SCHEMA_VERSION,
+    schemaVersion: EXECUTION_STATE_SCHEMA_VERSION,
     executionId,
     bindingId,
     phase: 'RUNNING',
@@ -126,7 +140,7 @@ test('连接、Binding、Execution、Outbox 与安装状态可重启读取且不
     updatedAt: now,
   });
   await store.saveOutbox({
-    schemaVersion: STATE_SCHEMA_VERSION,
+    schemaVersion: OUTBOX_STATE_SCHEMA_VERSION,
     id: outboxId,
     kind: 'START',
     executionId,
@@ -143,7 +157,7 @@ test('连接、Binding、Execution、Outbox 与安装状态可重启读取且不
     createdAt: now,
   });
   await store.saveInstall({
-    schemaVersion: STATE_SCHEMA_VERSION,
+    schemaVersion: INSTALL_STATE_SCHEMA_VERSION,
     currentVersion: '0.1.0',
     previousVersion: null,
     installedAt: now,
@@ -153,7 +167,7 @@ test('连接、Binding、Execution、Outbox 与安装状态可重启读取且不
   const restarted = new LocalStateStore(paths, new NodeLocalFileSystem());
   await restarted.preflight();
   expect(await restarted.loadConnection()).toEqual({
-    schemaVersion: STATE_SCHEMA_VERSION,
+    schemaVersion: CONNECTION_STATE_SCHEMA_VERSION,
     serverUrl: 'https://apt.example.com',
     runnerId,
   });
@@ -186,19 +200,19 @@ test('连接、Binding、Execution、Outbox 与安装状态可重启读取且不
 test('删除全部 Cache 不影响长期状态或恢复状态', async () => {
   const { paths, store } = await initializedStore();
   await store.saveConnection({
-    schemaVersion: STATE_SCHEMA_VERSION,
+    schemaVersion: CONNECTION_STATE_SCHEMA_VERSION,
     serverUrl: 'https://apt.example.com',
     runnerId,
   });
   await store.saveBindings({
-    schemaVersion: STATE_SCHEMA_VERSION,
+    schemaVersion: BINDING_STATE_SCHEMA_VERSION,
     bindings: {},
   });
   await rm(paths.caches, { recursive: true, force: true });
 
   expect(await store.loadConnection()).not.toBeNull();
   expect(await store.loadBindings()).toEqual({
-    schemaVersion: STATE_SCHEMA_VERSION,
+    schemaVersion: BINDING_STATE_SCHEMA_VERSION,
     bindings: {},
   });
 });
@@ -206,7 +220,7 @@ test('删除全部 Cache 不影响长期状态或恢复状态', async () => {
 describe('状态失败关闭', () => {
   test.each([
     ['CORRUPT_STATE', '{not-json'],
-    ['UNSUPPORTED_SCHEMA', '{"schemaVersion":1}'],
+    ['UNSUPPORTED_SCHEMA', '{"schemaVersion":2}'],
   ] as const)('%s 时说明状态和下一步', async (code, content) => {
     const { paths, store } = await initializedStore();
     await writeFile(paths.connection, content, { mode: 0o600 });
@@ -224,7 +238,7 @@ describe('状态失败关闭', () => {
     await writeFile(
       paths.connection,
       `${JSON.stringify({
-        schemaVersion: STATE_SCHEMA_VERSION,
+        schemaVersion: CONNECTION_STATE_SCHEMA_VERSION,
         serverUrl: 'https://apt.example.com',
         runnerId,
       })}\n`,
@@ -253,7 +267,7 @@ describe('状态失败关闭', () => {
 
     const error = await captureError(() =>
       store.saveConnection({
-        schemaVersion: STATE_SCHEMA_VERSION,
+        schemaVersion: CONNECTION_STATE_SCHEMA_VERSION,
         serverUrl: 'https://apt.example.com',
         runnerId,
       }),
@@ -266,7 +280,7 @@ describe('状态失败关闭', () => {
     const { paths, store } = await initializedStore();
     await expect(
       store.saveConnection({
-        schemaVersion: STATE_SCHEMA_VERSION,
+        schemaVersion: CONNECTION_STATE_SCHEMA_VERSION,
         serverUrl: 'https://apt.example.com',
         runnerId,
         credential: 'credential-secret',
@@ -279,7 +293,7 @@ describe('状态失败关闭', () => {
     const { paths, store } = await initializedStore();
     await expect(
       store.saveBindings({
-        schemaVersion: STATE_SCHEMA_VERSION,
+        schemaVersion: BINDING_STATE_SCHEMA_VERSION,
         bindings: {
           [bindingId]: {
             bindingId,

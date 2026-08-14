@@ -27,7 +27,7 @@ import { AttachmentMaterializer } from './execution/attachments';
 import { CodexAppServerExecutor } from './execution/codex-app-server';
 import { ExecutionService } from './execution/service';
 import { GitExecutionWorkspaceManager } from './execution/workspaces';
-import { UpdateManager } from './install/update';
+import { DEFAULT_UPDATE_SOURCE, UpdateManager } from './install/update';
 import { UninstallManager } from './install/uninstall';
 import { SkillBundleManager } from './skills/manager';
 
@@ -61,6 +61,13 @@ export function createCliRuntime(): CliRuntime {
     codex,
     commands,
     clock,
+    fetch,
+    {
+      apiBaseUrl:
+        process.env.XAPT_GITHUB_API ?? DEFAULT_UPDATE_SOURCE.apiBaseUrl,
+      repository:
+        process.env.XAPT_GITHUB_REPOSITORY ?? DEFAULT_UPDATE_SOURCE.repository,
+    },
   );
   const uninstaller = new UninstallManager(
     paths,
@@ -120,6 +127,8 @@ export function createCliRuntime(): CliRuntime {
         sourceRevision: result.sourceRevision!,
       };
     },
+    renderInstallState: async (previousVersion, installedAt) =>
+      updates.renderInstallState(previousVersion, installedAt),
     internalDaemon: async () => {
       if (
         environment.platform() !== 'darwin' ||

@@ -6,7 +6,7 @@ import {
 } from '@agent-party-time/runner-contract';
 import type { Browser, Clock, Keychain } from '../platform/contracts';
 import { keychainAccount } from '../platform/macos/keychain';
-import { STATE_SCHEMA_VERSION } from '../state/schemas';
+import { CONNECTION_STATE_SCHEMA_VERSION } from '../state/schemas';
 import type { LocalStateStore } from '../state/store';
 import type { ConnectionStatus } from './status';
 import { RunnerHttpError, type RunnerAuthorizationHttp } from './runner-http';
@@ -228,7 +228,7 @@ export class ConnectionCoordinator {
         await this.keychain.save(account, result.credential);
         try {
           await this.state.saveConnection({
-            schemaVersion: STATE_SCHEMA_VERSION,
+            schemaVersion: CONNECTION_STATE_SCHEMA_VERSION,
             serverUrl: origin,
             runnerId: result.runner.id,
           });

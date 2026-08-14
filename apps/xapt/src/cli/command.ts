@@ -9,6 +9,11 @@ export type XaptCommand =
   | { kind: 'update' }
   | { kind: 'uninstall'; force: boolean }
   | {
+      kind: 'internal-render-install-state';
+      previousVersion: string | null;
+      installedAt: string;
+    }
+  | {
       kind: 'bugs-delete';
       bugIds: readonly string[];
       all: boolean;
@@ -46,9 +51,31 @@ export function parseCommand(args: readonly string[]): XaptCommand {
     case 'internal-daemon':
       requireNoArguments('internal-daemon', rest);
       return { kind: 'internal-daemon' };
+    case 'internal-render-install-state':
+      return parseInternalRenderInstallState(rest);
     default:
       throw new CliUsageError(`未知命令“${command}”`);
   }
+}
+
+function parseInternalRenderInstallState(args: readonly string[]): XaptCommand {
+  if (args.length !== 2)
+    throw new CliUsageError(
+      'internal-render-install-state 需要 <previous-version|-> <installed-at>',
+    );
+  const [previousVersionInput, installedAt] = args as [string, string];
+  if (
+    previousVersionInput !== '-' &&
+    !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(previousVersionInput)
+  )
+    throw new CliUsageError('previous-version 格式无效');
+  if (Number.isNaN(Date.parse(installedAt)))
+    throw new CliUsageError('installed-at 格式无效');
+  return {
+    kind: 'internal-render-install-state',
+    previousVersion: previousVersionInput === '-' ? null : previousVersionInput,
+    installedAt,
+  };
 }
 
 function parseSkillsCommand(args: readonly string[]): XaptCommand {

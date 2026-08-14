@@ -8,7 +8,11 @@ import type {
 } from '@agent-party-time/execution-contract';
 import { serializeDeterministicJson } from '@agent-party-time/execution-contract';
 import type { LocalFileSystem } from '../platform/files';
-import { STATE_SCHEMA_VERSION, type OutboxEntry } from '../state/schemas';
+import {
+  EXECUTION_STATE_SCHEMA_VERSION,
+  OUTBOX_STATE_SCHEMA_VERSION,
+  type OutboxEntry,
+} from '../state/schemas';
 import type { LocalStateStore } from '../state/store';
 import type { AuthenticatedRunnerSession } from '../daemon/connection';
 import type { RunnerExecutionHttp } from '../daemon/runner-http';
@@ -106,7 +110,7 @@ export class ExecutionService {
     if (this.tasks.has(execution.id)) return;
     const previous = this.bindingTails.get(execution.bindingId);
     const persisted = this.state.saveExecution({
-      schemaVersion: STATE_SCHEMA_VERSION,
+      schemaVersion: EXECUTION_STATE_SCHEMA_VERSION,
       executionId: execution.id,
       bindingId: execution.bindingId,
       phase: 'CLAIMED',
@@ -339,7 +343,7 @@ export class ExecutionService {
     startAccepted = true;
     releaseStartGate();
     await this.state.saveExecution({
-      schemaVersion: STATE_SCHEMA_VERSION,
+      schemaVersion: EXECUTION_STATE_SCHEMA_VERSION,
       executionId: execution.id,
       bindingId: execution.bindingId,
       phase: 'RUNNING',
@@ -377,7 +381,7 @@ export class ExecutionService {
       lease.stop();
     }
     await this.state.saveExecution({
-      schemaVersion: STATE_SCHEMA_VERSION,
+      schemaVersion: EXECUTION_STATE_SCHEMA_VERSION,
       executionId: execution.id,
       bindingId: execution.bindingId,
       phase: 'OUTCOME_PENDING',
@@ -411,7 +415,7 @@ export class ExecutionService {
     );
     this.waitingInteractionCount += 1;
     await this.state.saveExecution({
-      schemaVersion: STATE_SCHEMA_VERSION,
+      schemaVersion: EXECUTION_STATE_SCHEMA_VERSION,
       executionId: execution.id,
       bindingId: execution.bindingId,
       phase: 'WAITING_INTERACTION',
@@ -529,7 +533,7 @@ export class ExecutionService {
     request: ExecutionStartRequest | CompleteExecutionRequest,
   ): Promise<boolean> {
     const entry = {
-      schemaVersion: STATE_SCHEMA_VERSION,
+      schemaVersion: OUTBOX_STATE_SCHEMA_VERSION,
       id: this.createId(),
       kind,
       executionId,

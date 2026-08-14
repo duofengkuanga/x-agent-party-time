@@ -20,6 +20,17 @@ jobs:
       - run: bun run typecheck
       - run: bun run format:check
       - run: sh scripts/release-xapt.sh
+      - name: Download previous stable xapt
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p dist/previous
+          previous_tag=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)
+          gh release download "$previous_tag" \
+            --pattern xapt-darwin-arm64.tar.gz \
+            --pattern xapt-darwin-arm64.tar.gz.sha256 \
+            --dir dist/previous
+      - run: sh scripts/verify-xapt-release.sh
       - uses: softprops/action-gh-release@v2
         with:
           files: |

@@ -56,6 +56,10 @@ export interface CliRuntime {
     updated: boolean;
     sourceRevision: string;
   }>;
+  renderInstallState(
+    previousVersion: string | null,
+    installedAt: string,
+  ): Promise<string>;
   internalDaemon(): Promise<void>;
 }
 
@@ -173,6 +177,15 @@ export async function runCli(
         await runtime.internalDaemon();
         return { exitCode: EXIT_SUCCESS };
       }
+      case 'internal-render-install-state':
+        if (!runtime) return notImplemented('internal-render-install-state');
+        return {
+          exitCode: EXIT_SUCCESS,
+          stdout: await runtime.renderInstallState(
+            command.previousVersion,
+            command.installedAt,
+          ),
+        };
     }
   } catch (error) {
     if (error instanceof CliUsageError)

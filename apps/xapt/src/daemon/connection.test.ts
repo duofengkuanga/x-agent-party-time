@@ -11,7 +11,7 @@ import type { Browser, Clock, Keychain } from '../platform/contracts';
 import { NodeLocalFileSystem } from '../platform/files';
 import { keychainAccount } from '../platform/macos/keychain';
 import { xaptPaths } from '../platform/paths';
-import { STATE_SCHEMA_VERSION } from '../state/schemas';
+import { CONNECTION_STATE_SCHEMA_VERSION } from '../state/schemas';
 import { LocalStateStore } from '../state/store';
 import { ConnectionCoordinator } from './connection';
 import { RunnerHttpError, type RunnerAuthorizationHttp } from './runner-http';
@@ -46,7 +46,7 @@ test('授权成功只把 Credential 写入 Keychain 并报告浏览器进度', a
     },
   ]);
   expect(await fixture.state.loadConnection()).toEqual({
-    schemaVersion: STATE_SCHEMA_VERSION,
+    schemaVersion: CONNECTION_STATE_SCHEMA_VERSION,
     serverUrl: 'https://apt.example.com',
     runnerId: newRunnerId,
   });
@@ -111,7 +111,7 @@ test('不同 Server 被拒绝且不改变已有状态或 Credential', async () =
 test('Credential 撤销后重授权，持久化新身份再删除旧 Keychain 项', async () => {
   const fixture = await createFixture({ heartbeatRevoked: true });
   await fixture.state.saveConnection({
-    schemaVersion: STATE_SCHEMA_VERSION,
+    schemaVersion: CONNECTION_STATE_SCHEMA_VERSION,
     serverUrl: 'https://apt.example.com',
     runnerId: oldRunnerId,
   });
@@ -130,7 +130,7 @@ test('Credential 撤销后重授权，持久化新身份再删除旧 Keychain �
 test('恢复时缺少 Credential 明确进入 REVOKED', async () => {
   const fixture = await createFixture();
   await fixture.state.saveConnection({
-    schemaVersion: STATE_SCHEMA_VERSION,
+    schemaVersion: CONNECTION_STATE_SCHEMA_VERSION,
     serverUrl: 'https://apt.example.com',
     runnerId: oldRunnerId,
   });

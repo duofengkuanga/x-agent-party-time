@@ -26,7 +26,7 @@ describe('runCli', () => {
   test('renders xapt and minimum Codex versions', async () => {
     expect(await runCli(['--version'])).toEqual({
       exitCode: EXIT_SUCCESS,
-      stdout: 'xapt 0.3.5\n最低 Codex 版本 0.145.0',
+      stdout: 'xapt 0.3.6\n最低 Codex 版本 0.145.0',
     });
   });
 
@@ -49,6 +49,7 @@ describe('runCli', () => {
     [['bugs', 'delete', '944d519c-1ed0-4711-a3b1-325bec5bbe56']],
     [['skills', 'update']],
     [['internal-daemon']],
+    [['internal-render-install-state', '-', '2026-08-01T00:00:00.000Z']],
   ] as const)(
     'recognized but unimplemented command %j fails explicitly',
     async (args) => {
@@ -88,6 +89,22 @@ describe('runCli', () => {
     expect(output).not.toMatch(
       /credential|bearer|prompt|attachment|\/Users\/|bindingId|runnerId/i,
     );
+  });
+
+  test('internal install state 由目标 xapt 运行时生成', async () => {
+    const result = await runCli(
+      ['internal-render-install-state', '0.3.4', '2026-08-01T00:00:00.000Z'],
+      fakeRuntime(runningSnapshot('UNCONFIGURED')),
+    );
+
+    expect(result.exitCode).toBe(EXIT_SUCCESS);
+    expect(JSON.parse(result.stdout!)).toEqual({
+      schemaVersion: 1,
+      currentVersion: '0.3.6',
+      previousVersion: '0.3.4',
+      installedAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-03T00:00:00.000Z',
+    });
   });
 
   test('daemon runtime 渲染未连接状态、幂等启动和停止', async () => {
@@ -235,6 +252,14 @@ function fakeRuntime(snapshot: DaemonSnapshot): CliRuntime {
       updated: false,
       sourceRevision: 'a'.repeat(40),
     }),
+    renderInstallState: async (previousVersion, installedAt) =>
+      `${JSON.stringify({
+        schemaVersion: 1,
+        currentVersion: '0.3.6',
+        previousVersion,
+        installedAt,
+        updatedAt: '2026-08-03T00:00:00.000Z',
+      })}\n`,
     internalDaemon: async () => {},
   };
 }

@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import type { Clock, CommandRunner } from '../platform/contracts';
 import { NodeLocalFileSystem } from '../platform/files';
 import { xaptPaths } from '../platform/paths';
-import { STATE_SCHEMA_VERSION } from '../state/schemas';
+import { INSTALL_STATE_SCHEMA_VERSION } from '../state/schemas';
 import { LocalStateStore } from '../state/store';
 import { stoppedSnapshot, type DaemonSnapshot } from '../daemon/status';
 import { UpdateManager } from './update';
@@ -28,6 +28,35 @@ test('已是最新版本时不下载、不停止 daemon', async () => {
     daemonRestarted: false,
   });
   expect(fixture.events).toEqual(['release']);
+});
+
+test('Release 来源可替换以执行真实候选版本验收', async () => {
+  const fixture = await createFixture('0.2.0', false, {
+    apiBaseUrl: 'http://127.0.0.1:18765',
+    repository: 'test/xapt',
+  });
+
+  await fixture.manager.update();
+
+  expect(fixture.requests[0]).toBe(
+    'http://127.0.0.1:18765/repos/test/xapt/releases/latest',
+  );
+});
+
+test('目标 xapt 生成自身版本的安装状态', async () => {
+  const fixture = await createFixture('0.3.4');
+
+  expect(
+    JSON.parse(
+      fixture.manager.renderInstallState('0.3.4', '2026-08-01T00:00:00.000Z'),
+    ),
+  ).toEqual({
+    schemaVersion: INSTALL_STATE_SCHEMA_VERSION,
+    currentVersion: '0.3.6',
+    previousVersion: '0.3.4',
+    installedAt: '2026-08-01T00:00:00.000Z',
+    updatedAt: '2026-08-03T00:00:00.000Z',
+  });
 });
 
 test('校验资产并原子切换版本，只保留当前和上一成功版本', async () => {
@@ -98,7 +127,11 @@ test('旧 daemon 也无法恢复时不谎报回退完成', async () => {
   });
 });
 
-async function createFixture(currentVersion: string, running = false) {
+async function createFixture(
+  currentVersion: string,
+  running = false,
+  source?: { apiBaseUrl: string; repository: string },
+) {
   const home = await mkdtemp(join(tmpdir(), 'xapt-update-'));
   homes.push(home);
   const paths = xaptPaths(home);
@@ -116,7 +149,7 @@ async function createFixture(currentVersion: string, running = false) {
   );
   await symlink(`versions/${currentVersion}`, paths.currentLink);
   await state.saveInstall({
-    schemaVersion: STATE_SCHEMA_VERSION,
+    schemaVersion: INSTALL_STATE_SCHEMA_VERSION,
     currentVersion,
     previousVersion: null,
     installedAt: '2026-08-01T00:00:00.000Z',
@@ -124,6 +157,7 @@ async function createFixture(currentVersion: string, running = false) {
   });
 
   const events: string[] = [];
+  const requests: string[] = [];
   const archive = new TextEncoder().encode('fixture archive');
   const checksum = createHash('sha256').update(archive).digest('hex');
   const fixture = {
@@ -135,6 +169,7 @@ async function createFixture(currentVersion: string, running = false) {
   };
   const fetchImplementation = (async (input: URL | RequestInfo) => {
     const url = String(input);
+    requests.push(url);
     if (url.endsWith('/releases/latest')) {
       events.push('release');
       return Response.json({
@@ -201,6 +236,7 @@ async function createFixture(currentVersion: string, running = false) {
     commands,
     clock,
     fetchImplementation,
+    source,
   );
   return {
     ...fixture,
@@ -209,6 +245,7 @@ async function createFixture(currentVersion: string, running = false) {
     files,
     state,
     events,
+    requests,
     daemon,
     manager,
   };

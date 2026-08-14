@@ -4,13 +4,25 @@ import { join } from 'node:path';
 import type { CommandRunner, Clock } from '../platform/contracts';
 import type { LocalFileSystem } from '../platform/files';
 import type { XaptPaths } from '../platform/paths';
-import { STATE_SCHEMA_VERSION } from '../state/schemas';
+import {
+  INSTALL_STATE_SCHEMA_VERSION,
+  InstallStateSchema,
+} from '../state/schemas';
 import type { LocalStateStore } from '../state/store';
 import { compareVersions, type CodexPreflight } from '../daemon/codex';
 import type { DaemonManager } from '../daemon/manager';
+import { XAPT_VERSION } from '../version';
 
 const ASSET_NAME = 'xapt-darwin-arm64.tar.gz';
-const DEFAULT_REPOSITORY = 'duofengkuanga/x-agent-party-time';
+export const DEFAULT_UPDATE_SOURCE = {
+  apiBaseUrl: 'https://api.github.com',
+  repository: 'duofengkuanga/x-agent-party-time',
+} as const;
+
+export interface UpdateSource {
+  apiBaseUrl: string;
+  repository: string;
+}
 
 export interface UpdateResult {
   updated: boolean;
@@ -28,8 +40,25 @@ export class UpdateManager {
     private readonly commands: CommandRunner,
     private readonly clock: Clock,
     private readonly fetchImplementation: typeof fetch = fetch,
-    private readonly repository = DEFAULT_REPOSITORY,
+    private readonly source: UpdateSource = DEFAULT_UPDATE_SOURCE,
   ) {}
+
+  renderInstallState(
+    previousVersion: string | null,
+    installedAt: string,
+  ): string {
+    return `${JSON.stringify(
+      InstallStateSchema.parse({
+        schemaVersion: INSTALL_STATE_SCHEMA_VERSION,
+        currentVersion: XAPT_VERSION,
+        previousVersion,
+        installedAt,
+        updatedAt: this.clock.now().toISOString(),
+      }),
+      null,
+      2,
+    )}\n`;
+  }
 
   async update(): Promise<UpdateResult> {
     const snapshot = await this.daemon.status();
@@ -69,7 +98,7 @@ export class UpdateManager {
     try {
       await this.switchCurrent(release.version);
       await this.state.saveInstall({
-        schemaVersion: STATE_SCHEMA_VERSION,
+        schemaVersion: INSTALL_STATE_SCHEMA_VERSION,
         currentVersion: release.version,
         previousVersion,
         installedAt: install?.installedAt ?? this.clock.now().toISOString(),
@@ -134,7 +163,7 @@ export class UpdateManager {
     checksumUrl: string;
   }> {
     const response = await this.fetchImplementation(
-      `https://api.github.com/repos/${this.repository}/releases/latest`,
+      `${this.source.apiBaseUrl.replace(/\/$/u, '')}/repos/${this.source.repository}/releases/latest`,
       { headers: { accept: 'application/vnd.github+json' } },
     );
     if (!response.ok)

@@ -71,7 +71,7 @@ if test -f "$ROOT/install.json"; then
   EXISTING_INSTALLED_AT=$(/usr/bin/plutil -extract installedAt raw -o - "$ROOT/install.json" 2>/dev/null || true)
   test -z "$EXISTING_INSTALLED_AT" || INSTALLED_AT=$EXISTING_INSTALLED_AT
 fi
-PREVIOUS=null
+PREVIOUS_VERSION=-
 OLD_CURRENT=false
 OLD_CURRENT_TARGET=''
 if test -L "$ROOT/current"; then
@@ -80,7 +80,7 @@ if test -L "$ROOT/current"; then
   OLD_CURRENT_TARGET=$CURRENT_TARGET
   CURRENT_VERSION=${CURRENT_TARGET#versions/}
   if test "$CURRENT_TARGET" = "versions/$CURRENT_VERSION" && test "$CURRENT_VERSION" != "$VERSION" && printf '%s' "$CURRENT_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-    PREVIOUS="\"$CURRENT_VERSION\""
+    PREVIOUS_VERSION=$CURRENT_VERSION
   fi
 fi
 OLD_COMMAND=false
@@ -90,7 +90,7 @@ if test -L "$HOME/.local/bin/xapt"; then
   OLD_COMMAND_TARGET=$(readlink "$HOME/.local/bin/xapt" || true)
 fi
 INSTALL_TMP=$(mktemp "$ROOT/install.json.XXXXXX") || fail '无法写入安装状态'
-printf '{\n  "schemaVersion": 1,\n  "currentVersion": "%s",\n  "previousVersion": %s,\n  "installedAt": "%s",\n  "updatedAt": "%s"\n}\n' "$VERSION" "$PREVIOUS" "$INSTALLED_AT" "$NOW" > "$INSTALL_TMP"
+"$TARGET/xapt" internal-render-install-state "$PREVIOUS_VERSION" "$INSTALLED_AT" > "$INSTALL_TMP" || fail '目标 xapt 无法生成安装状态'
 chmod 600 "$INSTALL_TMP"
 ln -sfn "versions/$VERSION" "$ROOT/current.next"
 ln -sfn "../share/xapt/current/xapt" "$HOME/.local/bin/xapt.next"

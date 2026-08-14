@@ -15,7 +15,7 @@ import type {
 import { NodeLocalFileSystem } from '../platform/files';
 import { xaptPaths } from '../platform/paths';
 import { LocalStateStore } from '../state/store';
-import { STATE_SCHEMA_VERSION } from '../state/schemas';
+import { EXECUTION_STATE_SCHEMA_VERSION } from '../state/schemas';
 import type { AuthenticatedRunnerSession } from '../daemon/connection';
 import type { RunnerExecutionHttp } from '../daemon/runner-http';
 import type { AttachmentMaterializer } from './attachments';
@@ -241,7 +241,7 @@ test('重启保留本地执行记录至 Server Lease 收敛后再领取', async 
   const execution = claimedExecution(null);
   fixture.http.claimed = [];
   await fixture.state.saveExecution({
-    schemaVersion: STATE_SCHEMA_VERSION,
+    schemaVersion: EXECUTION_STATE_SCHEMA_VERSION,
     executionId: execution.id,
     bindingId: execution.bindingId,
     phase: 'RUNNING',
@@ -269,7 +269,7 @@ test('续租将最新 Lease 过期时间写入崩溃恢复记录', async () => {
   const fixture = await createFixture();
   const execution = claimedExecution(null);
   await fixture.state.saveExecution({
-    schemaVersion: STATE_SCHEMA_VERSION,
+    schemaVersion: EXECUTION_STATE_SCHEMA_VERSION,
     executionId: execution.id,
     bindingId: execution.bindingId,
     phase: 'RUNNING',

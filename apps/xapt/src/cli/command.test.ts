@@ -58,6 +58,22 @@ describe('parseCommand', () => {
       { kind: 'bugs-delete', bugIds: [], all: true, force: true },
     ],
     [['internal-daemon'], { kind: 'internal-daemon' }],
+    [
+      ['internal-render-install-state', '0.3.4', '2026-08-01T00:00:00.000Z'],
+      {
+        kind: 'internal-render-install-state',
+        previousVersion: '0.3.4',
+        installedAt: '2026-08-01T00:00:00.000Z',
+      },
+    ],
+    [
+      ['internal-render-install-state', '-', '2026-08-01T00:00:00.000Z'],
+      {
+        kind: 'internal-render-install-state',
+        previousVersion: null,
+        installedAt: '2026-08-01T00:00:00.000Z',
+      },
+    ],
   ] as const)('parses %j', (args, expected) => {
     expect(parseCommand(args)).toEqual(expected);
   });
@@ -82,6 +98,8 @@ describe('parseCommand', () => {
     [['bugs', 'delete', '--all', '944d519c-1ed0-4711-a3b1-325bec5bbe56']],
     [['bugs', 'delete', '--unknown']],
     [['bugs', 'list']],
+    [['internal-render-install-state']],
+    [['internal-render-install-state', '-', 'not-a-date']],
     [['--unknown']],
   ] as const)('rejects invalid arguments %j', (args) => {
     expect(() => parseCommand(args)).toThrow();

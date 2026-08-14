@@ -6,11 +6,15 @@ import {
 import { isAbsolute } from 'node:path';
 import { z } from 'zod';
 
-export const STATE_SCHEMA_VERSION = 2;
+export const CONNECTION_STATE_SCHEMA_VERSION = 1;
+export const BINDING_STATE_SCHEMA_VERSION = 1;
+export const EXECUTION_STATE_SCHEMA_VERSION = 2;
+export const OUTBOX_STATE_SCHEMA_VERSION = 2;
+export const INSTALL_STATE_SCHEMA_VERSION = 1;
 
 export const ConnectionStateSchema = z
   .object({
-    schemaVersion: z.literal(STATE_SCHEMA_VERSION),
+    schemaVersion: z.literal(CONNECTION_STATE_SCHEMA_VERSION),
     serverUrl: z.url(),
     runnerId: z.uuid(),
   })
@@ -29,14 +33,14 @@ export const LocalBindingSchema = z
 
 export const BindingStateSchema = z
   .object({
-    schemaVersion: z.literal(STATE_SCHEMA_VERSION),
+    schemaVersion: z.literal(BINDING_STATE_SCHEMA_VERSION),
     bindings: z.record(z.uuid(), LocalBindingSchema),
   })
   .strict();
 
 export const ExecutionRecoveryStateSchema = z
   .object({
-    schemaVersion: z.literal(STATE_SCHEMA_VERSION),
+    schemaVersion: z.literal(EXECUTION_STATE_SCHEMA_VERSION),
     executionId: z.uuid(),
     bindingId: z.uuid(),
     phase: z.enum([
@@ -54,7 +58,7 @@ export const ExecutionRecoveryStateSchema = z
 export const OutboxEntrySchema = z.discriminatedUnion('kind', [
   z
     .object({
-      schemaVersion: z.literal(STATE_SCHEMA_VERSION),
+      schemaVersion: z.literal(OUTBOX_STATE_SCHEMA_VERSION),
       id: z.uuid(),
       kind: z.literal('START'),
       executionId: z.uuid(),
@@ -64,7 +68,7 @@ export const OutboxEntrySchema = z.discriminatedUnion('kind', [
     .strict(),
   z
     .object({
-      schemaVersion: z.literal(STATE_SCHEMA_VERSION),
+      schemaVersion: z.literal(OUTBOX_STATE_SCHEMA_VERSION),
       id: z.uuid(),
       kind: z.literal('OUTCOME'),
       executionId: z.uuid(),
@@ -76,7 +80,7 @@ export const OutboxEntrySchema = z.discriminatedUnion('kind', [
 
 export const InstallStateSchema = z
   .object({
-    schemaVersion: z.literal(STATE_SCHEMA_VERSION),
+    schemaVersion: z.literal(INSTALL_STATE_SCHEMA_VERSION),
     currentVersion: z.string().min(1),
     previousVersion: z.string().min(1).nullable(),
     installedAt: z.iso.datetime(),

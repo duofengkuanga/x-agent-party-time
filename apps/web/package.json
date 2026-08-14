@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun --bun next dev",
+    "dev": "AGENT_PARTY_TIME_HOME=${AGENT_PARTY_TIME_HOME:-../../.scratch/development} bun scripts/prepare-development.ts && AGENT_PARTY_TIME_HOME=${AGENT_PARTY_TIME_HOME:-../../.scratch/development} bun --bun next dev",
     "build": "bun --bun next build",
     "start": "bun --bun next start",
-    "seed": "bun scripts/seed.ts",
+    "seed": "AGENT_PARTY_TIME_HOME=${AGENT_PARTY_TIME_HOME:-../../.scratch/development} bun scripts/prepare-development.ts && AGENT_PARTY_TIME_HOME=${AGENT_PARTY_TIME_HOME:-../../.scratch/development} bun scripts/seed.ts",
     "test": "bun test app features server",
     "typecheck": "tsc --noEmit"
   },

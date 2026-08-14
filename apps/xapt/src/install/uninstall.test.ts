@@ -5,7 +5,10 @@ import { join } from 'node:path';
 import type { Keychain, UserEnvironment } from '../platform/contracts';
 import { NodeLocalFileSystem } from '../platform/files';
 import { xaptPaths } from '../platform/paths';
-import { STATE_SCHEMA_VERSION } from '../state/schemas';
+import {
+  CONNECTION_STATE_SCHEMA_VERSION,
+  OUTBOX_STATE_SCHEMA_VERSION,
+} from '../state/schemas';
 import { LocalStateStore } from '../state/store';
 import { stoppedSnapshot, type DaemonSnapshot } from '../daemon/status';
 import { UninstallManager } from './uninstall';
@@ -62,7 +65,7 @@ test('卸载不删除非 xapt 管理的 Skill 命名空间', async () => {
 test('普通卸载在 Outbox 未收敛时不启动、不撤销也不删除', async () => {
   const fixture = await createFixture();
   await fixture.state.saveOutbox({
-    schemaVersion: STATE_SCHEMA_VERSION,
+    schemaVersion: OUTBOX_STATE_SCHEMA_VERSION,
     id: '00000000-0000-4000-8000-000000000001',
     kind: 'START',
     executionId: '00000000-0000-4000-8000-000000000002',
@@ -117,7 +120,7 @@ test('强制卸载在任何副作用前要求真实 TTY 且允许取消', async 
 test('强制离线卸载仍删除可定位的本机 Keychain Credential', async () => {
   const fixture = await createFixture({ terminal: true, confirmed: true });
   await fixture.state.saveConnection({
-    schemaVersion: STATE_SCHEMA_VERSION,
+    schemaVersion: CONNECTION_STATE_SCHEMA_VERSION,
     serverUrl: 'https://apt.example.com',
     runnerId: '00000000-0000-4000-8000-000000000009',
   });

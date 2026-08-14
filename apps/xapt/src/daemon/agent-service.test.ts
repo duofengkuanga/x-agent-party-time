@@ -13,7 +13,7 @@ import type { DirectorySelector } from '../platform/macos/directory-selector';
 import { xaptPaths } from '../platform/paths';
 import type { LocalRepositoryInspector } from '../platform/repository';
 import { LocalStateStore } from '../state/store';
-import { STATE_SCHEMA_VERSION } from '../state/schemas';
+import { OUTBOX_STATE_SCHEMA_VERSION } from '../state/schemas';
 import type { ExecutionService } from '../execution/service';
 import { AgentService } from './agent-service';
 import type {
@@ -99,7 +99,7 @@ test('恢复记录优先于 Binding 工作，并向 Server 报告零可用槽位
   } as unknown as ExecutionService;
   const fixture = await createFixture('/private/local/repository', execution);
   await fixture.state.saveOutbox({
-    schemaVersion: STATE_SCHEMA_VERSION,
+    schemaVersion: OUTBOX_STATE_SCHEMA_VERSION,
     id: '00000000-0000-4000-8000-000000000203',
     kind: 'START',
     executionId: '00000000-0000-4000-8000-000000000204',

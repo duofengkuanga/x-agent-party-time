@@ -4,13 +4,17 @@ import type { ZodType } from 'zod';
 import type { LocalFileSystem } from '../platform/files';
 import type { XaptPaths } from '../platform/paths';
 import {
+  BINDING_STATE_SCHEMA_VERSION,
   BindingStateSchema,
+  CONNECTION_STATE_SCHEMA_VERSION,
   ConnectionStateSchema,
+  EXECUTION_STATE_SCHEMA_VERSION,
   ExecutionRecoveryStateSchema,
+  INSTALL_STATE_SCHEMA_VERSION,
   InstallStateSchema,
   LocalBindingSchema,
+  OUTBOX_STATE_SCHEMA_VERSION,
   OutboxEntrySchema,
-  STATE_SCHEMA_VERSION,
   type BindingState,
   type ConnectionState,
   type ExecutionRecoveryState,
@@ -52,6 +56,7 @@ export class LocalStateStore {
     return await this.readState(
       this.paths.connection,
       ConnectionStateSchema,
+      CONNECTION_STATE_SCHEMA_VERSION,
       true,
     );
   }
@@ -66,8 +71,13 @@ export class LocalStateStore {
 
   async loadBindings(): Promise<BindingState> {
     return (
-      (await this.readState(this.paths.bindings, BindingStateSchema, true)) ?? {
-        schemaVersion: STATE_SCHEMA_VERSION,
+      (await this.readState(
+        this.paths.bindings,
+        BindingStateSchema,
+        BINDING_STATE_SCHEMA_VERSION,
+        true,
+      )) ?? {
+        schemaVersion: BINDING_STATE_SCHEMA_VERSION,
         bindings: {},
       }
     );
@@ -128,6 +138,7 @@ export class LocalStateStore {
     return await this.readDirectory(
       this.paths.executions,
       ExecutionRecoveryStateSchema,
+      EXECUTION_STATE_SCHEMA_VERSION,
     );
   }
 
@@ -142,7 +153,11 @@ export class LocalStateStore {
 
   async loadOutbox(): Promise<OutboxEntry[]> {
     return (
-      await this.readDirectory(this.paths.outbox, OutboxEntrySchema)
+      await this.readDirectory(
+        this.paths.outbox,
+        OutboxEntrySchema,
+        OUTBOX_STATE_SCHEMA_VERSION,
+      )
     ).sort(
       (left, right) =>
         left.createdAt.localeCompare(right.createdAt) ||
@@ -166,6 +181,7 @@ export class LocalStateStore {
     return await this.readState(
       this.paths.installState,
       InstallStateSchema,
+      INSTALL_STATE_SCHEMA_VERSION,
       true,
     );
   }
@@ -192,11 +208,17 @@ export class LocalStateStore {
   private async readDirectory<T>(
     path: string,
     schema: ZodType<T>,
+    expectedVersion: number,
   ): Promise<T[]> {
     const values: T[] = [];
     for (const name of await this.files.list(path)) {
       if (!name.endsWith('.json')) continue;
-      const value = await this.readState(join(path, name), schema, false);
+      const value = await this.readState(
+        join(path, name),
+        schema,
+        expectedVersion,
+        false,
+      );
       values.push(value);
     }
     return values;
@@ -205,16 +227,19 @@ export class LocalStateStore {
   private async readState<T>(
     path: string,
     schema: ZodType<T>,
+    expectedVersion: number,
     optional: false,
   ): Promise<T>;
   private async readState<T>(
     path: string,
     schema: ZodType<T>,
+    expectedVersion: number,
     optional: true,
   ): Promise<T | null>;
   private async readState<T>(
     path: string,
     schema: ZodType<T>,
+    expectedVersion: number,
     optional: boolean,
   ): Promise<T | null> {
     const label = basename(path);
@@ -237,7 +262,7 @@ export class LocalStateStore {
       typeof value !== 'object' ||
       value === null ||
       !('schemaVersion' in value) ||
-      value.schemaVersion !== STATE_SCHEMA_VERSION
+      value.schemaVersion !== expectedVersion
     )
       throw new LocalStateError('UNSUPPORTED_SCHEMA', label);
     const parsed = schema.safeParse(value);

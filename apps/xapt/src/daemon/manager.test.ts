@@ -7,7 +7,7 @@ import { NodeLocalFileSystem } from '../platform/files';
 import { xaptPaths } from '../platform/paths';
 import { SystemClock } from '../platform/system';
 import { LocalStateStore } from '../state/store';
-import { STATE_SCHEMA_VERSION } from '../state/schemas';
+import { OUTBOX_STATE_SCHEMA_VERSION } from '../state/schemas';
 import type { CodexPreflight } from './codex';
 import { DaemonControlClient } from './control';
 import { DaemonManager } from './manager';
@@ -72,7 +72,7 @@ test('daemon 首次启动、重复启动、状态、停止和重复停止保持�
 
   const outboxId = '00000000-0000-4000-8000-000000000101';
   await state.saveOutbox({
-    schemaVersion: STATE_SCHEMA_VERSION,
+    schemaVersion: OUTBOX_STATE_SCHEMA_VERSION,
     id: outboxId,
     kind: 'START',
     executionId: '00000000-0000-4000-8000-000000000102',
