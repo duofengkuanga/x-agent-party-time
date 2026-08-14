@@ -307,6 +307,7 @@ describe('RepairService', () => {
           kind: 'SUCCEEDED',
           result: {
             outcome: 'COMPLETED',
+            completionKind: 'CHANGES_COMMITTED',
             summary: '已修复支付按钮',
             changes: ['修复支付按钮事件绑定'],
             validations: [
@@ -376,6 +377,64 @@ describe('RepairService', () => {
     ).toEqual(['aaaaaaa', 'bbbbbbb']);
   });
 
+  test('目标分支已包含修复且无新 Commit 时直接进入待验证', async () => {
+    const fixture = await setup();
+    const started = await startLatest(fixture, 'already-fixed-session');
+
+    expect(
+      fixture.executions.complete(fixture.runner.id, started.executionId, {
+        leaseToken: started.leaseToken,
+        sessionId: started.sessionId,
+        outcome: {
+          kind: 'SUCCEEDED',
+          result: {
+            outcome: 'COMPLETED',
+            completionKind: 'TARGET_ALREADY_FIXED',
+            summary: '目标分支已包含缺陷修复，无需创建候选提交',
+            changes: [],
+            validations: [
+              {
+                name: '目标分支检查',
+                status: 'PASSED',
+                detail: '当前工作区与目标分支没有 Commit 差异',
+              },
+            ],
+            warnings: [],
+            commits: [],
+          },
+        },
+      }).state,
+    ).toBe('SUCCEEDED');
+    expect(
+      currentBug(fixture.database, fixture.requested.bug.id),
+    ).toMatchObject({ stage: 'WAITING_FOR_VERIFICATION', version: 3 });
+    expect(
+      fixture.repairs.repairView(
+        fixture.users.developer.id,
+        fixture.requested.bug.id,
+      )?.pendingCommits,
+    ).toEqual([]);
+    expect(
+      fixture.repairs
+        .repairView(fixture.users.developer.id, fixture.requested.bug.id)
+        ?.timeline.at(-1),
+    ).toMatchObject({
+      kind: 'REPAIR_ATTEMPT',
+      result: {
+        outcome: 'COMPLETED',
+        commitCount: 0,
+        commits: [],
+      },
+    });
+    expect(
+      fixture.database
+        .prepare(
+          'SELECT COUNT(*) count FROM cooking_pending_delivery WHERE submission_item_id = ?',
+        )
+        .get(fixture.requested.bug.submissionItemId),
+    ).toEqual({ count: 0 });
+  });
+
   test('协议级 Agent 完成失败后无输入重新执行链路', async () => {
     const fixture = await setup();
     const agent = new ProtocolAgent({
@@ -421,6 +480,7 @@ describe('RepairService', () => {
           kind: 'SUCCEEDED',
           result: {
             outcome: 'COMPLETED',
+            completionKind: 'CHANGES_COMMITTED',
             summary: '第二次修复完成',
             changes: ['完成第二次修复'],
             validations: [{ name: '定向检查', status: 'PASSED' }],
@@ -593,18 +653,11 @@ describe('RepairService', () => {
     });
   });
 
-  test('Schema 非法、缺失或重复 Commit 时 Execution FAILED 且 Bug 保持修复中', async () => {
+  test('Schema 非法或重复 Commit 时 Execution FAILED 且 Bug 保持修复中', async () => {
     const invalidResults = [
       {
         outcome: 'COMPLETED',
-        summary: '缺少提交',
-        changes: [],
-        validations: [],
-        warnings: [],
-        commits: [],
-      },
-      {
-        outcome: 'COMPLETED',
+        completionKind: 'CHANGES_COMMITTED',
         summary: '重复提交',
         changes: ['修改'],
         validations: [],
@@ -613,12 +666,40 @@ describe('RepairService', () => {
       },
       {
         outcome: 'COMPLETED',
+        completionKind: 'CHANGES_COMMITTED',
         summary: '伪造字段',
         changes: ['修改'],
         validations: [],
         warnings: [],
         commits: ['aaaaaaa'],
         pushed: true,
+      },
+      {
+        outcome: 'COMPLETED',
+        completionKind: 'TARGET_ALREADY_FIXED',
+        summary: '仍有改动',
+        changes: ['修改'],
+        validations: [{ name: '目标分支检查', status: 'PASSED' }],
+        warnings: [],
+        commits: [],
+      },
+      {
+        outcome: 'COMPLETED',
+        completionKind: 'TARGET_ALREADY_FIXED',
+        summary: '未经验证',
+        changes: [],
+        validations: [],
+        warnings: [],
+        commits: [],
+      },
+      {
+        outcome: 'COMPLETED',
+        completionKind: 'TARGET_ALREADY_FIXED',
+        summary: '验证失败',
+        changes: [],
+        validations: [{ name: '目标分支检查', status: 'FAILED' }],
+        warnings: [],
+        commits: [],
       },
       { outcome: 'UNKNOWN', summary: '非法状态', commits: ['aaaaaaa'] },
     ];
@@ -697,6 +778,7 @@ describe('RepairService', () => {
           kind: 'SUCCEEDED',
           result: {
             outcome: 'COMPLETED',
+            completionKind: 'CHANGES_COMMITTED',
             summary: '本次提交应整体回滚',
             changes: ['修改支付按钮'],
             validations: [],

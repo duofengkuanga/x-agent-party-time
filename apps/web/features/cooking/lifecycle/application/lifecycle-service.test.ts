@@ -924,6 +924,7 @@ async function completeClaimedRepair(
       kind: 'SUCCEEDED',
       result: {
         outcome: 'COMPLETED',
+        completionKind: 'CHANGES_COMMITTED',
         summary: '修复完成',
         changes: ['完成缺陷修复'],
         validations: [{ name: '定向测试', status: 'PASSED' }],

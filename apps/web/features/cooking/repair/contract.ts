@@ -26,13 +26,46 @@ const RepairExecutionResultValueSchema = z.discriminatedUnion('outcome', [
   z
     .object({
       outcome: z.literal('COMPLETED'),
+      completionKind: z.enum(['CHANGES_COMMITTED', 'TARGET_ALREADY_FIXED']),
       summary: z.string().trim().min(1).max(4_000),
       changes: z.array(z.string().trim().min(1).max(2_000)).max(100),
       validations: z.array(RepairValidationSchema).max(100),
       warnings: z.array(z.string().trim().min(1).max(2_000)).max(100),
-      commits: z.array(CommitShaSchema).min(1).max(100),
+      commits: z.array(CommitShaSchema).max(100),
     })
-    .strict(),
+    .strict()
+    .superRefine((result, context) => {
+      if (result.completionKind === 'CHANGES_COMMITTED') {
+        if (result.commits.length === 0)
+          context.addIssue({
+            code: 'custom',
+            path: ['commits'],
+            message: '有代码改动的 Repair 必须返回候选 Commit',
+          });
+        return;
+      }
+      if (result.changes.length > 0)
+        context.addIssue({
+          code: 'custom',
+          path: ['changes'],
+          message: '目标分支已修复时不得报告本次改动',
+        });
+      if (result.commits.length > 0)
+        context.addIssue({
+          code: 'custom',
+          path: ['commits'],
+          message: '目标分支已修复时不得返回候选 Commit',
+        });
+      if (
+        !result.validations.some(({ status }) => status === 'PASSED') ||
+        result.validations.some(({ status }) => status === 'FAILED')
+      )
+        context.addIssue({
+          code: 'custom',
+          path: ['validations'],
+          message: '目标分支已修复必须有成功且无失败的验证结果',
+        });
+    }),
   z
     .object({
       outcome: z.literal('FAILED'),
@@ -86,6 +119,7 @@ export const RepairExecutionResultSchema = z.preprocess((value) => {
   }
   if (source.outcome === 'FAILED') {
     if (
+      !isNullPlaceholder(source.completionKind) ||
       !isEmptyArrayPlaceholder(source.changes) ||
       !isEmptyArrayPlaceholder(source.validations) ||
       !isEmptyArrayPlaceholder(source.warnings) ||
@@ -93,6 +127,7 @@ export const RepairExecutionResultSchema = z.preprocess((value) => {
     )
       return value;
     const {
+      completionKind: _completionKind,
       changes: _changes,
       validations: _validations,
       warnings: _warnings,
@@ -116,6 +151,10 @@ export const RepairOutputJsonSchema: JsonObject = {
   type: 'object',
   properties: {
     outcome: { type: 'string', enum: ['COMPLETED', 'FAILED'] },
+    completionKind: {
+      type: ['string', 'null'],
+      enum: ['CHANGES_COMMITTED', 'TARGET_ALREADY_FIXED', null],
+    },
     summary: { type: 'string', minLength: 1, maxLength: 4_000 },
     changes: {
       type: 'array',
@@ -177,6 +216,7 @@ export const RepairOutputJsonSchema: JsonObject = {
   },
   required: [
     'outcome',
+    'completionKind',
     'summary',
     'changes',
     'validations',
@@ -196,7 +236,7 @@ const RepairAttemptResultViewSchema = z.discriminatedUnion('outcome', [
     changes: z.array(z.string()),
     validations: z.array(RepairValidationSchema),
     warnings: z.array(z.string()),
-    commitCount: z.number().int().positive(),
+    commitCount: z.number().int().nonnegative(),
     commits: z.array(CommitShaSchema).nullable(),
     rawSummary: z.string().nullable(),
   }),

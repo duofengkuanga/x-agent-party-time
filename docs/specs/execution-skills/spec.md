@@ -186,7 +186,11 @@ Repair Skill：
 - 读取仓库规则并进行最小修复。
 - 运行适用的验证。
 - 创建普通本地 Commit。
-- 成功时返回按创建顺序排列的 Commit SHA。
+- 创建改动时以 `CHANGES_COMMITTED` 完成，并返回按创建顺序排列的 Commit
+  SHA。
+- 如果目标分支在本次 Repair 开始前已经包含所需修复，则不得复用旧 Commit
+  或创建空 Commit；验证现状后以 `TARGET_ALREADY_FIXED` 和空 Commit 列表
+  完成，Bug 直接进入待验证，不创建 Update Batch 候选。
 - 禁止 Push、部署、amend、squash、rebase 和历史改写。
 - 禁止删除或重置无关修改。
 

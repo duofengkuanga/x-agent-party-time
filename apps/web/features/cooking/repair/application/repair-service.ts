@@ -302,6 +302,8 @@ export class RepairService {
     const context = this.requireContext(attempt.bug_id);
     const now = this.now().toISOString();
     const interpreted = this.interpret(execution, context);
+    const deliveryRequired =
+      interpreted.kind === 'COMPLETED' && interpreted.deliveryRequired;
     if (interpreted.kind === 'COMPLETED') {
       this.db
         .prepare(
@@ -313,18 +315,25 @@ export class RepairService {
         .run(
           execution.sessionId,
           JSON.stringify(interpreted.pendingCommits),
-          now,
+          deliveryRequired ? now : null,
           now,
           attempt.bug_id,
         );
       this.db
         .prepare(
           `UPDATE cooking_bug
-           SET stage = 'WAITING_FOR_UPDATE', version = version + 1, updated_at = ?
+           SET stage = ?, version = version + 1, updated_at = ?
            WHERE id = ? AND stage = 'REPAIRING'`,
         )
-        .run(now, attempt.bug_id);
-      this.deliveryHooks.candidateAvailable(attempt.bug_id, now);
+        .run(
+          deliveryRequired
+            ? 'WAITING_FOR_UPDATE'
+            : 'WAITING_FOR_VERIFICATION',
+          now,
+          attempt.bug_id,
+        );
+      if (deliveryRequired)
+        this.deliveryHooks.candidateAvailable(attempt.bug_id, now);
     } else {
       this.db
         .prepare(
@@ -357,6 +366,8 @@ export class RepairService {
         executionId: execution.id,
         attempt: attempt.attempt,
         outcome: interpreted.kind,
+        deliveryRequired:
+          interpreted.kind === 'COMPLETED' ? deliveryRequired : undefined,
       },
       now,
     );
@@ -669,6 +680,7 @@ export class RepairService {
   ):
     | {
         kind: 'COMPLETED';
+        deliveryRequired: boolean;
         pendingCommits: string[];
         attemptOutcome: unknown;
       }
@@ -684,10 +696,14 @@ export class RepairService {
         const current = parseCommits(context.pending_commits_json);
         if (
           new Set(parsed.data.commits).size === parsed.data.commits.length &&
-          !parsed.data.commits.some((commit) => current.includes(commit))
+          !parsed.data.commits.some((commit) => current.includes(commit)) &&
+          (parsed.data.completionKind === 'CHANGES_COMMITTED' ||
+            current.length === 0)
         )
           return {
             kind: 'COMPLETED',
+            deliveryRequired:
+              parsed.data.completionKind === 'CHANGES_COMMITTED',
             pendingCommits: [...current, ...parsed.data.commits],
             attemptOutcome: parsed.data,
           };

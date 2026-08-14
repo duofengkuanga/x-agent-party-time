@@ -175,6 +175,7 @@ export async function seedBrowserFixture(
           kind: 'SUCCEEDED',
           result: {
             outcome: 'COMPLETED',
+            completionKind: 'CHANGES_COMMITTED',
             summary: `${title} 已修复`,
             changes: ['完成浏览器验收夹具修复'],
             validations: [{ name: '夹具验证', status: 'PASSED' }],
