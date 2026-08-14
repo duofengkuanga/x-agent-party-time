@@ -52,7 +52,7 @@ test('目标 xapt 生成自身版本的安装状态', async () => {
     ),
   ).toEqual({
     schemaVersion: INSTALL_STATE_SCHEMA_VERSION,
-    currentVersion: '0.3.6',
+    currentVersion: '0.3.7',
     previousVersion: '0.3.4',
     installedAt: '2026-08-01T00:00:00.000Z',
     updatedAt: '2026-08-03T00:00:00.000Z',

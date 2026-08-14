@@ -30,6 +30,10 @@ _Avoid_: Agent、Runner CLI、Agent CLI
 用户在产品中看到的已连接本机执行节点，由本机 xapt 运行并向 Server 表达在线状态。
 _Avoid_: xapt、Runner、Worker
 
+**Agent Installation**:
+一份 xapt 安装在正式卸载前保持稳定的本机身份；重新授权、更新或删除连接状态不会创建新的 Agent，正式卸载后重新安装才是新的安装身份。
+_Avoid_: Connection、Credential、设备名
+
 **Runner**:
 Agent 的内部技术名称，只用于代码、数据库、协议和包；不得作为用户界面术语。
 _Avoid_: Agent（仅在内部技术语境中）

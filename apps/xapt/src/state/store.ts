@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { basename, join } from 'node:path';
 import { resolve } from 'node:path';
 import type { ZodType } from 'zod';
@@ -10,6 +11,8 @@ import {
   ConnectionStateSchema,
   EXECUTION_STATE_SCHEMA_VERSION,
   ExecutionRecoveryStateSchema,
+  IDENTITY_STATE_SCHEMA_VERSION,
+  IdentityStateSchema,
   INSTALL_STATE_SCHEMA_VERSION,
   InstallStateSchema,
   LocalBindingSchema,
@@ -43,6 +46,24 @@ export class LocalStateStore {
       this.paths.executions,
     ])
       await this.cleanupTemporaryFiles(path);
+    await this.installationId();
+  }
+
+  async installationId(): Promise<string> {
+    const existing = await this.readState(
+      this.paths.identity,
+      IdentityStateSchema,
+      IDENTITY_STATE_SCHEMA_VERSION,
+      true,
+    );
+    if (existing) return existing.installationId;
+    const created = IdentityStateSchema.parse({
+      schemaVersion: IDENTITY_STATE_SCHEMA_VERSION,
+      installationId: randomUUID(),
+      createdAt: new Date().toISOString(),
+    });
+    await this.writeState(this.paths.identity, created);
+    return created.installationId;
   }
 
   async saveConnection(value: ConnectionState): Promise<void> {
@@ -198,6 +219,12 @@ export class LocalStateStore {
       this.paths.workspaces,
     ])
       await this.requirePrivateDirectory(path);
+    await this.readState(
+      this.paths.identity,
+      IdentityStateSchema,
+      IDENTITY_STATE_SCHEMA_VERSION,
+      true,
+    );
     await this.loadConnection();
     await this.loadBindings();
     await this.loadExecutions();

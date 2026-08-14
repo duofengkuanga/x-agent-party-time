@@ -44,6 +44,7 @@ type PairingCodeRow = {
 
 type AuthorizationRequestRow = {
   id: string;
+  installation_id: string;
   verifier_hash: string;
   fingerprint: string;
   suggested_name: string;
@@ -214,9 +215,9 @@ export class RunnerService {
       .prepare(
         `SELECT COUNT(*) count
          FROM platform_runner_authorization_request
-         WHERE fingerprint = ? AND state = 'PENDING' AND expires_at > ?`,
+         WHERE installation_id = ? AND state = 'PENDING' AND expires_at > ?`,
       )
-      .get(input.fingerprint, now.toISOString()) as { count: number };
+      .get(input.installationId, now.toISOString()) as { count: number };
     if (duplicate.count >= 3)
       throw new PlatformError(
         'RESOURCE_CONFLICT',
@@ -227,13 +228,14 @@ export class RunnerService {
     this.db
       .prepare(
         `INSERT INTO platform_runner_authorization_request(
-           id, verifier_hash, fingerprint, suggested_name, approved_name,
+           id, installation_id, verifier_hash, fingerprint, suggested_name, approved_name,
            owner_user_id, state, approval_token_hash, expires_at,
            approved_at, consumed_at, last_polled_at, poll_count, created_at
-         ) VALUES (?, ?, ?, ?, NULL, NULL, 'PENDING', NULL, ?, NULL, NULL, NULL, 0, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, NULL, NULL, 'PENDING', NULL, ?, NULL, NULL, NULL, 0, ?)`,
       )
       .run(
         requestId,
+        input.installationId,
         input.verifierHash,
         input.fingerprint,
         input.suggestedName,
@@ -383,21 +385,50 @@ export class RunnerService {
       const credential = RunnerCredentialSchema.parse(
         this.secrets.credential(),
       );
-      const runnerId = this.createId();
-      this.db
+      const existing = this.db
         .prepare(
-          `INSERT INTO platform_runner(
-             id, owner_user_id, name, credential_hash, version,
-             last_seen_at, revoked_at, created_at
-           ) VALUES (?, ?, ?, ?, 1, NULL, NULL, ?)`,
+          `SELECT id, owner_user_id, name, credential_hash, version,
+                  last_seen_at, revoked_at, created_at
+           FROM platform_runner
+           WHERE owner_user_id = ? AND installation_id = ?`,
         )
-        .run(
-          runnerId,
-          row.owner_user_id,
-          row.approved_name,
-          hashSecret(credential),
-          now.toISOString(),
-        );
+        .get(row.owner_user_id, row.installation_id) as RunnerRow | undefined;
+      const runnerId = existing?.id ?? this.createId();
+      const version = existing ? existing.version + 1 : 1;
+      if (existing) {
+        const update = this.db
+          .prepare(
+            `UPDATE platform_runner
+             SET name = ?, credential_hash = ?, version = ?,
+                 available_slots = 3, last_seen_at = NULL, revoked_at = NULL
+             WHERE id = ? AND version = ?`,
+          )
+          .run(
+            row.approved_name,
+            hashSecret(credential),
+            version,
+            existing.id,
+            existing.version,
+          );
+        if (update.changes !== 1)
+          throw new PlatformError('STALE_STATE', 'Agent 已更新，请重试授权');
+      } else {
+        this.db
+          .prepare(
+            `INSERT INTO platform_runner(
+               id, owner_user_id, installation_id, name, credential_hash,
+               version, last_seen_at, revoked_at, created_at
+             ) VALUES (?, ?, ?, ?, ?, 1, NULL, NULL, ?)`,
+          )
+          .run(
+            runnerId,
+            row.owner_user_id,
+            row.installation_id,
+            row.approved_name,
+            hashSecret(credential),
+            now.toISOString(),
+          );
+      }
       const consumed = this.db
         .prepare(
           `UPDATE platform_runner_authorization_request
@@ -413,10 +444,10 @@ export class RunnerService {
           id: runnerId,
           ownerUserId: row.owner_user_id,
           name: row.approved_name,
-          version: 1,
+          version,
           lastSeenAt: null,
           revokedAt: null,
-          createdAt: now.toISOString(),
+          createdAt: existing?.created_at ?? now.toISOString(),
         },
         credential,
       });
@@ -559,7 +590,7 @@ export class RunnerService {
   private authorizationRequest(requestId: string): AuthorizationRequestRow {
     const row = this.db
       .prepare(
-        `SELECT id, verifier_hash, fingerprint, suggested_name, approved_name,
+        `SELECT id, installation_id, verifier_hash, fingerprint, suggested_name, approved_name,
                 owner_user_id, state, approval_token_hash, expires_at,
                 approved_at, consumed_at, last_polled_at, poll_count, created_at
          FROM platform_runner_authorization_request WHERE id = ?`,

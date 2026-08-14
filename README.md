@@ -132,11 +132,12 @@ xapt 本机状态：
 
 ```text
 ~/Library/Application Support/com.agentpartytime.xapt/
+├── identity.json
 ├── connection.json
 └── state/{bindings.json,executions/,outbox/,workspaces/}
 ```
 
-不要手工删除 xapt 状态；使用 `xapt uninstall`，避免丢失未发送 Outcome。
+`identity.json` 在重新授权、更新和删除连接状态时保持不变，Server 因此会复用同一 Agent 并轮换 Credential。不要手工删除 xapt 状态；使用 `xapt uninstall`，避免丢失未发送 Outcome。
 
 ## 质量门
 

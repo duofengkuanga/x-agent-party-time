@@ -63,12 +63,14 @@ export class ProtocolAgent {
   }
 
   async createAuthorization(input: {
+    installationId: string;
     verifier: string;
     fingerprint: string;
     suggestedName: string;
   }): Promise<RunnerAuthorizationIssue> {
     const verifier = RunnerAuthorizationVerifierSchema.parse(input.verifier);
     const body = RunnerAuthorizationCreateRequestSchema.parse({
+      installationId: input.installationId,
       verifierHash: createHash('sha256').update(verifier).digest('hex'),
       fingerprint: input.fingerprint,
       suggestedName: input.suggestedName,

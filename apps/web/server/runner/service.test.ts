@@ -10,6 +10,7 @@ import { RunnerService } from './service';
 
 const directories: string[] = [];
 const databases: AppDatabase[] = [];
+const installationId = '00000000-0000-4000-8000-000000000010';
 
 async function setup() {
   const directory = await mkdtemp(join(tmpdir(), 'agent-party-time-runner-'));
@@ -109,6 +110,7 @@ describe('Agent 浏览器授权', () => {
     const { database, service, setNow, users } = await setup();
     const verifier = 'v'.repeat(43);
     const issue = service.createAuthorizationRequest({
+      installationId,
       verifierHash: createHash('sha256').update(verifier).digest('hex'),
       fingerprint: 'ABCD-1234-EF56',
       suggestedName: '本机 Agent',
@@ -186,6 +188,7 @@ describe('Agent 浏览器授权', () => {
     const issue = service.createAuthorizationRequest(
       {
         verifierHash: createHash('sha256').update(verifier).digest('hex'),
+        installationId,
         fingerprint: 'AAAA-BBBB-CCCC',
         suggestedName: '待确认 Agent',
       },
@@ -214,6 +217,76 @@ describe('Agent 浏览器授权', () => {
     expect(service.claimAuthorization(issue.requestId, verifier)).toMatchObject(
       { state: 'REJECTED' },
     );
+  });
+
+  test('同一安装重新授权复用 Agent 并轮换 Credential', async () => {
+    const { database, service, setNow, users } = await setup();
+    const firstVerifier = 'a'.repeat(43);
+    const firstIssue = service.createAuthorizationRequest({
+      installationId,
+      verifierHash: createHash('sha256').update(firstVerifier).digest('hex'),
+      fingerprint: '1111-2222-3333',
+      suggestedName: '首次 Agent',
+    });
+    const firstApproval = service.prepareAuthorizationApproval(
+      users.owner.id,
+      firstIssue.requestId,
+    );
+    service.approveAuthorization(
+      users.owner.id,
+      firstIssue.requestId,
+      firstApproval.approvalToken!,
+      '首次 Agent',
+    );
+    const first = service.claimAuthorization(
+      firstIssue.requestId,
+      firstVerifier,
+    );
+    expect(first.state).toBe('AUTHORIZED');
+    if (first.state !== 'AUTHORIZED') throw new Error('首次授权失败');
+
+    setNow('2026-07-26T10:01:00Z');
+    const secondVerifier = 'b'.repeat(43);
+    const secondIssue = service.createAuthorizationRequest({
+      installationId,
+      verifierHash: createHash('sha256').update(secondVerifier).digest('hex'),
+      fingerprint: '4444-5555-6666',
+      suggestedName: '再次 Agent',
+    });
+    const secondApproval = service.prepareAuthorizationApproval(
+      users.owner.id,
+      secondIssue.requestId,
+    );
+    service.approveAuthorization(
+      users.owner.id,
+      secondIssue.requestId,
+      secondApproval.approvalToken!,
+      '再次 Agent',
+    );
+    const second = service.claimAuthorization(
+      secondIssue.requestId,
+      secondVerifier,
+    );
+    expect(second.state).toBe('AUTHORIZED');
+    if (second.state !== 'AUTHORIZED') throw new Error('再次授权失败');
+
+    expect(second.runner).toMatchObject({
+      id: first.runner.id,
+      name: '再次 Agent',
+      version: first.runner.version + 1,
+      createdAt: first.runner.createdAt,
+    });
+    expect(
+      database
+        .query<{ count: number }, []>(
+          'SELECT COUNT(*) count FROM platform_runner',
+        )
+        .get()?.count,
+    ).toBe(1);
+    expect(() => service.heartbeat(first.credential)).toThrow(
+      expect.objectContaining({ code: 'NOT_AUTHENTICATED' }),
+    );
+    expect(service.heartbeat(second.credential).id).toBe(first.runner.id);
   });
 });
 

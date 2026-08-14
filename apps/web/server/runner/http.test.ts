@@ -165,6 +165,7 @@ describe('Runner HTTP protocol', () => {
       new Request('http://server/api/runner/authorizations', {
         method: 'POST',
         body: JSON.stringify({
+          installationId: '00000000-0000-4000-8000-000000000010',
           verifierHash: createHash('sha256').update(verifier).digest('hex'),
           fingerprint: 'ABCD-1234-EF56',
           suggestedName: 'HTTP Agent',

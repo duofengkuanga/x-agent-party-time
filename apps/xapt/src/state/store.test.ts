@@ -16,6 +16,7 @@ import {
   BINDING_STATE_SCHEMA_VERSION,
   CONNECTION_STATE_SCHEMA_VERSION,
   EXECUTION_STATE_SCHEMA_VERSION,
+  IDENTITY_STATE_SCHEMA_VERSION,
   INSTALL_STATE_SCHEMA_VERSION,
   OUTBOX_STATE_SCHEMA_VERSION,
 } from './schemas';
@@ -35,6 +36,7 @@ afterEach(async () => {
 
 test('各类持久化状态独立演进 Schema', () => {
   expect(CONNECTION_STATE_SCHEMA_VERSION).toBe(1);
+  expect(IDENTITY_STATE_SCHEMA_VERSION).toBe(1);
   expect(BINDING_STATE_SCHEMA_VERSION).toBe(1);
   expect(INSTALL_STATE_SCHEMA_VERSION).toBe(1);
   expect(EXECUTION_STATE_SCHEMA_VERSION).toBe(2);
@@ -62,10 +64,29 @@ test('全新 Home 初始化权限并且不读取或修改旧 Runner 目录', asy
     expect((await stat(path)).mode & 0o777).toBe(0o700);
   expect(await readFile(legacyMarker, 'utf8')).toBe('legacy');
   expect(await store.loadConnection()).toBeNull();
+  expect(await store.installationId()).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+  );
   expect(await store.loadBindings()).toEqual({
     schemaVersion: BINDING_STATE_SCHEMA_VERSION,
     bindings: {},
   });
+});
+
+test('删除连接状态不删除稳定安装身份', async () => {
+  const { paths, store } = await initializedStore();
+  const first = await store.installationId();
+  await store.saveConnection({
+    schemaVersion: CONNECTION_STATE_SCHEMA_VERSION,
+    serverUrl: 'https://apt.example.com',
+    runnerId,
+  });
+
+  await store.removeConnection();
+
+  const restarted = new LocalStateStore(paths, new NodeLocalFileSystem());
+  expect(await restarted.installationId()).toBe(first);
+  expect(await restarted.loadConnection()).toBeNull();
 });
 
 test('初始化只清理 xapt 原子写入遗留的临时文件', async () => {
@@ -85,6 +106,7 @@ test('初始化只清理 xapt 原子写入遗留的临时文件', async () => {
   await new LocalStateStore(paths, files).initialize();
 
   expect(await files.list(paths.applicationSupport)).toEqual([
+    'identity.json',
     'run',
     'state',
     'unknown.tmp',
@@ -179,6 +201,7 @@ test('连接、Binding、Execution、Outbox 与安装状态可重启读取且不
 
   const persisted = await Promise.all(
     [
+      paths.identity,
       paths.connection,
       paths.bindings,
       join(paths.executions, `${executionId}.json`),
@@ -188,6 +211,7 @@ test('连接、Binding、Execution、Outbox 与安装状态可重启读取且不
   );
   expect(persisted.join('\n')).not.toMatch(/credential|secret/i);
   for (const path of [
+    paths.identity,
     paths.connection,
     paths.bindings,
     join(paths.executions, `${executionId}.json`),

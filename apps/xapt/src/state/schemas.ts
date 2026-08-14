@@ -7,6 +7,7 @@ import { isAbsolute } from 'node:path';
 import { z } from 'zod';
 
 export const CONNECTION_STATE_SCHEMA_VERSION = 1;
+export const IDENTITY_STATE_SCHEMA_VERSION = 1;
 export const BINDING_STATE_SCHEMA_VERSION = 1;
 export const EXECUTION_STATE_SCHEMA_VERSION = 2;
 export const OUTBOX_STATE_SCHEMA_VERSION = 2;
@@ -17,6 +18,14 @@ export const ConnectionStateSchema = z
     schemaVersion: z.literal(CONNECTION_STATE_SCHEMA_VERSION),
     serverUrl: z.url(),
     runnerId: z.uuid(),
+  })
+  .strict();
+
+export const IdentityStateSchema = z
+  .object({
+    schemaVersion: z.literal(IDENTITY_STATE_SCHEMA_VERSION),
+    installationId: z.uuid(),
+    createdAt: z.iso.datetime(),
   })
   .strict();
 
@@ -89,6 +98,7 @@ export const InstallStateSchema = z
   .strict();
 
 export type ConnectionState = z.infer<typeof ConnectionStateSchema>;
+export type IdentityState = z.infer<typeof IdentityStateSchema>;
 export type BindingState = z.infer<typeof BindingStateSchema>;
 export type ExecutionRecoveryState = z.infer<
   typeof ExecutionRecoveryStateSchema

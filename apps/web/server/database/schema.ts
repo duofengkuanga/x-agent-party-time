@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { PlatformError } from '@/server/errors';
 
-export const SERVER_SCHEMA_VERSION = 21;
+export const SERVER_SCHEMA_VERSION = 22;
 
 const SCHEMA = `
 CREATE TABLE platform_user (
@@ -36,6 +36,9 @@ CREATE INDEX platform_file_uploader ON platform_file(uploaded_by_user_id, create
 CREATE TABLE platform_runner (
   id TEXT PRIMARY KEY,
   owner_user_id TEXT NOT NULL REFERENCES platform_user(id) ON DELETE RESTRICT,
+  installation_id TEXT CHECK (
+    installation_id IS NULL OR length(installation_id) = 36
+  ),
   name TEXT NOT NULL,
   credential_hash TEXT NOT NULL UNIQUE,
   version INTEGER NOT NULL CHECK (version > 0),
@@ -46,6 +49,9 @@ CREATE TABLE platform_runner (
 ) STRICT;
 CREATE INDEX platform_runner_owner
   ON platform_runner(owner_user_id, revoked_at, created_at);
+CREATE UNIQUE INDEX platform_runner_owner_installation
+  ON platform_runner(owner_user_id, installation_id)
+  WHERE installation_id IS NOT NULL;
 CREATE INDEX platform_runner_last_seen
   ON platform_runner(last_seen_at);
 
@@ -62,6 +68,7 @@ CREATE INDEX platform_runner_pairing_expiry
 
 CREATE TABLE platform_runner_authorization_request (
   id TEXT PRIMARY KEY,
+  installation_id TEXT NOT NULL CHECK (length(installation_id) = 36),
   verifier_hash TEXT NOT NULL UNIQUE CHECK (length(verifier_hash) = 64),
   fingerprint TEXT NOT NULL,
   suggested_name TEXT NOT NULL,

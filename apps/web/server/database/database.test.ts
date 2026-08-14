@@ -69,6 +69,20 @@ describe('Server SQLite schema', () => {
       ]);
       expect(
         database
+          .query<{ name: string }, []>('PRAGMA table_info(platform_runner)')
+          .all()
+          .map(({ name }) => name),
+      ).toContain('installation_id');
+      expect(
+        database
+          .query<{ name: string }, []>(
+            `SELECT name FROM sqlite_master
+             WHERE type = 'index' AND name = 'platform_runner_owner_installation'`,
+          )
+          .get()?.name,
+      ).toBe('platform_runner_owner_installation');
+      expect(
+        database
           .query<{ name: string }, []>(
             `SELECT name FROM sqlite_master
              WHERE type = 'table' AND name IN (

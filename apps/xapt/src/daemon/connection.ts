@@ -188,6 +188,7 @@ export class ConnectionCoordinator {
     this.projection.activity = 'BUSY';
     this.projection.serverOrigin = origin;
     try {
+      const installationId = await this.state.installationId();
       const verifier = RunnerAuthorizationVerifierSchema.parse(
         this.createVerifier(),
       );
@@ -196,6 +197,7 @@ export class ConnectionCoordinator {
         verifierHash.slice(0, 12).toUpperCase().match(/.{4}/gu)!.join('-'),
       );
       const issue = await this.http.createAuthorization(origin, {
+        installationId,
         verifierHash,
         fingerprint,
         suggestedName: this.suggestedName(),

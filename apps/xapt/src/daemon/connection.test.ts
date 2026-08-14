@@ -94,6 +94,20 @@ test('健康的同 Server 连接幂等返回，不创建新授权', async () => 
   expect(fixture.http.heartbeats).toHaveLength(1);
 });
 
+test('删除连接状态后重新授权仍使用同一安装身份', async () => {
+  const fixture = await createFixture();
+  await fixture.connection.connect('https://apt.example.com', () => {});
+  const firstInstallationId = fixture.http.created[0]?.installationId;
+
+  await fixture.state.removeConnection();
+  await fixture.connection.connect('https://apt.example.com', () => {});
+
+  expect(firstInstallationId).toBeString();
+  expect(
+    fixture.http.created.map(({ installationId }) => installationId),
+  ).toEqual([firstInstallationId, firstInstallationId]);
+});
+
 test('不同 Server 被拒绝且不改变已有状态或 Credential', async () => {
   const fixture = await createFixture();
   await fixture.connection.connect('https://apt.example.com', () => {});

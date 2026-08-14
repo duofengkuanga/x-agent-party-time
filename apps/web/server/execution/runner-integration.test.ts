@@ -110,6 +110,7 @@ describe('Runner Contract Conformance Harness', () => {
     });
     const verifier = 'v'.repeat(43);
     const issue = await agent.createAuthorization({
+      installationId: '00000000-0000-4000-8000-000000000010',
       verifier,
       fingerprint: 'AAAA-BBBB-CCCC',
       suggestedName: '授权 Agent',

@@ -17,6 +17,7 @@ export interface XaptPaths {
   skillGenerations: string;
   userSkills: string;
   skillNamespaceLink: string;
+  identity: string;
   connection: string;
   bindings: string;
   run: string;
@@ -72,6 +73,7 @@ export function xaptPaths(home: string): XaptPaths {
       'skills',
       'x-agent-party-time',
     ),
+    identity: join(applicationSupport, 'identity.json'),
     connection: join(applicationSupport, 'connection.json'),
     bindings: join(applicationSupport, 'bindings.json'),
     run: join(applicationSupport, 'run'),

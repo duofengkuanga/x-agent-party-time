@@ -57,6 +57,7 @@ function canonicalRepositoryUrl(
 }
 
 export const RunnerIdSchema = z.uuid();
+export const RunnerInstallationIdSchema = z.uuid();
 export const RunnerNameSchema = z.string().trim().min(1).max(120);
 export const RunnerCredentialSchema = z.string().min(32).max(256);
 export const RunnerAuthorizationRequestIdSchema = z
@@ -113,6 +114,7 @@ export const RunnerPairingResultSchema = z.object({
 
 export const RunnerAuthorizationCreateRequestSchema = z
   .object({
+    installationId: RunnerInstallationIdSchema,
     verifierHash: RunnerAuthorizationVerifierHashSchema,
     fingerprint: RunnerFingerprintSchema,
     suggestedName: RunnerNameSchema,
