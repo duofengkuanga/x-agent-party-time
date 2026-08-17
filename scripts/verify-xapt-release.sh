@@ -92,7 +92,7 @@ STATUS=$(HOME="$HOME_DIR" PATH="$HOME_DIR/.local/bin:/usr/bin:/bin" "$XAPT" daem
 STATUS_CODE=$?
 set -e
 test "$STATUS_CODE" -eq 1
-printf '%s\n' "$STATUS" | grep -q 'Daemon        正在运行'
+printf '%s\n' "$STATUS" | grep -q '本机服务      正在运行'
 printf '%s\n' "$STATUS" | grep -q "版本          $VERSION"
 printf 'xapt %s Release 安装与 daemon 启动验收通过。\n' "$VERSION"
 
