@@ -155,13 +155,10 @@ export class ConnectionCoordinator {
       );
     const origin = normalizeServerOrigin(serverUrl);
     const existing = await this.state.loadConnection();
-    if (existing) {
-      const existingOrigin = normalizeServerOrigin(existing.serverUrl);
-      if (existingOrigin !== origin)
-        throw new ConnectionError(
-          'DIFFERENT_SERVER',
-          'xapt 已连接另一项服务，不会自动切换',
-        );
+    const existingOrigin = existing
+      ? normalizeServerOrigin(existing.serverUrl)
+      : null;
+    if (existing && existingOrigin === origin) {
       const credential = await this.keychain.read(
         keychainAccount(existingOrigin, existing.runnerId),
       );
@@ -183,7 +180,15 @@ export class ConnectionCoordinator {
       }
     }
 
-    const previousStatus = this.projection.status;
+    const previousProjection = { ...this.projection };
+    const failedProjection =
+      existing && existingOrigin === origin
+        ? {
+            ...previousProjection,
+            status: 'REVOKED' as const,
+            serverOrigin: existingOrigin,
+          }
+        : previousProjection;
     this.projection.status = 'CONNECTING';
     this.projection.activity = 'BUSY';
     this.projection.serverOrigin = origin;
@@ -245,10 +250,14 @@ export class ConnectionCoordinator {
           }
           throw error;
         }
-        if (existing && existing.runnerId !== result.runner.id)
-          await this.keychain.delete(
-            keychainAccount(origin, existing.runnerId),
+        if (existing && existingOrigin) {
+          const previousAccount = keychainAccount(
+            existingOrigin,
+            existing.runnerId,
           );
+          if (previousAccount !== account)
+            await this.keychain.delete(previousAccount);
+        }
         this.projection.status = 'CONNECTED';
         this.projection.serverOrigin = origin;
         this.projection.agentName = result.runner.name;
@@ -262,10 +271,10 @@ export class ConnectionCoordinator {
     } finally {
       this.projection.activity = 'IDLE';
       if (this.projection.status === 'CONNECTING') {
-        this.projection.status = existing ? 'REVOKED' : previousStatus;
-        this.projection.serverOrigin = existing
-          ? normalizeServerOrigin(existing.serverUrl)
-          : null;
+        this.projection.status = failedProjection.status;
+        this.projection.serverOrigin = failedProjection.serverOrigin;
+        this.projection.agentName = failedProjection.agentName;
+        this.projection.lastHeartbeatAt = failedProjection.lastHeartbeatAt;
       }
     }
   }

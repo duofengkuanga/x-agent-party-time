@@ -108,18 +108,58 @@ test('删除连接状态后重新授权仍使用同一安装身份', async () =>
   ).toEqual([firstInstallationId, firstInstallationId]);
 });
 
-test('不同 Server 被拒绝且不改变已有状态或 Credential', async () => {
+test('显式连接不同 Server 会重新授权并清理旧 Credential', async () => {
   const fixture = await createFixture();
   await fixture.connection.connect('https://apt.example.com', () => {});
+  const previousAccount = keychainAccount(
+    'https://apt.example.com',
+    newRunnerId,
+  );
+
+  await fixture.connection.connect('https://other.example.com', () => {});
+
+  expect(await fixture.state.loadConnection()).toEqual({
+    schemaVersion: CONNECTION_STATE_SCHEMA_VERSION,
+    serverUrl: 'https://other.example.com',
+    runnerId: newRunnerId,
+  });
+  expect(await fixture.keychain.read(previousAccount)).toBeNull();
+  expect(
+    await fixture.keychain.read(
+      keychainAccount('https://other.example.com', newRunnerId),
+    ),
+  ).toBe(credential);
+  expect(fixture.http.created).toHaveLength(2);
+  expect(fixture.connection.projection).toMatchObject({
+    status: 'CONNECTED',
+    serverOrigin: 'https://other.example.com',
+  });
+});
+
+test('不同 Server 授权失败会保留原连接状态和 Credential', async () => {
+  const fixture = await createFixture({
+    authorizationFailureOrigin: 'https://other.example.com',
+  });
+  await fixture.connection.connect('https://apt.example.com', () => {});
+  const previousAccount = keychainAccount(
+    'https://apt.example.com',
+    newRunnerId,
+  );
 
   await expect(
     fixture.connection.connect('https://other.example.com', () => {}),
-  ).rejects.toMatchObject({ code: 'DIFFERENT_SERVER' });
-  expect(await fixture.state.loadConnection()).toMatchObject({
+  ).rejects.toMatchObject({ code: 'NETWORK_ERROR' });
+
+  expect(await fixture.state.loadConnection()).toEqual({
+    schemaVersion: CONNECTION_STATE_SCHEMA_VERSION,
     serverUrl: 'https://apt.example.com',
     runnerId: newRunnerId,
   });
-  expect(fixture.http.created).toHaveLength(1);
+  expect(await fixture.keychain.read(previousAccount)).toBe(credential);
+  expect(fixture.connection.projection).toMatchObject({
+    status: 'CONNECTED',
+    serverOrigin: 'https://apt.example.com',
+  });
 });
 
 test('Credential 撤销后重授权，持久化新身份再删除旧 Keychain 项', async () => {
@@ -158,14 +198,21 @@ test('恢复时缺少 Credential 明确进入 REVOKED', async () => {
 });
 
 async function createFixture(
-  options: { browserFails?: boolean; heartbeatRevoked?: boolean } = {},
+  options: {
+    browserFails?: boolean;
+    heartbeatRevoked?: boolean;
+    authorizationFailureOrigin?: string;
+  } = {},
 ) {
   const home = await mkdtemp(join(tmpdir(), 'xapt-connection-'));
   homes.push(home);
   const state = new LocalStateStore(xaptPaths(home), new NodeLocalFileSystem());
   await state.initialize();
   const keychain = new MemoryKeychain();
-  const http = new FakeAuthorizationHttp(options.heartbeatRevoked ?? false);
+  const http = new FakeAuthorizationHttp(
+    options.heartbeatRevoked ?? false,
+    options.authorizationFailureOrigin ?? null,
+  );
   const browser = new FakeBrowser(options.browserFails ?? false);
   const clock: Clock = {
     now: () => now,
@@ -216,12 +263,17 @@ class FakeAuthorizationHttp implements RunnerAuthorizationHttp {
   readonly created: RunnerAuthorizationCreateRequest[] = [];
   readonly heartbeats: string[] = [];
 
-  constructor(private readonly heartbeatRevoked: boolean) {}
+  constructor(
+    private readonly heartbeatRevoked: boolean,
+    private readonly authorizationFailureOrigin: string | null,
+  ) {}
 
   async createAuthorization(
-    _serverOrigin: string,
+    serverOrigin: string,
     input: RunnerAuthorizationCreateRequest,
   ) {
+    if (serverOrigin === this.authorizationFailureOrigin)
+      throw new RunnerHttpError('NETWORK_ERROR', '无法连接服务', 0);
     this.created.push(input);
     return {
       requestId: 'request_identifier_that_is_long_enough_001',
