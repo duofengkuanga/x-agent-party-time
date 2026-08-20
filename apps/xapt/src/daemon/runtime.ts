@@ -39,8 +39,20 @@ export class DaemonRuntime {
   async run(): Promise<void> {
     await this.options.state.initialize();
     await this.options.state.preflight();
-    await this.options.connection?.restore();
     await this.control.start();
+    try {
+      await this.options.connection?.restore();
+    } catch (error) {
+      try {
+        await this.control.close();
+      } catch (cleanupError) {
+        throw new AggregateError(
+          [error, cleanupError],
+          '远程连接恢复失败，且本机控制通道清理失败',
+        );
+      }
+      throw error;
+    }
     const serviceTask = this.options.agentService?.run();
     await this.control.done;
     this.options.agentService?.stop();

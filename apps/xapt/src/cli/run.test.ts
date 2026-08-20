@@ -26,7 +26,7 @@ describe('runCli', () => {
   test('renders xapt and minimum Codex versions', async () => {
     expect(await runCli(['--version'])).toEqual({
       exitCode: EXIT_SUCCESS,
-      stdout: 'xapt 0.5.0\n最低 Codex 版本 0.145.0',
+      stdout: 'xapt 0.5.1\n最低 Codex 版本 0.145.0',
     });
   });
 
@@ -100,7 +100,7 @@ describe('runCli', () => {
     expect(result.exitCode).toBe(EXIT_SUCCESS);
     expect(JSON.parse(result.stdout!)).toEqual({
       schemaVersion: 1,
-      currentVersion: '0.5.0',
+      currentVersion: '0.5.1',
       previousVersion: '0.3.4',
       installedAt: '2026-08-01T00:00:00.000Z',
       updatedAt: '2026-08-03T00:00:00.000Z',
@@ -255,7 +255,7 @@ function fakeRuntime(snapshot: DaemonSnapshot): CliRuntime {
     renderInstallState: async (previousVersion, installedAt) =>
       `${JSON.stringify({
         schemaVersion: 1,
-        currentVersion: '0.5.0',
+        currentVersion: '0.5.1',
         previousVersion,
         installedAt,
         updatedAt: '2026-08-03T00:00:00.000Z',
