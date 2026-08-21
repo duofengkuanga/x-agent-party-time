@@ -33,11 +33,17 @@ export type StartedCodexExecution = {
   completion: Promise<JsonValue>;
 };
 
+export type CompletedCodexTurn = {
+  turnId: string;
+  result: JsonValue;
+};
+
 export interface CodexExecutor {
   begin(
     input: CodexExecutionInput,
     signal: AbortSignal,
   ): Promise<StartedCodexExecution>;
+  readLastCompletedTurn(sessionId: string): Promise<CompletedCodexTurn>;
 }
 
 type JsonRpcRequest = {
@@ -130,6 +136,55 @@ export class CodexAppServerExecutor implements CodexExecutor {
     } catch (error) {
       if (error instanceof CodexAppServerError) throw error;
       throw new CodexAppServerError(safeMessage(error), threadId);
+    }
+  }
+
+  async readLastCompletedTurn(sessionId: string): Promise<CompletedCodexTurn> {
+    await this.ensureStarted();
+    try {
+      const response = asRecord(
+        await this.request('thread/read', {
+          threadId: sessionId,
+          includeTurns: true,
+        }),
+      );
+      const thread = asRecord(response.thread);
+      const turns = Array.isArray(thread.turns)
+        ? thread.turns.map(asRecord)
+        : Array.isArray(response.turns)
+          ? response.turns.map(asRecord)
+          : [];
+      const turn = [...turns]
+        .reverse()
+        .find((candidate) => optionalString(candidate.status) === 'completed');
+      const turnId = turn ? optionalString(turn.id) : null;
+      if (!turn || !turnId)
+        throw new CodexAppServerError(
+          'Codex Session 没有已完成的 Turn',
+          sessionId,
+        );
+      const items = Array.isArray(turn.items) ? turn.items.map(asRecord) : [];
+      const message = [...items]
+        .reverse()
+        .find(
+          (item) =>
+            item.type === 'agentMessage' && typeof item.text === 'string',
+        )?.text;
+      if (typeof message !== 'string')
+        throw new CodexAppServerError(
+          'Codex Session 的最新 Turn 未返回结果',
+          sessionId,
+        );
+      const result = parseStructuredResult(message);
+      if (result === undefined)
+        throw new CodexAppServerError(
+          'Codex Session 的最新 Turn 未返回有效 JSON',
+          sessionId,
+        );
+      return { turnId, result };
+    } catch (error) {
+      if (error instanceof CodexAppServerError) throw error;
+      throw new CodexAppServerError(safeMessage(error), sessionId);
     }
   }
 

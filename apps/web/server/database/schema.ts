@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { PlatformError } from '@/server/errors';
 
-export const SERVER_SCHEMA_VERSION = 22;
+export const SERVER_SCHEMA_VERSION = 24;
 
 const SCHEMA = `
 CREATE TABLE platform_user (
@@ -476,6 +476,20 @@ CREATE TABLE cooking_repair_attempt (
 CREATE INDEX cooking_repair_attempt_bug
   ON cooking_repair_attempt(bug_id, attempt, created_at);
 
+CREATE TABLE cooking_repair_session_sync (
+  id TEXT PRIMARY KEY,
+  bug_id TEXT NOT NULL REFERENCES cooking_bug(id) ON DELETE CASCADE,
+  execution_id TEXT NOT NULL UNIQUE REFERENCES platform_execution(id) ON DELETE RESTRICT,
+  session_id TEXT NOT NULL,
+  turn_id TEXT,
+  created_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX cooking_repair_session_sync_bug
+  ON cooking_repair_session_sync(bug_id, created_at);
+CREATE UNIQUE INDEX cooking_repair_session_sync_turn
+  ON cooking_repair_session_sync(session_id, turn_id)
+  WHERE turn_id IS NOT NULL;
+
 CREATE TABLE cooking_pending_delivery (
   submission_item_id TEXT PRIMARY KEY REFERENCES cooking_submission_item(id) ON DELETE CASCADE,
   last_candidate_at TEXT NOT NULL,
@@ -556,6 +570,20 @@ CREATE TABLE cooking_update_attempt (
 ) STRICT;
 CREATE INDEX cooking_update_attempt_batch
   ON cooking_update_attempt(batch_id, attempt, created_at);
+
+CREATE TABLE cooking_update_session_sync (
+  id TEXT PRIMARY KEY,
+  batch_id TEXT NOT NULL REFERENCES cooking_update_batch(id) ON DELETE CASCADE,
+  execution_id TEXT NOT NULL UNIQUE REFERENCES platform_execution(id) ON DELETE RESTRICT,
+  session_id TEXT NOT NULL,
+  turn_id TEXT,
+  created_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX cooking_update_session_sync_batch
+  ON cooking_update_session_sync(batch_id, created_at);
+CREATE UNIQUE INDEX cooking_update_session_sync_turn
+  ON cooking_update_session_sync(session_id, turn_id)
+  WHERE turn_id IS NOT NULL;
 
 CREATE TABLE cooking_verification_record (
   id TEXT PRIMARY KEY,

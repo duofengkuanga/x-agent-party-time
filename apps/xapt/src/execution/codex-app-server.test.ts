@@ -38,6 +38,11 @@ rl.on('line', (line) => {
     console.log(JSON.stringify({ jsonrpc: '2.0', id: message.id, result: { thread: { id: 'thread-1' } } }));
   else if (message.method === 'thread/resume')
     console.log(JSON.stringify({ jsonrpc: '2.0', id: message.id, result: {} }));
+  else if (message.method === 'thread/read')
+    console.log(JSON.stringify({ jsonrpc: '2.0', id: message.id, result: { thread: { turns: [
+      { id: 'turn-old', status: 'completed', items: [{ type: 'agentMessage', text: '{"summary":"old"}' }] },
+      { id: 'turn-latest', status: 'completed', items: [{ type: 'agentMessage', text: '{"outcome":"FAILED"}' }] }
+    ] } } }));
   else if (message.method === 'turn/start') {
     console.log(JSON.stringify({ jsonrpc: '2.0', id: message.id, result: { turn: { id: 'turn-1' } } }));
     console.log(JSON.stringify({ jsonrpc: '2.0', method: 'unknown/notification', params: { ignored: true } }));
@@ -92,6 +97,10 @@ rl.on('line', (line) => {
   );
   expect(resumed.sessionId).toBe('thread-1');
   expect(await resumed.completion).toEqual({ summary: 'ok' });
+  expect(await executor.readLastCompletedTurn('thread-1')).toEqual({
+    turnId: 'turn-latest',
+    result: { outcome: 'FAILED' },
+  });
 
   const requests = (await readFile(requestLog, 'utf8'))
     .trim()

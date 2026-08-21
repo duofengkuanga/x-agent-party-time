@@ -66,6 +66,12 @@ export function cookingExecutionService(): ExecutionService {
     undefined,
     cookingExecutionProjection(appDatabase, {
       BUG_REPAIR: repair,
+      SESSION_SYNC: {
+        projectExecution: (event) => {
+          repair.projectExecution(event);
+          updates.projectExecution(event);
+        },
+      },
       UPDATE_BATCH: updates,
       CLEANUP: lifecycle,
     }),

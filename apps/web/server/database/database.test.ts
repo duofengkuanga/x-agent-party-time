@@ -116,7 +116,11 @@ describe('Server SQLite schema', () => {
           )
           .all()
           .map(({ name }) => name),
-      ).toEqual(['cooking_bug_repair_context', 'cooking_repair_attempt']);
+      ).toEqual([
+        'cooking_bug_repair_context',
+        'cooking_repair_attempt',
+        'cooking_repair_session_sync',
+      ]);
       expect(
         database
           .query<{ name: string }, []>('PRAGMA table_info(cooking_bug)')
@@ -144,6 +148,7 @@ describe('Server SQLite schema', () => {
         'cooking_update_attempt',
         'cooking_update_batch',
         'cooking_update_batch_entry',
+        'cooking_update_session_sync',
       ]);
     } finally {
       database.close();

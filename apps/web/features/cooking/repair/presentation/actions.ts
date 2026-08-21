@@ -9,6 +9,7 @@ import type {
   ContinueRepairInput,
   RepairMutationResult,
   ResolveRepairInteractionInput,
+  SynchronizeRepairSessionInput,
 } from '../contract';
 
 export type RepairActionResult = InteractiveActionResult<RepairMutationResult>;
@@ -19,6 +20,15 @@ export async function continueRepairAction(
 ): Promise<RepairActionResult> {
   return runRepairAction((userId) =>
     repairService().continueRepair(userId, bugId, input),
+  );
+}
+
+export async function synchronizeRepairSessionAction(
+  bugId: string,
+  input: SynchronizeRepairSessionInput,
+): Promise<RepairActionResult> {
+  return runRepairAction((userId) =>
+    repairService().synchronizeSession(userId, bugId, input),
   );
 }
 

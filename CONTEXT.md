@@ -62,6 +62,18 @@ _Avoid_: Binding、Latest Skill
 Execution 过程中 Codex 明确请求用户输入或权限决定的等待点。
 _Avoid_: Feedback、Chat Message
 
+**External Session Continuation**:
+开发者在平台外使用既有 Session ID 继续某个 Repair 或 Update Codex Session 的行为；平台仅向工程负责人展示可复制的 Session ID，不展示或生成恢复命令。它仅替代失败后的“重新执行修复”和“重新执行统一更新”入口；会话期间平台保持此前失败状态，工程负责人可显式同步。验证不通过后的返修与已完成 Bug 的重新打开仍由平台携带新反馈，自动在原 Repair Session 中创建下一 Turn。
+_Avoid_: Platform Retry、Manual Repair Node
+
+**External Session Attempt**:
+由 xapt 在 Session Synchronization 读取并校验结构化结果后，自动追加的 Repair 或 Update 尝试记录；它保留此前失败记录，不覆盖历史。
+_Avoid_: Corrected Attempt、Overwritten Failure
+
+**Session Synchronization**:
+工程负责人触发的只读同步操作：xapt 读取指定 Codex Session 的最新结果并回报平台。它不启动或继续 Codex、不修改业务代码；仅有效的现有 Repair 或 Update Schema 可以推进业务状态。
+_Avoid_: Retry、Resume、Manual Repair Node
+
 ## 缺陷交付
 
 **Bug**:

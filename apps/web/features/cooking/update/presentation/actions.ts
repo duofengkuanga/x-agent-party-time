@@ -10,6 +10,7 @@ import {
 import { updateService } from '../application/server';
 import type {
   RetryUpdateInput,
+  SynchronizeUpdateSessionInput,
   ResolveUpdateInteractionInput,
   UpdateMutationResult,
 } from '../contract';
@@ -31,6 +32,15 @@ export async function retryUpdateAction(
 ): Promise<UpdateActionResult> {
   return runUpdateAction((userId) =>
     updateService().retryUpdate(userId, batchId, input),
+  );
+}
+
+export async function synchronizeUpdateSessionAction(
+  batchId: string,
+  input: SynchronizeUpdateSessionInput,
+): Promise<UpdateActionResult> {
+  return runUpdateAction((userId) =>
+    updateService().synchronizeSession(userId, batchId, input),
   );
 }
 

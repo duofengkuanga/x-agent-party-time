@@ -153,6 +153,19 @@ export class ExecutionService {
       });
       return;
     }
+    const turn = execution.codexTurn;
+    if (!turn) {
+      await this.reportStartFailure(session, execution, {
+        code: 'CODEX_START_FAILED',
+        message: '任务缺少 Codex 输入',
+        retryable: false,
+      });
+      return;
+    }
+    if (turn.kind === 'READ_SESSION') {
+      await this.completeReadSession(session, execution, turn.taskId);
+      return;
+    }
     const bindingPath = await this.state.resolveBinding(execution.bindingId);
     if (!bindingPath) {
       await this.reportStartFailure(session, execution, {
@@ -212,15 +225,6 @@ export class ExecutionService {
       return;
     }
 
-    const turn = execution.codexTurn;
-    if (!turn) {
-      await this.reportStartFailure(session, execution, {
-        code: 'CODEX_START_FAILED',
-        message: '任务缺少 Codex 输入',
-        retryable: false,
-      });
-      return;
-    }
     let resolvedSkill;
     try {
       if (turn.kind === 'INITIAL') {
@@ -477,6 +481,45 @@ export class ExecutionService {
     result: JsonValue,
   ): Promise<void> {
     const sessionId = `xapt-workspace:${execution.id}`;
+    if (
+      !(await this.persistAndDeliver(session, 'START', execution.id, {
+        kind: 'STARTED',
+        leaseToken: execution.lease.token,
+        sessionId,
+        taskSkillBinding: null,
+      }))
+    )
+      return;
+    if (
+      await this.persistAndDeliver(session, 'OUTCOME', execution.id, {
+        leaseToken: execution.lease.token,
+        sessionId,
+        outcome: { kind: 'SUCCEEDED', result },
+      })
+    )
+      await this.state.removeExecution(execution.id);
+  }
+
+  private async completeReadSession(
+    session: AuthenticatedRunnerSession,
+    execution: ClaimedExecution,
+    sessionId: string,
+  ): Promise<void> {
+    let result: JsonValue;
+    try {
+      const completed = await this.executor.readLastCompletedTurn(sessionId);
+      result = { turnId: completed.turnId, result: completed.result };
+    } catch (error) {
+      await this.reportStartFailure(session, execution, {
+        code: 'CODEX_EXECUTION_FAILED',
+        message:
+          error instanceof CodexAppServerError
+            ? failureMessage(error.message)
+            : '读取 Codex Session 结果失败',
+        retryable: true,
+      });
+      return;
+    }
     if (
       !(await this.persistAndDeliver(session, 'START', execution.id, {
         kind: 'STARTED',

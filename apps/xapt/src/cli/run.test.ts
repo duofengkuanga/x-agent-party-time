@@ -26,7 +26,7 @@ describe('runCli', () => {
   test('renders xapt and minimum Codex versions', async () => {
     expect(await runCli(['--version'])).toEqual({
       exitCode: EXIT_SUCCESS,
-      stdout: 'xapt 0.5.1\n最低 Codex 版本 0.145.0',
+      stdout: 'xapt 0.5.2\n最低 Codex 版本 0.145.0',
     });
   });
 

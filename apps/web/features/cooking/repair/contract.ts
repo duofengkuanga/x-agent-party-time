@@ -326,8 +326,9 @@ export const RepairTimelineNodeSchema = z.discriminatedUnion('kind', [
 export const BugRepairViewSchema = z.object({
   pendingCommits: z.array(CommitShaSchema).nullable(),
   sessionAvailable: z.boolean(),
+  synchronizationError: z.string().nullable(),
   timeline: z.array(RepairTimelineNodeSchema),
-  availableActions: z.array(z.literal('RETRY_REPAIR')),
+  availableActions: z.array(z.enum(['RETRY_REPAIR', 'SYNC_SESSION'])),
   presentation: z.object({
     statusLabel: z.string().trim().min(1),
     visual: CookingVisualPresentationSchema,
@@ -338,6 +339,8 @@ export const ContinueRepairInputSchema = z.object({
   mutationId: CookingMutationIdSchema,
   expectedVersion: z.number().int().positive(),
 });
+
+export const SynchronizeRepairSessionInputSchema = ContinueRepairInputSchema;
 
 export const ResolveRepairInteractionInputSchema = z.object({
   mutationId: CookingMutationIdSchema,
@@ -359,6 +362,9 @@ export const RepairMutationResultSchema = z.object({
 export type RepairExecutionResult = z.infer<typeof RepairExecutionResultSchema>;
 export type BugRepairView = z.infer<typeof BugRepairViewSchema>;
 export type ContinueRepairInput = z.infer<typeof ContinueRepairInputSchema>;
+export type SynchronizeRepairSessionInput = z.infer<
+  typeof SynchronizeRepairSessionInputSchema
+>;
 export type ResolveRepairInteractionInput = z.infer<
   typeof ResolveRepairInteractionInputSchema
 >;

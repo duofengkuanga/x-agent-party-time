@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type {
   Execution,
   JsonObject,
+  JsonValue,
 } from '@agent-party-time/execution-contract';
 import type { AppDatabase } from '@/server/database';
 import { PlatformError } from '@/server/errors';
@@ -35,6 +36,7 @@ import {
   type RepairWorkspaceProjection,
   type ResolveRepairInteractionInput,
   type ContinueRepairInput,
+  type SynchronizeRepairSessionInput,
 } from '../contract';
 import {
   buildInitialRepairBrief,
@@ -275,14 +277,17 @@ export class RepairService {
       else this.afterResumedExecution(event.execution);
       return;
     }
-    if (event.phase === 'APPLY') this.applyTerminalExecution(event.execution);
-    else this.afterTerminalExecution(event.execution);
+    if (event.phase === 'APPLY') {
+      if (event.execution.owner.kind === 'SESSION_SYNC')
+        this.applySynchronizedExecution(event.execution);
+      else this.applyTerminalExecution(event.execution);
+    } else this.afterTerminalExecution(event.execution);
   }
 
   private applyTerminalExecution(execution: Execution): void {
     if (
       execution.owner.namespace !== 'cooking' ||
-      execution.owner.kind !== 'BUG_REPAIR'
+      !['BUG_REPAIR', 'SESSION_SYNC'].includes(execution.owner.kind)
     )
       return;
     const attempt = this.db
@@ -412,8 +417,18 @@ export class RepairService {
   }
 
   private afterTerminalExecution(execution: Execution): void {
-    if (!isRepairExecution(execution)) return;
-    this.publishExecutionInvalidation(execution.id);
+    if (isRepairExecution(execution)) {
+      this.publishExecutionInvalidation(execution.id);
+      return;
+    }
+    if (execution.owner.kind !== 'SESSION_SYNC') return;
+    const sync = this.db
+      .prepare(
+        'SELECT bug_id FROM cooking_repair_session_sync WHERE execution_id = ?',
+      )
+      .get(execution.id) as { bug_id: string } | undefined;
+    if (sync)
+      this.writes.bumpRevisionForBug(sync.bug_id, this.now().toISOString());
   }
 
   private afterStartedExecution(execution: Execution): void {
@@ -499,6 +514,140 @@ export class RepairService {
       },
     });
     return result;
+  }
+
+  synchronizeSession(
+    actorUserId: string,
+    bugId: string,
+    inputValue: SynchronizeRepairSessionInput,
+  ): RepairMutationResult {
+    const input = ContinueRepairInputSchema.parse(inputValue);
+    return this.writes.run({
+      mutationId: input.mutationId,
+      actorUserId,
+      operation: 'REPAIR_SESSION_SYNC',
+      resourceType: 'BUG',
+      resultSchema: RepairMutationResultSchema,
+      invalidation: (mutation) => ({
+        submissionId: this.source(bugId).submission_id,
+        revision: mutation.revision,
+      }),
+      perform: () => {
+        const source = this.requireResponsible(actorUserId, bugId);
+        this.requireActiveVersion(source, input.expectedVersion);
+        const latest = this.latestAttempt(bugId);
+        const context = this.requireContext(bugId);
+        if (
+          source.stage !== 'REPAIRING' ||
+          !latest ||
+          !latest.outcome_json ||
+          !isFailedAttemptOutcome(latest.outcome_json) ||
+          !context.session_id
+        )
+          throw new PlatformError(
+            'INVALID_TRANSITION',
+            '当前没有可同步的失败修复会话',
+          );
+        if (this.hasActiveSessionSync(bugId))
+          throw new PlatformError('RESOURCE_CONFLICT', '修复会话正在同步');
+        const syncId = this.createId();
+        const executionId = this.createId();
+        const execution = this.executions.enqueue({
+          id: executionId,
+          owner: { namespace: 'cooking', kind: 'SESSION_SYNC', id: syncId },
+          attempt: 1,
+          previousExecutionId: latest.execution_id,
+          runnerId: this.bugContexts.get(bugId).runnerId,
+          bindingId: this.bugContexts.get(bugId).bindingId,
+          priority: 0,
+          approvalPolicy: 'never',
+          codexTurn: { kind: 'READ_SESSION', taskId: context.session_id },
+          workspace: null,
+          attachmentIds: [],
+        });
+        const now = this.now().toISOString();
+        this.db
+          .prepare(
+            `INSERT INTO cooking_repair_session_sync(id, bug_id, execution_id, session_id, created_at)
+             VALUES (?, ?, ?, ?, ?)`,
+          )
+          .run(syncId, bugId, execution.id, context.session_id, now);
+        const revision = this.writes.bumpRevisionForBug(bugId, now);
+        return {
+          result: {
+            bugId,
+            bugVersion: input.expectedVersion,
+            executionId: execution.id,
+            revision,
+          },
+          resourceId: bugId,
+          audits: [
+            {
+              projectId: source.project_id,
+              action: 'REPAIR_SESSION_SYNC_REQUESTED',
+              targetType: 'BUG',
+              targetId: bugId,
+              details: { executionId: execution.id },
+            },
+          ],
+        };
+      },
+    });
+  }
+
+  private applySynchronizedExecution(execution: Execution): void {
+    if (
+      execution.owner.namespace !== 'cooking' ||
+      execution.owner.kind !== 'SESSION_SYNC'
+    )
+      return;
+    if (execution.outcome?.kind !== 'SUCCEEDED') return;
+    const envelope = execution.outcome.result as Record<string, unknown>;
+    const turnId = typeof envelope.turnId === 'string' ? envelope.turnId : null;
+    const result = envelope.result;
+    if (!turnId) return;
+    const parsed = RepairExecutionResultSchema.safeParse(result);
+    if (!parsed.success) {
+      this.markExecutionResultInvalid(execution.id);
+      return;
+    }
+    const sync = this.db
+      .prepare(
+        'SELECT bug_id FROM cooking_repair_session_sync WHERE execution_id = ?',
+      )
+      .get(execution.id) as { bug_id: string } | undefined;
+    if (!sync) return;
+    const duplicate = this.db
+      .prepare(
+        `SELECT 1 FROM cooking_repair_session_sync
+         WHERE session_id = ? AND turn_id = ? AND execution_id <> ? LIMIT 1`,
+      )
+      .get(execution.sessionId, turnId, execution.id);
+    if (duplicate) return;
+    this.db
+      .prepare(
+        'UPDATE cooking_repair_session_sync SET turn_id = ? WHERE execution_id = ?',
+      )
+      .run(turnId, execution.id);
+    const latest = this.latestAttempt(sync.bug_id);
+    if (
+      !latest ||
+      !latest.outcome_json ||
+      !isFailedAttemptOutcome(latest.outcome_json)
+    )
+      return;
+    const attemptId = this.createId();
+    const now = this.now().toISOString();
+    this.db
+      .prepare(
+        `INSERT INTO cooking_repair_attempt(id, bug_id, execution_id, attempt, outcome_json, created_at, finished_at)
+         VALUES (?, ?, ?, ?, NULL, ?, NULL)`,
+      )
+      .run(attemptId, sync.bug_id, execution.id, latest.attempt + 1, now);
+    this.applyTerminalExecution({
+      ...execution,
+      outcome: { kind: 'SUCCEEDED', result: result as JsonValue },
+    });
   }
 
   resolveInteraction(
@@ -628,6 +777,9 @@ export class RepairService {
           ? parseCommits(context.pending_commits_json)
           : null,
       sessionAvailable: Boolean(context?.session_id),
+      synchronizationError: technical
+        ? this.sessionSynchronizationError(bugId)
+        : null,
       timeline: [
         {
           id: `registered:${bugId}`,
@@ -643,7 +795,9 @@ export class RepairService {
         latest &&
         latest.outcome_json &&
         isFailedAttemptOutcome(latest.outcome_json)
-          ? ['RETRY_REPAIR']
+          ? context?.session_id && !this.hasActiveSessionSync(bugId)
+            ? ['SYNC_SESSION']
+            : []
           : [],
       presentation: {
         statusLabel,
@@ -816,6 +970,37 @@ export class RepairService {
     return this.attempts(bugId).at(-1);
   }
 
+  private hasActiveSessionSync(bugId: string): boolean {
+    const row = this.db
+      .prepare(
+        `SELECT 1 FROM cooking_repair_session_sync sync
+         JOIN platform_execution execution ON execution.id = sync.execution_id
+         WHERE sync.bug_id = ?
+           AND execution.state IN ('QUEUED', 'CLAIMED', 'RUNNING')
+         LIMIT 1`,
+      )
+      .get(bugId);
+    return Boolean(row);
+  }
+
+  private sessionSynchronizationError(bugId: string): string | null {
+    const row = this.db
+      .prepare(
+        `SELECT execution.outcome_json
+         FROM cooking_repair_session_sync sync
+         JOIN platform_execution execution ON execution.id = sync.execution_id
+         WHERE sync.bug_id = ? AND execution.state = 'FAILED'
+         ORDER BY sync.created_at DESC LIMIT 1`,
+      )
+      .get(bugId) as { outcome_json: string | null } | undefined;
+    const failure = row?.outcome_json
+      ? (JSON.parse(row.outcome_json) as { failure?: { message?: unknown } })
+      : null;
+    return typeof failure?.failure?.message === 'string'
+      ? failure.failure.message
+      : null;
+  }
+
   private attemptForExecution(executionId: string): AttemptRow | undefined {
     return this.db
       .prepare(
@@ -948,7 +1133,11 @@ function formatRepairContractIssues(
 function projectAttemptResult(outcomeJson: string, technical: boolean) {
   const raw = JSON.parse(outcomeJson) as Record<string, unknown>;
   const { technicalFailure: _technicalFailure, ...contractResult } = raw;
-  const parsed = RepairExecutionResultSchema.safeParse(contractResult);
+  const parsed = RepairExecutionResultSchema.safeParse(
+    raw.outcome === 'COMPLETED' && raw.manualOperations === undefined
+      ? { ...contractResult, manualOperations: [] }
+      : contractResult,
+  );
   if (!parsed.success)
     throw new PlatformError('INTERNAL_ERROR', '已保存的修复记录结果格式无效');
   if (parsed.data.outcome === 'COMPLETED')
@@ -1047,7 +1236,11 @@ function isFailedAttemptOutcome(outcomeJson: string): boolean {
 }
 
 function requireTaskSkillBinding(execution: Execution) {
-  const binding = execution.codexTurn?.taskSkillBinding;
+  const binding =
+    execution.codexTurn?.kind === 'CONTINUATION' ||
+    execution.codexTurn?.kind === 'INITIAL'
+      ? execution.codexTurn.taskSkillBinding
+      : null;
   if (!binding)
     throw new PlatformError(
       'INVALID_TRANSITION',

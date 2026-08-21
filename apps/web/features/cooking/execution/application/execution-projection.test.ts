@@ -10,6 +10,7 @@ test('Cooking execution projection 同时按 namespace 与 kind 路由', () => {
   const projected: CookingExecutionProjectionEvent[] = [];
   const hooks = cookingExecutionProjection({} as AppDatabase, {
     BUG_REPAIR: { projectExecution: (event) => projected.push(event) },
+    SESSION_SYNC: { projectExecution: () => {} },
     UPDATE_BATCH: { projectExecution: () => {} },
     CLEANUP: { projectExecution: () => {} },
   });

@@ -200,6 +200,12 @@ async function setup(
     15_000,
     cookingExecutionProjection(database, {
       BUG_REPAIR: repairs,
+      SESSION_SYNC: {
+        projectExecution: (event) => {
+          repairs.projectExecution(event);
+          updates.projectExecution(event);
+        },
+      },
       UPDATE_BATCH: updates,
       CLEANUP: { projectExecution: () => {} },
     }),

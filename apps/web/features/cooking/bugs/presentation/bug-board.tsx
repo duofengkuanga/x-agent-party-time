@@ -33,16 +33,16 @@ import {
 } from '@/features/cooking/lifecycle/presentation/actions';
 import type { BugRepairView } from '@/features/cooking/repair/contract';
 import {
-  continueRepairAction,
   resolveRepairInteractionAction,
+  synchronizeRepairSessionAction,
   type RepairActionResult,
 } from '@/features/cooking/repair/presentation/actions';
 import type { UpdateBatchView } from '@/features/cooking/update/contract';
 import {
   freezeUpdateNowAction,
   reportExternalDeploymentAction,
-  retryUpdateAction,
   resolveUpdateInteractionAction,
+  synchronizeUpdateSessionAction,
   type UpdateActionResult,
 } from '@/features/cooking/update/presentation/actions';
 import type { BugView } from '../contract';
@@ -534,7 +534,6 @@ export function BugBoard({
           >
             <header>
               <div>
-                <small>生命周期收纳</small>
                 <h2>已取消缺陷</h2>
               </div>
               <button
@@ -1263,7 +1262,7 @@ function BugDetail({
   );
   const needsCurrentUserAction = Boolean(
     canResolveInteraction ||
-    repair?.availableActions.includes('RETRY_REPAIR') ||
+    repair?.availableActions.includes('SYNC_SESSION') ||
     bug.availableActions.some((action) =>
       ['REQUEST_REPAIR', 'VERIFY_PASS', 'VERIFY_FAIL'].includes(action),
     ),
@@ -1995,23 +1994,28 @@ function RepairAttemptTimelineArticle({
             </details>
           ) : null}
           {isLatestRepairAttempt &&
-          repair?.availableActions.includes('RETRY_REPAIR') ? (
-            <button
-              disabled={pending}
-              onClick={() =>
-                run(
-                  () =>
-                    continueRepairAction(bug.id, {
-                      mutationId: createClientId(),
-                      expectedVersion: bug.version,
-                    }),
-                  '已在原修复会话中重新执行。',
-                )
-              }
-              type="button"
-            >
-              重新执行修复
-            </button>
+          repair?.availableActions.includes('SYNC_SESSION') ? (
+            <>
+              {repair.synchronizationError ? (
+                <p>{repair.synchronizationError}</p>
+              ) : null}
+              <button
+                disabled={pending}
+                onClick={() =>
+                  run(
+                    () =>
+                      synchronizeRepairSessionAction(bug.id, {
+                        mutationId: createClientId(),
+                        expectedVersion: bug.version,
+                      }),
+                    '正在同步原修复会话状态。',
+                  )
+                }
+                type="button"
+              >
+                同步状态
+              </button>
+            </>
           ) : null}
         </>
       )}
@@ -2412,23 +2416,28 @@ function UpdateBatchDetails({
       {!summaryOnly && batch.availableActions.length ? (
         <section className="collab-bug-detail-section">
           <h3>批次操作</h3>
-          {batch.availableActions.includes('RETRY_UPDATE') ? (
-            <button
-              disabled={pending}
-              onClick={() =>
-                run(
-                  () =>
-                    retryUpdateAction(batch.id, {
-                      mutationId: createClientId(),
-                      expectedVersion: batch.version,
-                    }),
-                  '已重新执行统一更新。',
-                )
-              }
-              type="button"
-            >
-              重新执行统一更新
-            </button>
+          {batch.availableActions.includes('SYNC_SESSION') ? (
+            <>
+              {batch.synchronizationError ? (
+                <p>{batch.synchronizationError}</p>
+              ) : null}
+              <button
+                disabled={pending}
+                onClick={() =>
+                  run(
+                    () =>
+                      synchronizeUpdateSessionAction(batch.id, {
+                        mutationId: createClientId(),
+                        expectedVersion: batch.version,
+                      }),
+                    '正在同步原统一更新会话状态。',
+                  )
+                }
+                type="button"
+              >
+                同步状态
+              </button>
+            </>
           ) : null}
           {batch.availableActions.includes('REPORT_EXTERNAL') ? (
             <div className="collab-form collab-bug-verification">

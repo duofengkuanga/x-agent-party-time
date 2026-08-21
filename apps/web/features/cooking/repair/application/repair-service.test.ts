@@ -132,6 +132,7 @@ async function setup(options: { repairCreateId?: () => string } = {}) {
     15_000,
     cookingExecutionProjection(database, {
       BUG_REPAIR: repairs,
+      SESSION_SYNC: repairs,
       UPDATE_BATCH: { projectExecution: () => {} },
       CLEANUP: { projectExecution: () => {} },
     }),
@@ -380,6 +381,40 @@ describe('RepairService', () => {
     ).toEqual(['aaaaaaa', 'bbbbbbb']);
   });
 
+  test('读取旧版完成结果时缺失 manualOperations 按空数组兼容', async () => {
+    const fixture = await setup();
+    const started = await startLatest(fixture, 'legacy-result-session');
+
+    fixture.database
+      .prepare(
+        'UPDATE cooking_repair_attempt SET outcome_json = ? WHERE execution_id = ?',
+      )
+      .run(
+        JSON.stringify({
+          outcome: 'COMPLETED',
+          completionKind: 'TARGET_ALREADY_FIXED',
+          summary: '旧版结果',
+          changes: [],
+          validations: [{ name: '目标分支检查', status: 'PASSED' }],
+          warnings: [],
+          commits: [],
+        }),
+        started.executionId,
+      );
+
+    expect(
+      fixture.repairs
+        .repairView(fixture.users.developer.id, fixture.requested.bug.id)
+        ?.timeline.at(-1),
+    ).toMatchObject({
+      kind: 'REPAIR_ATTEMPT',
+      result: {
+        outcome: 'COMPLETED',
+        commitCount: 0,
+      },
+    });
+  });
+
   test('目标分支已包含修复且无新 Commit 时直接进入待验证', async () => {
     const fixture = await setup();
     const started = await startLatest(fixture, 'already-fixed-session');
@@ -517,6 +552,69 @@ describe('RepairService', () => {
         fixture.requested.bug.id,
       )?.pendingCommits,
     ).toEqual(['abcdef1']);
+  });
+
+  test('同步状态把手动 Session 的有效结果追加为新 Repair 尝试', async () => {
+    const fixture = await setup();
+    const started = await startLatest(fixture, 'manual-repair-session');
+    fixture.executions.complete(fixture.runner.id, started.executionId, {
+      leaseToken: started.leaseToken,
+      sessionId: started.sessionId,
+      outcome: {
+        kind: 'FAILED',
+        failure: {
+          code: 'CODEX_EXECUTION_FAILED',
+          message: '首次失败',
+          retryable: true,
+        },
+      },
+    });
+    const synced = fixture.repairs.synchronizeSession(
+      fixture.users.developer.id,
+      fixture.requested.bug.id,
+      {
+        mutationId: randomUUID(),
+        expectedVersion: currentBug(fixture.database, fixture.requested.bug.id)
+          .version,
+      },
+    );
+    const [claimed] = await fixture.executions.claim(fixture.runner.id, 1, 0);
+    if (!claimed) throw new Error('缺少同步 Execution');
+    fixture.executions.start(fixture.runner.id, claimed.id, {
+      kind: 'STARTED',
+      leaseToken: claimed.lease.token,
+      sessionId: 'manual-repair-session',
+      taskSkillBinding: null,
+    });
+    fixture.executions.complete(fixture.runner.id, claimed.id, {
+      leaseToken: claimed.lease.token,
+      sessionId: 'manual-repair-session',
+      outcome: {
+        kind: 'SUCCEEDED',
+        result: {
+          turnId: 'manual-turn-1',
+          result: {
+            outcome: 'COMPLETED',
+            completionKind: 'CHANGES_COMMITTED',
+            summary: '手动修复完成',
+            changes: ['修复支付'],
+            validations: [{ name: '测试', status: 'PASSED' }],
+            warnings: [],
+            commits: ['ccccccc'],
+            manualOperations: [],
+          },
+        },
+      },
+    });
+    expect(synced.executionId).toBe(claimed.id);
+    expect(currentBug(fixture.database, fixture.requested.bug.id).stage).toBe(
+      'WAITING_FOR_UPDATE',
+    );
+    expect(
+      fixture.repairs
+        .repairView(fixture.users.developer.id, fixture.requested.bug.id)
+        ?.timeline.filter((node) => node.kind === 'REPAIR_ATTEMPT'),
+    ).toHaveLength(2);
   });
 
   test('Execution 失败使用真实 code/message 且仅向工程负责人投影技术码', async () => {

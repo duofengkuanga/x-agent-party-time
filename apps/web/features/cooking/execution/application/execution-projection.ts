@@ -21,7 +21,8 @@ export type CookingExecutionProjector = {
   projectExecution: (event: CookingExecutionProjectionEvent) => void;
 };
 
-type CookingExecutionKind = 'BUG_REPAIR' | 'UPDATE_BATCH' | 'CLEANUP';
+type CookingExecutionKind =
+  'BUG_REPAIR' | 'UPDATE_BATCH' | 'CLEANUP' | 'SESSION_SYNC';
 
 export function cookingExecutionProjection(
   db: AppDatabase,
@@ -115,6 +116,9 @@ function isCookingExecutionKind(
   value: string | undefined,
 ): value is CookingExecutionKind {
   return (
-    value === 'BUG_REPAIR' || value === 'UPDATE_BATCH' || value === 'CLEANUP'
+    value === 'BUG_REPAIR' ||
+    value === 'UPDATE_BATCH' ||
+    value === 'CLEANUP' ||
+    value === 'SESSION_SYNC'
   );
 }

@@ -182,9 +182,12 @@ export const UpdateBatchViewSchema = z.object({
   environmentName: z.string().trim().min(1),
   deploymentKind: z.enum(['LOCAL_SCRIPT', 'CI_CD']),
   hasManualDatabaseOperation: z.boolean(),
+  synchronizationError: z.string().nullable(),
   entries: z.array(UpdateBatchEntryViewSchema).min(1),
   timeline: z.array(UpdateBatchTimelineNodeSchema),
-  availableActions: z.array(z.enum(['RETRY_UPDATE', 'REPORT_EXTERNAL'])),
+  availableActions: z.array(
+    z.enum(['RETRY_UPDATE', 'SYNC_SESSION', 'REPORT_EXTERNAL']),
+  ),
   presentation: z.object({
     statusLabel: z.string().trim().min(1),
     visual: CookingVisualPresentationSchema,
@@ -204,6 +207,8 @@ export const RetryUpdateInputSchema = z.object({
   mutationId: CookingMutationIdSchema,
   expectedVersion: z.number().int().positive(),
 });
+
+export const SynchronizeUpdateSessionInputSchema = RetryUpdateInputSchema;
 
 export const ExternalDeploymentReportInputSchema = z.discriminatedUnion(
   'outcome',
@@ -256,6 +261,9 @@ export type UpdateWorkspaceProjection = z.infer<
 >;
 export type FreezeUpdateInput = z.infer<typeof FreezeUpdateInputSchema>;
 export type RetryUpdateInput = z.infer<typeof RetryUpdateInputSchema>;
+export type SynchronizeUpdateSessionInput = z.infer<
+  typeof SynchronizeUpdateSessionInputSchema
+>;
 export type ExternalDeploymentReportInput = z.infer<
   typeof ExternalDeploymentReportInputSchema
 >;

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type {
   Execution,
   JsonObject,
+  JsonValue,
 } from '@agent-party-time/execution-contract';
 import type { AppDatabase } from '@/server/database';
 import { PlatformError } from '@/server/errors';
@@ -36,6 +37,7 @@ import {
   UpdateMutationResultSchema,
   UpdateWorkspaceProjectionSchema,
   type RetryUpdateInput,
+  type SynchronizeUpdateSessionInput,
   type ExternalDeploymentReportInput,
   type ResolveUpdateInteractionInput,
   type UpdateBatchCommandInput,
@@ -386,6 +388,83 @@ export class UpdateService {
     return result;
   }
 
+  synchronizeSession(
+    actorUserId: string,
+    batchId: string,
+    inputValue: SynchronizeUpdateSessionInput,
+  ): UpdateMutationResult {
+    const input = RetryUpdateInputSchema.parse(inputValue);
+    return this.writes.run({
+      mutationId: input.mutationId,
+      actorUserId,
+      operation: 'UPDATE_SESSION_SYNC',
+      resourceType: 'UPDATE_BATCH',
+      resultSchema: UpdateMutationResultSchema,
+      invalidation: (mutation) => ({
+        submissionId: this.batch(batchId).submission_id,
+        revision: mutation.revision,
+      }),
+      perform: () => {
+        const batch = this.requireBatchResponsible(actorUserId, batchId);
+        this.requireBatchVersion(batch, input.expectedVersion);
+        const latest = this.latestAttempt(batchId);
+        if (
+          batch.state !== 'FAILED' ||
+          !latest ||
+          !isTerminal(latest.state) ||
+          !batch.session_id
+        )
+          throw new PlatformError(
+            'INVALID_TRANSITION',
+            '当前没有可同步的失败更新会话',
+          );
+        if (this.hasActiveSessionSync(batchId))
+          throw new PlatformError('RESOURCE_CONFLICT', '更新会话正在同步');
+        const source = this.itemSource(batch.submission_item_id);
+        const syncId = this.createId();
+        const execution = this.executions.enqueue({
+          id: this.createId(),
+          owner: { namespace: 'cooking', kind: 'SESSION_SYNC', id: syncId },
+          attempt: 1,
+          previousExecutionId: latest.execution_id,
+          runnerId: source.runner_id,
+          bindingId: source.binding_id,
+          priority: 0,
+          approvalPolicy: 'never',
+          codexTurn: { kind: 'READ_SESSION', taskId: batch.session_id },
+          workspace: null,
+          attachmentIds: [],
+        });
+        const now = this.now().toISOString();
+        this.db
+          .prepare(
+            `INSERT INTO cooking_update_session_sync(id, batch_id, execution_id, session_id, created_at)
+           VALUES (?, ?, ?, ?, ?)`,
+          )
+          .run(syncId, batchId, execution.id, batch.session_id, now);
+        const revision = this.writes.bumpRevision(batch.submission_id, now);
+        return {
+          result: {
+            batchId,
+            batchVersion: batch.version,
+            executionId: execution.id,
+            revision,
+          },
+          resourceId: batchId,
+          audits: [
+            {
+              projectId: source.project_id,
+              action: 'UPDATE_SESSION_SYNC_REQUESTED',
+              targetType: 'UPDATE_BATCH',
+              targetId: batchId,
+              details: { executionId: execution.id },
+            },
+          ],
+        };
+      },
+    });
+  }
+
   reportExternalDeployment(
     actorUserId: string,
     batchId: string,
@@ -568,12 +647,19 @@ export class UpdateService {
       else this.afterResumedExecution(event.execution);
       return;
     }
-    if (event.phase === 'APPLY') this.applyTerminalExecution(event.execution);
-    else this.afterTerminalExecution(event.execution);
+    if (event.phase === 'APPLY') {
+      if (event.execution.owner.kind === 'SESSION_SYNC')
+        this.applySynchronizedExecution(event.execution);
+      else this.applyTerminalExecution(event.execution);
+    } else this.afterTerminalExecution(event.execution);
   }
 
   private applyStartedExecution(execution: Execution): void {
-    if (!isUpdateExecution(execution)) return;
+    if (
+      execution.owner.namespace !== 'cooking' ||
+      !['UPDATE_BATCH', 'SESSION_SYNC'].includes(execution.owner.kind)
+    )
+      return;
     const attempt = this.attemptForExecution(execution.id);
     if (!attempt) return;
     const batch = this.batch(attempt.batch_id);
@@ -604,7 +690,6 @@ export class UpdateService {
   }
 
   private applyTerminalExecution(execution: Execution): void {
-    if (!isUpdateExecution(execution)) return;
     const attempt = this.attemptForExecution(execution.id);
     if (!attempt || attempt.outcome_json) return;
     const batch = this.batch(attempt.batch_id);
@@ -617,7 +702,7 @@ export class UpdateService {
            SET state = 'COMPLETED', active_execution_id = NULL,
                session_id = COALESCE(?, session_id),
                version = version + 1, updated_at = ?
-           WHERE id = ? AND state IN ('READY', 'RUNNING')`,
+           WHERE id = ? AND state IN ('READY', 'RUNNING', 'FAILED')`,
         )
         .run(execution.sessionId, now, batch.id);
       if (batchUpdate.changes !== 1) throw staleBatch();
@@ -629,7 +714,7 @@ export class UpdateService {
            SET state = 'WAITING_EXTERNAL', active_execution_id = NULL,
                session_id = COALESCE(?, session_id),
                version = version + 1, updated_at = ?
-           WHERE id = ? AND state IN ('READY', 'RUNNING')`,
+           WHERE id = ? AND state IN ('READY', 'RUNNING', 'FAILED')`,
         )
         .run(execution.sessionId, now, batch.id);
       if (batchUpdate.changes !== 1) throw staleBatch();
@@ -639,7 +724,7 @@ export class UpdateService {
           `UPDATE cooking_update_batch
            SET state = 'FAILED', session_id = COALESCE(?, session_id),
                version = version + 1, updated_at = ?
-           WHERE id = ? AND state IN ('READY', 'RUNNING')`,
+           WHERE id = ? AND state IN ('READY', 'RUNNING', 'FAILED')`,
         )
         .run(execution.sessionId, now, batch.id);
       if (batchUpdate.changes !== 1) throw staleBatch();
@@ -665,6 +750,64 @@ export class UpdateService {
       now,
     );
     this.writes.bumpRevision(batch.submission_id, now);
+  }
+
+  private applySynchronizedExecution(execution: Execution): void {
+    if (
+      execution.owner.namespace !== 'cooking' ||
+      execution.owner.kind !== 'SESSION_SYNC'
+    )
+      return;
+    if (execution.outcome?.kind !== 'SUCCEEDED') return;
+    const sync = this.db
+      .prepare(
+        'SELECT batch_id FROM cooking_update_session_sync WHERE execution_id = ?',
+      )
+      .get(execution.id) as { batch_id: string } | undefined;
+    if (!sync) return;
+    const batch = this.batch(sync.batch_id);
+    const envelope = execution.outcome.result as Record<string, unknown>;
+    const turnId = typeof envelope.turnId === 'string' ? envelope.turnId : null;
+    const result = envelope.result;
+    if (!turnId) return;
+    const deployment = DeploymentMethodSchema.parse(
+      JSON.parse(batch.deployment_json),
+    );
+    const parsed =
+      deployment.kind === 'LOCAL_SCRIPT'
+        ? LocalScriptUpdateExecutionResultSchema.safeParse(result)
+        : CiCdUpdateExecutionResultSchema.safeParse(result);
+    if (!parsed.success) {
+      this.markExecutionResultInvalid(execution.id);
+      return;
+    }
+    const latest = this.latestAttempt(batch.id);
+    if (!latest || !isTerminal(latest.state) || batch.state !== 'FAILED')
+      return;
+    const duplicate = this.db
+      .prepare(
+        `SELECT 1 FROM cooking_update_session_sync
+       WHERE session_id = ? AND turn_id = ? AND execution_id <> ? LIMIT 1`,
+      )
+      .get(execution.sessionId, turnId, execution.id);
+    if (duplicate) return;
+    this.db
+      .prepare(
+        'UPDATE cooking_update_session_sync SET turn_id = ? WHERE execution_id = ?',
+      )
+      .run(turnId, execution.id);
+    const attemptId = this.createId();
+    const now = this.now().toISOString();
+    this.db
+      .prepare(
+        `INSERT INTO cooking_update_attempt(id, batch_id, execution_id, continuation_report_id, attempt, outcome_json, created_at, finished_at)
+       VALUES (?, ?, ?, NULL, ?, NULL, ?, NULL)`,
+      )
+      .run(attemptId, batch.id, execution.id, latest.attempt + 1, now);
+    this.applyTerminalExecution({
+      ...execution,
+      outcome: { kind: 'SUCCEEDED', result: result as JsonValue },
+    });
   }
 
   private applyInteractionOpened(
@@ -693,7 +836,20 @@ export class UpdateService {
   }
 
   private afterTerminalExecution(execution: Execution): void {
-    if (isUpdateExecution(execution)) this.publishExecution(execution.id);
+    if (isUpdateExecution(execution)) {
+      this.publishExecution(execution.id);
+      return;
+    }
+    if (execution.owner.kind !== 'SESSION_SYNC') return;
+    const sync = this.db
+      .prepare(
+        'SELECT batch_id FROM cooking_update_session_sync WHERE execution_id = ?',
+      )
+      .get(execution.id) as { batch_id: string } | undefined;
+    if (sync) {
+      const batch = this.batch(sync.batch_id);
+      this.writes.bumpRevision(batch.submission_id, this.now().toISOString());
+    }
   }
 
   private afterInteractionOpened(executionId: string): void {
@@ -835,6 +991,9 @@ export class UpdateService {
       environmentName: source.environment_name,
       deploymentKind: deployment.kind,
       hasManualDatabaseOperation,
+      synchronizationError: technical
+        ? this.sessionSynchronizationError(batch.id)
+        : null,
       entries: entries.map((entry) => ({
         bugId: entry.bug_id,
         bugShortId: entry.short_id,
@@ -844,8 +1003,12 @@ export class UpdateService {
       timeline,
       availableActions: technical
         ? [
-            ...(batch.state === 'FAILED' && latest && isTerminal(latest.state)
-              ? (['RETRY_UPDATE'] as const)
+            ...(batch.state === 'FAILED' &&
+            latest &&
+            isTerminal(latest.state) &&
+            batch.session_id &&
+            !this.hasActiveSessionSync(batch.id)
+              ? (['SYNC_SESSION'] as const)
               : []),
             ...(batch.state === 'WAITING_EXTERNAL' &&
             deployment.kind === 'CI_CD'
@@ -1391,6 +1554,37 @@ export class UpdateService {
     return this.attempts(batchId).at(-1);
   }
 
+  private hasActiveSessionSync(batchId: string): boolean {
+    return Boolean(
+      this.db
+        .prepare(
+          `SELECT 1 FROM cooking_update_session_sync sync
+           JOIN platform_execution execution ON execution.id = sync.execution_id
+           WHERE sync.batch_id = ? AND execution.state IN ('QUEUED', 'CLAIMED', 'RUNNING')
+           LIMIT 1`,
+        )
+        .get(batchId),
+    );
+  }
+
+  private sessionSynchronizationError(batchId: string): string | null {
+    const row = this.db
+      .prepare(
+        `SELECT execution.outcome_json
+         FROM cooking_update_session_sync sync
+         JOIN platform_execution execution ON execution.id = sync.execution_id
+         WHERE sync.batch_id = ? AND execution.state = 'FAILED'
+         ORDER BY sync.created_at DESC LIMIT 1`,
+      )
+      .get(batchId) as { outcome_json: string | null } | undefined;
+    const failure = row?.outcome_json
+      ? (JSON.parse(row.outcome_json) as { failure?: { message?: unknown } })
+      : null;
+    return typeof failure?.failure?.message === 'string'
+      ? failure.failure.message
+      : null;
+  }
+
   private attemptForExecution(executionId: string): AttemptRow | undefined {
     return this.db
       .prepare(
@@ -1576,7 +1770,11 @@ function isUpdateExecution(execution: Execution): boolean {
 }
 
 function requireTaskSkillBinding(execution: Execution) {
-  const binding = execution.codexTurn?.taskSkillBinding;
+  const binding =
+    execution.codexTurn?.kind === 'CONTINUATION' ||
+    execution.codexTurn?.kind === 'INITIAL'
+      ? execution.codexTurn.taskSkillBinding
+      : null;
   if (!binding)
     throw new PlatformError(
       'INVALID_TRANSITION',

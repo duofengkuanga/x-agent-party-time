@@ -129,6 +129,7 @@ export async function seedBrowserFixture(
       undefined,
       cookingExecutionProjection(db, {
         BUG_REPAIR: repairs,
+        SESSION_SYNC: repairs,
         UPDATE_BATCH: { projectExecution: () => {} },
         CLEANUP: { projectExecution: () => {} },
       }),

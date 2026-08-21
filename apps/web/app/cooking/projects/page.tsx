@@ -514,10 +514,6 @@ function EngineeringDialog({
       ) : (
         <div className="engineering-catalog">
           <div className="engineering-catalog__intro">
-            <div>
-              <span>工程与 Agent</span>
-              <p>维护工程成员、测试环境和开发者本机 Agent 绑定。</p>
-            </div>
             {owner ? (
               <Link
                 className="repair-primary"

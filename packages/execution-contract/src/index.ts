@@ -102,6 +102,12 @@ export const CodexTurnSchema = z.discriminatedUnion('kind', [
       outputJsonSchema: JsonObjectSchema,
     })
     .strict(),
+  z
+    .object({
+      kind: z.literal('READ_SESSION'),
+      taskId: SessionIdSchema,
+    })
+    .strict(),
 ]);
 
 export const ExecutionFailureCodeSchema = z.enum([

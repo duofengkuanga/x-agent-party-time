@@ -152,7 +152,6 @@ export function SubmissionComposer({
       >
         <header>
           <div>
-            <span className="collab-section-label">多工程协作提测</span>
             <h2 id="submission-composer-title">创建提测单</h2>
           </div>
           <button aria-label="关闭创建提测单" onClick={onClose} type="button">

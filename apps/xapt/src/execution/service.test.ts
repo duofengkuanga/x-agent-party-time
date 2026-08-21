@@ -519,6 +519,10 @@ class FakeCodexExecutor implements CodexExecutor {
     };
   }
 
+  async readLastCompletedTurn() {
+    return { turnId: 'turn-latest', result: { summary: 'done' } };
+  }
+
   resolveNext(): void {
     this.resolvers.shift()?.({ summary: 'done' });
   }

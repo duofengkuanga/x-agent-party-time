@@ -173,9 +173,15 @@ export class ExecutionService {
             input.priority,
             input.approvalPolicy,
             input.codexTurn ? JSON.stringify(input.codexTurn) : null,
-            input.codexTurn?.taskSkillBinding?.skillName ?? null,
-            input.codexTurn?.taskSkillBinding?.bundleHash ?? null,
-            input.codexTurn?.taskSkillBinding?.sourceRevision ?? null,
+            input.codexTurn?.kind === 'CONTINUATION'
+              ? input.codexTurn.taskSkillBinding.skillName
+              : null,
+            input.codexTurn?.kind === 'CONTINUATION'
+              ? input.codexTurn.taskSkillBinding.bundleHash
+              : null,
+            input.codexTurn?.kind === 'CONTINUATION'
+              ? input.codexTurn.taskSkillBinding.sourceRevision
+              : null,
             input.workspace ? JSON.stringify(input.workspace) : null,
             createdAt,
           );
@@ -1086,7 +1092,9 @@ function mapCodexTurn(row: ExecutionRow): CodexTurn | null {
   if (!row.codex_turn_json) return null;
   const turn = JSON.parse(row.codex_turn_json) as CodexTurn;
   const taskSkillBinding = persistedSkillBinding(row);
-  return taskSkillBinding ? { ...turn, taskSkillBinding } : turn;
+  return taskSkillBinding && turn.kind === 'INITIAL'
+    ? { ...turn, taskSkillBinding }
+    : turn;
 }
 
 function persistedSkillBinding(row: ExecutionRow): TaskSkillBinding | null {
@@ -1120,7 +1128,7 @@ function validateStartedSkillBinding(
   turn: CodexTurn | null,
   actual: TaskSkillBinding | null,
 ): void {
-  if (!turn) {
+  if (!turn || turn.kind === 'READ_SESSION') {
     if (actual)
       throw new PlatformError(
         'INVALID_TRANSITION',
@@ -1133,7 +1141,9 @@ function validateStartedSkillBinding(
   const expectedName =
     turn.kind === 'INITIAL'
       ? turn.requiredSkillName
-      : turn.taskSkillBinding.skillName;
+      : turn.kind === 'CONTINUATION'
+        ? turn.taskSkillBinding.skillName
+        : null;
   if (
     actual.skillName !== expectedName ||
     (turn.kind === 'CONTINUATION' &&
