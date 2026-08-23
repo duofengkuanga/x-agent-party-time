@@ -140,27 +140,27 @@ export class RepairService {
         .run(bugId, workspaceKey, now, now);
     const attempt = (latest?.attempt ?? 0) + 1;
     const executionBrief = buildInitialRepairBrief({
-      executionId,
-      workspaceKey,
-      submissionId: repairContext.submissionId,
-      submissionTitle: repairContext.submissionTitle,
-      requirementDescription: repairContext.requirementDescription,
-      engineeringName: repairContext.engineeringName,
-      repositoryUrl: repairContext.repositoryUrl,
       targetBranch: repairContext.targetBranch,
       bugTitle: repairContext.report.title,
-      bugId,
       operationPath: repairContext.report.operationPath,
       actualResult: repairContext.report.actualResult,
       expectedResult: repairContext.report.expectedResult,
-      actualResultAttachments:
-        repairContext.report.attachments.actualResult.map(
-          ({ id, originalName }) => ({ fileId: id, originalName }),
+      attachments: [
+        ...repairContext.report.attachments.actualResult.map(
+          ({ id, originalName }) => ({
+            fileId: id,
+            originalName,
+            role: 'ACTUAL_RESULT' as const,
+          }),
         ),
-      expectedResultAttachments:
-        repairContext.report.attachments.expectedResult.map(
-          ({ id, originalName }) => ({ fileId: id, originalName }),
+        ...repairContext.report.attachments.expectedResult.map(
+          ({ id, originalName }) => ({
+            fileId: id,
+            originalName,
+            role: 'EXPECTED_RESULT' as const,
+          }),
         ),
+      ],
       feedback: repairContext.feedback,
       pendingCommits: existingContext
         ? parseCommits(existingContext.pending_commits_json)
@@ -850,33 +850,33 @@ export class RepairService {
       const parsed = RepairExecutionResultSchema.safeParse(
         execution.outcome.result,
       );
-      if (parsed.success && parsed.data.outcome === 'COMPLETED') {
+      const result = parsed.success ? parsed.data.result : null;
+      if (result?.outcome === 'COMPLETED') {
         const current = parseCommits(context.pending_commits_json);
         const currentManualOperations = parseManualOperations(
           context.pending_manual_operations_json,
         );
         if (
-          new Set(parsed.data.commits).size === parsed.data.commits.length &&
-          !parsed.data.commits.some((commit) => current.includes(commit)) &&
-          (parsed.data.completionKind === 'CHANGES_COMMITTED' ||
+          new Set(result.commits).size === result.commits.length &&
+          !result.commits.some((commit) => current.includes(commit)) &&
+          (result.completionKind === 'CHANGES_COMMITTED' ||
             current.length === 0)
         )
           return {
             kind: 'COMPLETED',
-            deliveryRequired:
-              parsed.data.completionKind === 'CHANGES_COMMITTED',
-            pendingCommits: [...current, ...parsed.data.commits],
+            deliveryRequired: result.completionKind === 'CHANGES_COMMITTED',
+            pendingCommits: [...current, ...result.commits],
             pendingManualOperations: [
               ...currentManualOperations,
-              ...parsed.data.manualOperations,
+              ...result.manualOperations,
             ],
-            attemptOutcome: parsed.data,
+            attemptOutcome: result,
           };
       }
-      if (parsed.success && parsed.data.outcome === 'FAILED')
+      if (result?.outcome === 'FAILED')
         return {
           kind: 'FAILED',
-          attemptOutcome: parsed.data,
+          attemptOutcome: result,
         };
       const invalidReason = parsed.success
         ? 'Codex 返回的候选本地提交记录无效。'
@@ -886,7 +886,6 @@ export class RepairService {
         kind: 'FAILED',
         attemptOutcome: {
           outcome: 'FAILED',
-          summary: '修复结果格式或候选本地提交记录无效。',
           failedStep: '结构化结果校验',
           reason: invalidReason,
           completedActions: [],
@@ -900,16 +899,15 @@ export class RepairService {
     const cancelled = execution.outcome?.kind === 'CANCELLED';
     const cancelledReason =
       execution.outcome?.kind === 'CANCELLED' ? execution.outcome.reason : null;
-    const summary = cancelled
-      ? '修复执行已停止。'
-      : (failure?.message ?? '修复执行未完成。');
     return {
       kind: 'FAILED',
       attemptOutcome: {
         outcome: 'FAILED',
-        summary,
         failedStep: '修复执行',
-        reason: failure?.message ?? cancelledReason ?? '未返回更具体的失败原因',
+        reason:
+          failure?.message ??
+          cancelledReason ??
+          '修复执行未返回更具体的失败原因',
         completedActions: [],
         pendingActions: ['重新执行修复'],
         technicalFailure: failure?.code ?? (cancelled ? 'CANCELLED' : null),
@@ -1133,39 +1131,36 @@ function formatRepairContractIssues(
 function projectAttemptResult(outcomeJson: string, technical: boolean) {
   const raw = JSON.parse(outcomeJson) as Record<string, unknown>;
   const { technicalFailure: _technicalFailure, ...contractResult } = raw;
-  const parsed = RepairExecutionResultSchema.safeParse(
-    raw.outcome === 'COMPLETED' && raw.manualOperations === undefined
-      ? { ...contractResult, manualOperations: [] }
-      : contractResult,
-  );
+  const parsed = RepairExecutionResultSchema.safeParse({
+    result: contractResult,
+  });
   if (!parsed.success)
     throw new PlatformError('INTERNAL_ERROR', '已保存的修复记录结果格式无效');
-  if (parsed.data.outcome === 'COMPLETED')
+  const result = parsed.data.result;
+  if (result.outcome === 'COMPLETED')
     return {
-      outcome: parsed.data.outcome,
-      changes: parsed.data.changes,
-      validations: parsed.data.validations,
-      warnings: parsed.data.warnings,
-      commitCount: parsed.data.commits.length,
-      commits: technical ? parsed.data.commits : null,
-      rawSummary: technical ? parsed.data.summary : null,
+      outcome: result.outcome,
+      changes: result.changes,
+      validations: result.validations,
+      warnings: result.warnings,
+      commitCount: result.commits.length,
+      commits: technical ? result.commits : null,
     };
   return {
-    outcome: parsed.data.outcome,
-    failedStep: parsed.data.failedStep,
+    outcome: result.outcome,
+    failedStep: result.failedStep,
     reason:
       !technical &&
       typeof raw.technicalFailure === 'string' &&
       raw.technicalFailure !== 'CANCELLED'
         ? '自动修复执行未完成，工程负责人可查看详细原因。'
-        : parsed.data.reason,
-    completedActions: parsed.data.completedActions,
-    pendingActions: parsed.data.pendingActions,
+        : result.reason,
+    completedActions: result.completedActions,
+    pendingActions: result.pendingActions,
     failureCode:
       technical && typeof raw.technicalFailure === 'string'
         ? raw.technicalFailure
         : null,
-    rawSummary: technical ? parsed.data.summary : null,
   };
 }
 

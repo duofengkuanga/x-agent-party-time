@@ -29,57 +29,56 @@ export const UpdateBatchStateSchema = z.enum([
 export const UpdateValidationSchema = z.object({
   name: z.string().trim().min(1).max(240),
   status: z.enum(['PASSED', 'FAILED', 'SKIPPED']),
-  detail: z.string().trim().min(1).max(2_000).optional(),
+  detail: z.string().trim().max(300),
 });
 
 const CompletedUpdateExecutionResultSchema = z
   .object({
     outcome: z.literal('COMPLETED'),
-    summary: z.string().trim().min(1).max(4_000),
-    completedActions: z.array(z.string().trim().min(1).max(2_000)).max(100),
-    validations: z.array(UpdateValidationSchema).max(100),
-    warnings: z.array(z.string().trim().min(1).max(2_000)).max(100),
+    completedActions: z.array(z.string().trim().min(1).max(300)).max(5),
+    validations: z.array(UpdateValidationSchema).max(5),
+    warnings: z.array(z.string().trim().min(1).max(300)).max(3),
   })
   .strict();
 
 const PushedUpdateExecutionResultSchema = z
   .object({
     outcome: z.literal('PUSHED'),
-    summary: z.string().trim().min(1).max(4_000),
-    completedActions: z.array(z.string().trim().min(1).max(2_000)).max(100),
-    validations: z.array(UpdateValidationSchema).max(100),
-    warnings: z.array(z.string().trim().min(1).max(2_000)).max(100),
+    completedActions: z.array(z.string().trim().min(1).max(300)).max(5),
+    validations: z.array(UpdateValidationSchema).max(5),
+    warnings: z.array(z.string().trim().min(1).max(300)).max(3),
   })
   .strict();
 
 const FailedUpdateExecutionResultSchema = z
   .object({
     outcome: z.literal('FAILED'),
-    summary: z.string().trim().min(1).max(4_000),
     failedStep: z.string().trim().min(1).max(240),
-    reason: z.string().trim().min(1).max(4_000),
-    completedActions: z.array(z.string().trim().min(1).max(2_000)).max(100),
-    validations: z.array(UpdateValidationSchema).max(100).default([]),
-    warnings: z.array(z.string().trim().min(1).max(2_000)).max(100).default([]),
-    pendingActions: z.array(z.string().trim().min(1).max(2_000)).max(100),
+    reason: z.string().trim().min(1).max(500),
+    completedActions: z.array(z.string().trim().min(1).max(300)).max(5),
+    validations: z.array(UpdateValidationSchema).max(5),
+    warnings: z.array(z.string().trim().min(1).max(300)).max(3),
+    pendingActions: z.array(z.string().trim().min(1).max(300)).max(5),
   })
   .strict();
 
-export const LocalScriptUpdateExecutionResultSchema = z.preprocess(
-  normalizeUpdateExecutionResult,
-  z.discriminatedUnion('outcome', [
-    CompletedUpdateExecutionResultSchema,
-    FailedUpdateExecutionResultSchema,
-  ]),
-);
+export const LocalScriptUpdateExecutionResultSchema = z
+  .object({
+    result: z.discriminatedUnion('outcome', [
+      CompletedUpdateExecutionResultSchema,
+      FailedUpdateExecutionResultSchema,
+    ]),
+  })
+  .strict();
 
-export const CiCdUpdateExecutionResultSchema = z.preprocess(
-  normalizeUpdateExecutionResult,
-  z.discriminatedUnion('outcome', [
-    PushedUpdateExecutionResultSchema,
-    FailedUpdateExecutionResultSchema,
-  ]),
-);
+export const CiCdUpdateExecutionResultSchema = z
+  .object({
+    result: z.discriminatedUnion('outcome', [
+      PushedUpdateExecutionResultSchema,
+      FailedUpdateExecutionResultSchema,
+    ]),
+  })
+  .strict();
 
 export const LocalScriptUpdateOutputJsonSchema = updateOutputJsonSchema([
   'COMPLETED',
@@ -110,7 +109,6 @@ const UpdateAttemptResultViewSchema = z.discriminatedUnion('outcome', [
     completedActions: z.array(z.string()),
     validations: z.array(UpdateValidationSchema),
     warnings: z.array(z.string()),
-    rawSummary: z.string().nullable(),
   }),
   z.object({
     outcome: z.literal('FAILED'),
@@ -121,7 +119,6 @@ const UpdateAttemptResultViewSchema = z.discriminatedUnion('outcome', [
     warnings: z.array(z.string()),
     pendingActions: z.array(z.string()),
     failureCode: z.string().nullable(),
-    rawSummary: z.string().nullable(),
   }),
 ]);
 
@@ -275,136 +272,102 @@ export type ResolveUpdateInteractionInput = z.infer<
 >;
 export type UpdateMutationResult = z.infer<typeof UpdateMutationResultSchema>;
 
-function normalizeUpdateExecutionResult(value: unknown): unknown {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
-  const source = value as Record<string, unknown>;
-  if (source.outcome === 'COMPLETED' || source.outcome === 'PUSHED') {
-    if (
-      !isNullPlaceholder(source.failedStep) ||
-      !isNullPlaceholder(source.reason) ||
-      !isEmptyArrayPlaceholder(source.pendingActions)
-    )
-      return value;
-    const {
-      failedStep: _failedStep,
-      reason: _reason,
-      pendingActions: _pendingActions,
-      ...normalized
-    } = source;
-    return {
-      ...normalized,
-      validations: normalizeValidationDetails(source.validations),
-    };
-  }
-  if (source.outcome === 'FAILED') {
-    if (
-      !isEmptyArrayPlaceholder(source.validations) ||
-      !isEmptyArrayPlaceholder(source.warnings)
-    )
-      return value;
-    const {
-      validations: _validations,
-      warnings: _warnings,
-      ...normalized
-    } = source;
-    return normalized;
-  }
-  return value;
-}
-
-function normalizeValidationDetails(value: unknown): unknown {
-  return Array.isArray(value)
-    ? value.map((validation) => {
-        if (
-          validation &&
-          typeof validation === 'object' &&
-          !Array.isArray(validation) &&
-          Reflect.get(validation, 'detail') === null
-        ) {
-          const { detail: _detail, ...normalized } = validation as Record<
-            string,
-            unknown
-          >;
-          return normalized;
-        }
-        return validation;
-      })
-    : value;
-}
-
-function isNullPlaceholder(value: unknown): boolean {
-  return value === undefined || value === null;
-}
-
-function isEmptyArrayPlaceholder(value: unknown): boolean {
-  return value === undefined || (Array.isArray(value) && value.length === 0);
-}
-
 function updateOutputJsonSchema(
   outcomes: ['COMPLETED' | 'PUSHED', 'FAILED'],
 ): JsonObject {
   return {
     type: 'object',
     properties: {
-      outcome: { type: 'string', enum: outcomes },
-      summary: { type: 'string', minLength: 1, maxLength: 4_000 },
+      result: {
+        anyOf: [
+          updateSuccessOutputSchema(outcomes[0]),
+          updateFailedOutputSchema(),
+        ],
+      },
+    },
+    required: ['result'],
+    additionalProperties: false,
+  };
+}
+
+function updateSuccessOutputSchema(
+  outcome: 'COMPLETED' | 'PUSHED',
+): JsonObject {
+  return {
+    type: 'object',
+    properties: {
+      outcome: { type: 'string', enum: [outcome] },
       completedActions: {
         type: 'array',
-        items: { type: 'string', minLength: 1, maxLength: 2_000 },
-        maxItems: 100,
+        items: { type: 'string', minLength: 1, maxLength: 300 },
+        maxItems: 5,
       },
       validations: {
         type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            name: { type: 'string', minLength: 1, maxLength: 240 },
-            status: {
-              type: 'string',
-              enum: ['PASSED', 'FAILED', 'SKIPPED'],
-            },
-            detail: {
-              type: ['string', 'null'],
-              minLength: 1,
-              maxLength: 2_000,
-            },
-          },
-          required: ['name', 'status', 'detail'],
-          additionalProperties: false,
-        },
-        maxItems: 100,
+        items: updateValidationOutputSchema(),
+        maxItems: 5,
       },
       warnings: {
         type: 'array',
-        items: { type: 'string', minLength: 1, maxLength: 2_000 },
-        maxItems: 100,
+        items: { type: 'string', minLength: 1, maxLength: 300 },
+        maxItems: 3,
       },
-      failedStep: {
-        type: ['string', 'null'],
-        minLength: 1,
-        maxLength: 240,
+    },
+    required: ['outcome', 'completedActions', 'validations', 'warnings'],
+    additionalProperties: false,
+  };
+}
+
+function updateFailedOutputSchema(): JsonObject {
+  return {
+    type: 'object',
+    properties: {
+      outcome: { type: 'string', enum: ['FAILED'] },
+      failedStep: { type: 'string', minLength: 1, maxLength: 240 },
+      reason: { type: 'string', minLength: 1, maxLength: 500 },
+      completedActions: {
+        type: 'array',
+        items: { type: 'string', minLength: 1, maxLength: 300 },
+        maxItems: 5,
       },
-      reason: {
-        type: ['string', 'null'],
-        minLength: 1,
-        maxLength: 4_000,
+      validations: {
+        type: 'array',
+        items: updateValidationOutputSchema(),
+        maxItems: 5,
+      },
+      warnings: {
+        type: 'array',
+        items: { type: 'string', minLength: 1, maxLength: 300 },
+        maxItems: 3,
       },
       pendingActions: {
         type: 'array',
-        items: { type: 'string', minLength: 1, maxLength: 2_000 },
-        maxItems: 100,
+        items: { type: 'string', minLength: 1, maxLength: 300 },
+        maxItems: 5,
       },
     },
     required: [
       'outcome',
-      'summary',
+      'failedStep',
+      'reason',
       'completedActions',
       'validations',
       'warnings',
-      'failedStep',
-      'reason',
       'pendingActions',
     ],
+    additionalProperties: false,
+  };
+}
+
+function updateValidationOutputSchema(): JsonObject {
+  return {
+    type: 'object',
+    properties: {
+      name: { type: 'string', minLength: 1, maxLength: 240 },
+      status: { type: 'string', enum: ['PASSED', 'FAILED', 'SKIPPED'] },
+      detail: { type: 'string', maxLength: 300 },
+    },
+    required: ['name', 'status', 'detail'],
     additionalProperties: false,
   };
 }

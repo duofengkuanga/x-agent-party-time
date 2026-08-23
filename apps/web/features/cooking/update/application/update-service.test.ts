@@ -604,7 +604,6 @@ describe('UpdateService', () => {
       completedActions: [],
       pendingActions: ['修正失败原因后重新执行'],
       failureCode: null,
-      rawSummary: null,
     });
 
     const continued = fixture.updates.retryUpdate(
@@ -727,9 +726,8 @@ describe('UpdateService', () => {
           result: {
             outcome: 'PUSHED',
             completedActions: ['集成候选并普通 Push'],
-            validations: [{ name: '定向检查', status: 'PASSED' }],
+            validations: [{ name: '定向检查', status: 'PASSED', detail: '' }],
             warnings: [],
-            rawSummary: null,
           },
         },
       ],
@@ -1036,20 +1034,21 @@ describe('UpdateService', () => {
       outcome: {
         kind: 'SUCCEEDED',
         result: {
-          outcome: 'FAILED',
-          summary: '质量门未通过',
-          failedStep: '质量门：pnpm run tsc',
-          reason: '仓库不存在 tsconfig.json',
-          completedActions: ['完成候选提交集成'],
-          validations: [
-            {
-              name: 'TypeScript 静态检查',
-              status: 'FAILED',
-              detail: 'pnpm run tsc 退出码为 1',
-            },
-          ],
-          warnings: ['该失败不直接证明候选修改存在类型错误'],
-          pendingActions: ['修复质量门后重新执行'],
+          result: {
+            outcome: 'FAILED',
+            failedStep: '质量门：pnpm run tsc',
+            reason: '仓库不存在 tsconfig.json',
+            completedActions: ['完成候选提交集成'],
+            validations: [
+              {
+                name: 'TypeScript 静态检查',
+                status: 'FAILED',
+                detail: 'pnpm run tsc 退出码为 1',
+              },
+            ],
+            warnings: ['该失败不直接证明候选修改存在类型错误'],
+            pendingActions: ['修复质量门后重新执行'],
+          },
         },
       },
     });
@@ -1074,7 +1073,6 @@ describe('UpdateService', () => {
       warnings: ['该失败不直接证明候选修改存在类型错误'],
       pendingActions: ['修复质量门后重新执行'],
       failureCode: null,
-      rawSummary: '质量门未通过',
     });
   });
 
@@ -1313,34 +1311,43 @@ describe('UpdateService', () => {
   });
 });
 
-function completedUpdate(summary: string) {
+function completedUpdate(_summary: string) {
   return {
-    outcome: 'COMPLETED' as const,
-    summary,
-    completedActions: ['集成候选并完成部署'],
-    validations: [{ name: '定向检查', status: 'PASSED' as const }],
-    warnings: [],
+    result: {
+      outcome: 'COMPLETED' as const,
+      completedActions: ['集成候选并完成部署'],
+      validations: [
+        { name: '定向检查', status: 'PASSED' as const, detail: '' },
+      ],
+      warnings: [],
+    },
   };
 }
 
-function pushedUpdate(summary: string) {
+function pushedUpdate(_summary: string) {
   return {
-    outcome: 'PUSHED' as const,
-    summary,
-    completedActions: ['集成候选并普通 Push'],
-    validations: [{ name: '定向检查', status: 'PASSED' as const }],
-    warnings: [],
+    result: {
+      outcome: 'PUSHED' as const,
+      completedActions: ['集成候选并普通 Push'],
+      validations: [
+        { name: '定向检查', status: 'PASSED' as const, detail: '' },
+      ],
+      warnings: [],
+    },
   };
 }
 
 function failedUpdate(summary: string) {
   return {
-    outcome: 'FAILED' as const,
-    summary,
-    failedStep: '执行统一更新',
-    reason: summary,
-    completedActions: [],
-    pendingActions: ['修正失败原因后重新执行'],
+    result: {
+      outcome: 'FAILED' as const,
+      failedStep: '执行统一更新',
+      reason: summary,
+      completedActions: [],
+      validations: [],
+      warnings: [],
+      pendingActions: ['修正失败原因后重新执行'],
+    },
   };
 }
 
@@ -1363,14 +1370,15 @@ async function completeNextRepair(
     outcome: {
       kind: 'SUCCEEDED',
       result: {
-        outcome: 'COMPLETED',
-        completionKind: 'CHANGES_COMMITTED',
-        summary: '修复完成',
-        changes: ['完成缺陷修复'],
-        validations: [{ name: '定向测试', status: 'PASSED' }],
-        warnings: [],
-        commits,
-        manualOperations,
+        result: {
+          outcome: 'COMPLETED',
+          completionKind: 'CHANGES_COMMITTED',
+          changes: ['完成缺陷修复'],
+          validations: [{ name: '定向测试', status: 'PASSED', detail: '' }],
+          warnings: [],
+          commits,
+          manualOperations,
+        },
       },
     },
   });

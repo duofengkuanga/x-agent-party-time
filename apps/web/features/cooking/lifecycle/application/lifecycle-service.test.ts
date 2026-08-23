@@ -924,14 +924,15 @@ async function completeClaimedRepair(
     outcome: {
       kind: 'SUCCEEDED',
       result: {
-        outcome: 'COMPLETED',
-        completionKind: 'CHANGES_COMMITTED',
-        summary: '修复完成',
-        changes: ['完成缺陷修复'],
-        validations: [{ name: '定向测试', status: 'PASSED' }],
-        warnings: [],
-        commits,
-        manualOperations: [],
+        result: {
+          outcome: 'COMPLETED',
+          completionKind: 'CHANGES_COMMITTED',
+          changes: ['完成缺陷修复'],
+          validations: [{ name: '定向测试', status: 'PASSED', detail: '' }],
+          warnings: [],
+          commits,
+          manualOperations: [],
+        },
       },
     },
   });
@@ -963,10 +964,12 @@ async function completeUpdate(
     outcome: {
       kind: 'SUCCEEDED',
       result: {
-        ...result,
-        completedActions: ['集成候选并完成更新'],
-        validations: [{ name: '定向检查', status: 'PASSED' }],
-        warnings: [],
+        result: {
+          outcome: result.outcome,
+          completedActions: ['集成候选并完成更新'],
+          validations: [{ name: '定向检查', status: 'PASSED', detail: '' }],
+          warnings: [],
+        },
       },
     },
   });

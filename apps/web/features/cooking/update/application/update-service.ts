@@ -1099,19 +1099,9 @@ export class UpdateService {
     const executionId = this.createId();
     const workspaceKey = `update-batch:${batchId}`;
     const executionBrief = buildInitialUpdateBrief({
-      executionId,
-      batchId,
-      submissionId: source.submission_id,
-      submissionItemId,
-      workspaceKey,
-      submissionTitle: source.submission_title,
-      engineeringName: source.engineering_name,
-      repositoryUrl: source.repository_url,
       targetBranch: source.target_branch,
       environmentName: source.environment_name,
       entries: candidates.map((candidate) => ({
-        bugId: candidate.bug_id,
-        bugShortId: candidate.short_id,
         bugTitle: candidate.title,
         commits: parseCommits(candidate.pending_commits_json),
       })),
@@ -1226,39 +1216,42 @@ export class UpdateService {
               execution.outcome.result,
             )
           : CiCdUpdateExecutionResultSchema.safeParse(execution.outcome.result);
-      if (parsed.success && parsed.data.outcome === 'COMPLETED')
-        return { kind: 'COMPLETED', attemptOutcome: parsed.data };
-      if (parsed.success && parsed.data.outcome === 'PUSHED')
-        return { kind: 'PUSHED', attemptOutcome: parsed.data };
-      if (parsed.success)
-        return { kind: 'FAILED', attemptOutcome: parsed.data };
+      const result = parsed.success ? parsed.data.result : null;
+      if (result?.outcome === 'COMPLETED')
+        return { kind: 'COMPLETED', attemptOutcome: result };
+      if (result?.outcome === 'PUSHED')
+        return { kind: 'PUSHED', attemptOutcome: result };
+      if (parsed.success) return { kind: 'FAILED', attemptOutcome: result };
       this.markExecutionResultInvalid(execution.id);
       return {
         kind: 'FAILED',
         attemptOutcome: {
           outcome: 'FAILED',
-          summary: '更新结果格式无效',
           failedStep: '解析结构化结果',
           reason: 'Agent 返回内容不符合统一更新结果 Schema',
           completedActions: [],
+          validations: [],
+          warnings: [],
           pendingActions: ['重新执行统一更新'],
           technicalFailure: 'RESULT_SCHEMA_INVALID',
         },
       };
     }
     const cancelled = execution.outcome?.kind === 'CANCELLED';
-    const summary = cancelled ? '更新执行已停止' : '统一更新未完成';
     return {
       kind: 'FAILED',
       attemptOutcome: {
         outcome: 'FAILED',
-        summary,
         failedStep: cancelled ? '执行停止' : '执行统一更新',
         reason:
           execution.outcome?.kind === 'FAILED'
             ? execution.outcome.failure.message
-            : summary,
+            : cancelled
+              ? '更新执行已停止'
+              : '统一更新未完成',
         completedActions: [],
+        validations: [],
+        warnings: [],
         pendingActions: ['重新执行统一更新'],
         technicalFailure:
           execution.outcome?.kind === 'FAILED'
@@ -1722,10 +1715,6 @@ function projectUpdateAttemptResult(outcomeJson: string, technical: boolean) {
         ? outcome.validations
         : [],
       warnings: stringArray(outcome.warnings),
-      rawSummary:
-        technical && typeof outcome.summary === 'string'
-          ? outcome.summary
-          : null,
     };
   return {
     outcome: 'FAILED' as const,
@@ -1740,9 +1729,7 @@ function projectUpdateAttemptResult(outcomeJson: string, technical: boolean) {
         ? '统一更新执行未完成，工程负责人可查看详细原因。'
         : typeof outcome.reason === 'string'
           ? outcome.reason
-          : typeof outcome.summary === 'string'
-            ? outcome.summary
-            : '统一更新未完成',
+          : '统一更新未完成',
     completedActions: stringArray(outcome.completedActions),
     validations: Array.isArray(outcome.validations) ? outcome.validations : [],
     warnings: stringArray(outcome.warnings),
@@ -1751,8 +1738,6 @@ function projectUpdateAttemptResult(outcomeJson: string, technical: boolean) {
       technical && typeof outcome.technicalFailure === 'string'
         ? outcome.technicalFailure
         : null,
-    rawSummary:
-      technical && typeof outcome.summary === 'string' ? outcome.summary : null,
   };
 }
 

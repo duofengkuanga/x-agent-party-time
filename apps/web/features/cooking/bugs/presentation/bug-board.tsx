@@ -1952,10 +1952,9 @@ function RepairAttemptTimelineArticle({
           <p className="collab-repair-commit-count">
             已记录 {node.result.commitCount} 个候选提交
           </p>
-          {node.result.rawSummary || node.result.commits ? (
+          {node.result.commits ? (
             <details>
-              <summary>技术详情与 Codex 完整结论</summary>
-              {node.result.rawSummary ? <p>{node.result.rawSummary}</p> : null}
+              <summary>技术详情</summary>
               {node.result.commits?.length ? (
                 <ol>
                   {node.result.commits.map((commit) => (
@@ -1984,10 +1983,9 @@ function RepairAttemptTimelineArticle({
             items={node.result.pendingActions}
             title="未执行事项"
           />
-          {node.result.rawSummary || node.result.failureCode ? (
+          {node.result.failureCode ? (
             <details>
-              <summary>技术详情与 Codex 完整结论</summary>
-              {node.result.rawSummary ? <p>{node.result.rawSummary}</p> : null}
+              <summary>技术详情</summary>
               {node.result.failureCode ? (
                 <code>{node.result.failureCode}</code>
               ) : null}
@@ -2393,14 +2391,10 @@ function UpdateBatchDetails({
                       ))}
                     </ol>
                   ) : null}
-                  {node.result?.rawSummary ||
-                  (node.result?.outcome === 'FAILED' &&
-                    node.result.failureCode) ? (
+                  {node.result?.outcome === 'FAILED' &&
+                  node.result.failureCode ? (
                     <details className="collab-technical-details">
-                      <summary>技术详情与 Codex 完整结论</summary>
-                      {node.result.rawSummary ? (
-                        <p>{node.result.rawSummary}</p>
-                      ) : null}
+                      <summary>技术详情</summary>
                       {node.result.outcome === 'FAILED' &&
                       node.result.failureCode ? (
                         <code>{node.result.failureCode}</code>

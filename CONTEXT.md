@@ -47,8 +47,16 @@ _Avoid_: Path、Runner Binding
 _Avoid_: Repair、Task、Job
 
 **Execution Brief**:
-一次 Execution 首次启动 Codex Task 时提供的结构化事实快照；稳定执行规则属于 Skill，后续 Turn 只补充继续指令或新增事实。
+一次 Execution 首次启动 Codex Task 时提供的最小结构化事实快照，只包含当前任务无法从本机工作区推导的信息；稳定执行规则属于 Skill，后续 Turn 只补充新增事实。
 _Avoid_: Prompt、Rendered Prompt
+
+**Execution Outcome**:
+一次 Execution 结束时提交的唯一、紧凑的结构化结果，用于推进业务状态和保存最终事实；它只包含状态转换所需证据，不重复生成展示文案或过程进度。
+_Avoid_: Progress Snapshot、Timeline Update
+
+**Execution Progress Update**:
+Execution 进行中发送的增量进度事实，用于呈现时间线；它不重复或替代 Execution Outcome。
+_Avoid_: Outcome、Full Result Snapshot
 
 **Skill Bundle**:
 xapt 安装在用户本机、由内容 Hash 标识的一份不可变 Codex Skill 文件集合。
@@ -59,7 +67,7 @@ _Avoid_: Skill Version、Prompt Version
 _Avoid_: Binding、Latest Skill
 
 **Interaction**:
-Execution 过程中 Codex 明确请求用户输入或权限决定的等待点。
+Execution 过程中 Codex 明确请求用户输入或权限决定的等待点；它暂停执行，但不构成失败的 Execution Outcome。
 _Avoid_: Feedback、Chat Message
 
 **External Session Continuation**:

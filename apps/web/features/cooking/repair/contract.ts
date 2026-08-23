@@ -19,7 +19,7 @@ export const CommitShaSchema = z
 export const RepairValidationSchema = z.object({
   name: z.string().trim().min(1).max(240),
   status: z.enum(['PASSED', 'FAILED', 'SKIPPED']),
-  detail: z.string().trim().min(1).max(2_000).optional(),
+  detail: z.string().trim().max(300),
 });
 
 const RepositoryRelativePathSchema = z
@@ -42,18 +42,17 @@ export const ManualOperationSchema = z
   })
   .strict();
 
-export const ManualOperationsSchema = z.array(ManualOperationSchema).max(100);
+export const ManualOperationsSchema = z.array(ManualOperationSchema).max(5);
 
 const RepairExecutionResultValueSchema = z.discriminatedUnion('outcome', [
   z
     .object({
       outcome: z.literal('COMPLETED'),
       completionKind: z.enum(['CHANGES_COMMITTED', 'TARGET_ALREADY_FIXED']),
-      summary: z.string().trim().min(1).max(4_000),
-      changes: z.array(z.string().trim().min(1).max(2_000)).max(100),
-      validations: z.array(RepairValidationSchema).max(100),
-      warnings: z.array(z.string().trim().min(1).max(2_000)).max(100),
-      commits: z.array(CommitShaSchema).max(100),
+      changes: z.array(z.string().trim().min(1).max(300)).max(5),
+      validations: z.array(RepairValidationSchema).max(5),
+      warnings: z.array(z.string().trim().min(1).max(300)).max(3),
+      commits: z.array(CommitShaSchema).max(5),
       manualOperations: ManualOperationsSchema,
     })
     .strict()
@@ -98,187 +97,131 @@ const RepairExecutionResultValueSchema = z.discriminatedUnion('outcome', [
   z
     .object({
       outcome: z.literal('FAILED'),
-      summary: z.string().trim().min(1).max(4_000),
       failedStep: z.string().trim().min(1).max(240),
-      reason: z.string().trim().min(1).max(4_000),
-      completedActions: z.array(z.string().trim().min(1).max(2_000)).max(100),
-      pendingActions: z.array(z.string().trim().min(1).max(2_000)).max(100),
+      reason: z.string().trim().min(1).max(500),
+      completedActions: z.array(z.string().trim().min(1).max(300)).max(5),
+      pendingActions: z.array(z.string().trim().min(1).max(300)).max(5),
     })
     .strict(),
 ]);
 
-export const RepairExecutionResultSchema = z.preprocess((value) => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
-  const source = value as Record<string, unknown>;
-  if (source.outcome === 'COMPLETED') {
-    if (
-      !isNullPlaceholder(source.failedStep) ||
-      !isNullPlaceholder(source.reason) ||
-      !isEmptyArrayPlaceholder(source.completedActions) ||
-      !isEmptyArrayPlaceholder(source.pendingActions)
-    )
-      return value;
-    const {
-      failedStep: _failedStep,
-      reason: _reason,
-      completedActions: _completedActions,
-      pendingActions: _pendingActions,
-      ...normalized
-    } = source;
-    return {
-      ...normalized,
-      validations: Array.isArray(source.validations)
-        ? source.validations.map((validation) => {
-            if (
-              validation &&
-              typeof validation === 'object' &&
-              !Array.isArray(validation) &&
-              Reflect.get(validation, 'detail') === null
-            ) {
-              const { detail: _detail, ...normalized } = validation as Record<
-                string,
-                unknown
-              >;
-              return normalized;
-            }
-            return validation;
-          })
-        : source.validations,
-    };
-  }
-  if (source.outcome === 'FAILED') {
-    if (
-      !isNullPlaceholder(source.completionKind) ||
-      !isEmptyArrayPlaceholder(source.changes) ||
-      !isEmptyArrayPlaceholder(source.validations) ||
-      !isEmptyArrayPlaceholder(source.warnings) ||
-      !isEmptyArrayPlaceholder(source.commits) ||
-      !isEmptyArrayPlaceholder(source.manualOperations)
-    )
-      return value;
-    const {
-      completionKind: _completionKind,
-      changes: _changes,
-      validations: _validations,
-      warnings: _warnings,
-      commits: _commits,
-      manualOperations: _manualOperations,
-      ...normalized
-    } = source;
-    return normalized;
-  }
-  return value;
-}, RepairExecutionResultValueSchema);
-
-function isNullPlaceholder(value: unknown): boolean {
-  return value === undefined || value === null;
-}
-
-function isEmptyArrayPlaceholder(value: unknown): boolean {
-  return value === undefined || (Array.isArray(value) && value.length === 0);
-}
+export const RepairExecutionResultSchema = z
+  .object({ result: RepairExecutionResultValueSchema })
+  .strict();
 
 export const RepairOutputJsonSchema: JsonObject = {
   type: 'object',
   properties: {
-    outcome: { type: 'string', enum: ['COMPLETED', 'FAILED'] },
-    completionKind: {
-      type: ['string', 'null'],
-      enum: ['CHANGES_COMMITTED', 'TARGET_ALREADY_FIXED', null],
-    },
-    summary: { type: 'string', minLength: 1, maxLength: 4_000 },
-    changes: {
-      type: 'array',
-      items: { type: 'string', minLength: 1, maxLength: 2_000 },
-      maxItems: 100,
-    },
-    validations: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          name: { type: 'string', minLength: 1, maxLength: 240 },
-          status: {
-            type: 'string',
-            enum: ['PASSED', 'FAILED', 'SKIPPED'],
-          },
-          detail: {
-            type: ['string', 'null'],
-            minLength: 1,
-            maxLength: 2_000,
-          },
-        },
-        required: ['name', 'status', 'detail'],
-        additionalProperties: false,
-      },
-      maxItems: 100,
-    },
-    warnings: {
-      type: 'array',
-      items: { type: 'string', minLength: 1, maxLength: 2_000 },
-      maxItems: 100,
-    },
-    commits: {
-      type: 'array',
-      items: { type: 'string', pattern: '^[a-f0-9]{7,64}$' },
-      minItems: 0,
-      maxItems: 100,
-    },
-    manualOperations: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          kind: { type: 'string', enum: ['DATABASE_SQL'] },
-          paths: {
-            type: 'array',
-            items: { type: 'string', minLength: 1, maxLength: 2_000 },
-            minItems: 1,
-            maxItems: 100,
-          },
-        },
-        required: ['kind', 'paths'],
-        additionalProperties: false,
-      },
-      maxItems: 100,
-    },
-    failedStep: {
-      type: ['string', 'null'],
-      minLength: 1,
-      maxLength: 240,
-    },
-    reason: {
-      type: ['string', 'null'],
-      minLength: 1,
-      maxLength: 4_000,
-    },
-    completedActions: {
-      type: 'array',
-      items: { type: 'string', minLength: 1, maxLength: 2_000 },
-      maxItems: 100,
-    },
-    pendingActions: {
-      type: 'array',
-      items: { type: 'string', minLength: 1, maxLength: 2_000 },
-      maxItems: 100,
+    result: {
+      anyOf: [repairCompletedOutputSchema(), repairFailedOutputSchema()],
     },
   },
-  required: [
-    'outcome',
-    'completionKind',
-    'summary',
-    'changes',
-    'validations',
-    'warnings',
-    'commits',
-    'manualOperations',
-    'failedStep',
-    'reason',
-    'completedActions',
-    'pendingActions',
-  ],
+  required: ['result'],
   additionalProperties: false,
 };
+
+function repairCompletedOutputSchema(): JsonObject {
+  return {
+    type: 'object',
+    properties: {
+      outcome: { type: 'string', enum: ['COMPLETED'] },
+      completionKind: {
+        type: 'string',
+        enum: ['CHANGES_COMMITTED', 'TARGET_ALREADY_FIXED'],
+      },
+      changes: {
+        type: 'array',
+        items: { type: 'string', minLength: 1, maxLength: 300 },
+        maxItems: 5,
+      },
+      validations: {
+        type: 'array',
+        items: validationOutputSchema(),
+        maxItems: 5,
+      },
+      warnings: {
+        type: 'array',
+        items: { type: 'string', minLength: 1, maxLength: 300 },
+        maxItems: 3,
+      },
+      commits: {
+        type: 'array',
+        items: { type: 'string', pattern: '^[a-f0-9]{7,64}$' },
+        maxItems: 5,
+      },
+      manualOperations: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            kind: { type: 'string', enum: ['DATABASE_SQL'] },
+            paths: {
+              type: 'array',
+              items: { type: 'string', minLength: 1, maxLength: 2_000 },
+              minItems: 1,
+              maxItems: 100,
+            },
+          },
+          required: ['kind', 'paths'],
+          additionalProperties: false,
+        },
+        maxItems: 5,
+      },
+    },
+    required: [
+      'outcome',
+      'completionKind',
+      'changes',
+      'validations',
+      'warnings',
+      'commits',
+      'manualOperations',
+    ],
+    additionalProperties: false,
+  };
+}
+
+function repairFailedOutputSchema(): JsonObject {
+  return {
+    type: 'object',
+    properties: {
+      outcome: { type: 'string', enum: ['FAILED'] },
+      failedStep: { type: 'string', minLength: 1, maxLength: 240 },
+      reason: { type: 'string', minLength: 1, maxLength: 500 },
+      completedActions: {
+        type: 'array',
+        items: { type: 'string', minLength: 1, maxLength: 300 },
+        maxItems: 5,
+      },
+      pendingActions: {
+        type: 'array',
+        items: { type: 'string', minLength: 1, maxLength: 300 },
+        maxItems: 5,
+      },
+    },
+    required: [
+      'outcome',
+      'failedStep',
+      'reason',
+      'completedActions',
+      'pendingActions',
+    ],
+    additionalProperties: false,
+  };
+}
+
+function validationOutputSchema(): JsonObject {
+  return {
+    type: 'object',
+    properties: {
+      name: { type: 'string', minLength: 1, maxLength: 240 },
+      status: { type: 'string', enum: ['PASSED', 'FAILED', 'SKIPPED'] },
+      detail: { type: 'string', maxLength: 300 },
+    },
+    required: ['name', 'status', 'detail'],
+    additionalProperties: false,
+  };
+}
 
 const RepairAttemptResultViewSchema = z.discriminatedUnion('outcome', [
   z.object({
@@ -288,7 +231,6 @@ const RepairAttemptResultViewSchema = z.discriminatedUnion('outcome', [
     warnings: z.array(z.string()),
     commitCount: z.number().int().nonnegative(),
     commits: z.array(CommitShaSchema).nullable(),
-    rawSummary: z.string().nullable(),
   }),
   z.object({
     outcome: z.literal('FAILED'),
@@ -297,7 +239,6 @@ const RepairAttemptResultViewSchema = z.discriminatedUnion('outcome', [
     completedActions: z.array(z.string()),
     pendingActions: z.array(z.string()),
     failureCode: z.string().nullable(),
-    rawSummary: z.string().nullable(),
   }),
 ]);
 

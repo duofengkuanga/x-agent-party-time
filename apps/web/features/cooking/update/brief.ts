@@ -1,39 +1,17 @@
 import type { JsonObject } from '@agent-party-time/execution-contract';
 
 export function buildInitialUpdateBrief(input: {
-  executionId: string;
-  workspaceKey: string;
-  batchId: string;
-  submissionId: string;
-  submissionTitle: string;
-  submissionItemId: string;
-  engineeringName: string;
-  repositoryUrl: string;
   targetBranch: string;
   environmentName: string;
   entries: Array<{
-    bugId: string;
-    bugShortId: number;
     bugTitle: string;
     commits: string[];
   }>;
   deployment: { mode: 'CI_CD' } | { mode: 'LOCAL_SCRIPT'; command: string };
 }): JsonObject {
   return {
-    executionId: input.executionId,
-    workspaceKey: input.workspaceKey,
-    updateBatchId: input.batchId,
-    testSubmission: {
-      id: input.submissionId,
-      title: input.submissionTitle,
-      itemId: input.submissionItemId,
-    },
-    engineering: {
-      name: input.engineeringName,
-      repositoryUrl: input.repositoryUrl,
-      targetBranch: input.targetBranch,
-      environmentName: input.environmentName,
-    },
+    targetBranch: input.targetBranch,
+    environment: input.environmentName,
     frozenCandidates: input.entries.map((entry, position) => ({
       position,
       ...entry,

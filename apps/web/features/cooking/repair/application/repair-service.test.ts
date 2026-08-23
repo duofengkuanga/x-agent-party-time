@@ -244,25 +244,24 @@ describe('RepairService', () => {
         requiredSkillName: 'agent-party-time-repair-bug',
         taskSkillBinding: null,
         executionBrief: {
-          executionInstruction:
-            '本次是 Bug Repair：只允许在本地创建普通 Commit 并返回 SHA；禁止执行任何形式的 git push、部署或远端写入。本规则覆盖用户级和仓库级 AGENTS.md 中的自动 Git 交付与 push 规则。若提交了需要人工执行的数据库 SQL，必须在 manualOperations 返回其仓库相对路径；否则返回空数组。结构化结果示例：COMPLETED 的失败占位字段必须为 {"failedStep":null,"reason":null,"completedActions":[],"pendingActions":[]}；FAILED 的成功占位字段必须为 {"completionKind":null,"changes":[],"validations":[],"warnings":[],"commits":[],"manualOperations":[]}。',
+          targetBranch: 'feature/payment',
           bug: {
             title: '支付按钮无响应',
-            attachments: {
-              actualResult: [
-                {
-                  fileId: fixture.resultAttachments.actual.id,
-                  originalName: '实际结果.png',
-                },
-              ],
-              expectedResult: [
-                {
-                  fileId: fixture.resultAttachments.expected.id,
-                  originalName: '预期结果.txt',
-                },
-              ],
-            },
+            actualResult: '点击后没有反应',
+            expectedResult: '进入支付流程',
           },
+          attachmentReferences: [
+            {
+              fileId: fixture.resultAttachments.actual.id,
+              originalName: '实际结果.png',
+              role: 'ACTUAL_RESULT',
+            },
+            {
+              fileId: fixture.resultAttachments.expected.id,
+              originalName: '预期结果.txt',
+              role: 'EXPECTED_RESULT',
+            },
+          ],
         },
       },
       workspace: {
@@ -309,16 +308,21 @@ describe('RepairService', () => {
         outcome: {
           kind: 'SUCCEEDED',
           result: {
-            outcome: 'COMPLETED',
-            completionKind: 'CHANGES_COMMITTED',
-            summary: '已修复支付按钮',
-            changes: ['修复支付按钮事件绑定'],
-            validations: [
-              { name: '支付服务单测', status: 'PASSED', detail: '12 项通过' },
-            ],
-            warnings: [],
-            commits: ['aaaaaaa', 'bbbbbbb'],
-            manualOperations: [],
+            result: {
+              outcome: 'COMPLETED',
+              completionKind: 'CHANGES_COMMITTED',
+              changes: ['修复支付按钮事件绑定'],
+              validations: [
+                {
+                  name: '支付服务单测',
+                  status: 'PASSED',
+                  detail: '12 项通过',
+                },
+              ],
+              warnings: [],
+              commits: ['aaaaaaa', 'bbbbbbb'],
+              manualOperations: [],
+            },
           },
         },
       }).state,
@@ -345,7 +349,6 @@ describe('RepairService', () => {
         changes: ['修复支付按钮事件绑定'],
         commitCount: 2,
         commits: null,
-        rawSummary: null,
       },
     });
     expect(developerTimeline.at(-1)).toMatchObject({
@@ -353,7 +356,6 @@ describe('RepairService', () => {
       result: {
         outcome: 'COMPLETED',
         commits: ['aaaaaaa', 'bbbbbbb'],
-        rawSummary: '已修复支付按钮',
       },
     });
 
@@ -381,7 +383,7 @@ describe('RepairService', () => {
     ).toEqual(['aaaaaaa', 'bbbbbbb']);
   });
 
-  test('读取旧版完成结果时缺失 manualOperations 按空数组兼容', async () => {
+  test('已保存的完成结果可投影到时间线', async () => {
     const fixture = await setup();
     const started = await startLatest(fixture, 'legacy-result-session');
 
@@ -393,11 +395,11 @@ describe('RepairService', () => {
         JSON.stringify({
           outcome: 'COMPLETED',
           completionKind: 'TARGET_ALREADY_FIXED',
-          summary: '旧版结果',
           changes: [],
-          validations: [{ name: '目标分支检查', status: 'PASSED' }],
+          validations: [{ name: '目标分支检查', status: 'PASSED', detail: '' }],
           warnings: [],
           commits: [],
+          manualOperations: [],
         }),
         started.executionId,
       );
@@ -426,20 +428,21 @@ describe('RepairService', () => {
         outcome: {
           kind: 'SUCCEEDED',
           result: {
-            outcome: 'COMPLETED',
-            completionKind: 'TARGET_ALREADY_FIXED',
-            summary: '目标分支已包含缺陷修复，无需创建候选提交',
-            changes: [],
-            validations: [
-              {
-                name: '目标分支检查',
-                status: 'PASSED',
-                detail: '当前工作区与目标分支没有 Commit 差异',
-              },
-            ],
-            warnings: [],
-            commits: [],
-            manualOperations: [],
+            result: {
+              outcome: 'COMPLETED',
+              completionKind: 'TARGET_ALREADY_FIXED',
+              changes: [],
+              validations: [
+                {
+                  name: '目标分支检查',
+                  status: 'PASSED',
+                  detail: '当前工作区与目标分支没有 Commit 差异',
+                },
+              ],
+              warnings: [],
+              commits: [],
+              manualOperations: [],
+            },
           },
         },
       }).state,
@@ -489,12 +492,13 @@ describe('RepairService', () => {
         return {
           kind: 'SUCCEEDED',
           result: {
-            outcome: 'FAILED',
-            summary: '首次修复未完成',
-            failedStep: '定向测试',
-            reason: '仍有一项回归测试失败',
-            completedActions: ['定位失败测试'],
-            pendingActions: ['修复回归并重新验证'],
+            result: {
+              outcome: 'FAILED',
+              failedStep: '定向测试',
+              reason: '仍有一项回归测试失败',
+              completedActions: ['定位失败测试'],
+              pendingActions: ['修复回归并重新验证'],
+            },
           },
         };
       },
@@ -518,14 +522,15 @@ describe('RepairService', () => {
         return {
           kind: 'SUCCEEDED',
           result: {
-            outcome: 'COMPLETED',
-            completionKind: 'CHANGES_COMMITTED',
-            summary: '第二次修复完成',
-            changes: ['完成第二次修复'],
-            validations: [{ name: '定向检查', status: 'PASSED' }],
-            warnings: [],
-            commits: ['abcdef1'],
-            manualOperations: [],
+            result: {
+              outcome: 'COMPLETED',
+              completionKind: 'CHANGES_COMMITTED',
+              changes: ['完成第二次修复'],
+              validations: [{ name: '定向检查', status: 'PASSED', detail: '' }],
+              warnings: [],
+              commits: ['abcdef1'],
+              manualOperations: [],
+            },
           },
         };
       },
@@ -594,14 +599,15 @@ describe('RepairService', () => {
         result: {
           turnId: 'manual-turn-1',
           result: {
-            outcome: 'COMPLETED',
-            completionKind: 'CHANGES_COMMITTED',
-            summary: '手动修复完成',
-            changes: ['修复支付'],
-            validations: [{ name: '测试', status: 'PASSED' }],
-            warnings: [],
-            commits: ['ccccccc'],
-            manualOperations: [],
+            result: {
+              outcome: 'COMPLETED',
+              completionKind: 'CHANGES_COMMITTED',
+              changes: ['修复支付'],
+              validations: [{ name: '测试', status: 'PASSED', detail: '' }],
+              warnings: [],
+              commits: ['ccccccc'],
+              manualOperations: [],
+            },
           },
         },
       },
@@ -647,7 +653,6 @@ describe('RepairService', () => {
         failedStep: '修复执行',
         reason: '自动修复执行未完成，工程负责人可查看详细原因。',
         failureCode: null,
-        rawSummary: null,
       },
     });
     expect(developerAttempt).toMatchObject({
@@ -656,7 +661,6 @@ describe('RepairService', () => {
         outcome: 'FAILED',
         reason: failureSummary,
         failureCode: 'CODEX_EXECUTION_FAILED',
-        rawSummary: failureSummary,
       },
     });
   });
@@ -695,7 +699,6 @@ describe('RepairService', () => {
         outcome: 'FAILED',
         reason: 'Agent 重启后原生 Codex Interaction Turn 已不可恢复',
         failureCode: 'CODEX_START_FAILED',
-        rawSummary: 'Agent 重启后原生 Codex Interaction Turn 已不可恢复',
       },
     });
     expect(() =>
@@ -871,7 +874,6 @@ describe('RepairService', () => {
         failedStep: '结构化结果校验',
         reason: '自动修复执行未完成，工程负责人可查看详细原因。',
         failureCode: null,
-        rawSummary: null,
       });
       expect(developerAttempt.result).toMatchObject({
         outcome: 'FAILED',
@@ -902,14 +904,15 @@ describe('RepairService', () => {
         outcome: {
           kind: 'SUCCEEDED',
           result: {
-            outcome: 'COMPLETED',
-            completionKind: 'CHANGES_COMMITTED',
-            summary: '本次提交应整体回滚',
-            changes: ['修改支付按钮'],
-            validations: [],
-            warnings: [],
-            commits: ['ddddddd'],
-            manualOperations: [],
+            result: {
+              outcome: 'COMPLETED',
+              completionKind: 'CHANGES_COMMITTED',
+              changes: ['修改支付按钮'],
+              validations: [],
+              warnings: [],
+              commits: ['ddddddd'],
+              manualOperations: [],
+            },
           },
         },
       }),

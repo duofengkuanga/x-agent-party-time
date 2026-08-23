@@ -477,11 +477,32 @@ function textWithAttachments(
     originalName,
     path,
   }));
-  if (initial) {
-    const brief = JSON.parse(text) as Record<string, unknown>;
-    return JSON.stringify({ ...brief, localAttachmentPaths: mappings });
-  }
+  if (initial) return materializeInitialAttachments(text, mappings);
   return `${text}\n\n新增附件本机路径：${JSON.stringify(mappings)}`;
+}
+
+function materializeInitialAttachments(
+  text: string,
+  mappings: Array<{ fileId: string; originalName: string; path: string }>,
+): string {
+  const brief = JSON.parse(text) as Record<string, unknown>;
+  const references = Array.isArray(brief.attachmentReferences)
+    ? brief.attachmentReferences
+    : [];
+  if (!references.length)
+    throw new CodexAppServerError('初始任务缺少附件引用', null);
+  const paths = new Map(mappings.map((mapping) => [mapping.fileId, mapping]));
+  const evidence = references.map((reference) => {
+    const value = asRecord(reference);
+    const fileId = requiredString(value, 'fileId');
+    const role = requiredString(value, 'role');
+    const mapping = paths.get(fileId);
+    if (!mapping) throw new CodexAppServerError('任务附件路径映射缺失', null);
+    return { role, name: mapping.originalName, path: mapping.path };
+  });
+  const { attachmentReferences: _attachmentReferences, ...withoutReferences } =
+    brief;
+  return JSON.stringify({ ...withoutReferences, attachments: evidence });
 }
 
 function isInteractionMethod(method: string): boolean {

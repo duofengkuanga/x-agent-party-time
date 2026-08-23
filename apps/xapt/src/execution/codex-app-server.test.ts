@@ -60,7 +60,16 @@ rl.on('line', (line) => {
       approvalPolicy: 'on-request',
       executionId: '00000000-0000-4000-8000-000000000601',
       repositoryPath: root,
-      text: '{"task":"只返回 JSON"}',
+      text: JSON.stringify({
+        task: '只返回 JSON',
+        attachmentReferences: [
+          {
+            fileId: '00000000-0000-4000-8000-000000000603',
+            originalName: 'evidence.txt',
+            role: 'ACTUAL_RESULT',
+          },
+        ],
+      }),
       skill: { name: 'agent-party-time-repair-bug', path: '/tmp/repair-skill' },
       outputSchema: { type: 'object' },
       attachments: [
@@ -125,10 +134,10 @@ rl.on('line', (line) => {
       type: 'text',
       text: JSON.stringify({
         task: '只返回 JSON',
-        localAttachmentPaths: [
+        attachments: [
           {
-            fileId: '00000000-0000-4000-8000-000000000603',
-            originalName: 'evidence.txt',
+            role: 'ACTUAL_RESULT',
+            name: 'evidence.txt',
             path: join(root, 'evidence.txt'),
           },
         ],
