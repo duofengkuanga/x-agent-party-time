@@ -459,10 +459,20 @@ function codexUserInput(input: CodexExecutionInput): unknown[] {
     Boolean(input.skill),
   );
   return [
+    {
+      type: 'text',
+      text: input.skill ? `$${input.skill.name}\n\n${text}` : text,
+      text_elements: [],
+    },
     ...(input.skill
-      ? [{ type: 'skill', name: input.skill.name, path: input.skill.path }]
+      ? [
+          {
+            type: 'skill',
+            name: input.skill.name,
+            path: join(input.skill.path, 'SKILL.md'),
+          },
+        ]
       : []),
-    { type: 'text', text, text_elements: [] },
   ];
 }
 

@@ -126,13 +126,8 @@ rl.on('line', (line) => {
   const turns = requests.filter((entry) => entry.method === 'turn/start');
   expect((turns[0]?.params as { input: unknown[] }).input).toEqual([
     {
-      type: 'skill',
-      name: 'agent-party-time-repair-bug',
-      path: '/tmp/repair-skill',
-    },
-    {
       type: 'text',
-      text: JSON.stringify({
+      text: `$agent-party-time-repair-bug\n\n${JSON.stringify({
         task: '只返回 JSON',
         attachments: [
           {
@@ -141,8 +136,13 @@ rl.on('line', (line) => {
             path: join(root, 'evidence.txt'),
           },
         ],
-      }),
+      })}`,
       text_elements: [],
+    },
+    {
+      type: 'skill',
+      name: 'agent-party-time-repair-bug',
+      path: '/tmp/repair-skill/SKILL.md',
     },
   ]);
   expect((turns[1]?.params as { input: unknown[] }).input).toEqual([
