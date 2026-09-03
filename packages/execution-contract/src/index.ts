@@ -82,6 +82,13 @@ export const TaskSkillBindingSchema = z
   })
   .strict();
 
+export const ExecutionResultAssertionSchema = z
+  .object({
+    kind: z.literal('GIT_COMMITS_CREATED'),
+    resultPath: z.array(z.string().trim().min(1).max(120)).min(1).max(8),
+  })
+  .strict();
+
 export const CodexTurnSchema = z.discriminatedUnion('kind', [
   z
     .object({
@@ -91,6 +98,10 @@ export const CodexTurnSchema = z.discriminatedUnion('kind', [
       executionBriefHash: z.string().regex(/^[a-f0-9]{64}$/u),
       outputJsonSchema: JsonObjectSchema,
       taskSkillBinding: TaskSkillBindingSchema.nullable().default(null),
+      resultAssertions: z
+        .array(ExecutionResultAssertionSchema)
+        .max(5)
+        .optional(),
     })
     .strict(),
   z
@@ -100,6 +111,10 @@ export const CodexTurnSchema = z.discriminatedUnion('kind', [
       taskSkillBinding: TaskSkillBindingSchema,
       input: z.string().trim().min(1).max(200_000),
       outputJsonSchema: JsonObjectSchema,
+      resultAssertions: z
+        .array(ExecutionResultAssertionSchema)
+        .max(5)
+        .optional(),
     })
     .strict(),
   z
@@ -291,6 +306,9 @@ export type ExecutionOwnerRef = z.infer<typeof ExecutionOwnerRefSchema>;
 export type ExecutionAttachment = z.infer<typeof ExecutionAttachmentSchema>;
 export type ExecutionWorkspace = z.infer<typeof ExecutionWorkspaceSchema>;
 export type TaskSkillBinding = z.infer<typeof TaskSkillBindingSchema>;
+export type ExecutionResultAssertion = z.infer<
+  typeof ExecutionResultAssertionSchema
+>;
 export type CodexTurn = z.infer<typeof CodexTurnSchema>;
 export type ExecutionFailure = z.infer<typeof ExecutionFailureSchema>;
 export type ExecutionOutcome = z.infer<typeof ExecutionOutcomeSchema>;

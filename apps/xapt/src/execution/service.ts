@@ -25,6 +25,10 @@ import {
 } from './codex-app-server';
 import type { ExecutionWorkspaceManager } from './workspaces';
 import {
+  ExecutionResultVerificationError,
+  type ExecutionResultVerifier,
+} from './result-verification';
+import {
   SkillBundleManager,
   XAPT_SKILL_NAMES,
   type XaptSkillName,
@@ -63,6 +67,7 @@ export class ExecutionService {
     private readonly workspaces: ExecutionWorkspaceManager,
     private readonly executor: CodexExecutor,
     private readonly skills: SkillBundleManager,
+    private readonly resultVerifier: ExecutionResultVerifier,
     private readonly now: () => Date = () => new Date(),
     private readonly createId: () => string = randomUUID,
   ) {}
@@ -256,6 +261,24 @@ export class ExecutionService {
       return;
     }
 
+    const resultAssertions = turn.resultAssertions ?? [];
+    let resultBaseline;
+    try {
+      resultBaseline = await this.resultVerifier.capture(
+        repositoryPath,
+        resultAssertions,
+      );
+    } catch (error) {
+      await this.reportStartFailure(session, execution, {
+        code: 'CODEX_START_FAILED',
+        message: failureMessage(
+          error instanceof Error ? error.message : '无法建立本机结果校验基线',
+        ),
+        retryable: true,
+      });
+      return;
+    }
+
     const controller = new AbortController();
     this.controllers.set(execution.id, controller);
     let recoveredInteraction = execution.recoveredInteraction;
@@ -359,6 +382,12 @@ export class ExecutionService {
     let request: CompleteExecutionRequest;
     try {
       const result = await Promise.race([started.completion, lease.lost]);
+      await this.resultVerifier.verify(
+        repositoryPath,
+        resultAssertions,
+        resultBaseline,
+        result,
+      );
       request = {
         leaseToken: execution.lease.token,
         sessionId: started.sessionId,
@@ -376,7 +405,8 @@ export class ExecutionService {
           failure: {
             code: 'CODEX_EXECUTION_FAILED',
             message:
-              error instanceof CodexAppServerError
+              error instanceof CodexAppServerError ||
+              error instanceof ExecutionResultVerificationError
                 ? failureMessage(error.message)
                 : 'Codex 执行中断',
             retryable: true,

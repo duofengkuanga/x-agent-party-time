@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type {
   Execution,
+  ExecutionResultAssertion,
   JsonObject,
   JsonValue,
 } from '@agent-party-time/execution-contract';
@@ -42,6 +43,13 @@ import {
   buildInitialRepairBrief,
   buildRepairContinuationInput,
 } from '../brief';
+
+const REPAIR_RESULT_ASSERTIONS: ExecutionResultAssertion[] = [
+  {
+    kind: 'GIT_COMMITS_CREATED',
+    resultPath: ['result', 'commits'],
+  },
+];
 
 type RepairSourceRow = {
   bug_id: string;
@@ -179,6 +187,7 @@ export class RepairService {
         requiredSkillName: 'agent-party-time-repair-bug',
         executionBrief,
         outputJsonSchema: RepairOutputJsonSchema as JsonObject,
+        resultAssertions: REPAIR_RESULT_ASSERTIONS,
       }),
       workspace: {
         key: workspaceKey,
@@ -227,6 +236,7 @@ export class RepairService {
         lifecycleContext: lifecycleContext || undefined,
       }),
       outputJsonSchema: RepairOutputJsonSchema as JsonObject,
+      resultAssertions: REPAIR_RESULT_ASSERTIONS,
     });
     const execution = this.executions.enqueue({
       id: executionId,

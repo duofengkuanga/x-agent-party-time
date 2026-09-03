@@ -1121,6 +1121,7 @@ function codexTurnForClaim(execution: Execution): CodexTurn | null {
     taskSkillBinding: turn.taskSkillBinding,
     input: '继续完成上次未完成的任务。',
     outputJsonSchema: turn.outputJsonSchema,
+    resultAssertions: turn.resultAssertions,
   };
 }
 

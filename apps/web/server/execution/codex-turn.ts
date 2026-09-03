@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import {
   serializeDeterministicJson,
   type CodexTurn,
+  type ExecutionResultAssertion,
   type JsonObject,
   type TaskSkillBinding,
 } from '@agent-party-time/execution-contract';
@@ -10,6 +11,7 @@ export function createInitialCodexTurn(input: {
   requiredSkillName: string;
   executionBrief: JsonObject;
   outputJsonSchema: JsonObject;
+  resultAssertions?: ExecutionResultAssertion[];
 }): CodexTurn {
   const serialized = serializeDeterministicJson(input.executionBrief);
   return {
@@ -19,6 +21,7 @@ export function createInitialCodexTurn(input: {
     executionBriefHash: createHash('sha256').update(serialized).digest('hex'),
     outputJsonSchema: input.outputJsonSchema,
     taskSkillBinding: null,
+    resultAssertions: input.resultAssertions,
   };
 }
 
@@ -27,6 +30,7 @@ export function createContinuationCodexTurn(input: {
   taskSkillBinding: TaskSkillBinding;
   text: string;
   outputJsonSchema: JsonObject;
+  resultAssertions?: ExecutionResultAssertion[];
 }): CodexTurn {
   return {
     kind: 'CONTINUATION',
@@ -34,5 +38,6 @@ export function createContinuationCodexTurn(input: {
     taskSkillBinding: input.taskSkillBinding,
     input: input.text,
     outputJsonSchema: input.outputJsonSchema,
+    resultAssertions: input.resultAssertions,
   };
 }

@@ -243,6 +243,12 @@ describe('RepairService', () => {
         kind: 'INITIAL',
         requiredSkillName: 'agent-party-time-repair-bug',
         taskSkillBinding: null,
+        resultAssertions: [
+          {
+            kind: 'GIT_COMMITS_CREATED',
+            resultPath: ['result', 'commits'],
+          },
+        ],
         executionBrief: {
           targetBranch: 'feature/payment',
           bug: {
@@ -756,6 +762,12 @@ describe('RepairService', () => {
       taskId: 'legacy-custom-session',
       taskSkillBinding: testSkillBinding('agent-party-time-repair-bug'),
       input: '继续完成上次未完成的任务。',
+      resultAssertions: [
+        {
+          kind: 'GIT_COMMITS_CREATED',
+          resultPath: ['result', 'commits'],
+        },
+      ],
     });
   });
 

@@ -26,6 +26,7 @@ import { TerminalForceConfirmation } from './platform/terminal';
 import { AttachmentMaterializer } from './execution/attachments';
 import { CodexAppServerExecutor } from './execution/codex-app-server';
 import { ExecutionService } from './execution/service';
+import { GitExecutionResultVerifier } from './execution/result-verification';
 import { GitExecutionWorkspaceManager } from './execution/workspaces';
 import { DEFAULT_UPDATE_SOURCE, UpdateManager } from './install/update';
 import { UninstallManager } from './install/uninstall';
@@ -158,6 +159,7 @@ export function createCliRuntime(): CliRuntime {
           workspaces,
           new CodexAppServerExecutor(installation.executable),
           skills,
+          new GitExecutionResultVerifier(commands),
         ),
       );
       await new DaemonRuntime({

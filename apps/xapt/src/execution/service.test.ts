@@ -8,6 +8,7 @@ import type {
   ClaimedExecution,
   CompleteExecutionRequest,
   Execution,
+  ExecutionResultAssertion,
   ExecutionRenewResponse,
   ExecutionStartRequest,
   JsonValue,
@@ -26,6 +27,10 @@ import type {
 } from './codex-app-server';
 import { CodexAppServerError } from './codex-app-server';
 import { ExecutionService } from './service';
+import {
+  ExecutionResultVerificationError,
+  type ExecutionResultVerifier,
+} from './result-verification';
 import type { SkillBundleManager } from '../skills/manager';
 import type {
   ExecutionWorkspaceManager,
@@ -128,6 +133,31 @@ test('Codex 结构化结果失败只收敛当前 Execution，不退出服务', a
     },
   });
   expect(await fixture.state.loadExecutions()).toEqual([]);
+});
+
+test('本机 Commit 结果断言失败时不提交 Codex 成功结果', async () => {
+  const fixture = await createFixture({
+    resultAssertions: [
+      { kind: 'GIT_COMMITS_CREATED', resultPath: ['result', 'commits'] },
+    ],
+    resultValidationFailure: new ExecutionResultVerificationError(
+      'Codex 返回的本地 Commit deadbeef 不存在',
+    ),
+  });
+
+  await fixture.service.cycle(session);
+  await fixture.service.waitForIdle();
+
+  expect(fixture.http.outcomes[0]).toMatchObject({
+    outcome: {
+      kind: 'FAILED',
+      failure: {
+        code: 'CODEX_EXECUTION_FAILED',
+        message: 'Codex 返回的本地 Commit deadbeef 不存在',
+        retryable: true,
+      },
+    },
+  });
 });
 
 test('Outcome 网络失败进入 Outbox，重启后先重放再尝试领取', async () => {
@@ -304,6 +334,8 @@ async function createFixture(
     owner?: ClaimedExecution['owner'];
     approvalPolicy?: ClaimedExecution['approvalPolicy'];
     workspace?: ClaimedExecution['workspace'];
+    resultAssertions?: ExecutionResultAssertion[];
+    resultValidationFailure?: ExecutionResultVerificationError;
   } = {},
 ) {
   const home = await mkdtemp(join(tmpdir(), 'xapt-execution-'));
@@ -315,16 +347,17 @@ async function createFixture(
   const repositoryPath = join(home, 'repository');
   await mkdir(repositoryPath);
   await state.bind(bindingId, repositoryPath);
-  const http = new FakeExecutionHttp(
-    claimedExecution(
-      options.taskId ?? null,
-      executionId,
-      bindingId,
-      options.owner,
-      options.approvalPolicy,
-      options.workspace,
-    ),
+  const claimed = claimedExecution(
+    options.taskId ?? null,
+    executionId,
+    bindingId,
+    options.owner,
+    options.approvalPolicy,
+    options.workspace,
   );
+  if (claimed.codexTurn && claimed.codexTurn.kind !== 'READ_SESSION')
+    claimed.codexTurn.resultAssertions = options.resultAssertions;
+  const http = new FakeExecutionHttp(claimed);
   http.failOutcome = options.failOutcome ?? false;
   const executor = new FakeCodexExecutor(
     options.executorFailure,
@@ -356,6 +389,13 @@ async function createFixture(
           path: join(home, 'skills', identity.bundleHash),
         }),
       } as unknown as SkillBundleManager,
+      {
+        capture: async () => null,
+        verify: async () => {
+          if (options.resultValidationFailure)
+            throw options.resultValidationFailure;
+        },
+      } as ExecutionResultVerifier,
       () => now,
       () => `00000000-0000-4000-8000-${String(nextId++).padStart(12, '0')}`,
     );
