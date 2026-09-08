@@ -326,6 +326,37 @@ describe('Runner HTTP protocol', () => {
     });
   });
 
+  test('缺陷删除 Route 返回操作原因、建议和诊断编号', async () => {
+    const { runners, user } = await setup();
+    const paired = runners.pair(
+      runners.issuePairingCode(user.id).code,
+      'Error Agent',
+    );
+    const response = await handleBugDelete(
+      bearerJsonRequest(
+        'http://server/api/cooking/bugs/delete',
+        paired.credential,
+        { all: true, force: true },
+      ),
+      runners,
+      {
+        deleteBugs: () => {
+          throw Object.assign(new Error('private query details'), {
+            name: 'SQLiteError',
+            errno: 1811,
+          });
+        },
+      },
+    );
+    expect(response.status).toBe(500);
+    const body = await response.json();
+    expect(body.error.code).toBe('INTERNAL_ERROR');
+    expect(body.error.message).toContain('删除缺陷失败：数据一致性校验失败');
+    expect(body.error.message).toContain('不要反复重试');
+    expect(body.error.message).toMatch(/诊断编号：[0-9a-f-]{36}/u);
+    expect(JSON.stringify(body)).not.toContain('private query details');
+  });
+
   test('缺陷删除 Route 非法请求结构返回安全 Validation Error', async () => {
     const { runners, user } = await setup();
     const paired = runners.pair(

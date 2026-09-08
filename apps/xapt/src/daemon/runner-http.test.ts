@@ -107,3 +107,21 @@ test('网络失败被归一为可分类错误且不会泄露 Credential', async 
     expect(String(error)).not.toContain(credential);
   }
 });
+
+test('deleteBugs 完整保留服务端原因、建议和诊断编号', async () => {
+  const message =
+    '删除缺陷失败：数据一致性校验失败。请联系维护者，不要反复重试。（诊断编号：944d519c-1ed0-4711-a3b1-325bec5bbe56）';
+  const client = new RunnerHttpClient(async () =>
+    Response.json(
+      { error: { code: 'INTERNAL_ERROR', message } },
+      { status: 500 },
+    ),
+  );
+  await expect(
+    client.deleteBugs('http://server', credential, { all: true, force: true }),
+  ).rejects.toMatchObject({
+    code: 'INTERNAL_ERROR',
+    message,
+    status: 500,
+  });
+});

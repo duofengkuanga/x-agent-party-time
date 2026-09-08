@@ -719,8 +719,20 @@ describe('BugService', () => {
       )
       .run(randomUUID(), batchId, executionId, now);
 
+    const sync = addSessionSync(fixture.database, executionId, 'FAILED');
+    fixture.database.run(
+      'INSERT INTO cooking_update_session_sync(id, batch_id, execution_id, session_id, created_at) VALUES (?, ?, ?, ?, ?)',
+      [randomUUID(), batchId, sync, 'update-session', now],
+    );
     const result = fixture.service.deleteBugs({ all: true, force: true });
-    expect(result.deletedExecutionIds).toEqual([executionId]);
+    expect(new Set(result.deletedExecutionIds)).toEqual(
+      new Set([executionId, sync]),
+    );
+    expect(
+      fixture.database
+        .query('SELECT id FROM cooking_update_session_sync')
+        .all(),
+    ).toEqual([]);
     expect(
       fixture.database
         .query<{ count: number }, [string]>(
@@ -749,6 +761,81 @@ describe('BugService', () => {
         )
         .get(executionId)?.count,
     ).toBe(0);
+  });
+
+  test.each(['QUEUED', 'FAILED'])(
+    'deleteBugs 收集修复会话同步执行（%s）',
+    async (state) => {
+      const fixture = await setup();
+      const bug = createAssignedBug(fixture, '同步缺陷', fixture.items.front);
+      const parent = new RepairService(fixture.database).createInitialExecution(
+        bug.id,
+      );
+      fixture.database.run(
+        "UPDATE platform_execution SET state = 'FAILED' WHERE id = ?",
+        [parent],
+      );
+      const sync = addSessionSync(fixture.database, parent, state);
+      fixture.database.run(
+        'INSERT INTO cooking_repair_session_sync(id, bug_id, execution_id, session_id, created_at) VALUES (?, ?, ?, ?, ?)',
+        [
+          randomUUID(),
+          bug.id,
+          sync,
+          'test-session',
+          '2026-07-27T04:00:00.000Z',
+        ],
+      );
+      if (state === 'QUEUED') {
+        expect(() => fixture.service.deleteBugs({ all: true })).toThrow(
+          expect.objectContaining({ code: 'RESOURCE_CONFLICT' }),
+        );
+      }
+      const result = fixture.service.deleteBugs({ all: true, force: true });
+      expect(new Set(result.deletedExecutionIds)).toEqual(
+        new Set([parent, sync]),
+      );
+      expect(
+        fixture.database
+          .query('SELECT id FROM cooking_repair_session_sync')
+          .all(),
+      ).toEqual([]);
+      expect(fixture.database.query('PRAGMA foreign_key_check').all()).toEqual(
+        [],
+      );
+    },
+  );
+
+  test('deleteBugs 遇到范围外的后继执行时明确拒绝并回滚', async () => {
+    const fixture = await setup();
+    const bug = createAssignedBug(fixture, '额外依赖', fixture.items.front);
+    const parent = new RepairService(fixture.database).createInitialExecution(
+      bug.id,
+    );
+    const successor = addSessionSync(fixture.database, parent, 'FAILED');
+    expect(() =>
+      fixture.service.deleteBugs({ all: true, force: true }),
+    ).toThrow(
+      expect.objectContaining({
+        code: 'RESOURCE_CONFLICT',
+        message: expect.stringContaining('本次删除范围外'),
+      }),
+    );
+    expect(
+      fixture.database
+        .query('SELECT id FROM cooking_bug WHERE id = ?')
+        .get(bug.id),
+    ).not.toBeNull();
+    expect(
+      fixture.database
+        .query('SELECT id FROM cooking_repair_attempt WHERE execution_id = ?')
+        .get(parent),
+    ).not.toBeNull();
+    expect(
+      fixture.database
+        .query('SELECT id FROM platform_execution WHERE id = ?')
+        .get(successor),
+    ).not.toBeNull();
   });
 
   test('deleteBugs --all 删除全部缺陷', async () => {
@@ -816,4 +903,20 @@ function user(id: string, displayName: string) {
     displayName,
     password: 'password',
   };
+}
+
+function addSessionSync(
+  database: AppDatabase,
+  parent: string,
+  state: string,
+): string {
+  const id = randomUUID();
+  database.run(
+    `INSERT INTO platform_execution(id, owner_namespace, owner_kind, owner_id, attempt,
+      previous_execution_id, runner_id, binding_id, approval_policy, state, created_at)
+     SELECT ?, 'cooking', 'SESSION_SYNC', ?, 1, id, runner_id, binding_id, 'never', ?, created_at
+     FROM platform_execution WHERE id = ?`,
+    [id, randomUUID(), state, parent],
+  );
+  return id;
 }

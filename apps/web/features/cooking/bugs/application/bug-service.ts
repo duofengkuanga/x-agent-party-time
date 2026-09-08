@@ -823,7 +823,7 @@ export class BugService {
       if (active.length > 0)
         throw new PlatformError(
           'RESOURCE_CONFLICT',
-          '缺陷仍有进行中的修复/更新任务，请先取消或使用 --force',
+          '删除未执行：缺陷仍有进行中的修复、更新或会话同步任务。请等待任务结束，或使用 --force 强制删除。',
         );
     }
     return this.db.transaction(() => {
@@ -854,17 +854,21 @@ export class BugService {
     for (const { execution_id } of this.db
       .prepare(
         `SELECT execution_id FROM cooking_repair_attempt
+         WHERE bug_id IN (${placeholders(bugIds.length)})
+         UNION SELECT execution_id FROM cooking_repair_session_sync
          WHERE bug_id IN (${placeholders(bugIds.length)})`,
       )
-      .all(...bugIds) as Array<{ execution_id: string }>)
+      .all(...bugIds, ...bugIds) as Array<{ execution_id: string }>)
       ids.add(execution_id);
     if (batchIds.length > 0) {
       for (const { execution_id } of this.db
         .prepare(
           `SELECT execution_id FROM cooking_update_attempt
+           WHERE batch_id IN (${placeholders(batchIds.length)})
+           UNION SELECT execution_id FROM cooking_update_session_sync
            WHERE batch_id IN (${placeholders(batchIds.length)})`,
         )
-        .all(...batchIds) as Array<{ execution_id: string }>)
+        .all(...batchIds, ...batchIds) as Array<{ execution_id: string }>)
         ids.add(execution_id);
       for (const { active_execution_id } of this.db
         .prepare(
@@ -894,6 +898,12 @@ export class BugService {
 
   private deleteBugRows(bugIds: string[], executionIds: string[]): void {
     if (executionIds.length > 0) {
+      this.db
+        .prepare(
+          `DELETE FROM cooking_update_session_sync
+         WHERE execution_id IN (${placeholders(executionIds.length)})`,
+        )
+        .run(...executionIds);
       this.db
         .prepare(
           `UPDATE cooking_update_batch SET active_execution_id = NULL
@@ -954,6 +964,19 @@ export class BugService {
   }
 
   private deleteExecutions(executionIds: string[]): string[] {
+    if (executionIds.length === 0) return [];
+    const outsideSuccessor = this.db
+      .prepare(
+        `SELECT id FROM platform_execution
+       WHERE previous_execution_id IN (${placeholders(executionIds.length)})
+         AND id NOT IN (${placeholders(executionIds.length)}) LIMIT 1`,
+      )
+      .get(...executionIds, ...executionIds);
+    if (outsideSuccessor)
+      throw new PlatformError(
+        'RESOURCE_CONFLICT',
+        '删除已撤销：关联任务仍被本次删除范围外的后续任务引用。请联系维护者检查任务归属；重复执行或添加 --force 无法解决。',
+      );
     const deleted: string[] = [];
     let remaining = [...executionIds];
     while (remaining.length > 0) {

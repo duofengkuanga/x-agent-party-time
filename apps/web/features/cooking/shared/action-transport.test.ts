@@ -59,7 +59,10 @@ test('Interactive transport 统一上传、refresh 与未绑定文件清理', as
   );
   expect(failure).toEqual({
     ok: false,
-    error: { code: 'INTERNAL_ERROR', message: '服务暂时不可用，请稍后重试。' },
+    error: {
+      code: 'INTERNAL_ERROR',
+      message: expect.stringMatching(/内部异常.*诊断编号：/u),
+    },
   });
   expect(deleted).toEqual(['old-file', 'file-2']);
 });

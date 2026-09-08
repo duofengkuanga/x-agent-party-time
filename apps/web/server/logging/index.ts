@@ -1,4 +1,4 @@
-import { PlatformError } from '@/server/errors';
+import { PlatformError } from '@/server/errors/platform-error';
 
 type LogFields = Readonly<Record<string, unknown>>;
 

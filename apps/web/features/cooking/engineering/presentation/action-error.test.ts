@@ -42,7 +42,7 @@ describe('engineeringActionError', () => {
   test('未知异常继续使用服务错误兜底', () => {
     expect(engineeringActionError(new Error('database unavailable'))).toEqual({
       code: 'INTERNAL_ERROR',
-      message: '服务暂时不可用，请稍后重试。',
+      message: expect.stringMatching(/内部异常.*诊断编号：/u),
       status: 500,
     });
   });

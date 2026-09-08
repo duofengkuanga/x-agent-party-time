@@ -202,7 +202,7 @@ export async function handleBugDelete(
     const body = BugDeleteRequestSchema.parse(await request.json());
     return jsonResponse(BugDeleteResponseSchema.parse(bugs.deleteBugs(body)));
   } catch (error) {
-    return errorResponse(normalizeRequestError(error));
+    return errorResponse(normalizeRequestError(error), '删除缺陷');
   }
 }
 
@@ -228,8 +228,8 @@ function jsonResponse(value: unknown, status = 200): Response {
   });
 }
 
-function errorResponse(error: unknown): Response {
-  const visible = publicError(error);
+function errorResponse(error: unknown, operation?: string): Response {
+  const visible = publicError(error, operation);
   return jsonResponse(
     { error: { code: visible.code, message: visible.message } },
     visible.status,
