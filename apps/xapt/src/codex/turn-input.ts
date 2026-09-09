@@ -25,6 +25,11 @@ export function codexUserInput(input: CodexExecutionInput): unknown[] {
           },
         ]
       : []),
+    {
+      type: 'text',
+      text: `终态输出 JSON Schema（本次执行及手动恢复原会话时使用）：\n请在执行结束时按以下 Schema 输出最终 JSON；不要把 Schema 本身当作执行结果。\n\n\`\`\`json\n${JSON.stringify(input.outputSchema)}\n\`\`\``,
+      text_elements: [],
+    },
   ];
 }
 

@@ -124,34 +124,51 @@ rl.on('line', (line) => {
     });
   }
   const turns = requests.filter((entry) => entry.method === 'turn/start');
-  expect((turns[0]?.params as { input: unknown[] }).input).toEqual([
-    {
-      type: 'text',
-      text: `$agent-party-time-repair-bug\n\n${JSON.stringify({
-        task: '只返回 JSON',
-        attachments: [
-          {
-            role: 'ACTUAL_RESULT',
-            name: 'evidence.txt',
-            path: join(root, 'evidence.txt'),
-          },
-        ],
-      })}`,
-      text_elements: [],
-    },
-    {
-      type: 'skill',
-      name: 'agent-party-time-repair-bug',
-      path: '/tmp/repair-skill/SKILL.md',
-    },
-  ]);
-  expect((turns[1]?.params as { input: unknown[] }).input).toEqual([
-    {
-      type: 'text',
-      text: '继续并只返回 JSON',
-      text_elements: [],
-    },
-  ]);
+  for (const turn of turns) {
+    const params = turn.params as {
+      input: Array<{ type: string; text?: string }>;
+      outputSchema: unknown;
+    };
+    const persistedSchema = params.input.at(-1);
+    expect(persistedSchema?.type).toBe('text');
+    expect(persistedSchema?.text).toContain('终态输出 JSON Schema');
+    const schemaText = persistedSchema?.text?.match(
+      /```json\n([\s\S]*?)\n```/u,
+    )?.[1];
+    expect(JSON.parse(schemaText ?? 'null')).toEqual(params.outputSchema);
+  }
+  expect((turns[0]?.params as { input: unknown[] }).input.slice(0, -1)).toEqual(
+    [
+      {
+        type: 'text',
+        text: `$agent-party-time-repair-bug\n\n${JSON.stringify({
+          task: '只返回 JSON',
+          attachments: [
+            {
+              role: 'ACTUAL_RESULT',
+              name: 'evidence.txt',
+              path: join(root, 'evidence.txt'),
+            },
+          ],
+        })}`,
+        text_elements: [],
+      },
+      {
+        type: 'skill',
+        name: 'agent-party-time-repair-bug',
+        path: '/tmp/repair-skill/SKILL.md',
+      },
+    ],
+  );
+  expect((turns[1]?.params as { input: unknown[] }).input.slice(0, -1)).toEqual(
+    [
+      {
+        type: 'text',
+        text: '继续并只返回 JSON',
+        text_elements: [],
+      },
+    ],
+  );
   await executor.close();
 });
 
