@@ -1,16 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
-import { AuthService } from '@/server/auth/service';
-import { openDatabase } from '@/server/database';
-import { ExecutionService } from '@/server/execution/service';
-import { RunnerService } from '@/server/runner/service';
-import { BindingService } from '@/features/cooking/bindings/application/binding-service';
-import { BugService } from '@/features/cooking/bugs/application/bug-service';
-import { EngineeringService } from '@/features/cooking/engineering/application/engineering-service';
-import { cookingExecutionProjection } from '@/features/cooking/execution/application/execution-projection';
-import { ProjectService } from '@/features/cooking/projects/application/project-service';
-import { RepairService } from '@/features/cooking/repair/application/repair-service';
-import { SubmissionService } from '@/features/cooking/submissions/application/submission-service';
+import { AuthService } from '@/platform/auth/service';
+import { openDatabase } from '@/platform/database';
+import { ExecutionService } from '@/platform/execution/service';
+import { RunnerService } from '@/platform/runner/service';
+import { BindingService } from '@/cooking/bindings/server/binding-service';
+import { BugService } from '@/cooking/bugs/server/bug-service';
+import { EngineeringService } from '@/cooking/engineering/server/engineering-service';
+import { cookingExecutionProjection } from '@/cooking/runtime/execution-projection';
+import { ProjectService } from '@/cooking/projects/server/project-service';
+import { RepairService } from '@/cooking/repair/server/repair-service';
+import { SubmissionService } from '@/cooking/submissions/server/submission-service';
 
 export type BrowserFixture = {
   developerUsername: string;

@@ -1,5 +1,5 @@
-import { database } from '../server/database/index.ts';
-import { AuthService } from '../server/auth/service.ts';
+import { database } from '../platform/database';
+import { AuthService } from '../platform/auth/service';
 
 const password = process.env.AGENT_PARTY_TIME_SEED_PASSWORD ?? '123456';
 const users = [

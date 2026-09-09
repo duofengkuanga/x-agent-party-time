@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
-import { currentUser } from '@/server/auth/server';
-import { projectService } from '@/features/cooking/application/server';
-import { AccountInvitationNotifications } from '@/features/cooking/projects/presentation/account-invitation-notifications';
-import { CookingShell } from '@/features/cooking/presentation/cooking-shell';
+import { currentUser } from '@/platform/auth/server';
+import { projectService } from '@/cooking/runtime/services';
+import { AccountInvitationNotifications } from '@/cooking/projects/ui/account-invitation-notifications';
+import { CookingShell } from '@/cooking/ui/cooking-shell';
 import './cooking.css';
 
 export default async function CookingLayout({

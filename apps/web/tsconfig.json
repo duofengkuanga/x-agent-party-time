@@ -17,10 +17,10 @@
     "next-env.d.ts",
     "app/**/*.ts",
     "app/**/*.tsx",
-    "features/**/*.ts",
-    "features/**/*.tsx",
-    "server/**/*.ts",
-    "server/**/*.tsx",
+    "cooking/**/*.ts",
+    "cooking/**/*.tsx",
+    "platform/**/*.ts",
+    "platform/**/*.tsx",
     "scripts/**/*.ts",
     ".next/types/**/*.ts"
   ],
@@ -28,9 +28,9 @@
     "node_modules",
     "app/**/*.test.ts",
     "app/**/*.test.tsx",
-    "features/**/*.test.ts",
-    "features/**/*.test.tsx",
-    "server/**/*.test.ts",
-    "server/**/*.test.tsx"
+    "cooking/**/*.test.ts",
+    "cooking/**/*.test.tsx",
+    "platform/**/*.test.ts",
+    "platform/**/*.test.tsx"
   ]
 }

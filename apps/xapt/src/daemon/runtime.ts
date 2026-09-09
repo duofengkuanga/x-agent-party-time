@@ -1,12 +1,12 @@
 import type { LocalStateStore } from '../state/store';
 import { XAPT_VERSION } from '../version';
-import type { CodexInstallation } from './codex';
+import type { CodexInstallation } from '../codex/preflight';
 import { DaemonControlServer } from './control';
 import type { LocalFileSystem } from '../platform/files';
 import type { XaptPaths } from '../platform/paths';
 import type { DaemonSnapshot } from './status';
-import type { ConnectionCoordinator } from './connection';
-import type { AgentService } from './agent-service';
+import type { ConnectionCoordinator } from '../agent/connection';
+import type { AgentService } from '../agent/service';
 
 export interface DaemonRuntimeOptions {
   paths: XaptPaths;

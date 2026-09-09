@@ -1,7 +1,7 @@
-import { currentUser } from '@/server/auth/server';
-import { workspaceService } from '@/features/cooking/application/server';
-import { workspaceEvents } from '@/features/cooking/submissions/application/workspace-events';
-import { handleWorkspaceEvents } from '@/features/cooking/submissions/presentation/http';
+import { currentUser } from '@/platform/auth/server';
+import { workspaceService } from '@/cooking/runtime/services';
+import { workspaceEvents } from '@/cooking/submissions/server/workspace-events';
+import { handleWorkspaceEvents } from '@/cooking/submissions/server/http';
 
 export async function GET(request: Request): Promise<Response> {
   const user = await currentUser();

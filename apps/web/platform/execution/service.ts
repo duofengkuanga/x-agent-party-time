@@ -1,0 +1,1172 @@
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import {
+  ClaimedExecutionSchema,
+  EnqueueExecutionInputSchema,
+  ExecutionInteractionSchema,
+  parseExecutionInteractionResolution,
+  ExecutionSchema,
+  RunnerActivitySchema,
+  type ClaimedExecution,
+  type CodexTurn,
+  type CompleteExecutionRequest,
+  type EnqueueExecutionInput,
+  type Execution,
+  type ExecutionInteraction,
+  type ExecutionOutcome,
+  type ExecutionStartRequest,
+  type JsonValue,
+  type OpenInteractionRequest,
+  type RunnerActivity,
+  type TaskSkillBinding,
+  type WaitInteractionResponse,
+} from '@agent-party-time/execution-contract';
+import type { AppDatabase } from '@/platform/database';
+import { PlatformError } from '@/platform/errors';
+
+type ExecutionRow = {
+  id: string;
+  owner_namespace: string;
+  owner_kind: string;
+  owner_id: string;
+  attempt: number;
+  previous_execution_id: string | null;
+  runner_id: string;
+  binding_id: string;
+  priority: number;
+  approval_policy: Execution['approvalPolicy'];
+  state: Execution['state'];
+  codex_turn_json: string | null;
+  skill_name: string | null;
+  skill_bundle_hash: string | null;
+  skill_source_revision: string | null;
+  workspace_json: string | null;
+  session_id: string | null;
+  lease_token_hash: string | null;
+  lease_expires_at: string | null;
+  outcome_json: string | null;
+  reported_outcome_json: string | null;
+  cancellation_requested: number;
+  resume_requested_at: string | null;
+  created_at: string;
+  claimed_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+};
+
+type AttachmentRow = {
+  file_id: string;
+  original_name: string;
+  media_type: string;
+  size_bytes: number;
+  sha256: string;
+};
+
+type InteractionRow = {
+  id: string;
+  execution_id: string;
+  kind: ExecutionInteraction['kind'];
+  method: string;
+  payload_json: string;
+  state: ExecutionInteraction['state'];
+  resolution_json: string | null;
+  created_at: string;
+  resolved_at: string | null;
+};
+
+type FileRow = AttachmentRow & {
+  storage_key: string;
+};
+
+const ACTIVE_STATES = [
+  'QUEUED',
+  'CLAIMED',
+  'RUNNING',
+  'WAITING_FOR_INTERACTION',
+  'WAITING_TO_RESUME',
+  'CANCEL_REQUESTED',
+] as const;
+const LEASED_STATES = [
+  'CLAIMED',
+  'RUNNING',
+  'WAITING_FOR_INTERACTION',
+  'WAITING_TO_RESUME',
+  'CANCEL_REQUESTED',
+] as const;
+const DEFAULT_LEASE_DURATION_MS = 15_000;
+const POLL_INTERVAL_MS = 50;
+
+export type ExecutionLifecycleHooks = {
+  applyStarted: (execution: Execution) => void;
+  afterStarted: (execution: Execution) => void;
+  applyResumed: (execution: Execution) => void;
+  afterResumed: (execution: Execution) => void;
+  applyTerminal: (execution: Execution) => void;
+  afterTerminal: (execution: Execution) => void;
+  applyInteractionOpened: (interaction: ExecutionInteraction) => void;
+  afterInteractionOpened: (interaction: ExecutionInteraction) => void;
+};
+
+const NOOP_HOOKS: ExecutionLifecycleHooks = {
+  applyStarted: () => {},
+  afterStarted: () => {},
+  applyResumed: () => {},
+  afterResumed: () => {},
+  applyTerminal: () => {},
+  afterTerminal: () => {},
+  applyInteractionOpened: () => {},
+  afterInteractionOpened: () => {},
+};
+
+export class ExecutionService {
+  constructor(
+    private readonly db: AppDatabase,
+    private readonly now: () => Date = () => new Date(),
+    private readonly createId: () => string = randomUUID,
+    private readonly createLeaseToken: () => string = () =>
+      randomBytes(32).toString('base64url'),
+    private readonly leaseDurationMs: number = DEFAULT_LEASE_DURATION_MS,
+    private readonly hooks: ExecutionLifecycleHooks = NOOP_HOOKS,
+  ) {}
+
+  enqueue(inputValue: EnqueueExecutionInput): Execution {
+    const input = EnqueueExecutionInputSchema.parse(inputValue);
+    const executionId = input.id ?? this.createId();
+    const createdAt = this.now().toISOString();
+    const attachments = input.attachmentIds.map((fileId) => {
+      const row = this.db
+        .prepare(
+          `SELECT id file_id, original_name, media_type, size_bytes, sha256
+           FROM platform_file WHERE id = ?`,
+        )
+        .get(fileId) as AttachmentRow | undefined;
+      if (!row) throw new PlatformError('NOT_FOUND', '处理任务附件不存在');
+      return row;
+    });
+
+    try {
+      this.db.transaction(() => {
+        this.db
+          .prepare(
+            `INSERT INTO platform_execution(
+               id, owner_namespace, owner_kind, owner_id, attempt,
+               previous_execution_id, runner_id, binding_id, priority,
+               approval_policy, state, codex_turn_json, skill_name,
+               skill_bundle_hash, skill_source_revision,
+               workspace_json, session_id, lease_token_hash, lease_expires_at,
+               outcome_json, reported_outcome_json, cancellation_requested,
+               resume_requested_at, created_at, claimed_at, started_at,
+               finished_at
+             ) VALUES (
+               ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'QUEUED', ?, ?, ?, ?,
+               ?, NULL, NULL, NULL, NULL, NULL, 0, NULL, ?, NULL, NULL, NULL
+             )`,
+          )
+          .run(
+            executionId,
+            input.owner.namespace,
+            input.owner.kind,
+            input.owner.id,
+            input.attempt,
+            input.previousExecutionId,
+            input.runnerId,
+            input.bindingId,
+            input.priority,
+            input.approvalPolicy,
+            input.codexTurn ? JSON.stringify(input.codexTurn) : null,
+            input.codexTurn?.kind === 'CONTINUATION'
+              ? input.codexTurn.taskSkillBinding.skillName
+              : null,
+            input.codexTurn?.kind === 'CONTINUATION'
+              ? input.codexTurn.taskSkillBinding.bundleHash
+              : null,
+            input.codexTurn?.kind === 'CONTINUATION'
+              ? input.codexTurn.taskSkillBinding.sourceRevision
+              : null,
+            input.workspace ? JSON.stringify(input.workspace) : null,
+            createdAt,
+          );
+        const insertAttachment = this.db.prepare(
+          `INSERT INTO platform_execution_attachment(
+             execution_id, file_id, original_name, media_type, size_bytes,
+             sha256, position
+           ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        );
+        attachments.forEach((attachment, position) =>
+          insertAttachment.run(
+            executionId,
+            attachment.file_id,
+            attachment.original_name,
+            attachment.media_type,
+            attachment.size_bytes,
+            attachment.sha256,
+            position,
+          ),
+        );
+      })();
+    } catch (error) {
+      if (isBindingReservationConstraint(error))
+        throw new PlatformError(
+          'RESOURCE_CONFLICT',
+          '该本机关联已有正在处理的任务',
+          { cause: error },
+        );
+      throw error;
+    }
+    return this.get(executionId);
+  }
+
+  async claim(
+    runnerId: string,
+    availableSlots: number,
+    waitMs: number,
+  ): Promise<ClaimedExecution[]> {
+    const deadline = Date.now() + waitMs;
+    do {
+      const claimed = this.claimAvailable(runnerId, availableSlots);
+      if (claimed.length || availableSlots === 0 || Date.now() >= deadline)
+        return claimed;
+      await sleep(
+        Math.min(POLL_INTERVAL_MS, Math.max(0, deadline - Date.now())),
+      );
+    } while (Date.now() <= deadline);
+    return [];
+  }
+
+  start(
+    runnerId: string,
+    executionId: string,
+    request: ExecutionStartRequest,
+  ): Execution {
+    const result = this.db.transaction(() => {
+      const row = this.requireLeasedExecution(
+        runnerId,
+        executionId,
+        request.leaseToken,
+        ['CLAIMED'],
+      );
+      const now = this.now().toISOString();
+      if (request.kind === 'START_FAILED') {
+        const outcome: ExecutionOutcome = {
+          kind: 'FAILED',
+          failure: request.failure,
+        };
+        this.db
+          .prepare(
+            `UPDATE platform_execution
+             SET state = 'FAILED', outcome_json = ?, finished_at = ?,
+                 lease_expires_at = NULL
+             WHERE id = ?`,
+          )
+          .run(JSON.stringify(outcome), now, executionId);
+        this.invalidatePendingInteractions(executionId, now);
+      } else {
+        const turn = row.codex_turn_json
+          ? (JSON.parse(row.codex_turn_json) as CodexTurn)
+          : null;
+        validateStartedSkillBinding(turn, request.taskSkillBinding);
+        this.db
+          .prepare(
+            `UPDATE platform_execution
+             SET state = CASE
+                   WHEN cancellation_requested = 1 THEN 'CANCEL_REQUESTED'
+                   ELSE 'RUNNING'
+                 END,
+                 session_id = ?, skill_name = ?, skill_bundle_hash = ?,
+                 skill_source_revision = ?,
+                 started_at = COALESCE(started_at, ?)
+             WHERE id = ?`,
+          )
+          .run(
+            request.sessionId,
+            request.taskSkillBinding?.skillName ?? null,
+            request.taskSkillBinding?.bundleHash ?? null,
+            request.taskSkillBinding?.sourceRevision ?? null,
+            now,
+            executionId,
+          );
+      }
+      const execution = this.get(executionId);
+      if (request.kind === 'START_FAILED') this.hooks.applyTerminal(execution);
+      else this.hooks.applyStarted(execution);
+      return execution;
+    })();
+    if (request.kind === 'START_FAILED') this.hooks.afterTerminal(result);
+    else this.hooks.afterStarted(result);
+    return result;
+  }
+
+  renew(
+    runnerId: string,
+    executionId: string,
+    leaseToken: string,
+  ): { expiresAt: string; cancellationRequested: boolean } {
+    return this.db.transaction(() => {
+      const row = this.requireLeasedExecution(
+        runnerId,
+        executionId,
+        leaseToken,
+        [...LEASED_STATES],
+      );
+      const expiresAt = this.newLeaseExpiry();
+      this.db
+        .prepare(
+          `UPDATE platform_execution SET lease_expires_at = ? WHERE id = ?`,
+        )
+        .run(expiresAt, executionId);
+      return {
+        expiresAt,
+        cancellationRequested: Boolean(row.cancellation_requested),
+      };
+    })();
+  }
+
+  openInteraction(
+    runnerId: string,
+    executionId: string,
+    request: OpenInteractionRequest,
+  ): ExecutionInteraction {
+    let opened = false;
+    const result = this.db.transaction(() => {
+      this.requireLeasedExecution(runnerId, executionId, request.leaseToken, [
+        'RUNNING',
+        'CANCEL_REQUESTED',
+      ]);
+      const existing = this.findPendingInteraction(executionId);
+      if (existing) {
+        if (
+          existing.kind === request.kind &&
+          existing.method === request.method &&
+          existing.payload_json === JSON.stringify(request.payload)
+        )
+          return mapInteraction(existing);
+        throw new PlatformError(
+          'RESOURCE_CONFLICT',
+          '该任务已有待处理的操作请求',
+        );
+      }
+      const id = this.createId();
+      const createdAt = this.now().toISOString();
+      this.db
+        .prepare(
+          `INSERT INTO platform_execution_interaction(
+             id, execution_id, kind, method, payload_json, state,
+             resolution_json, created_at, resolved_at
+           ) VALUES (?, ?, ?, ?, ?, 'PENDING', NULL, ?, NULL)`,
+        )
+        .run(
+          id,
+          executionId,
+          request.kind,
+          request.method,
+          JSON.stringify(request.payload),
+          createdAt,
+        );
+      this.db
+        .prepare(
+          `UPDATE platform_execution
+           SET state = 'WAITING_FOR_INTERACTION'
+           WHERE id = ?`,
+        )
+        .run(executionId);
+      const interaction = this.getInteraction(id);
+      this.hooks.applyInteractionOpened(interaction);
+      opened = true;
+      return interaction;
+    })();
+    if (opened) this.hooks.afterInteractionOpened(result);
+    return result;
+  }
+
+  async waitInteraction(
+    runnerId: string,
+    executionId: string,
+    interactionId: string,
+    leaseToken: string,
+    waitMs: number,
+  ): Promise<WaitInteractionResponse> {
+    const deadline = Date.now() + waitMs;
+    do {
+      this.requireLeasedExecution(runnerId, executionId, leaseToken, [
+        'WAITING_FOR_INTERACTION',
+        'WAITING_TO_RESUME',
+        'RUNNING',
+        'CANCEL_REQUESTED',
+      ]);
+      const interaction = this.latestInteraction(executionId);
+      if (!interaction || interaction.id !== interactionId)
+        throw new PlatformError('NOT_FOUND', '任务操作请求不存在');
+      if (interaction.state === 'RESOLVED') {
+        const laneAcquired = this.tryAcquireResumeLane(executionId);
+        if (laneAcquired || Date.now() >= deadline)
+          return { interaction: mapInteraction(interaction), laneAcquired };
+      } else if (interaction.state === 'INVALIDATED')
+        return {
+          interaction: mapInteraction(interaction),
+          laneAcquired: false,
+        };
+      else if (Date.now() >= deadline)
+        return {
+          interaction: mapInteraction(interaction),
+          laneAcquired: false,
+        };
+      await sleep(
+        Math.min(POLL_INTERVAL_MS, Math.max(0, deadline - Date.now())),
+      );
+    } while (Date.now() <= deadline);
+    const interaction = this.latestInteraction(executionId);
+    if (!interaction || interaction.id !== interactionId)
+      throw new PlatformError('NOT_FOUND', '任务操作请求不存在');
+    return {
+      interaction: mapInteraction(interaction),
+      laneAcquired:
+        interaction.state === 'RESOLVED' &&
+        this.tryAcquireResumeLane(executionId),
+    };
+  }
+
+  resolveInteraction(
+    interactionId: string,
+    resolution: JsonValue,
+  ): ExecutionInteraction {
+    this.expireLeases();
+    return this.db.transaction(() => {
+      const interaction = this.getInteractionRow(interactionId);
+      if (interaction.state !== 'PENDING')
+        throw new PlatformError('STALE_STATE', '任务操作请求已失效或已处理');
+      const execution = this.getRow(interaction.execution_id);
+      if (
+        execution.state !== 'WAITING_FOR_INTERACTION' ||
+        execution.cancellation_requested === 1
+      )
+        throw new PlatformError('STALE_STATE', '任务不再等待该操作请求');
+      const parsedResolution = parseExecutionInteractionResolution(
+        interaction.method,
+        JSON.parse(interaction.payload_json) as JsonValue,
+        resolution,
+      );
+      const resolvedAt = this.now().toISOString();
+      this.db
+        .prepare(
+          `UPDATE platform_execution_interaction
+           SET state = 'RESOLVED', resolution_json = ?, resolved_at = ?
+           WHERE id = ? AND state = 'PENDING'`,
+        )
+        .run(JSON.stringify(parsedResolution), resolvedAt, interactionId);
+      this.db
+        .prepare(
+          `UPDATE platform_execution
+           SET state = 'WAITING_TO_RESUME', resume_requested_at = ?
+           WHERE id = ?`,
+        )
+        .run(resolvedAt, interaction.execution_id);
+      return this.getInteraction(interactionId);
+    })();
+  }
+
+  complete(
+    runnerId: string,
+    executionId: string,
+    request: CompleteExecutionRequest,
+  ): Execution {
+    let newlyTerminal = false;
+    const result = this.db.transaction(() => {
+      const row = this.getRow(executionId);
+      if (row.runner_id !== runnerId)
+        throw new PlatformError('NOT_FOUND', '处理任务不存在');
+      const tokenHash = hashSecret(request.leaseToken);
+      if (isTerminal(row.state)) {
+        if (
+          row.lease_token_hash === tokenHash &&
+          row.session_id === request.sessionId &&
+          row.reported_outcome_json === JSON.stringify(request.outcome)
+        )
+          return this.mapExecution(row);
+        throw new PlatformError('OUTCOME_CONFLICT', '任务结果与已保存结果冲突');
+      }
+      this.requireLeasedRow(row, request.leaseToken, [
+        'RUNNING',
+        'WAITING_FOR_INTERACTION',
+        'WAITING_TO_RESUME',
+        'CANCEL_REQUESTED',
+      ]);
+      if (
+        (row.state === 'WAITING_FOR_INTERACTION' ||
+          row.state === 'WAITING_TO_RESUME') &&
+        request.outcome.kind !== 'CANCELLED'
+      )
+        throw new PlatformError(
+          'INVALID_TRANSITION',
+          '等待中的任务只能以取消结束',
+        );
+      if (row.session_id !== request.sessionId)
+        throw new PlatformError('STALE_STATE', '任务会话不匹配');
+      const finishedAt = this.now().toISOString();
+      this.db
+        .prepare(
+          `UPDATE platform_execution
+           SET state = ?, outcome_json = ?, reported_outcome_json = ?,
+               finished_at = ?, lease_expires_at = NULL
+           WHERE id = ?`,
+        )
+        .run(
+          request.outcome.kind,
+          JSON.stringify(request.outcome),
+          JSON.stringify(request.outcome),
+          finishedAt,
+          executionId,
+        );
+      this.invalidatePendingInteractions(executionId, finishedAt);
+      const execution = this.get(executionId);
+      this.hooks.applyTerminal(execution);
+      newlyTerminal = true;
+      return this.get(executionId);
+    })();
+    if (newlyTerminal) this.hooks.afterTerminal(result);
+    return result;
+  }
+
+  cancelQueued(executionId: string, reason: string): Execution {
+    const finishedAt = this.now().toISOString();
+    const outcome: ExecutionOutcome = { kind: 'CANCELLED', reason };
+    const update = this.db
+      .prepare(
+        `UPDATE platform_execution
+         SET state = 'CANCELLED', outcome_json = ?, finished_at = ?
+         WHERE id = ? AND state = 'QUEUED'`,
+      )
+      .run(JSON.stringify(outcome), finishedAt, executionId);
+    if (update.changes !== 1)
+      throw new PlatformError(
+        'INVALID_TRANSITION',
+        '只有尚未领取的任务可以取消',
+      );
+    const execution = this.get(executionId);
+    this.invalidatePendingInteractions(executionId, finishedAt);
+    this.hooks.applyTerminal(execution);
+    this.hooks.afterTerminal(execution);
+    return execution;
+  }
+
+  requestCancellation(executionId: string): Execution {
+    let newlyTerminal = false;
+    const result = this.db.transaction(() => {
+      const row = this.getRow(executionId);
+      if (isTerminal(row.state)) return this.mapExecution(row);
+      const cancelledAt = this.now().toISOString();
+      if (
+        row.state === 'QUEUED' ||
+        row.state === 'WAITING_FOR_INTERACTION' ||
+        row.state === 'WAITING_TO_RESUME'
+      ) {
+        const outcome: ExecutionOutcome = {
+          kind: 'CANCELLED',
+          reason: '服务端已请求取消',
+        };
+        this.db
+          .prepare(
+            `UPDATE platform_execution
+             SET cancellation_requested = 1, state = 'CANCELLED',
+                 outcome_json = ?, finished_at = ?,
+                 lease_token_hash = NULL, lease_expires_at = NULL
+             WHERE id = ?`,
+          )
+          .run(JSON.stringify(outcome), cancelledAt, executionId);
+        this.invalidatePendingInteractions(executionId, cancelledAt);
+        const execution = this.get(executionId);
+        this.hooks.applyTerminal(execution);
+        newlyTerminal = true;
+        return execution;
+      }
+      this.db
+        .prepare(
+          `UPDATE platform_execution
+           SET cancellation_requested = 1, state = 'CANCEL_REQUESTED'
+           WHERE id = ?`,
+        )
+        .run(executionId);
+      return this.get(executionId);
+    })();
+    if (newlyTerminal) this.hooks.afterTerminal(result);
+    return result;
+  }
+
+  authorizeFile(
+    runnerId: string,
+    executionId: string,
+    leaseToken: string,
+    fileId: string,
+  ): FileRow {
+    this.requireLeasedExecution(runnerId, executionId, leaseToken, [
+      ...LEASED_STATES,
+    ]);
+    const row = this.db
+      .prepare(
+        `SELECT a.file_id, a.original_name, a.media_type, a.size_bytes,
+                a.sha256, f.storage_key
+         FROM platform_execution_attachment a
+         JOIN platform_file f ON f.id = a.file_id
+         WHERE a.execution_id = ? AND a.file_id = ?`,
+      )
+      .get(executionId, fileId) as FileRow | undefined;
+    if (!row) throw new PlatformError('NOT_FOUND', '处理任务附件不存在');
+    return row;
+  }
+
+  get(executionId: string): Execution {
+    return this.mapExecution(this.getRow(executionId));
+  }
+
+  activityForRunner(runnerId: string): RunnerActivity {
+    this.expireLeases();
+    const row = this.db
+      .prepare(
+        `SELECT
+           SUM(CASE WHEN state IN (
+             'CLAIMED', 'RUNNING', 'WAITING_FOR_INTERACTION', 'CANCEL_REQUESTED'
+             , 'WAITING_TO_RESUME'
+           ) THEN 1 ELSE 0 END) active_count,
+           SUM(CASE WHEN state = 'WAITING_FOR_INTERACTION'
+             THEN 1 ELSE 0 END) waiting_count
+         FROM platform_execution WHERE runner_id = ?`,
+      )
+      .get(runnerId) as
+      { active_count: number | null; waiting_count: number | null } | undefined;
+    return RunnerActivitySchema.parse({
+      activeExecutionCount: row?.active_count ?? 0,
+      waitingInteractionCount: row?.waiting_count ?? 0,
+    });
+  }
+
+  hasActiveExecutions(runnerId: string): boolean {
+    const row = this.db
+      .prepare(
+        `SELECT 1 active FROM platform_execution
+         WHERE runner_id = ? AND state IN (?, ?, ?, ?, ?, ?)
+         LIMIT 1`,
+      )
+      .get(runnerId, ...ACTIVE_STATES) as { active: number } | undefined;
+    return Boolean(row);
+  }
+
+  queueStatus(executionId: string): {
+    state: Execution['state'];
+    aheadCount: number;
+  } {
+    this.expireLeases();
+    const execution = this.getRow(executionId);
+    if (execution.state !== 'QUEUED' && execution.state !== 'WAITING_TO_RESUME')
+      return { state: execution.state, aheadCount: 0 };
+    const row = this.db
+      .prepare(
+        `SELECT COUNT(*) count
+         FROM platform_execution earlier
+         WHERE earlier.binding_id = ?
+           AND earlier.id <> ?
+           AND (
+             earlier.state IN ('CLAIMED', 'RUNNING', 'CANCEL_REQUESTED')
+             OR (
+               earlier.state = 'WAITING_TO_RESUME'
+               AND (
+                 ? = 'QUEUED'
+                 OR COALESCE(
+                   earlier.resume_requested_at, earlier.created_at
+                 ) < COALESCE(?, ?)
+               )
+             )
+             OR (
+               earlier.state = 'QUEUED'
+               AND ? = 'QUEUED'
+               AND (
+                 earlier.created_at < ?
+                 OR (
+                   earlier.created_at = ?
+                   AND earlier.rowid < (
+                     SELECT rowid FROM platform_execution WHERE id = ?
+                   )
+                 )
+               )
+             )
+           )`,
+      )
+      .get(
+        execution.binding_id,
+        execution.id,
+        execution.state,
+        execution.resume_requested_at,
+        execution.created_at,
+        execution.state,
+        execution.created_at,
+        execution.created_at,
+        execution.id,
+      ) as { count: number };
+    return { state: execution.state, aheadCount: row.count };
+  }
+
+  private tryAcquireResumeLane(executionId: string): boolean {
+    this.expireLeases();
+    const result = this.db.transaction(
+      (): {
+        laneAcquired: boolean;
+        resumedExecution: Execution | null;
+      } => {
+        const execution = this.getRow(executionId);
+        if (execution.state === 'RUNNING')
+          return { laneAcquired: true, resumedExecution: null };
+        if (execution.state !== 'WAITING_TO_RESUME')
+          return { laneAcquired: false, resumedExecution: null };
+        const update = this.db
+          .prepare(
+            `UPDATE platform_execution AS candidate
+           SET state = 'RUNNING', resume_requested_at = NULL
+           WHERE candidate.id = ?
+             AND candidate.state = 'WAITING_TO_RESUME'
+             AND candidate.lease_token_hash IS NOT NULL
+             AND candidate.lease_expires_at > ?
+             AND NOT EXISTS (
+               SELECT 1 FROM platform_execution active
+               WHERE active.binding_id = candidate.binding_id
+                 AND active.id <> candidate.id
+                 AND active.state IN ('CLAIMED', 'RUNNING', 'CANCEL_REQUESTED')
+             )
+             AND NOT EXISTS (
+               SELECT 1 FROM platform_execution earlier
+               WHERE earlier.binding_id = candidate.binding_id
+                 AND earlier.id <> candidate.id
+                 AND earlier.state = 'WAITING_TO_RESUME'
+                 AND (
+                   COALESCE(
+                     earlier.resume_requested_at, earlier.created_at
+                   ) < COALESCE(
+                     candidate.resume_requested_at, candidate.created_at
+                   )
+                   OR (
+                     COALESCE(
+                       earlier.resume_requested_at, earlier.created_at
+                     ) = COALESCE(
+                       candidate.resume_requested_at, candidate.created_at
+                     )
+                     AND earlier.rowid < candidate.rowid
+                   )
+                 )
+             )`,
+          )
+          .run(executionId, this.now().toISOString());
+        if (update.changes !== 1)
+          return { laneAcquired: false, resumedExecution: null };
+        const resumedExecution = this.get(executionId);
+        this.hooks.applyResumed(resumedExecution);
+        return { laneAcquired: true, resumedExecution };
+      },
+    )();
+    if (result.resumedExecution)
+      this.hooks.afterResumed(result.resumedExecution);
+    return result.laneAcquired;
+  }
+
+  private claimAvailable(
+    runnerId: string,
+    availableSlots: number,
+  ): ClaimedExecution[] {
+    if (availableSlots === 0) return [];
+    this.expireLeases();
+    return this.db.transaction(() => {
+      const rows = this.db
+        .prepare(
+          `SELECT candidate.* FROM platform_execution candidate
+           WHERE candidate.runner_id = ?
+             AND candidate.cancellation_requested = 0
+             AND (
+               candidate.state = 'QUEUED'
+               OR (
+                 candidate.state = 'WAITING_TO_RESUME'
+                 AND candidate.lease_token_hash IS NULL
+               )
+             )
+             AND NOT EXISTS (
+               SELECT 1 FROM platform_execution active
+               WHERE active.binding_id = candidate.binding_id
+                 AND active.state IN (
+                   'CLAIMED', 'RUNNING', 'CANCEL_REQUESTED'
+                 )
+             )
+             AND NOT EXISTS (
+               SELECT 1 FROM platform_execution earlier
+               WHERE earlier.binding_id = candidate.binding_id
+                 AND earlier.cancellation_requested = 0
+                 AND (
+                   earlier.state = 'QUEUED'
+                   OR earlier.state = 'WAITING_TO_RESUME'
+                 )
+                 AND (
+                   CASE WHEN earlier.state = 'WAITING_TO_RESUME'
+                     THEN 0 ELSE 1 END
+                     < CASE WHEN candidate.state = 'WAITING_TO_RESUME'
+                       THEN 0 ELSE 1 END
+                   OR (
+                     CASE WHEN earlier.state = 'WAITING_TO_RESUME'
+                       THEN 0 ELSE 1 END
+                       = CASE WHEN candidate.state = 'WAITING_TO_RESUME'
+                         THEN 0 ELSE 1 END
+                     AND COALESCE(
+                       earlier.resume_requested_at, earlier.created_at
+                     ) < COALESCE(
+                       candidate.resume_requested_at, candidate.created_at
+                     )
+                   )
+                   OR (
+                     CASE WHEN earlier.state = 'WAITING_TO_RESUME'
+                       THEN 0 ELSE 1 END
+                       = CASE WHEN candidate.state = 'WAITING_TO_RESUME'
+                         THEN 0 ELSE 1 END
+                     AND COALESCE(
+                       earlier.resume_requested_at, earlier.created_at
+                     ) = COALESCE(
+                       candidate.resume_requested_at, candidate.created_at
+                     )
+                     AND earlier.rowid < candidate.rowid
+                   )
+                 )
+             )
+           ORDER BY
+             CASE WHEN candidate.state = 'WAITING_TO_RESUME' THEN 0 ELSE 1 END,
+             COALESCE(candidate.resume_requested_at, candidate.created_at),
+             candidate.rowid
+           LIMIT ?`,
+        )
+        .all(runnerId, availableSlots) as ExecutionRow[];
+      return rows.map((row) => {
+        const recoveredInteraction =
+          row.state === 'WAITING_TO_RESUME'
+            ? this.latestInteraction(row.id)
+            : undefined;
+        const leaseToken = this.createLeaseToken();
+        const expiresAt = this.newLeaseExpiry();
+        const claimedAt = this.now().toISOString();
+        this.db
+          .prepare(
+            `UPDATE platform_execution
+             SET state = 'CLAIMED', lease_token_hash = ?,
+                 lease_expires_at = ?, claimed_at = COALESCE(claimed_at, ?),
+                 resume_requested_at = NULL
+             WHERE id = ?
+               AND cancellation_requested = 0
+               AND state IN ('QUEUED', 'WAITING_TO_RESUME')`,
+          )
+          .run(hashSecret(leaseToken), expiresAt, claimedAt, row.id);
+        const execution = this.get(row.id);
+        return ClaimedExecutionSchema.parse({
+          ...execution,
+          codexTurn: codexTurnForClaim(execution),
+          lease: { token: leaseToken, expiresAt },
+          outcome: null,
+          recoveredInteraction:
+            recoveredInteraction?.state === 'RESOLVED' &&
+            recoveredInteraction.resolution_json
+              ? {
+                  method: recoveredInteraction.method,
+                  payload: JSON.parse(recoveredInteraction.payload_json),
+                  resolution: JSON.parse(recoveredInteraction.resolution_json),
+                }
+              : null,
+        });
+      });
+    })();
+  }
+
+  private expireLeases(): void {
+    const now = this.now().toISOString();
+    const terminal = this.db.transaction(() => {
+      const expired = this.db
+        .prepare(
+          `SELECT id, state, cancellation_requested
+           FROM platform_execution
+           WHERE state IN (?, ?, ?, ?, ?)
+             AND lease_expires_at IS NOT NULL
+             AND lease_expires_at <= ?`,
+        )
+        .all(...LEASED_STATES, now) as Array<{
+        id: string;
+        state: Execution['state'];
+        cancellation_requested: number;
+      }>;
+      const invalidate = this.db.prepare(
+        `UPDATE platform_execution_interaction
+         SET state = 'INVALIDATED', resolved_at = ?
+         WHERE execution_id = ? AND state = 'PENDING'`,
+      );
+      const release = this.db.prepare(
+        `UPDATE platform_execution
+         SET state = CASE
+               WHEN state IN (
+                 'WAITING_FOR_INTERACTION', 'WAITING_TO_RESUME'
+               ) THEN state
+               ELSE 'QUEUED'
+             END,
+             lease_token_hash = NULL, lease_expires_at = NULL
+         WHERE id = ?`,
+      );
+      const cancelled = this.db.prepare(
+        `UPDATE platform_execution
+         SET state = 'CANCELLED', outcome_json = ?, finished_at = ?,
+             lease_token_hash = NULL, lease_expires_at = NULL
+         WHERE id = ?`,
+      );
+      const completed: Execution[] = [];
+      for (const row of expired) {
+        if (row.cancellation_requested === 1) {
+          const outcome: ExecutionOutcome = {
+            kind: 'CANCELLED',
+            reason: '取消中的任务因 Agent 失联而终止',
+          };
+          invalidate.run(now, row.id);
+          cancelled.run(JSON.stringify(outcome), now, row.id);
+          const execution = this.get(row.id);
+          this.hooks.applyTerminal(execution);
+          completed.push(execution);
+          continue;
+        }
+        release.run(row.id);
+      }
+      return completed;
+    })();
+    for (const execution of terminal) this.hooks.afterTerminal(execution);
+  }
+
+  private requireLeasedExecution(
+    runnerId: string,
+    executionId: string,
+    leaseToken: string,
+    states: Execution['state'][],
+  ): ExecutionRow {
+    const row = this.getRow(executionId);
+    if (row.runner_id !== runnerId)
+      throw new PlatformError('NOT_FOUND', '处理任务不存在');
+    this.requireLeasedRow(row, leaseToken, states);
+    return row;
+  }
+
+  private requireLeasedRow(
+    row: ExecutionRow,
+    leaseToken: string,
+    states: Execution['state'][],
+  ): void {
+    if (
+      !states.includes(row.state) ||
+      !row.lease_token_hash ||
+      row.lease_token_hash !== hashSecret(leaseToken) ||
+      !row.lease_expires_at
+    )
+      throw new PlatformError('LEASE_EXPIRED', '任务领取凭据已失效');
+    if (Date.parse(row.lease_expires_at) <= this.now().getTime())
+      throw new PlatformError('LEASE_EXPIRED', '任务领取凭据已失效');
+  }
+
+  private getRow(executionId: string): ExecutionRow {
+    const row = this.db
+      .prepare('SELECT * FROM platform_execution WHERE id = ?')
+      .get(executionId) as ExecutionRow | undefined;
+    if (!row) throw new PlatformError('NOT_FOUND', '处理任务不存在');
+    return row;
+  }
+
+  private mapExecution(row: ExecutionRow): Execution {
+    const current = this.getRow(row.id);
+    const attachments = this.db
+      .prepare(
+        `SELECT file_id, original_name, media_type, size_bytes, sha256
+         FROM platform_execution_attachment
+         WHERE execution_id = ? ORDER BY position`,
+      )
+      .all(current.id)
+      .map((attachment) => {
+        const value = attachment as AttachmentRow;
+        return {
+          id: value.file_id,
+          originalName: value.original_name,
+          mediaType: value.media_type,
+          sizeBytes: value.size_bytes,
+          sha256: value.sha256,
+        };
+      });
+    return ExecutionSchema.parse({
+      id: current.id,
+      owner: {
+        namespace: current.owner_namespace,
+        kind: current.owner_kind,
+        id: current.owner_id,
+      },
+      attempt: current.attempt,
+      previousExecutionId: current.previous_execution_id,
+      runnerId: current.runner_id,
+      bindingId: current.binding_id,
+      priority: current.priority,
+      approvalPolicy: current.approval_policy,
+      state: current.state,
+      codexTurn: mapCodexTurn(current),
+      workspace: current.workspace_json
+        ? JSON.parse(current.workspace_json)
+        : null,
+      attachments,
+      sessionId: current.session_id,
+      lease: current.lease_expires_at
+        ? { expiresAt: current.lease_expires_at }
+        : null,
+      outcome: current.outcome_json ? JSON.parse(current.outcome_json) : null,
+      cancellationRequested: Boolean(current.cancellation_requested),
+      createdAt: current.created_at,
+      claimedAt: current.claimed_at,
+      startedAt: current.started_at,
+      finishedAt: current.finished_at,
+    });
+  }
+
+  private findPendingInteraction(
+    executionId: string,
+  ): InteractionRow | undefined {
+    return this.db
+      .prepare(
+        `SELECT * FROM platform_execution_interaction
+         WHERE execution_id = ? AND state = 'PENDING'`,
+      )
+      .get(executionId) as InteractionRow | undefined;
+  }
+
+  private latestInteraction(executionId: string): InteractionRow | undefined {
+    return this.db
+      .prepare(
+        `SELECT * FROM platform_execution_interaction
+         WHERE execution_id = ? ORDER BY created_at DESC, id DESC LIMIT 1`,
+      )
+      .get(executionId) as InteractionRow | undefined;
+  }
+
+  private getInteractionRow(interactionId: string): InteractionRow {
+    const row = this.db
+      .prepare('SELECT * FROM platform_execution_interaction WHERE id = ?')
+      .get(interactionId) as InteractionRow | undefined;
+    if (!row) throw new PlatformError('NOT_FOUND', '任务操作请求不存在');
+    return row;
+  }
+
+  private getInteraction(interactionId: string): ExecutionInteraction {
+    return mapInteraction(this.getInteractionRow(interactionId));
+  }
+
+  private invalidatePendingInteractions(
+    executionId: string,
+    resolvedAt: string,
+  ): void {
+    this.db
+      .prepare(
+        `UPDATE platform_execution_interaction
+         SET state = 'INVALIDATED', resolved_at = ?
+         WHERE execution_id = ? AND state = 'PENDING'`,
+      )
+      .run(resolvedAt, executionId);
+  }
+
+  private newLeaseExpiry(): string {
+    return new Date(this.now().getTime() + this.leaseDurationMs).toISOString();
+  }
+}
+
+function mapInteraction(row: InteractionRow): ExecutionInteraction {
+  return ExecutionInteractionSchema.parse({
+    id: row.id,
+    executionId: row.execution_id,
+    kind: row.kind,
+    method: row.method,
+    payload: JSON.parse(row.payload_json),
+    state: row.state,
+    resolution: row.resolution_json ? JSON.parse(row.resolution_json) : null,
+    createdAt: row.created_at,
+    resolvedAt: row.resolved_at,
+  });
+}
+
+function hashSecret(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function mapCodexTurn(row: ExecutionRow): CodexTurn | null {
+  if (!row.codex_turn_json) return null;
+  const turn = JSON.parse(row.codex_turn_json) as CodexTurn;
+  const taskSkillBinding = persistedSkillBinding(row);
+  return taskSkillBinding && turn.kind === 'INITIAL'
+    ? { ...turn, taskSkillBinding }
+    : turn;
+}
+
+function persistedSkillBinding(row: ExecutionRow): TaskSkillBinding | null {
+  if (!row.skill_name || !row.skill_bundle_hash || !row.skill_source_revision)
+    return null;
+  return {
+    skillName: row.skill_name,
+    bundleHash: row.skill_bundle_hash,
+    sourceRevision: row.skill_source_revision,
+  };
+}
+
+function codexTurnForClaim(execution: Execution): CodexTurn | null {
+  const turn = execution.codexTurn;
+  if (
+    turn?.kind !== 'INITIAL' ||
+    !execution.sessionId ||
+    !turn.taskSkillBinding
+  )
+    return turn;
+  return {
+    kind: 'CONTINUATION',
+    taskId: execution.sessionId,
+    taskSkillBinding: turn.taskSkillBinding,
+    input: '继续完成上次未完成的任务。',
+    outputJsonSchema: turn.outputJsonSchema,
+    resultAssertions: turn.resultAssertions,
+  };
+}
+
+function validateStartedSkillBinding(
+  turn: CodexTurn | null,
+  actual: TaskSkillBinding | null,
+): void {
+  if (!turn || turn.kind === 'READ_SESSION') {
+    if (actual)
+      throw new PlatformError(
+        'INVALID_TRANSITION',
+        '非 Codex 任务不能关联规则',
+      );
+    return;
+  }
+  if (!actual)
+    throw new PlatformError('INVALID_TRANSITION', 'Codex 任务缺少规则关联');
+  const expectedName =
+    turn.kind === 'INITIAL'
+      ? turn.requiredSkillName
+      : turn.kind === 'CONTINUATION'
+        ? turn.taskSkillBinding.skillName
+        : null;
+  if (
+    actual.skillName !== expectedName ||
+    (turn.kind === 'CONTINUATION' &&
+      (actual.bundleHash !== turn.taskSkillBinding.bundleHash ||
+        actual.sourceRevision !== turn.taskSkillBinding.sourceRevision))
+  )
+    throw new PlatformError('INVALID_TRANSITION', 'Codex 任务的规则关联不匹配');
+}
+
+function isTerminal(state: Execution['state']): boolean {
+  return state === 'SUCCEEDED' || state === 'FAILED' || state === 'CANCELLED';
+}
+
+function isBindingReservationConstraint(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    /unique constraint failed:\s*platform_execution[.]binding_id/iu.test(
+      `${error.name} ${error.message}`,
+    )
+  );
+}
+
+function sleep(durationMs: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, durationMs));
+}

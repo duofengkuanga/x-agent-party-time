@@ -1,7 +1,7 @@
-import { executionFileStore } from '@/server/execution/files';
-import { handleExecutionFile } from '@/server/execution/http';
-import { executionService } from '@/server/execution/server';
-import { runnerService } from '@/server/runner/server';
+import { executionFileStore } from '@/platform/execution/files';
+import { handleExecutionFile } from '@/platform/execution/http';
+import { executionService } from '@/platform/execution/server';
+import { runnerService } from '@/platform/runner/server';
 
 export async function GET(
   request: Request,

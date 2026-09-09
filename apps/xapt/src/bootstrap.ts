@@ -1,10 +1,10 @@
 import type { CliRuntime } from './cli/run';
-import { MacOsCodexPreflight } from './daemon/codex';
-import { AgentService } from './daemon/agent-service';
+import { MacOsCodexPreflight } from './codex/preflight';
+import { AgentService } from './agent/service';
 import {
   ConnectionCoordinator,
   normalizeServerOrigin,
-} from './daemon/connection';
+} from './agent/connection';
 import { DaemonControlClient } from './daemon/control';
 import { DaemonManager } from './daemon/manager';
 import { DaemonRuntime } from './daemon/runtime';
@@ -20,11 +20,11 @@ import {
   SystemClock,
 } from './platform/system';
 import { LocalStateStore } from './state/store';
-import { RunnerHttpClient } from './daemon/runner-http';
+import { RunnerHttpClient } from './agent/server-http';
 import { LocalRepositoryInspector } from './platform/repository';
 import { TerminalForceConfirmation } from './platform/terminal';
 import { AttachmentMaterializer } from './execution/attachments';
-import { CodexAppServerExecutor } from './execution/codex-app-server';
+import { CodexAppServerExecutor } from './codex/app-server';
 import { ExecutionService } from './execution/service';
 import { GitExecutionResultVerifier } from './execution/result-verification';
 import { GitExecutionWorkspaceManager } from './execution/workspaces';

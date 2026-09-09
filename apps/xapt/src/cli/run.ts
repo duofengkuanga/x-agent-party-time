@@ -1,5 +1,5 @@
 import type { DaemonSnapshot } from '../daemon/status';
-import type { ConnectionProgress } from '../daemon/connection';
+import type { ConnectionProgress } from '../agent/connection';
 import { isDaemonHealthy } from '../daemon/status';
 import { CliUsageError, parseCommand } from './command';
 import {

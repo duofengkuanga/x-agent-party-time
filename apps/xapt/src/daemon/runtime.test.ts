@@ -14,9 +14,9 @@ import { keychainAccount } from '../platform/macos/keychain';
 import { xaptPaths } from '../platform/paths';
 import { CONNECTION_STATE_SCHEMA_VERSION } from '../state/schemas';
 import { LocalStateStore } from '../state/store';
-import { ConnectionCoordinator } from './connection';
+import { ConnectionCoordinator } from '../agent/connection';
 import { DaemonControlClient } from './control';
-import type { RunnerAuthorizationHttp } from './runner-http';
+import type { RunnerAuthorizationHttp } from '../agent/server-http';
 import { DaemonRuntime } from './runtime';
 
 const homes: string[] = [];

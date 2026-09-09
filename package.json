@@ -19,7 +19,7 @@
     "build:app": "bun --cwd apps/web build",
     "start:app": "bun --cwd apps/web start",
     "seed:app": "bun --cwd apps/web seed",
-    "format:check": "prettier --check README.md .prettierrc.json package.json tsconfig.base.json 'scripts/**/*.ts' 'packages/**/package.json' 'packages/**/tsconfig.json' 'packages/**/src/**/*.ts' 'apps/**/{app,features,server,scripts}/**/*.{ts,tsx,css}' 'apps/xapt/src/**/*.ts' 'apps/**/{package.json,tsconfig.json,next.config.mjs}'",
+    "format:check": "prettier --check README.md .prettierrc.json package.json tsconfig.base.json 'scripts/**/*.ts' 'packages/**/package.json' 'packages/**/tsconfig.json' 'packages/**/src/**/*.ts' 'apps/**/{app,cooking,platform,scripts}/**/*.{ts,tsx,css}' 'apps/xapt/src/**/*.ts' 'apps/**/{package.json,tsconfig.json,next.config.mjs}'",
     "test": "bun test",
     "test:browser": "bun apps/web/scripts/browser-test.ts",
     "check:deps": "bun install --frozen-lockfile",

@@ -1,10 +1,7 @@
-import { currentUser } from '@/server/auth/server';
-import { PlatformError, publicError } from '@/server/errors';
-import {
-  bugService,
-  cookingFileStore,
-} from '@/features/cooking/application/server';
-import { updateService } from '@/features/cooking/update/application/server';
+import { currentUser } from '@/platform/auth/server';
+import { PlatformError, publicError } from '@/platform/errors';
+import { bugService, cookingFileStore } from '@/cooking/runtime/services';
+import { updateService } from '@/cooking/runtime/update';
 
 export async function GET(
   _request: Request,

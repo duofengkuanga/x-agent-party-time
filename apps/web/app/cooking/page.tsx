@@ -1,12 +1,12 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { requireCurrentUser } from '@/server/auth/server';
-import { submissionService } from '@/features/cooking/application/server';
+import { requireCurrentUser } from '@/platform/auth/server';
+import { submissionService } from '@/cooking/runtime/services';
 import {
   SIDEBAR_COOKIE_NAME,
   readSidebarWidth,
-} from '@/features/cooking/shared/sidebar-width';
-import { SubmissionWorkspace } from '@/features/cooking/submissions/presentation/submission-workspace';
+} from '@/cooking/shared/ui/sidebar-width';
+import { SubmissionWorkspace } from '@/cooking/submissions/ui/submission-workspace';
 
 export default async function CookingHomePage() {
   const user = await requireCurrentUser();

@@ -1,9 +1,9 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { requireCurrentUser } from '@/server/auth/server';
-import { executionService } from '@/server/execution/server';
-import { runnerService } from '@/server/runner/server';
-import { bindingService } from '@/features/cooking/application/server';
+import { requireCurrentUser } from '@/platform/auth/server';
+import { executionService } from '@/platform/execution/server';
+import { runnerService } from '@/platform/runner/server';
+import { bindingService } from '@/cooking/runtime/services';
 import { AgentRevokeForm } from './agent-revoke-form';
 import { AgentStatusRefresh } from './agent-status-refresh';
 

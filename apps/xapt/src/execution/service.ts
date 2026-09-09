@@ -14,15 +14,15 @@ import {
   type OutboxEntry,
 } from '../state/schemas';
 import type { LocalStateStore } from '../state/store';
-import type { AuthenticatedRunnerSession } from '../daemon/connection';
-import type { RunnerExecutionHttp } from '../daemon/runner-http';
-import { RunnerHttpError } from '../daemon/runner-http';
+import type { AuthenticatedRunnerSession } from '../agent/connection';
+import type { RunnerExecutionHttp } from '../agent/server-http';
+import { RunnerHttpError } from '../agent/server-http';
 import type { AttachmentMaterializer } from './attachments';
+import { CodexAppServerError } from '../codex/errors';
 import {
-  CodexAppServerError,
   type CodexExecutor,
   type StartedCodexExecution,
-} from './codex-app-server';
+} from '../codex/contract';
 import type { ExecutionWorkspaceManager } from './workspaces';
 import {
   ExecutionResultVerificationError,

@@ -8,7 +8,7 @@ import { xaptPaths } from '../platform/paths';
 import { SystemClock } from '../platform/system';
 import { LocalStateStore } from '../state/store';
 import { OUTBOX_STATE_SCHEMA_VERSION } from '../state/schemas';
-import type { CodexPreflight } from './codex';
+import type { CodexPreflight } from '../codex/preflight';
 import { DaemonControlClient } from './control';
 import { DaemonManager } from './manager';
 import { DaemonRuntime } from './runtime';

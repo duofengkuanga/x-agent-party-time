@@ -1,6 +1,6 @@
-import { bindingRequestService } from '@/features/cooking/application/server';
-import { handleRunnerBindingWorkCompletion } from '@/server/runner/http';
-import { runnerService } from '@/server/runner/server';
+import { bindingRequestService } from '@/cooking/runtime/services';
+import { handleRunnerBindingWorkCompletion } from '@/platform/runner/http';
+import { runnerService } from '@/platform/runner/server';
 
 export async function POST(
   request: Request,

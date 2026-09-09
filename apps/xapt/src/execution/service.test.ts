@@ -17,25 +17,22 @@ import { NodeLocalFileSystem } from '../platform/files';
 import { xaptPaths } from '../platform/paths';
 import { LocalStateStore } from '../state/store';
 import { EXECUTION_STATE_SCHEMA_VERSION } from '../state/schemas';
-import type { AuthenticatedRunnerSession } from '../daemon/connection';
-import type { RunnerExecutionHttp } from '../daemon/runner-http';
+import type { AuthenticatedRunnerSession } from '../agent/connection';
+import type { RunnerExecutionHttp } from '../agent/server-http';
 import type { AttachmentMaterializer } from './attachments';
 import type {
   CodexExecutionInput,
   CodexExecutor,
   StartedCodexExecution,
-} from './codex-app-server';
-import { CodexAppServerError } from './codex-app-server';
+} from '../codex/contract';
+import { CodexAppServerError } from '../codex/errors';
 import { ExecutionService } from './service';
 import {
   ExecutionResultVerificationError,
   type ExecutionResultVerifier,
 } from './result-verification';
 import type { SkillBundleManager } from '../skills/manager';
-import type {
-  ExecutionWorkspaceManager,
-  PreparedExecutionWorkspace,
-} from './workspaces';
+import type { ExecutionWorkspaceManager } from './workspaces';
 
 const homes: string[] = [];
 const executionId = '00000000-0000-4000-8000-000000000301';

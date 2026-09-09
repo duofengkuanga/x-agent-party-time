@@ -1,14 +1,14 @@
 import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
-import { requireCurrentUser } from '@/server/auth/server';
-import { PlatformError } from '@/server/errors';
-import { workspaceService } from '@/features/cooking/application/server';
-import { SubmissionIdSchema } from '@/features/cooking/submissions/contract';
+import { requireCurrentUser } from '@/platform/auth/server';
+import { PlatformError } from '@/platform/errors';
+import { workspaceService } from '@/cooking/runtime/services';
+import { SubmissionIdSchema } from '@/cooking/submissions/contract';
 import {
   SIDEBAR_COOKIE_NAME,
   readSidebarWidth,
-} from '@/features/cooking/shared/sidebar-width';
-import { SubmissionWorkspace } from '@/features/cooking/submissions/presentation/submission-workspace';
+} from '@/cooking/shared/ui/sidebar-width';
+import { SubmissionWorkspace } from '@/cooking/submissions/ui/submission-workspace';
 
 export default async function SubmissionWorkspacePage({
   params,

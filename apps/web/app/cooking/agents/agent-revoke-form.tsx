@@ -4,7 +4,7 @@ import { useState } from 'react';
 import {
   reactivateRunnerAction,
   revokeRunnerAction,
-} from '@/server/runner/actions';
+} from '@/platform/runner/actions';
 
 export function AgentRevokeForm({
   disabled,

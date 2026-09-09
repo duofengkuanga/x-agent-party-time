@@ -1,6 +1,6 @@
-import { handleWaitInteraction } from '@/server/execution/http';
-import { cookingExecutionService } from '@/features/cooking/repair/application/server';
-import { runnerService } from '@/server/runner/server';
+import { handleWaitInteraction } from '@/platform/execution/http';
+import { cookingExecutionService } from '@/cooking/runtime/repair';
+import { runnerService } from '@/platform/runner/server';
 
 export async function POST(
   request: Request,

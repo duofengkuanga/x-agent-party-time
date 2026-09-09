@@ -1,8 +1,8 @@
 import { rmSync } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
-import { serverPaths } from '@/server/config';
-import { openDatabase } from '@/server/database';
-import { PlatformError } from '@/server/errors';
+import { serverPaths } from '@/platform/config';
+import { openDatabase } from '@/platform/database';
+import { PlatformError } from '@/platform/errors';
 
 type PreparationResult = {
   database: string;

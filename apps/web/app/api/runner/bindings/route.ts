@@ -1,9 +1,9 @@
-import { bindingService } from '@/features/cooking/application/server';
+import { bindingService } from '@/cooking/runtime/services';
 import {
   handleRunnerBindingConfirmation,
   handleRunnerBindings,
-} from '@/server/runner/http';
-import { runnerService } from '@/server/runner/server';
+} from '@/platform/runner/http';
+import { runnerService } from '@/platform/runner/server';
 
 export async function GET(request: Request): Promise<Response> {
   return handleRunnerBindings(request, runnerService(), (runnerId) =>

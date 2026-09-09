@@ -173,22 +173,59 @@ bun run typecheck:xapt
 ## 代码结构
 
 ```text
-apps/web/                    Next App、SSR、Server Actions、Route Handlers
-packages/execution-contract/ 通用 Execution / Lease / Interaction / Outcome 协议
-packages/runner-contract/    Agent 授权、心跳与工程绑定引用协议
-apps/xapt/                   standalone Agent、daemon 与 Codex App Server 适配
-scripts/                     App + Agent 开发进程管理
+apps/web/
+├── app/                    Next 路由、布局和路由级装配
+├── cooking/                提测与缺陷交付业务
+│   ├── runtime/            跨业务 Module 的依赖装配与执行事件分发
+│   ├── projects/           私密项目、成员、邀请和项目设置
+│   ├── engineering/        工程、环境与负责人
+│   ├── bindings/           工程与本机 Agent 的绑定
+│   ├── submissions/        提测、工作区同步与提测信息
+│   ├── bugs/               缺陷报告、分诊、看板与删除
+│   ├── repair/             修复尝试、结果与会话同步
+│   ├── update/             更新批次、部署与会话同步
+│   ├── lifecycle/          验证、重开、取消与善后
+│   ├── workspace/          按角色聚合工作区视图
+│   ├── shared/             业务共享契约、写入与界面基础能力
+│   └── ui/                 Cooking 共享页面框架
+└── platform/               领域无关的认证、数据、文件、错误、Agent 与 Execution
+
+apps/xapt/src/
+├── cli/                    命令解析、调用和输出
+├── daemon/                 当前用户后台进程、控制通道和状态
+├── agent/                  Server 连接、授权、心跳与 HTTP 通信
+├── codex/                  App Server 协议、输入、交互与结果读取
+├── execution/              Execution 执行、工作区、附件与结果验证
+├── state/                  本机持久状态和 Outbox
+├── platform/               OS Interface 与 macOS Adapter
+├── install/                安装版本切换、更新与卸载
+└── skills/                 本机 Skill Bundle 管理
+
+packages/execution-contract/  Web 与 xapt 共享的 Execution 协议
+packages/runner-contract/     Web 与 xapt 共享的 Agent 协议
+packages/runner-conformance/  协议验收 Adapter
 ```
+
+每个 Cooking Module 使用 `contract.ts` 声明跨调用方的数据 Interface，`server/` 保存事务、业务行为与 Server Actions，`ui/` 保存界面和交互。测试与被测 Module 就近放置。`ui/` 中的 Server 渲染与 `'use client'` 声明仍按 Next 的执行规则区分；客户端只调用 Server Actions，不导入事务实现。
+
+`runtime/` 是跨业务装配的集中入口，负责把修复候选、更新、善后与执行投影连接起来。通用 `platform/` 不引用 Cooking；路由在两者之间选择并装配所需能力。缺陷删除 HTTP 处理属于 `cooking/bugs/server/http.ts`，共享响应转换属于 `platform/http/responses.ts`。
+
+大文件内部按完整职责拆分：缺陷看板协调状态，附件、报告编辑、修复时间线、更新详情与交互记录分别实现；提测工作区把同步状态、侧栏偏好、详情和清理交互分开；项目路由只接入项目设置页。修复、更新和善后的结果解释与展示投影位于各自的 `server/results.ts`，数据行类型位于 `server/records.ts`，事务顺序继续由原有业务类控制。
+
+`BugService.deleteBugs()` 是调用方的删除 Interface，内部 `BugDeletion` 集中处理关联执行收集、活动检查、事务删除、依赖校验与提测版本推进。测试继续通过 `BugService` 验证完整行为，不依赖删除过程的私有步骤。
 
 依赖方向：
 
 ```text
-app routes → features/cooking → server
-app routes → server
-server ✕→ features/cooking
+app routes → cooking/runtime → cooking/*/server → platform
+app routes → cooking/*/ui → contract / Server Actions
+app routes → platform
+platform ✕→ cooking
 xapt → execution-contract + runner-contract
-xapt ✕→ cooking
+xapt ✕→ web / cooking
 ```
+
+修改目录或抽取 Module 时，同时更新导入、脚本和配置中的扫描范围、按源码路径定位的架构测试及文档指针。协议、路由、Schema、命令和持久化路径不能随目录整理改变。
 
 ## 安全边界
 

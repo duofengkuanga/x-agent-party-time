@@ -1,9 +1,9 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { currentUser } from '@/server/auth/server';
-import { publicError } from '@/server/errors';
-import { runnerService } from '@/server/runner/server';
+import { currentUser } from '@/platform/auth/server';
+import { publicError } from '@/platform/errors';
+import { runnerService } from '@/platform/runner/server';
 import {
   approveAgentAuthorizationAction,
   rejectAgentAuthorizationAction,

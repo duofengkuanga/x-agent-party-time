@@ -8,7 +8,7 @@ import type { LocalFileSystem } from '../platform/files';
 import { XAPT_LAUNCH_AGENT_LABEL, type XaptPaths } from '../platform/paths';
 import type { LocalStateStore } from '../state/store';
 import { XAPT_VERSION } from '../version';
-import type { CodexPreflight } from './codex';
+import type { CodexPreflight } from '../codex/preflight';
 import type { DaemonControlClient } from './control';
 import {
   stoppedSnapshot,

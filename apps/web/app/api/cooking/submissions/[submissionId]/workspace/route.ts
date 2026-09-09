@@ -1,6 +1,6 @@
-import { currentUser } from '@/server/auth/server';
-import { workspaceService } from '@/features/cooking/application/server';
-import { handleWorkspaceSnapshot } from '@/features/cooking/submissions/presentation/http';
+import { currentUser } from '@/platform/auth/server';
+import { workspaceService } from '@/cooking/runtime/services';
+import { handleWorkspaceSnapshot } from '@/cooking/submissions/server/http';
 
 export async function GET(
   _request: Request,

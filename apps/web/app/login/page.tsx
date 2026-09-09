@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
-import { currentUser, safeRedirectPath } from '@/server/auth/server';
+import { currentUser, safeRedirectPath } from '@/platform/auth/server';
 import { LoginForm } from './login-form';
 
 export const metadata: Metadata = {

@@ -3,8 +3,8 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Database } from 'bun:sqlite';
-import { serverPaths } from '@/server/config';
-import { SERVER_SCHEMA_VERSION } from '@/server/database/schema';
+import { serverPaths } from '@/platform/config';
+import { SERVER_SCHEMA_VERSION } from '@/platform/database/schema';
 import { prepareDevelopmentDatabase } from './prepare-development';
 
 const temporaryDirectories: string[] = [];

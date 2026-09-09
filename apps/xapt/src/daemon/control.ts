@@ -7,7 +7,7 @@ import {
 } from 'node:net';
 import { dirname } from 'node:path';
 import type { LocalFileSystem } from '../platform/files';
-import type { ConnectionProgress } from './connection';
+import type { ConnectionProgress } from '../agent/connection';
 import type { DaemonSnapshot } from './status';
 
 const CONTROL_PROTOCOL_VERSION = 1;

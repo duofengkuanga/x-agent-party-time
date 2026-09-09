@@ -9,7 +9,7 @@ import {
   InstallStateSchema,
 } from '../state/schemas';
 import type { LocalStateStore } from '../state/store';
-import { compareVersions, type CodexPreflight } from '../daemon/codex';
+import { compareVersions, type CodexPreflight } from '../codex/preflight';
 import type { DaemonManager } from '../daemon/manager';
 import { XAPT_VERSION } from '../version';
 

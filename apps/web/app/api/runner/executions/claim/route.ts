@@ -1,7 +1,7 @@
-import { handleExecutionClaim } from '@/server/execution/http';
-import { executionService } from '@/server/execution/server';
-import { runnerService } from '@/server/runner/server';
-import { prepareDueUpdateExecutions } from '@/features/cooking/update/application/server';
+import { handleExecutionClaim } from '@/platform/execution/http';
+import { executionService } from '@/platform/execution/server';
+import { runnerService } from '@/platform/runner/server';
+import { prepareDueUpdateExecutions } from '@/cooking/runtime/update';
 
 export async function POST(request: Request): Promise<Response> {
   return handleExecutionClaim(

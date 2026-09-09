@@ -1,13 +1,13 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { requireCurrentUser } from '@/server/auth/server';
-import { publicError } from '@/server/errors';
+import { requireCurrentUser } from '@/platform/auth/server';
+import { publicError } from '@/platform/errors';
 import {
   messageRedirectPath,
   rethrowRedirectError,
-} from '@/server/http/message-redirect';
-import { runnerService } from '@/server/runner/server';
+} from '@/platform/http/message-redirect';
+import { runnerService } from '@/platform/runner/server';
 
 export async function approveAgentAuthorizationAction(
   formData: FormData,

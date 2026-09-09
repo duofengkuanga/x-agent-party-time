@@ -5,8 +5,8 @@ import {
   authService,
   establishSession,
   safeRedirectPath,
-} from '@/server/auth/server';
-import { logger } from '@/server/logging';
+} from '@/platform/auth/server';
+import { logger } from '@/platform/logging';
 
 export type LoginState = { error: string | null };
 
