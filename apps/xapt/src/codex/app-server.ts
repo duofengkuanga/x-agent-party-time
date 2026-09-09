@@ -57,6 +57,8 @@ const XAPT_THREAD_SECURITY = {
 } as const;
 
 export class CodexAppServerExecutor implements CodexExecutor {
+  private readonly operations = new Set<CodexAppServerExecutor>();
+  private closing: Promise<void> | null = null;
   private child: ChildProcessWithoutNullStreams | null = null;
   private initialized: Promise<void> | null = null;
   private nextRequestId = 1;
@@ -72,6 +74,28 @@ export class CodexAppServerExecutor implements CodexExecutor {
   ) {}
 
   async begin(
+    input: CodexExecutionInput,
+    signal: AbortSignal,
+  ): Promise<StartedCodexExecution> {
+    const operation = new CodexAppServerExecutor(
+      this.executable,
+      this.spawnProcess,
+    );
+    this.operations.add(operation);
+    const release = async () => {
+      await operation.close();
+      this.operations.delete(operation);
+    };
+    try {
+      const started = await operation.beginOwnedTurn(input, signal);
+      return { ...started, completion: started.completion.finally(release) };
+    } catch (error) {
+      await release();
+      throw error;
+    }
+  }
+
+  private async beginOwnedTurn(
     input: CodexExecutionInput,
     signal: AbortSignal,
   ): Promise<StartedCodexExecution> {
@@ -115,6 +139,20 @@ export class CodexAppServerExecutor implements CodexExecutor {
   }
 
   async readLastCompletedTurn(sessionId: string): Promise<CompletedCodexTurn> {
+    const operation = new CodexAppServerExecutor(
+      this.executable,
+      this.spawnProcess,
+    );
+    this.operations.add(operation);
+    try {
+      return await operation.readOwnedTurn(sessionId);
+    } finally {
+      await operation.close();
+      this.operations.delete(operation);
+    }
+  }
+
+  private async readOwnedTurn(sessionId: string): Promise<CompletedCodexTurn> {
     await this.ensureStarted();
     try {
       const response = asRecord(
@@ -129,13 +167,16 @@ export class CodexAppServerExecutor implements CodexExecutor {
         : Array.isArray(response.turns)
           ? response.turns.map(asRecord)
           : [];
-      const turn = [...turns]
-        .reverse()
-        .find((candidate) => optionalString(candidate.status) === 'completed');
+      const turn = turns.at(-1);
       const turnId = turn ? optionalString(turn.id) : null;
       if (!turn || !turnId)
         throw new CodexAppServerError(
           'Codex Session 没有已完成的 Turn',
+          sessionId,
+        );
+      if (optionalString(turn.status) !== 'completed')
+        throw new CodexAppServerError(
+          'Codex Session 的最新 Turn 尚未成功完成，请在原会话完成后再同步',
           sessionId,
         );
       const items = Array.isArray(turn.items) ? turn.items.map(asRecord) : [];
@@ -164,12 +205,23 @@ export class CodexAppServerExecutor implements CodexExecutor {
   }
 
   async close(): Promise<void> {
+    await Promise.all(
+      [...this.operations].map((operation) => operation.close()),
+    );
+    if (this.closing) return this.closing;
     const child = this.child;
-    this.child = null;
-    this.initialized = null;
-    if (!child || child.exitCode !== null) return;
-    child.kill('SIGTERM');
-    await new Promise<void>((resolve) => child.once('close', () => resolve()));
+    if (!child) return;
+    this.closing = new Promise<void>((resolve) => {
+      child.once('close', () => {
+        clearTimeout(timeout);
+        resolve();
+      });
+      const timeout = setTimeout(() => child.kill('SIGKILL'), 5000);
+      timeout.unref();
+      child.kill('SIGTERM');
+    });
+    this.failProcess(new Error('Codex 本机服务已关闭'));
+    return this.closing;
   }
 
   private async ensureStarted(): Promise<void> {
