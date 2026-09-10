@@ -46,29 +46,10 @@ This project is indexed by GitNexus as **x-agent-party-time** (2039 symbols, 674
 
 ## Codex-only 项目规则
 
-- 本项目只使用 Codex；根 `AGENTS.md` 是项目规则入口，目录内可使用更近的 `AGENTS.md` 收紧该范围规则，项目 skill 只放在 `.agents/`。
 - 不创建、不维护 `CLAUDE.md`、`.claude/` 或其他 Claude Code 兼容副本。
-- GitNexus 索引更新只使用 `node .gitnexus/run.cjs analyze --index-only`，避免覆盖项目规则或注入其他工具副本。
-- `.agents/` 与各级 `AGENTS.md` 纳入 Git；`.gitnexus/` 是本地索引，不提交。
-- 修改 `apps/web/` 下的文件时同时遵守 `apps/web/AGENTS.md`。
-
-## 文档职责
-
-- `CONTEXT.md` 只保存稳定领域术语和概念边界，不记录实现细节、计划或进度。
-- `docs/adr/` 只记录难反转、缺少上下文会令人意外、且经过真实取舍的重要架构决策。
-- `docs/specs/` 保存已经确认、仍需跨会话实施或验收的 Spec 与 Tickets；完成后提炼长期结论并删除当前文件，历史由 Git 保留。
-- `docs/product/` 保存长期产品和设计语言；对应目录的 `AGENTS.md` 只保留强制摘要和读取入口。
-- `.scratch/` 只保存未确认、一次性或可丢弃的调查、草稿、原型和验收材料；完成或被取代后必须蒸馏并清理，不建立历史归档。
-- `README.md` 保存项目能力、安装、运行、开发和使用说明。
 
 ## 开发期不兼容策略
 
 - 除非用户明确指出存在生产数据、已发布协议或外部系统契约，否则直接修正到最新领域模型、Schema、协议、路由和行为，不实现向后兼容。
 - 不引入双写、fallback、deprecated 字段、兼容 adapter、宽松联合类型、占位默认值或长期中间状态；旧开发数据允许清空重建。
 - 只有改动会影响生产数据、已发布协议或外部系统时，才先说明破坏面并由用户决定迁移方案。
-
-## 全局架构边界
-
-- Runner 只承载领域无关的本机 Execution，不实现 Cooking 业务状态机或仓库工作流；背景见 `docs/adr/0001-keep-runner-domain-neutral.md`。
-- Server 不接收、保存或返回开发者本机仓库绝对路径；路径映射只存在于对应 Agent 本机；背景见 `docs/adr/0002-keep-repository-paths-on-agent.md`。
-- 用户界面使用 `Agent`，内部代码、数据库和协议继续使用 `Runner`；统一语言见 `CONTEXT.md`。
