@@ -629,6 +629,62 @@ describe('RepairService', () => {
     ).toHaveLength(2);
   });
 
+  test('同步无法确认最新 Turn 时只向负责人显示可操作错误', async () => {
+    const fixture = await setup();
+    const started = await startLatest(fixture, 'manual-repair-session');
+    fixture.executions.complete(fixture.runner.id, started.executionId, {
+      leaseToken: started.leaseToken,
+      sessionId: started.sessionId,
+      outcome: {
+        kind: 'FAILED',
+        failure: {
+          code: 'CODEX_EXECUTION_FAILED',
+          message: '首次失败',
+          retryable: true,
+        },
+      },
+    });
+    const synced = fixture.repairs.synchronizeSession(
+      fixture.users.developer.id,
+      fixture.requested.bug.id,
+      {
+        mutationId: randomUUID(),
+        expectedVersion: currentBug(fixture.database, fixture.requested.bug.id)
+          .version,
+      },
+    );
+    const [claimed] = await fixture.executions.claim(fixture.runner.id, 1, 0);
+    if (!claimed) throw new Error('缺少同步 Execution');
+    fixture.executions.start(fixture.runner.id, claimed.id, {
+      kind: 'START_FAILED',
+      leaseToken: claimed.lease.token,
+      failure: {
+        code: 'CODEX_EXECUTION_FAILED',
+        message: 'Codex 会话的最新一轮尚未完成或暂无法确认，请完成后再同步',
+        retryable: true,
+      },
+    });
+
+    expect(synced.executionId).toBe(claimed.id);
+    expect(
+      fixture.repairs.repairView(
+        fixture.users.developer.id,
+        fixture.requested.bug.id,
+      )?.synchronizationError,
+    ).toBe('Codex 会话的最新一轮尚未完成或暂无法确认，请完成后再同步');
+    expect(
+      fixture.repairs.repairView(
+        fixture.users.tester.id,
+        fixture.requested.bug.id,
+      )?.synchronizationError,
+    ).toBeNull();
+    expect(
+      fixture.repairs
+        .repairView(fixture.users.developer.id, fixture.requested.bug.id)
+        ?.timeline.filter((node) => node.kind === 'REPAIR_ATTEMPT'),
+    ).toHaveLength(1);
+  });
+
   test('Execution 失败使用真实 code/message 且仅向工程负责人投影技术码', async () => {
     const fixture = await setup();
     const started = await startLatest(fixture, 'failed-session');

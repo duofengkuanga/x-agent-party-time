@@ -98,6 +98,33 @@ test('已有 Task 通过 codexTurn 继续原 Thread', async () => {
   expect(fixture.executor.inputs[0]?.skill).toBeNull();
 });
 
+test('只读会话无法确认时投递可操作的同步失败', async () => {
+  const fixture = await createFixture({
+    readSessionId: 'manual-session',
+    readSessionFailure: new CodexAppServerError(
+      'Codex 会话的最新一轮尚未完成或暂无法确认，请完成后再同步',
+      'manual-session',
+    ),
+  });
+
+  await fixture.service.cycle(session);
+  await fixture.service.waitForIdle();
+
+  expect(fixture.http.starts).toEqual([
+    {
+      kind: 'START_FAILED',
+      leaseToken,
+      failure: {
+        code: 'CODEX_EXECUTION_FAILED',
+        message: 'Codex 会话的最新一轮尚未完成或暂无法确认，请完成后再同步',
+        retryable: true,
+      },
+    },
+  ]);
+  expect(fixture.http.outcomes).toEqual([]);
+  expect(await fixture.state.loadExecutions()).toEqual([]);
+});
+
 test('按 Execution 携带的审批约束启动 Codex', async () => {
   for (const approvalPolicy of ['never', 'on-request'] as const) {
     const fixture = await createFixture({ approvalPolicy });
@@ -328,6 +355,8 @@ async function createFixture(
     failOutcome?: boolean;
     deferredExecutor?: boolean;
     interactionExecutor?: boolean;
+    readSessionId?: string;
+    readSessionFailure?: Error;
     owner?: ClaimedExecution['owner'];
     approvalPolicy?: ClaimedExecution['approvalPolicy'];
     workspace?: ClaimedExecution['workspace'];
@@ -352,6 +381,8 @@ async function createFixture(
     options.approvalPolicy,
     options.workspace,
   );
+  if (options.readSessionId)
+    claimed.codexTurn = { kind: 'READ_SESSION', taskId: options.readSessionId };
   if (claimed.codexTurn && claimed.codexTurn.kind !== 'READ_SESSION')
     claimed.codexTurn.resultAssertions = options.resultAssertions;
   const http = new FakeExecutionHttp(claimed);
@@ -360,6 +391,7 @@ async function createFixture(
     options.executorFailure,
     options.deferredExecutor ?? false,
     options.interactionExecutor ?? false,
+    options.readSessionFailure,
   );
   let now = new Date('2026-08-03T08:00:00.000Z');
   let nextId = 400;
@@ -526,6 +558,7 @@ class FakeCodexExecutor implements CodexExecutor {
     private readonly failure?: Error,
     private readonly deferred = false,
     private readonly interaction = false,
+    private readonly readFailure?: Error,
   ) {}
 
   async begin(input: CodexExecutionInput): Promise<StartedCodexExecution> {
@@ -557,6 +590,7 @@ class FakeCodexExecutor implements CodexExecutor {
   }
 
   async readLastCompletedTurn() {
+    if (this.readFailure) throw this.readFailure;
     return { turnId: 'turn-latest', result: { summary: 'done' } };
   }
 

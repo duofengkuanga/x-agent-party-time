@@ -171,12 +171,13 @@ export class CodexAppServerExecutor implements CodexExecutor {
       const turnId = turn ? optionalString(turn.id) : null;
       if (!turn || !turnId)
         throw new CodexAppServerError(
-          'Codex Session 没有已完成的 Turn',
+          'Codex 会话没有可确认的最新轮次，请在原会话完成后再同步',
           sessionId,
         );
-      if (optionalString(turn.status) !== 'completed')
+      const status = optionalString(turn.status);
+      if (status !== 'completed')
         throw new CodexAppServerError(
-          'Codex Session 的最新 Turn 尚未成功完成，请在原会话完成后再同步',
+          latestTurnStatusMessage(status),
           sessionId,
         );
       const items = Array.isArray(turn.items) ? turn.items.map(asRecord) : [];
@@ -188,19 +189,23 @@ export class CodexAppServerExecutor implements CodexExecutor {
         )?.text;
       if (typeof message !== 'string')
         throw new CodexAppServerError(
-          'Codex Session 的最新 Turn 未返回结果',
+          'Codex 会话的最新轮次未返回结果',
           sessionId,
         );
       const result = parseStructuredResult(message);
       if (result === undefined)
         throw new CodexAppServerError(
-          'Codex Session 的最新 Turn 未返回有效 JSON',
+          'Codex 会话的最新轮次未返回可识别的结果，请在原会话处理后再同步',
           sessionId,
         );
       return { turnId, result };
     } catch (error) {
-      if (error instanceof CodexAppServerError) throw error;
-      throw new CodexAppServerError(safeMessage(error), sessionId);
+      if (error instanceof CodexAppServerError && error.sessionId === sessionId)
+        throw error;
+      throw new CodexAppServerError(
+        readSessionFailureMessage(error),
+        sessionId,
+      );
     }
   }
 
@@ -477,4 +482,19 @@ export class CodexAppServerExecutor implements CodexExecutor {
     this.completedTurns.clear();
     this.agentMessages.clear();
   }
+}
+
+function latestTurnStatusMessage(status: string | null): string {
+  if (status === 'inProgress' || status === 'interrupted')
+    return 'Codex 会话的最新一轮尚未完成或暂无法确认，请完成后再同步';
+  if (status === 'failed')
+    return 'Codex 会话的最新一轮已失败，请在原会话处理后再同步';
+  return 'Codex 会话的最新一轮状态无法确认，请完成后再同步';
+}
+
+function readSessionFailureMessage(error: unknown): string {
+  const message = safeMessage(error);
+  if (/not found|unknown thread|does not exist|不存在|找不到/iu.test(message))
+    return 'Codex 会话不可用，请确认原会话仍可读取后再同步';
+  return '无法读取 Codex 会话，请确认 Agent 在线且原会话可读后再同步';
 }

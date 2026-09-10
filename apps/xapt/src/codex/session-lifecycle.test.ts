@@ -115,18 +115,27 @@ const history = JSON.parse(require('node:fs').readFileSync(${JSON.stringify(hist
 require('node:readline').createInterface({ input: process.stdin }).on('line', line => {
   const m = JSON.parse(line);
   if (m.method === 'initialize') console.log(JSON.stringify({ id: m.id, result: {} }));
+  else if (m.method === 'thread/read' && history.error) console.log(JSON.stringify({ id: m.id, error: { message: history.error } }));
   else if (m.method === 'thread/read') console.log(JSON.stringify({ id: m.id, result: { thread: { turns: history } } }));
   else if (m.id) console.log(JSON.stringify({ id: m.id, error: { message: '只允许读取，不允许恢复或运行会话' } }));
 });
 `,
     { mode: 0o700 },
   );
-  const turn = (id: string, status = 'completed') => ({
+  const turn = (
+    id: string,
+    status = 'completed',
+    text = JSON.stringify({ summary: id }),
+  ) => ({
     id,
     status,
-    items: [{ type: 'agentMessage', text: JSON.stringify({ summary: id }) }],
+    items: [{ type: 'agentMessage', text }],
   });
   try {
+    await writeFile(history, JSON.stringify([]));
+    await expect(executor.readLastCompletedTurn('session')).rejects.toThrow(
+      '没有可确认的最新轮次，请在原会话完成后再同步',
+    );
     await writeFile(history, JSON.stringify([turn('old')]));
     expect(await executor.readLastCompletedTurn('session')).toEqual({
       turnId: 'old',
@@ -137,15 +146,44 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', li
       turnId: 'new',
       result: { summary: 'new' },
     });
-    for (const status of ['inProgress', 'failed', 'interrupted']) {
+    for (const status of ['inProgress', 'interrupted']) {
       await writeFile(
         history,
         JSON.stringify([turn('old'), turn('new', status)]),
       );
       await expect(executor.readLastCompletedTurn('session')).rejects.toThrow(
-        '最新 Turn 尚未成功完成',
+        '最新一轮尚未完成或暂无法确认，请完成后再同步',
       );
     }
+    await writeFile(
+      history,
+      JSON.stringify([turn('old'), turn('new', 'failed')]),
+    );
+    await expect(executor.readLastCompletedTurn('session')).rejects.toThrow(
+      '最新一轮已失败，请在原会话处理后再同步',
+    );
+    await writeFile(
+      history,
+      JSON.stringify([turn('old'), turn('new', 'unknown')]),
+    );
+    await expect(executor.readLastCompletedTurn('session')).rejects.toThrow(
+      '最新一轮状态无法确认，请完成后再同步',
+    );
+    await writeFile(
+      history,
+      JSON.stringify([turn('new', 'completed', '不是结构化结果')]),
+    );
+    await expect(executor.readLastCompletedTurn('session')).rejects.toThrow(
+      '最新轮次未返回可识别的结果，请在原会话处理后再同步',
+    );
+    await writeFile(history, JSON.stringify({ error: 'thread not found' }));
+    await expect(executor.readLastCompletedTurn('session')).rejects.toThrow(
+      'Codex 会话不可用，请确认原会话仍可读取后再同步',
+    );
+    await writeFile(history, JSON.stringify({ error: '读取被拒绝' }));
+    await expect(executor.readLastCompletedTurn('session')).rejects.toThrow(
+      '无法读取 Codex 会话，请确认 Agent 在线且原会话可读后再同步',
+    );
     expect(
       children.every(
         (child) => child.exitCode !== null || child.signalCode !== null,
