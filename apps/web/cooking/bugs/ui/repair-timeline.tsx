@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { createClientId } from '@/cooking/shared/ui/client-id';
 import type { BugProgressTimelineNode } from '@/cooking/workspace/contract';
 import type { BugRepairView } from '@/cooking/repair/contract';
@@ -99,6 +100,38 @@ export function RepairAttemptDetails({
         ))}
       </ol>
     </section>
+  );
+}
+
+function SynchronizationCorrection({
+  correction,
+}: {
+  correction: NonNullable<BugRepairView['synchronizationCorrection']>;
+}) {
+  const [copied, setCopied] = useState(false);
+  const text = correction.schema
+    ? `${correction.instruction}\n\n结果约束：\n${correction.schema}`
+    : correction.instruction;
+  return (
+    <aside className="collab-sync-correction" aria-label="同步补正指引">
+      <p>{correction.instruction}</p>
+      {correction.schema ? (
+        <details>
+          <summary>本次结果约束</summary>
+          <pre>{correction.schema}</pre>
+        </details>
+      ) : null}
+      <button
+        onClick={() => {
+          void navigator.clipboard.writeText(text);
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 1600);
+        }}
+        type="button"
+      >
+        {copied ? '已复制补正指引' : '复制补正指引'}
+      </button>
+    </aside>
   );
 }
 
@@ -398,6 +431,11 @@ function RepairAttemptTimelineArticle({
             <>
               {repair.synchronizationError ? (
                 <p>{repair.synchronizationError}</p>
+              ) : null}
+              {repair.synchronizationCorrection ? (
+                <SynchronizationCorrection
+                  correction={repair.synchronizationCorrection}
+                />
               ) : null}
               <button
                 disabled={pending}

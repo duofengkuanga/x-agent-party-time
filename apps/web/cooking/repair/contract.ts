@@ -268,6 +268,12 @@ export const BugRepairViewSchema = z.object({
   pendingCommits: z.array(CommitShaSchema).nullable(),
   sessionAvailable: z.boolean(),
   synchronizationError: z.string().nullable(),
+  synchronizationCorrection: z
+    .object({
+      instruction: z.string().trim().min(1),
+      schema: z.string().trim().min(1).nullable(),
+    })
+    .nullable(),
   timeline: z.array(RepairTimelineNodeSchema),
   availableActions: z.array(z.enum(['RETRY_REPAIR', 'SYNC_SESSION'])),
   presentation: z.object({

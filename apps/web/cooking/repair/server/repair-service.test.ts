@@ -687,6 +687,12 @@ describe('RepairService', () => {
     ).toBe('Codex 会话的最新一轮尚未完成或暂无法确认，请完成后再同步');
     expect(
       fixture.repairs.repairView(
+        fixture.users.developer.id,
+        fixture.requested.bug.id,
+      )?.synchronizationCorrection,
+    ).toBeNull();
+    expect(
+      fixture.repairs.repairView(
         fixture.users.tester.id,
         fixture.requested.bug.id,
       )?.synchronizationError,
@@ -696,6 +702,43 @@ describe('RepairService', () => {
         .repairView(fixture.users.developer.id, fixture.requested.bug.id)
         ?.timeline.filter((node) => node.kind === 'REPAIR_ATTEMPT'),
     ).toHaveLength(1);
+
+    fixture.repairs.synchronizeSession(
+      fixture.users.developer.id,
+      fixture.requested.bug.id,
+      {
+        mutationId: randomUUID(),
+        expectedVersion: currentBug(fixture.database, fixture.requested.bug.id)
+          .version,
+      },
+    );
+    const [schemaClaim] = await fixture.executions.claim(
+      fixture.runner.id,
+      1,
+      0,
+    );
+    if (!schemaClaim) throw new Error('缺少 Schema 同步 Execution');
+    fixture.executions.start(fixture.runner.id, schemaClaim.id, {
+      kind: 'START_FAILED',
+      leaseToken: schemaClaim.lease.token,
+      failure: {
+        code: 'CODEX_EXECUTION_FAILED',
+        message: 'Codex 会话的最新轮次不符合原任务结果约束',
+        retryable: true,
+      },
+    });
+    const correction = fixture.repairs.repairView(
+      fixture.users.developer.id,
+      fixture.requested.bug.id,
+    )?.synchronizationCorrection;
+    expect(correction?.instruction).toContain('原 Codex 会话');
+    expect(correction?.schema).toContain('"result"');
+    expect(
+      fixture.repairs.repairView(
+        fixture.users.tester.id,
+        fixture.requested.bug.id,
+      )?.synchronizationCorrection,
+    ).toBeNull();
   });
 
   test('Execution 失败使用真实 code/message 且仅向工程负责人投影技术码', async () => {

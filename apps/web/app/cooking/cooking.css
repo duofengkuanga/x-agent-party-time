@@ -6239,6 +6239,24 @@
   padding-left: 10px;
 }
 
+.collab-sync-correction {
+  border-left: 2px solid var(--warning);
+  display: grid;
+  gap: 8px;
+  padding-left: 10px;
+}
+
+.collab-sync-correction p,
+.collab-sync-correction pre {
+  margin: 0;
+}
+
+.collab-sync-correction pre {
+  max-height: 280px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
 .collab-repair-result-list ul,
 .collab-repair-validations ul,
 .collab-repair-timeline details ol {

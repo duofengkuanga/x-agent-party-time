@@ -769,6 +769,9 @@ export class RepairService {
       synchronizationError: technical
         ? this.sessionSynchronizationError(bugId)
         : null,
+      synchronizationCorrection: technical
+        ? this.sessionSynchronizationCorrection(bugId)
+        : null,
       timeline: [
         {
           id: `registered:${bugId}`,
@@ -986,6 +989,58 @@ export class RepairService {
     return typeof failure?.failure?.message === 'string'
       ? failure.failure.message
       : null;
+  }
+
+  private sessionSynchronizationCorrection(bugId: string): {
+    instruction: string;
+    schema: string | null;
+  } | null {
+    const row = this.db
+      .prepare(
+        `SELECT execution.outcome_json, previous.codex_turn_json
+         FROM cooking_repair_session_sync sync
+         JOIN platform_execution execution ON execution.id = sync.execution_id
+         LEFT JOIN platform_execution previous
+           ON previous.id = execution.previous_execution_id
+         WHERE sync.bug_id = ? AND execution.state = 'FAILED'
+         ORDER BY sync.created_at DESC LIMIT 1`,
+      )
+      .get(bugId) as
+      | {
+          outcome_json: string | null;
+          codex_turn_json: string | null;
+        }
+      | undefined;
+    const failure = row?.outcome_json
+      ? (JSON.parse(row.outcome_json) as { failure?: { message?: unknown } })
+      : null;
+    const message = failure?.failure?.message;
+    if (typeof message !== 'string') return null;
+    const turn = row?.codex_turn_json
+      ? (JSON.parse(row.codex_turn_json) as {
+          outputJsonSchema?: unknown;
+        })
+      : null;
+    const schema =
+      turn?.outputJsonSchema && typeof turn.outputJsonSchema === 'object'
+        ? JSON.stringify(turn.outputJsonSchema, null, 2)
+        : null;
+    if (
+      schema &&
+      /未返回结果|未返回可识别的结果|不符合原任务结果约束/u.test(message)
+    )
+      return {
+        instruction:
+          '回到原 Codex 会话，完成实际修复与验证后，依据下方结果约束据实输出本次终态结果，再点击“同步状态”。',
+        schema,
+      };
+    if (/Commit|工作区|关联|执行前基线/u.test(message))
+      return {
+        instruction:
+          '回到原 Codex 会话，核对实际修复、提交和验证证据；不要编造提交或结果。完成后再次点击“同步状态”。',
+        schema: null,
+      };
+    return null;
   }
 
   private attemptForExecution(executionId: string): AttemptRow | undefined {
