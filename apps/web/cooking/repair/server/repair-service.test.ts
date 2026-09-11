@@ -591,6 +591,19 @@ describe('RepairService', () => {
     );
     const [claimed] = await fixture.executions.claim(fixture.runner.id, 1, 0);
     if (!claimed) throw new Error('缺少同步 Execution');
+    expect(claimed).toMatchObject({
+      previousExecutionId: started.executionId,
+      codexTurn: {
+        kind: 'READ_SESSION',
+        resultAssertions: [
+          { kind: 'GIT_COMMITS_CREATED', resultPath: ['result', 'commits'] },
+        ],
+      },
+      workspace: {
+        key: `bug-repair:${fixture.requested.bug.id}`,
+        isolation: 'BRANCH_WORKTREE',
+      },
+    });
     fixture.executions.start(fixture.runner.id, claimed.id, {
       kind: 'STARTED',
       leaseToken: claimed.lease.token,

@@ -360,6 +360,12 @@ export class UpdateService {
         if (this.hasActiveSessionSync(batchId))
           throw new PlatformError('RESOURCE_CONFLICT', '更新会话正在同步');
         const source = this.itemSource(batch.submission_item_id);
+        const previousExecution = this.executions.get(latest.execution_id);
+        if (!previousExecution.codexTurn)
+          throw new PlatformError(
+            'INVALID_TRANSITION',
+            '原更新任务缺少结果约束，不能同步',
+          );
         const syncId = this.createId();
         const execution = this.executions.enqueue({
           id: this.createId(),
@@ -370,7 +376,12 @@ export class UpdateService {
           bindingId: source.binding_id,
           priority: 0,
           approvalPolicy: 'never',
-          codexTurn: { kind: 'READ_SESSION', taskId: batch.session_id },
+          codexTurn: {
+            kind: 'READ_SESSION',
+            taskId: batch.session_id,
+            outputJsonSchema: previousExecution.codexTurn.outputJsonSchema,
+            resultAssertions: previousExecution.codexTurn.resultAssertions,
+          },
           workspace: null,
           attachmentIds: [],
         });

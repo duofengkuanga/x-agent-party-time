@@ -527,6 +527,13 @@ export class RepairService {
           );
         if (this.hasActiveSessionSync(bugId))
           throw new PlatformError('RESOURCE_CONFLICT', '修复会话正在同步');
+        const previousExecution = this.executions.get(latest.execution_id);
+        if (!previousExecution.codexTurn)
+          throw new PlatformError(
+            'INVALID_TRANSITION',
+            '原修复任务缺少结果约束，不能同步',
+          );
+        const resultAssertions = previousExecution.codexTurn?.resultAssertions;
         const syncId = this.createId();
         const executionId = this.createId();
         const execution = this.executions.enqueue({
@@ -538,8 +545,13 @@ export class RepairService {
           bindingId: this.bugContexts.get(bugId).bindingId,
           priority: 0,
           approvalPolicy: 'never',
-          codexTurn: { kind: 'READ_SESSION', taskId: context.session_id },
-          workspace: null,
+          codexTurn: {
+            kind: 'READ_SESSION',
+            taskId: context.session_id,
+            outputJsonSchema: previousExecution.codexTurn.outputJsonSchema,
+            resultAssertions,
+          },
+          workspace: previousExecution.workspace,
           attachmentIds: [],
         });
         const now = this.now().toISOString();

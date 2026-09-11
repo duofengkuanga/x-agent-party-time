@@ -10,6 +10,7 @@ export const CONNECTION_STATE_SCHEMA_VERSION = 1;
 export const IDENTITY_STATE_SCHEMA_VERSION = 1;
 export const BINDING_STATE_SCHEMA_VERSION = 1;
 export const EXECUTION_STATE_SCHEMA_VERSION = 2;
+export const RESULT_BASELINE_STATE_SCHEMA_VERSION = 1;
 export const OUTBOX_STATE_SCHEMA_VERSION = 2;
 export const INSTALL_STATE_SCHEMA_VERSION = 1;
 
@@ -64,6 +65,17 @@ export const ExecutionRecoveryStateSchema = z
   })
   .strict();
 
+export const ExecutionResultBaselineStateSchema = z
+  .object({
+    schemaVersion: z.literal(RESULT_BASELINE_STATE_SCHEMA_VERSION),
+    executionId: z.uuid(),
+    baseline: z
+      .object({ gitHead: z.string().trim().min(1) })
+      .strict()
+      .nullable(),
+  })
+  .strict();
+
 export const OutboxEntrySchema = z.discriminatedUnion('kind', [
   z
     .object({
@@ -102,6 +114,9 @@ export type IdentityState = z.infer<typeof IdentityStateSchema>;
 export type BindingState = z.infer<typeof BindingStateSchema>;
 export type ExecutionRecoveryState = z.infer<
   typeof ExecutionRecoveryStateSchema
+>;
+export type ExecutionResultBaselineState = z.infer<
+  typeof ExecutionResultBaselineStateSchema
 >;
 export type OutboxEntry = z.infer<typeof OutboxEntrySchema>;
 export type InstallState = z.infer<typeof InstallStateSchema>;

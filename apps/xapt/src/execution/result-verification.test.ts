@@ -68,6 +68,34 @@ test('只接受本次 Execution 创建且按顺序返回的真实 Commit', async
   ).rejects.toThrow('与本次 Execution 创建记录不一致');
 });
 
+test('缺少原 Execution 基线时拒绝接受同步结果', async () => {
+  const repository = await gitRepository();
+  const verifier = new GitExecutionResultVerifier(new NodeCommandRunner());
+
+  await expect(
+    verifier.verify(repository, assertions, null, {
+      result: { commits: ['abcdef1'] },
+    }),
+  ).rejects.toThrow('本机 Commit 结果校验缺少执行前基线');
+});
+
+test('不声明提交的有效业务失败结果不要求 Commit 基线', async () => {
+  const repository = await gitRepository();
+  const verifier = new GitExecutionResultVerifier(new NodeCommandRunner());
+
+  await expect(
+    verifier.verify(repository, assertions, null, {
+      result: {
+        outcome: 'FAILED',
+        failedStep: '执行测试',
+        reason: '测试失败',
+        completedActions: [],
+        pendingActions: [],
+      },
+    }),
+  ).resolves.toBeUndefined();
+});
+
 async function gitRepository(): Promise<string> {
   const repository = await mkdtemp(join(tmpdir(), 'xapt-result-verification-'));
   directories.push(repository);

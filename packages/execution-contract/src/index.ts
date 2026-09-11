@@ -121,6 +121,11 @@ export const CodexTurnSchema = z.discriminatedUnion('kind', [
     .object({
       kind: z.literal('READ_SESSION'),
       taskId: SessionIdSchema,
+      outputJsonSchema: JsonObjectSchema,
+      resultAssertions: z
+        .array(ExecutionResultAssertionSchema)
+        .max(5)
+        .optional(),
     })
     .strict(),
 ]);

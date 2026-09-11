@@ -11,6 +11,7 @@ import type {
   ExecutionResultAssertion,
   ExecutionRenewResponse,
   ExecutionStartRequest,
+  JsonObject,
   JsonValue,
 } from '@agent-party-time/execution-contract';
 import { NodeLocalFileSystem } from '../platform/files';
@@ -96,6 +97,179 @@ test('已有 Task 通过 codexTurn 继续原 Thread', async () => {
 
   expect(fixture.executor.inputs[0]?.taskId).toBe('thread-existing');
   expect(fixture.executor.inputs[0]?.skill).toBeNull();
+});
+
+test('首次执行保存结果校验基线供后续同步复用', async () => {
+  const fixture = await createFixture({
+    capturedBaseline: { gitHead: 'baseline-commit' },
+  });
+
+  await fixture.service.cycle(session);
+  await fixture.service.waitForIdle();
+
+  expect(await fixture.state.loadExecutionResultBaseline(executionId)).toEqual({
+    gitHead: 'baseline-commit',
+  });
+});
+
+test('同步会话使用原执行基线和断言校验结果', async () => {
+  const previousExecutionId = '00000000-0000-4000-8000-000000000399';
+  const fixture = await createFixture({
+    readSessionId: 'manual-session',
+    readResultAssertions: [
+      { kind: 'GIT_COMMITS_CREATED', resultPath: ['result', 'commits'] },
+    ],
+    previousExecutionId,
+    workspace: {
+      key: 'bug-repair:bug-1',
+      isolation: 'BRANCH_WORKTREE',
+      baseRef: 'origin/main',
+      branch: 'apt/repair/bug-1',
+    },
+  });
+  await fixture.state.saveExecutionResultBaseline(previousExecutionId, {
+    gitHead: 'baseline-commit',
+  });
+
+  await fixture.service.cycle(session);
+  await fixture.service.waitForIdle();
+
+  expect(fixture.verifiedBaselines).toEqual([{ gitHead: 'baseline-commit' }]);
+  expect(fixture.http.starts[0]).toMatchObject({
+    kind: 'STARTED',
+    sessionId: 'manual-session',
+  });
+  expect(fixture.http.outcomes[0]).toMatchObject({
+    outcome: { kind: 'SUCCEEDED' },
+  });
+});
+
+test('同步会话拒绝不符合原任务结果约束的结果', async () => {
+  const fixture = await createFixture({
+    readSessionId: 'manual-session',
+    readOutputJsonSchema: {
+      type: 'object',
+      properties: { result: { type: 'object' } },
+      required: ['result'],
+      additionalProperties: false,
+    },
+  });
+
+  await fixture.service.cycle(session);
+  await fixture.service.waitForIdle();
+
+  expect(fixture.http.starts[0]).toMatchObject({
+    kind: 'START_FAILED',
+    failure: {
+      code: 'CODEX_EXECUTION_FAILED',
+      message: 'Codex 会话的最新轮次不符合原任务结果约束',
+    },
+  });
+  expect(fixture.http.outcomes).toEqual([]);
+});
+
+test('同步会话保留原结果证据校验失败原因', async () => {
+  const previousExecutionId = '00000000-0000-4000-8000-000000000398';
+  const fixture = await createFixture({
+    readSessionId: 'manual-session',
+    readResultAssertions: [
+      { kind: 'GIT_COMMITS_CREATED', resultPath: ['result', 'commits'] },
+    ],
+    previousExecutionId,
+    workspace: {
+      key: 'bug-repair:bug-1',
+      isolation: 'BRANCH_WORKTREE',
+      baseRef: 'origin/main',
+      branch: 'apt/repair/bug-1',
+    },
+    resultValidationFailure: new ExecutionResultVerificationError(
+      '本机 Commit 结果校验缺少执行前基线',
+    ),
+  });
+
+  await fixture.service.cycle(session);
+  await fixture.service.waitForIdle();
+
+  expect(fixture.http.starts[0]).toMatchObject({
+    kind: 'START_FAILED',
+    failure: {
+      code: 'CODEX_EXECUTION_FAILED',
+      message: '本机 Commit 结果校验缺少执行前基线',
+    },
+  });
+  expect(fixture.http.outcomes).toEqual([]);
+});
+
+test('同步会话接受不声明提交的有效业务失败结果', async () => {
+  const fixture = await createFixture({
+    readSessionId: 'manual-session',
+    readResultAssertions: [
+      { kind: 'GIT_COMMITS_CREATED', resultPath: ['result', 'commits'] },
+    ],
+    previousExecutionId: '00000000-0000-4000-8000-000000000397',
+    workspace: {
+      key: 'bug-repair:bug-1',
+      isolation: 'BRANCH_WORKTREE',
+      baseRef: 'origin/main',
+      branch: 'apt/repair/bug-1',
+    },
+    readOutputJsonSchema: {
+      type: 'object',
+      properties: {
+        result: {
+          type: 'object',
+          properties: { outcome: { type: 'string', enum: ['FAILED'] } },
+          required: ['outcome'],
+        },
+      },
+      required: ['result'],
+    },
+    readResult: {
+      result: {
+        outcome: 'FAILED',
+        failedStep: '执行测试',
+        reason: '测试失败',
+        completedActions: [],
+        pendingActions: [],
+      },
+    },
+  });
+
+  await fixture.service.cycle(session);
+  await fixture.service.waitForIdle();
+
+  expect(fixture.http.starts[0]).toMatchObject({ kind: 'STARTED' });
+  expect(fixture.http.outcomes[0]).toMatchObject({
+    outcome: { kind: 'SUCCEEDED' },
+  });
+});
+
+test('同步会话不泄露原工作区解析错误', async () => {
+  const fixture = await createFixture({
+    readSessionId: 'manual-session',
+    readResultAssertions: [
+      { kind: 'GIT_COMMITS_CREATED', resultPath: ['result', 'commits'] },
+    ],
+    previousExecutionId: '00000000-0000-4000-8000-000000000396',
+    workspace: {
+      key: 'bug-repair:bug-1',
+      isolation: 'BRANCH_WORKTREE',
+      baseRef: 'origin/main',
+      branch: 'apt/repair/bug-1',
+    },
+    workspaceResolveFailure: new Error(
+      '/Users/example/private-worktree 不可读取',
+    ),
+  });
+
+  await fixture.service.cycle(session);
+  await fixture.service.waitForIdle();
+
+  expect(fixture.http.starts[0]).toMatchObject({
+    kind: 'START_FAILED',
+    failure: { message: '原任务工作区不可用，无法校验同步结果' },
+  });
+  expect(JSON.stringify(fixture.http.starts[0])).not.toContain('/Users/');
 });
 
 test('只读会话无法确认时投递可操作的同步失败', async () => {
@@ -357,6 +531,12 @@ async function createFixture(
     interactionExecutor?: boolean;
     readSessionId?: string;
     readSessionFailure?: Error;
+    readResultAssertions?: ExecutionResultAssertion[];
+    readOutputJsonSchema?: JsonObject;
+    readResult?: JsonValue;
+    workspaceResolveFailure?: Error;
+    previousExecutionId?: string;
+    capturedBaseline?: { gitHead: string } | null;
     owner?: ClaimedExecution['owner'];
     approvalPolicy?: ClaimedExecution['approvalPolicy'];
     workspace?: ClaimedExecution['workspace'];
@@ -382,7 +562,14 @@ async function createFixture(
     options.workspace,
   );
   if (options.readSessionId)
-    claimed.codexTurn = { kind: 'READ_SESSION', taskId: options.readSessionId };
+    claimed.codexTurn = {
+      kind: 'READ_SESSION',
+      taskId: options.readSessionId,
+      outputJsonSchema: options.readOutputJsonSchema ?? { type: 'object' },
+      resultAssertions: options.readResultAssertions,
+    };
+  if (options.previousExecutionId)
+    claimed.previousExecutionId = options.previousExecutionId;
   if (claimed.codexTurn && claimed.codexTurn.kind !== 'READ_SESSION')
     claimed.codexTurn.resultAssertions = options.resultAssertions;
   const http = new FakeExecutionHttp(claimed);
@@ -392,9 +579,11 @@ async function createFixture(
     options.deferredExecutor ?? false,
     options.interactionExecutor ?? false,
     options.readSessionFailure,
+    options.readResult,
   );
   let now = new Date('2026-08-03T08:00:00.000Z');
   let nextId = 400;
+  const verifiedBaselines: Array<{ gitHead: string } | null> = [];
   const build = () =>
     new ExecutionService(
       http,
@@ -406,6 +595,11 @@ async function createFixture(
       } as unknown as AttachmentMaterializer,
       {
         prepare: async () => ({ kind: 'EXECUTE', cwd: repositoryPath }),
+        resolve: async () => {
+          if (options.workspaceResolveFailure)
+            throw options.workspaceResolveFailure;
+          return repositoryPath;
+        },
       } as ExecutionWorkspaceManager,
       executor,
       {
@@ -419,8 +613,9 @@ async function createFixture(
         }),
       } as unknown as SkillBundleManager,
       {
-        capture: async () => null,
-        verify: async () => {
+        capture: async () => options.capturedBaseline ?? null,
+        verify: async (_repositoryPath, _assertions, baseline) => {
+          verifiedBaselines.push(baseline);
           if (options.resultValidationFailure)
             throw options.resultValidationFailure;
         },
@@ -435,6 +630,7 @@ async function createFixture(
     repositoryPath,
     http,
     executor,
+    verifiedBaselines,
     service: build(),
     restartedService: build,
     setNow(value: string) {
@@ -559,6 +755,7 @@ class FakeCodexExecutor implements CodexExecutor {
     private readonly deferred = false,
     private readonly interaction = false,
     private readonly readFailure?: Error,
+    private readonly readResult: JsonValue = { summary: 'done' },
   ) {}
 
   async begin(input: CodexExecutionInput): Promise<StartedCodexExecution> {
@@ -591,7 +788,7 @@ class FakeCodexExecutor implements CodexExecutor {
 
   async readLastCompletedTurn() {
     if (this.readFailure) throw this.readFailure;
-    return { turnId: 'turn-latest', result: { summary: 'done' } };
+    return { turnId: 'turn-latest', result: this.readResult };
   }
 
   resolveNext(): void {

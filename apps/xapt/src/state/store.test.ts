@@ -19,6 +19,7 @@ import {
   IDENTITY_STATE_SCHEMA_VERSION,
   INSTALL_STATE_SCHEMA_VERSION,
   OUTBOX_STATE_SCHEMA_VERSION,
+  RESULT_BASELINE_STATE_SCHEMA_VERSION,
 } from './schemas';
 import { BindingStateError, LocalStateError, LocalStateStore } from './store';
 
@@ -40,6 +41,7 @@ test('各类持久化状态独立演进 Schema', () => {
   expect(BINDING_STATE_SCHEMA_VERSION).toBe(1);
   expect(INSTALL_STATE_SCHEMA_VERSION).toBe(1);
   expect(EXECUTION_STATE_SCHEMA_VERSION).toBe(2);
+  expect(RESULT_BASELINE_STATE_SCHEMA_VERSION).toBe(1);
   expect(OUTBOX_STATE_SCHEMA_VERSION).toBe(2);
 });
 
@@ -57,6 +59,7 @@ test('全新 Home 初始化权限并且不读取或修改旧 Runner 目录', asy
     paths.state,
     paths.outbox,
     paths.executions,
+    paths.resultBaselines,
     paths.workspaces,
     paths.caches,
     paths.logs,
@@ -185,6 +188,9 @@ test('连接、Binding、Execution、Outbox 与安装状态可重启读取且不
     installedAt: now,
     updatedAt: now,
   });
+  await store.saveExecutionResultBaseline(executionId, {
+    gitHead: 'baseline-commit',
+  });
 
   const restarted = new LocalStateStore(paths, new NodeLocalFileSystem());
   await restarted.preflight();
@@ -194,6 +200,9 @@ test('连接、Binding、Execution、Outbox 与安装状态可重启读取且不
     runnerId,
   });
   expect(await restarted.loadExecutions()).toHaveLength(1);
+  expect(await restarted.loadExecutionResultBaseline(executionId)).toEqual({
+    gitHead: 'baseline-commit',
+  });
   expect(await restarted.loadOutbox()).toHaveLength(1);
   expect(await restarted.loadInstall()).toMatchObject({
     currentVersion: '0.1.0',
@@ -205,6 +214,7 @@ test('连接、Binding、Execution、Outbox 与安装状态可重启读取且不
       paths.connection,
       paths.bindings,
       join(paths.executions, `${executionId}.json`),
+      join(paths.resultBaselines, `${executionId}.json`),
       join(paths.outbox, `${outboxId}.json`),
       paths.installState,
     ].map((path) => readFile(path, 'utf8')),

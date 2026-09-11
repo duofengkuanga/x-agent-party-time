@@ -25,6 +25,7 @@ export interface XaptPaths {
   state: string;
   outbox: string;
   executions: string;
+  resultBaselines: string;
   workspaces: string;
   caches: string;
   updateCache: string;
@@ -81,6 +82,7 @@ export function xaptPaths(home: string): XaptPaths {
     state,
     outbox: join(state, 'outbox'),
     executions: join(state, 'executions'),
+    resultBaselines: join(state, 'result-baselines'),
     workspaces: join(state, 'workspaces'),
     caches,
     updateCache: join(caches, 'updates'),

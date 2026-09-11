@@ -109,6 +109,22 @@ describe('GitExecutionWorkspaceManager', () => {
         }),
       ),
     ).toBe(repair);
+    expect(
+      await restarted.resolve(binding, {
+        key: 'bug-repair:bug-1',
+        isolation: 'BRANCH_WORKTREE',
+        baseRef: 'origin/main',
+        branch: 'apt/repair/bug-1',
+      }),
+    ).toBe(repair);
+    await expect(
+      restarted.resolve(binding, {
+        key: 'missing-workspace',
+        isolation: 'BRANCH_WORKTREE',
+        baseRef: 'origin/main',
+        branch: 'apt/repair/missing',
+      }),
+    ).rejects.toThrow('原任务工作区不存在');
 
     await run(['git', '-C', repair, 'switch', '-c', 'wrong-branch']);
     await expect(

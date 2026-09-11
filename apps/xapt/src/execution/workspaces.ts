@@ -43,6 +43,10 @@ export interface ExecutionWorkspaceManager {
     repositoryPath: string,
     workspace: ExecutionWorkspace,
   ): Promise<PreparedExecutionWorkspace>;
+  resolve(
+    repositoryPath: string,
+    workspace: ExecutionWorkspace,
+  ): Promise<string>;
 }
 
 export type PreparedExecutionWorkspace =
@@ -73,6 +77,44 @@ export class GitExecutionWorkspaceManager implements ExecutionWorkspaceManager {
       () => undefined,
     );
     return result;
+  }
+
+  async resolve(
+    repositoryPathValue: string,
+    workspace: ExecutionWorkspace,
+  ): Promise<string> {
+    const result = this.pending.then(() =>
+      this.resolveLocked(repositoryPathValue, workspace),
+    );
+    this.pending = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
+  private async resolveLocked(
+    repositoryPathValue: string,
+    workspace: ExecutionWorkspace,
+  ): Promise<string> {
+    if (workspace.isolation === 'CLEANUP_WORKTREES')
+      throw new Error('清理工作区不能用于结果校验');
+    const repositoryPath = resolve(repositoryPathValue);
+    await requireDirectory(repositoryPath, '本机绑定仓库不存在');
+    const record = (await this.readState()).workspaces[workspace.key];
+    if (!record) throw new Error('原任务工作区不存在，无法校验同步结果');
+    if (
+      record.repositoryPath !== repositoryPath ||
+      record.isolation !== workspace.isolation ||
+      record.branch !==
+        (workspace.isolation === 'BRANCH_WORKTREE' ? workspace.branch : null)
+    )
+      throw new Error('原任务工作区与本机映射不一致，无法校验同步结果');
+    if (
+      !(await isExpectedGitWorktree(repositoryPath, record, this.worktreeRoot))
+    )
+      throw new Error('原任务工作区不可用，无法校验同步结果');
+    return record.worktreePath;
   }
 
   private async prepareLocked(

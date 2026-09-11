@@ -10,6 +10,8 @@ import {
   CONNECTION_STATE_SCHEMA_VERSION,
   ConnectionStateSchema,
   EXECUTION_STATE_SCHEMA_VERSION,
+  RESULT_BASELINE_STATE_SCHEMA_VERSION,
+  ExecutionResultBaselineStateSchema,
   ExecutionRecoveryStateSchema,
   IDENTITY_STATE_SCHEMA_VERSION,
   IdentityStateSchema,
@@ -21,6 +23,7 @@ import {
   type BindingState,
   type ConnectionState,
   type ExecutionRecoveryState,
+  type ExecutionResultBaselineState,
   type InstallState,
   type OutboxEntry,
 } from './schemas';
@@ -44,6 +47,7 @@ export class LocalStateStore {
       this.paths.applicationSupport,
       this.paths.outbox,
       this.paths.executions,
+      this.paths.resultBaselines,
     ])
       await this.cleanupTemporaryFiles(path);
     await this.installationId();
@@ -167,6 +171,33 @@ export class LocalStateStore {
     await this.files.remove(join(this.paths.executions, `${executionId}.json`));
   }
 
+  async saveExecutionResultBaseline(
+    executionId: string,
+    baseline: ExecutionResultBaselineState['baseline'],
+  ): Promise<void> {
+    const value = ExecutionResultBaselineStateSchema.parse({
+      schemaVersion: RESULT_BASELINE_STATE_SCHEMA_VERSION,
+      executionId,
+      baseline,
+    });
+    await this.writeState(
+      join(this.paths.resultBaselines, `${executionId}.json`),
+      value,
+    );
+  }
+
+  async loadExecutionResultBaseline(
+    executionId: string,
+  ): Promise<ExecutionResultBaselineState['baseline'] | null> {
+    const value = await this.readState(
+      join(this.paths.resultBaselines, `${executionId}.json`),
+      ExecutionResultBaselineStateSchema,
+      RESULT_BASELINE_STATE_SCHEMA_VERSION,
+      true,
+    );
+    return value?.baseline ?? null;
+  }
+
   async saveOutbox(value: OutboxEntry): Promise<void> {
     const parsed = OutboxEntrySchema.parse(value);
     await this.writeState(join(this.paths.outbox, `${parsed.id}.json`), parsed);
@@ -216,6 +247,7 @@ export class LocalStateStore {
       this.paths.state,
       this.paths.outbox,
       this.paths.executions,
+      this.paths.resultBaselines,
       this.paths.workspaces,
     ])
       await this.requirePrivateDirectory(path);
@@ -320,6 +352,7 @@ export class LocalStateStore {
       this.paths.state,
       this.paths.outbox,
       this.paths.executions,
+      this.paths.resultBaselines,
       this.paths.workspaces,
       this.paths.caches,
       this.paths.updateCache,

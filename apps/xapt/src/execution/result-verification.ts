@@ -47,20 +47,21 @@ export class GitExecutionResultVerifier implements ExecutionResultVerifier {
     result: JsonValue,
   ): Promise<void> {
     if (!assertions.some(({ kind }) => kind === 'GIT_COMMITS_CREATED')) return;
-    if (!baseline)
-      throw new ExecutionResultVerificationError(
-        '本机 Commit 结果校验缺少执行前基线',
-      );
-    const actualCommits = lines(
-      await this.git(repositoryPath, [
-        'rev-list',
-        '--reverse',
-        `${baseline.gitHead}..HEAD`,
-      ]),
-    );
     for (const assertion of assertions) {
       if (assertion.kind !== 'GIT_COMMITS_CREATED') continue;
       const value = valueAtPath(result, assertion.resultPath);
+      if (value === undefined) continue;
+      if (!baseline)
+        throw new ExecutionResultVerificationError(
+          '本机 Commit 结果校验缺少执行前基线',
+        );
+      const actualCommits = lines(
+        await this.git(repositoryPath, [
+          'rev-list',
+          '--reverse',
+          `${baseline.gitHead}..HEAD`,
+        ]),
+      );
       if (
         !Array.isArray(value) ||
         !value.every((item) => typeof item === 'string')

@@ -1,9 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
+import Ajv from 'ajv';
 import type {
   ClaimedExecution,
   CompleteExecutionRequest,
   ExecutionFailure,
   ExecutionStartRequest,
+  JsonObject,
   JsonValue,
 } from '@agent-party-time/execution-contract';
 import { serializeDeterministicJson } from '@agent-party-time/execution-contract';
@@ -35,6 +37,10 @@ import {
 } from '../skills/manager';
 
 const MAX_FAILURE_MESSAGE_LENGTH = 1_000;
+const sessionResultSchemaValidator = new Ajv({
+  allErrors: true,
+  strict: false,
+});
 
 export interface ExecutionProjection {
   activeExecutionCount: number;
@@ -267,6 +273,10 @@ export class ExecutionService {
       resultBaseline = await this.resultVerifier.capture(
         repositoryPath,
         resultAssertions,
+      );
+      await this.state.saveExecutionResultBaseline(
+        execution.id,
+        resultBaseline,
       );
     } catch (error) {
       await this.reportStartFailure(session, execution, {
@@ -538,14 +548,57 @@ export class ExecutionService {
     let result: JsonValue;
     try {
       const completed = await this.executor.readLastCompletedTurn(sessionId);
+      verifySessionResultSchema(
+        execution.codexTurn?.outputJsonSchema,
+        completed.result,
+      );
+      const resultAssertions = execution.codexTurn?.resultAssertions ?? [];
+      if (resultAssertions.length > 0) {
+        const bindingPath = await this.state.resolveBinding(
+          execution.bindingId,
+        );
+        if (!bindingPath)
+          throw new ExecutionResultVerificationError(
+            '本机未登记原任务关联，无法校验同步结果',
+          );
+        if (!execution.workspace)
+          throw new ExecutionResultVerificationError(
+            '同步任务缺少原任务工作区，无法校验结果',
+          );
+        if (!execution.previousExecutionId)
+          throw new ExecutionResultVerificationError(
+            '同步任务缺少原执行关联，无法校验结果',
+          );
+        let repositoryPath: string;
+        try {
+          repositoryPath = await this.workspaces.resolve(
+            bindingPath,
+            execution.workspace,
+          );
+        } catch {
+          throw new ExecutionResultVerificationError(
+            '原任务工作区不可用，无法校验同步结果',
+          );
+        }
+        const resultBaseline = await this.state.loadExecutionResultBaseline(
+          execution.previousExecutionId,
+        );
+        await this.resultVerifier.verify(
+          repositoryPath,
+          resultAssertions,
+          resultBaseline,
+          completed.result,
+        );
+      }
       result = { turnId: completed.turnId, result: completed.result };
     } catch (error) {
       await this.reportStartFailure(session, execution, {
         code: 'CODEX_EXECUTION_FAILED',
         message:
-          error instanceof CodexAppServerError
+          error instanceof CodexAppServerError ||
+          error instanceof ExecutionResultVerificationError
             ? failureMessage(error.message)
-            : '读取 Codex Session 结果失败',
+            : '读取 Codex 会话结果失败',
         retryable: true,
       });
       return;
@@ -712,6 +765,24 @@ function failureMessage(message: string): string {
   return normalized.length <= MAX_FAILURE_MESSAGE_LENGTH
     ? normalized
     : `${normalized.slice(0, MAX_FAILURE_MESSAGE_LENGTH - 1)}…`;
+}
+
+function verifySessionResultSchema(
+  outputJsonSchema: JsonObject | undefined,
+  result: JsonValue,
+): void {
+  if (!outputJsonSchema)
+    throw new ExecutionResultVerificationError('同步任务缺少原任务结果约束');
+  let validate;
+  try {
+    validate = sessionResultSchemaValidator.compile(outputJsonSchema);
+  } catch {
+    throw new ExecutionResultVerificationError('原任务结果约束无法验证');
+  }
+  if (!validate(result))
+    throw new ExecutionResultVerificationError(
+      'Codex 会话的最新轮次不符合原任务结果约束',
+    );
 }
 
 function isTerminalDeliveryError(error: unknown): boolean {
