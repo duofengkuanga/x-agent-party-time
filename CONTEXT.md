@@ -31,7 +31,7 @@ _Avoid_: Agent、Runner CLI、Agent CLI
 _Avoid_: xapt、Runner、Worker
 
 **Agent Installation**:
-一份 xapt 安装在正式卸载前保持稳定的本机身份；重新授权、更新或删除连接状态不会创建新的 Agent，正式卸载后重新安装才是新的安装身份。
+一份 xapt 安装在正式卸载前保持稳定的本机身份，与可更新的连接状态相互独立。
 _Avoid_: Connection、Credential、设备名
 
 **Runner**:
@@ -47,11 +47,11 @@ _Avoid_: Path、Runner Binding
 _Avoid_: Repair、Task、Job
 
 **Execution Brief**:
-一次 Execution 首次启动 Codex Task 时提供的最小结构化事实快照，只包含当前任务无法从本机工作区推导的信息；稳定执行规则属于 Skill，后续 Turn 只补充新增事实。
+一次 Execution 启动时需要的最小结构化事实快照，包含当前任务无法从本机工作区推导的信息。
 _Avoid_: Prompt、Rendered Prompt
 
 **Execution Outcome**:
-一次 Execution 结束时提交的唯一、紧凑的结构化结果，用于推进业务状态和保存最终事实；它只包含状态转换所需证据，不重复生成展示文案或过程进度。
+一次 Execution 结束时的唯一结构化结果，包含业务状态转换所需的终态事实和证据。
 _Avoid_: Progress Snapshot、Timeline Update
 
 **Execution Progress Update**:
@@ -71,15 +71,15 @@ Execution 过程中 Codex 明确请求用户输入或权限决定的等待点；
 _Avoid_: Feedback、Chat Message
 
 **External Session Continuation**:
-开发者在平台外使用既有 Session ID 继续某个 Repair 或 Update Codex Session 的行为；平台仅向工程负责人展示可复制的 Session ID，不展示或生成恢复命令。它仅替代失败后的“重新执行修复”和“重新执行统一更新”入口；会话期间平台保持此前失败状态，工程负责人可显式同步。验证不通过后的返修与已完成 Bug 的重新打开仍由平台携带新反馈，自动在原 Repair Session 中创建下一 Turn。
+开发者在平台外继续一个失败的 Repair 或 Update Codex Session 的行为，与平台托管的业务返修相区分。
 _Avoid_: Platform Retry、Manual Repair Node
 
 **External Session Attempt**:
-由 xapt 在 Session Synchronization 读取并校验结构化结果后，自动追加的 Repair 或 Update 尝试记录；它保留此前失败记录，不覆盖历史。
+一次 Session Synchronization 确认的外部会话结果所对应的 Repair 或 Update 尝试记录，与此前的失败尝试各自独立。
 _Avoid_: Corrected Attempt、Overwritten Failure
 
 **Session Synchronization**:
-工程负责人触发的只读同步操作：xapt 读取指定 Codex Session 的最新结果并回报平台。它不启动或继续 Codex、不修改业务代码；仅有效的现有 Repair 或 Update Schema 可以推进业务状态。
+工程负责人请求平台读取并校验指定 Codex Session 最新终态结果的只读同步操作，与启动或继续会话相区分。
 _Avoid_: Retry、Resume、Manual Repair Node
 
 ## 缺陷交付

@@ -53,3 +53,13 @@ This project is indexed by GitNexus as **x-agent-party-time** (2039 symbols, 674
 - 除非用户明确指出存在生产数据、已发布协议或外部系统契约，否则直接修正到最新领域模型、Schema、协议、路由和行为，不实现向后兼容。
 - 不引入双写、fallback、deprecated 字段、兼容 adapter、宽松联合类型、占位默认值或长期中间状态；旧开发数据允许清空重建。
 - 只有改动会影响生产数据、已发布协议或外部系统时，才先说明破坏面并由用户决定迁移方案。
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live in GitHub Issues. Before reading or publishing tickets, read `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context: root `CONTEXT.md` and `docs/adr/`. Before exploring the codebase, read `docs/agents/domain.md`.
