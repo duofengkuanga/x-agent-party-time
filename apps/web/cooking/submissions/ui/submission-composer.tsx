@@ -4,7 +4,14 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { createClientId } from '@/cooking/shared/ui/client-id';
 import type { User } from '@/platform/auth/contract';
-import type { SubmissionCreationCatalog } from '../contract';
+import {
+  EnvironmentConfirmation,
+  EnvironmentConflicts,
+} from './environment-confirmation';
+import type {
+  EnvironmentConflict,
+  SubmissionCreationCatalog,
+} from '../contract';
 import { createSubmissionAction } from '../server/actions';
 
 type CatalogProject = SubmissionCreationCatalog[number];
@@ -44,6 +51,8 @@ export function SubmissionComposer({
     const first = createItemDraft(initialProject, initialTesterId, []);
     return first ? [first] : [];
   });
+  const [conflicts, setConflicts] = useState<EnvironmentConflict[]>([]);
+  const [confirmEnvironment, setConfirmEnvironment] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -86,7 +95,7 @@ export function SubmissionComposer({
     );
   }
 
-  async function submit() {
+  async function submit(takeover = false) {
     if (!project) {
       setError('请先选择项目。');
       return;
@@ -100,6 +109,15 @@ export function SubmissionComposer({
     try {
       const result = await createSubmissionAction(project.projectId, {
         mutationId: createClientId(),
+        environmentTakeovers: takeover
+          ? conflicts.map(
+              ({ environmentId, submissionItemId, expectedRevision }) => ({
+                environmentId,
+                submissionItemId,
+                expectedRevision,
+              }),
+            )
+          : undefined,
         title,
         requirementDescription,
         testerUserId,
@@ -120,7 +138,12 @@ export function SubmissionComposer({
         ),
       });
       if (!result.ok) {
-        setError(result.error.message);
+        setError(
+          result.error.code === 'RESOURCE_CONFLICT' && result.conflicts?.length
+            ? null
+            : result.error.message,
+        );
+        setConflicts(result.conflicts ?? []);
         return;
       }
       onCreated(result.result.id);
@@ -128,6 +151,7 @@ export function SubmissionComposer({
       setError(messageOf(actionError, '创建提测单失败，请稍后重试。'));
     } finally {
       setPending(false);
+      setConfirmEnvironment(false);
     }
   }
 
@@ -154,7 +178,12 @@ export function SubmissionComposer({
           <div>
             <h2 id="submission-composer-title">创建提测单</h2>
           </div>
-          <button aria-label="关闭创建提测单" onClick={onClose} type="button">
+          <button
+            aria-label="关闭创建提测单"
+            onClick={onClose}
+            disabled={pending}
+            type="button"
+          >
             ×
           </button>
         </header>
@@ -162,121 +191,149 @@ export function SubmissionComposer({
           {catalog.length ? (
             <form
               className="collab-form"
+              onChange={() => {
+                setConflicts([]);
+                setError(null);
+              }}
               onSubmit={(event) => {
                 event.preventDefault();
                 void submit();
               }}
             >
-              <div className="collab-form__grid">
-                <label>
-                  <span>项目</span>
-                  <select
-                    onChange={(event) => changeProject(event.target.value)}
-                    value={projectId}
-                  >
-                    {catalog.map((candidate) => (
-                      <option
-                        key={candidate.projectId}
-                        value={candidate.projectId}
-                      >
-                        {candidate.projectName}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span>测试负责人</span>
-                  <select
-                    onChange={(event) => changeTester(event.target.value)}
-                    required
-                    value={testerUserId}
-                  >
-                    {project?.members.map((member) => (
-                      <option key={member.id} value={member.id}>
-                        {member.displayName}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <label>
-                <span>提测标题</span>
-                <input
-                  maxLength={160}
-                  onChange={(event) => setTitle(event.target.value)}
-                  placeholder="例如：结算流程联调"
-                  required
-                  value={title}
-                />
-              </label>
-              <label>
-                <span>需求说明</span>
-                <textarea
-                  maxLength={8_000}
-                  onChange={(event) =>
-                    setRequirementDescription(event.target.value)
-                  }
-                  placeholder="说明本次提测范围与验收重点"
-                  required
-                  rows={4}
-                  value={requirementDescription}
-                />
-              </label>
-
-              {project && items.length ? (
-                <div className="collab-form__items">
-                  {items.map((item, index) => (
-                    <ItemEditor
-                      draft={item}
-                      index={index}
-                      key={item.key}
-                      onChange={(next) => updateItem(item.key, () => next)}
-                      onRemove={
-                        items.length > 1
-                          ? () =>
-                              setItems((current) =>
-                                current.filter(
-                                  (candidate) => candidate.key !== item.key,
-                                ),
-                              )
-                          : null
-                      }
-                      project={project}
-                      selectedEngineeringIds={selectedEngineeringIds}
-                      testerUserId={testerUserId}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <div className="collab-form__blocked">
-                  <div>
-                    <strong>当前项目还不能创建提测单</strong>
-                    <p>
-                      至少需要一个工程成员、可用 Agent 绑定
-                      和测试环境，且测试负责人不能同时负责提测项。
-                    </p>
-                  </div>
-                  <Link href="/cooking/projects">前往配置</Link>
-                </div>
-              )}
-
-              <button
-                className="collab-add-engineering"
-                disabled={!canAddItem}
-                onClick={() => {
-                  if (!project) return;
-                  const next = createItemDraft(
-                    project,
-                    testerUserId,
-                    selectedEngineeringIds,
-                  );
-                  if (next) setItems((current) => [...current, next]);
-                }}
-                type="button"
+              <fieldset
+                className="collab-composer-fields"
+                disabled={pending || confirmEnvironment}
               >
-                ＋ 添加提测工程
-              </button>
+                <div className="collab-form__grid">
+                  <label>
+                    <span>项目</span>
+                    <select
+                      onChange={(event) => changeProject(event.target.value)}
+                      value={projectId}
+                    >
+                      {catalog.map((candidate) => (
+                        <option
+                          key={candidate.projectId}
+                          value={candidate.projectId}
+                        >
+                          {candidate.projectName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>测试负责人</span>
+                    <select
+                      onChange={(event) => changeTester(event.target.value)}
+                      required
+                      value={testerUserId}
+                    >
+                      {project?.members.map((member) => (
+                        <option key={member.id} value={member.id}>
+                          {member.displayName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <label>
+                  <span>提测标题</span>
+                  <input
+                    maxLength={160}
+                    onChange={(event) => setTitle(event.target.value)}
+                    placeholder="例如：结算流程联调"
+                    required
+                    value={title}
+                  />
+                </label>
+                <label>
+                  <span>需求说明</span>
+                  <textarea
+                    maxLength={8_000}
+                    onChange={(event) =>
+                      setRequirementDescription(event.target.value)
+                    }
+                    placeholder="说明本次提测范围与验收重点"
+                    required
+                    rows={4}
+                    value={requirementDescription}
+                  />
+                </label>
 
+                {project && items.length ? (
+                  <div className="collab-form__items">
+                    {items.map((item, index) => (
+                      <ItemEditor
+                        draft={item}
+                        index={index}
+                        key={item.key}
+                        onChange={(next) => updateItem(item.key, () => next)}
+                        onRemove={
+                          items.length > 1
+                            ? () =>
+                                setItems((current) =>
+                                  current.filter(
+                                    (candidate) => candidate.key !== item.key,
+                                  ),
+                                )
+                            : null
+                        }
+                        project={project}
+                        selectedEngineeringIds={selectedEngineeringIds}
+                        testerUserId={testerUserId}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="collab-form__blocked">
+                    <div>
+                      <strong>当前项目还不能创建提测单</strong>
+                      <p>
+                        至少需要一个工程成员、可用 Agent 绑定
+                        和测试环境，且测试负责人不能同时负责提测项。
+                      </p>
+                    </div>
+                    <Link href="/cooking/projects">前往配置</Link>
+                  </div>
+                )}
+
+                <button
+                  className="collab-add-engineering"
+                  disabled={!canAddItem}
+                  onClick={() => {
+                    if (!project) return;
+                    const next = createItemDraft(
+                      project,
+                      testerUserId,
+                      selectedEngineeringIds,
+                    );
+                    if (next) setItems((current) => [...current, next]);
+                  }}
+                  type="button"
+                >
+                  ＋ 添加提测工程
+                </button>
+              </fieldset>
+              {conflicts.length ? (
+                <section className="collab-environment-notice" role="alert">
+                  <h3>所选环境正在被其他提测单使用</h3>
+                  <EnvironmentConflicts conflicts={conflicts} />
+                  <p>优先使用后，原提测单的对应提测项将暂停更新和测试验证。</p>
+                  <div className="collab-dialog__actions">
+                    <button
+                      type="button"
+                      className="collab-primary"
+                      disabled={
+                        pending ||
+                        conflicts.some((value) => value.blockedReason)
+                      }
+                      onClick={() => setConfirmEnvironment(true)}
+                    >
+                      优先使用此环境
+                    </button>
+                  </div>
+                </section>
+              ) : null}
               {error ? (
                 <p className="collab-form__error" role="alert">
                   {error}
@@ -306,6 +363,16 @@ export function SubmissionComposer({
           )}
         </div>
       </section>
+      {confirmEnvironment ? (
+        <EnvironmentConfirmation
+          title={title}
+          conflicts={conflicts}
+          pending={pending}
+          confirmLabel="确认切换并创建提测单"
+          onClose={() => setConfirmEnvironment(false)}
+          onConfirm={() => void submit(true)}
+        />
+      ) : null}
     </div>
   );
 }

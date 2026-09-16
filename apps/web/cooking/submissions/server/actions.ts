@@ -15,6 +15,8 @@ import type {
   SubmissionCreationCatalog,
   TestSubmission,
   UpdateSubmissionInput,
+  EnvironmentCommand,
+  EnvironmentConflict,
 } from '../contract';
 
 type SubmissionActionFailure = {
@@ -42,8 +44,8 @@ export async function loadSubmissionCreationCatalogAction(): Promise<SubmissionC
 export async function createSubmissionAction(
   projectId: string,
   input: CreateSubmissionInput,
-): Promise<SubmissionActionResult> {
-  return runInteractiveMutation({
+): Promise<SubmissionActionResult & { conflicts?: EnvironmentConflict[] }> {
+  const result = await runInteractiveMutation({
     validationEvent: 'cooking_submission_action_validation_failed',
     command: ({ userId }) => {
       const result = submissionService().createSubmission(
@@ -55,6 +57,42 @@ export async function createSubmissionAction(
         result,
         refreshPaths: ['/cooking', `/cooking/${result.id}`],
       };
+    },
+  });
+  if (
+    !result.ok &&
+    ['RESOURCE_CONFLICT', 'STALE_STATE'].includes(result.error.code)
+  ) {
+    const user = await requireCurrentUser();
+    try {
+      return {
+        ...result,
+        conflicts: submissionService().environmentConflicts(
+          user.id,
+          projectId,
+          input,
+        ),
+      };
+    } catch (error) {
+      return actionError(error);
+    }
+  }
+  return result;
+}
+
+export async function changeSubmissionEnvironmentAction(
+  itemId: string,
+  input: EnvironmentCommand,
+): Promise<SubmissionActionResult> {
+  return runInteractiveMutation({
+    validationEvent: 'cooking_environment_action_validation_failed',
+    command: ({ userId }) => {
+      const result = submissionService().changeEnvironment(
+        userId,
+        itemId,
+        input,
+      );
+      return { result, refreshPaths: ['/cooking', `/cooking/${result.id}`] };
     },
   });
 }

@@ -1,3 +1,4 @@
+import { environmentReady } from '@/cooking/submissions/server/environment-access';
 import { BugDeletion } from './bug-deletion';
 import { randomUUID } from 'node:crypto';
 import type { AppDatabase } from '@/platform/database';
@@ -763,7 +764,11 @@ export class BugService {
     )
       actions.push('REQUEST_REPAIR', 'CANCEL');
     if (bug.stage === 'CANCELLED') actions.push('RESTORE');
-    if (bug.stage === 'WAITING_FOR_VERIFICATION')
+    if (
+      bug.stage === 'WAITING_FOR_VERIFICATION' &&
+      bug.submissionItemId &&
+      environmentReady(this.db, bug.submissionItemId)
+    )
       actions.push('VERIFY_PASS', 'VERIFY_FAIL');
     if (bug.stage === 'DONE' && !bug.archivedAt)
       actions.push('REOPEN', 'ARCHIVE');

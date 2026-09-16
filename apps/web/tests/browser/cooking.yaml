@@ -193,3 +193,73 @@ cases:
       - wait: 1000
     assert:
       - text: { sel: '[role="dialog"]', contains: 实际决定：仅允许这一次 }
+
+  - name: occupied environment shows explicit takeover confirmation and retains form on cancel
+    steps:
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: { load: networkidle }
+      - eval: "[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('退出登录'))?.click(); true"
+      - wait: 'input[name="username"]'
+      - fill: { sel: 'input[name="username"]', text: __USERNAME__ }
+      - fill: { sel: 'input[name="password"]', text: __PASSWORD__ }
+      - click: '.auth-submit'
+      - wait: { load: networkidle }
+      - click: '.collab-rail__create'
+      - wait: '#submission-composer-title'
+      - fill:
+          {
+            sel: '.collab-form input[maxlength="160"]',
+            text: 优先使用环境浏览器验收,
+          }
+      - fill: { sel: '.collab-form textarea', text: 验证环境独占切换与表单保留 }
+      - click: '.collab-dialog__actions button[type="submit"]'
+      - wait: '.collab-environment-notice'
+      - click: '.collab-environment-notice button.collab-primary'
+      - wait: 'dialog[open]'
+    assert:
+      - text: { sel: 'dialog[open]', contains: 优先使用环境浏览器验收 }
+      - text: { sel: 'dialog[open]', contains: 缺陷与进度保留 }
+      - eval: "document.querySelector('dialog[open]').contains(document.activeElement)"
+
+  - name: takeover confirmation works in night theme and cancel preserves draft
+    steps:
+      - press: Escape
+      - click: 'button[aria-label="关闭创建提测单"]'
+      - click: 'button[aria-label="切换暗夜主题"]'
+      - click: '.collab-rail__create'
+      - wait: '#submission-composer-title'
+      - fill:
+          { sel: '.collab-form input[maxlength="160"]', text: 暗夜环境优先验收 }
+      - fill: { sel: '.collab-form textarea', text: 暗夜确认流程 }
+      - click: '.collab-dialog__actions button[type="submit"]'
+      - wait: '.collab-environment-notice'
+      - click: '.collab-environment-notice button.collab-primary'
+      - wait: 'dialog[open]'
+      - press: Escape
+    assert:
+      - hidden: 'dialog[open]'
+      - eval: 'document.querySelector(''.collab-form input[maxlength="160"]'').value === ''暗夜环境优先验收'''
+      - visible: '.collab-shell[data-theme="night"] .collab-environment-notice'
+
+  - name: confirmed takeover creates submission and pauses previous item
+    steps:
+      - click: '.collab-environment-notice button.collab-primary'
+      - wait: 'dialog[open]'
+      - click: 'dialog[open] button.collab-primary'
+      - wait: 1500
+    assert:
+      - hidden: '#submission-composer-title'
+      - text: { sel: '.collab-environment-notices', contains: 等待确认部署 }
+      - text:
+          {
+            sel: '.collab-environment-notices',
+            contains: 取得使用权不会自动更换环境中的代码,
+          }
+
+  - name: previous submission exposes paused environment and reacquire entry
+    steps:
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: { load: networkidle }
+    assert:
+      - text: { sel: '.collab-environment-notices', contains: 已暂停使用环境 }
+      - text: { sel: '.collab-environment-notices', contains: 重新取得环境 }

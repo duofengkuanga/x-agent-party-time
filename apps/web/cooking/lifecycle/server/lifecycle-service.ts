@@ -1,3 +1,7 @@
+import {
+  requireEnvironment,
+  environmentObservers,
+} from '@/cooking/submissions/server/environment-access';
 import { randomUUID } from 'node:crypto';
 import {
   sanitizeExecutionInteractionPayload,
@@ -80,6 +84,8 @@ export class LifecycleService {
       }),
       perform: () => {
         const source = this.requireTester(actorUserId, bugId);
+        if (source.submission_item_id)
+          requireEnvironment(this.db, source.submission_item_id, true);
         this.requireBugVersion(source, input.expectedVersion);
         if (source.stage !== 'WAITING_FOR_VERIFICATION')
           throw new PlatformError(
@@ -338,6 +344,7 @@ export class LifecycleService {
     inputValue: LifecycleCommandInput,
   ): CloseSubmissionMutationResult {
     const input = LifecycleCommandInputSchema.parse(inputValue);
+    const environmentInvalidations = new Map<string, number>();
     const result = this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
@@ -395,6 +402,23 @@ export class LifecycleService {
           .run(now, now, submissionId, input.expectedVersion);
         if (update.changes !== 1) throw staleLifecycle('提测单');
         const revision = this.writes.bumpRevision(submissionId, now);
+        const heldEnvironments = this.db
+          .prepare(
+            'SELECT environment_id FROM cooking_submission_environment_lock WHERE submission_id = ?',
+          )
+          .all(submissionId) as Array<{ environment_id: string }>;
+        for (const { environment_id } of heldEnvironments)
+          for (const observer of environmentObservers(
+            this.db,
+            environment_id,
+            submissionId,
+          ))
+            environmentInvalidations.set(observer, 0);
+        for (const observer of environmentInvalidations.keys())
+          environmentInvalidations.set(
+            observer,
+            this.writes.bumpRevision(observer, now),
+          );
         this.db
           .prepare(
             'DELETE FROM cooking_submission_environment_lock WHERE submission_id = ?',
@@ -440,6 +464,8 @@ export class LifecycleService {
         };
       },
     });
+    for (const [id, revision] of environmentInvalidations)
+      this.writes.publishInvalidation(id, revision);
     return result;
   }
 
@@ -1389,7 +1415,7 @@ export class LifecycleService {
         kind: 'SUBMISSION',
         bugId: null,
         title: '提测单已关闭',
-        summary: '全部缺陷已终结，测试环境占用已释放。',
+        summary: '全部缺陷已终结，本提测单持有的环境使用权已释放。',
         createdAt: submission.closed_at,
       });
     return entries.sort(

@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { PlatformError } from '@/platform/errors';
 
-export const SERVER_SCHEMA_VERSION = 24;
+export const SERVER_SCHEMA_VERSION = 25;
 
 const SCHEMA = `
 CREATE TABLE platform_user (
@@ -385,6 +385,7 @@ CREATE INDEX cooking_submission_item_binding
   ON cooking_submission_item(binding_id, submission_id);
 
 CREATE TABLE cooking_submission_environment_lock (
+  deployment_confirmed INTEGER NOT NULL DEFAULT 1 CHECK (deployment_confirmed IN (0, 1)),
   environment_id TEXT PRIMARY KEY REFERENCES cooking_environment(id) ON DELETE RESTRICT,
   engineering_id TEXT NOT NULL REFERENCES cooking_engineering(id) ON DELETE RESTRICT,
   submission_id TEXT NOT NULL REFERENCES cooking_test_submission(id) ON DELETE CASCADE,

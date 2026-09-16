@@ -1525,3 +1525,184 @@ function user(username: string, displayName: string) {
     password: 'password',
   };
 }
+
+describe('更新遵守环境使用权', () => {
+  test('暂停后不自动冻结也不能手动更新，重新取得环境后恢复；活动更新阻止切换', async () => {
+    const fixture = await setup();
+    fixture.createBug('切换期间保留候选');
+    await completeNextRepair(fixture, 'environment-repair', ['aaaaaaa']);
+    const submissions = new SubmissionService(
+      fixture.database,
+      fixture.clock.now,
+    );
+    const view = submissions.getWorkspace(
+      fixture.users.owner.id,
+      fixture.submission.id,
+    );
+    const originalItem = view.submission.items[0]!;
+    const input = {
+      mutationId: randomUUID(),
+      title: '插队提测',
+      requirementDescription: '切换环境',
+      testerUserId: fixture.users.tester.id,
+      items: [
+        {
+          engineeringId: originalItem.engineering.id,
+          responsibleUserId: fixture.users.developer.id,
+          bindingId: fixture.binding.id,
+          targetBranch: 'main',
+          environmentId: originalItem.environment.id,
+        },
+      ],
+    };
+    const conflicts = submissions.environmentConflicts(
+      fixture.users.owner.id,
+      view.submission.submission.projectId,
+      input,
+    );
+    const next = submissions.createSubmission(
+      fixture.users.owner.id,
+      view.submission.submission.projectId,
+      { ...input, environmentTakeovers: conflicts },
+    );
+    fixture.clock.set('2026-07-27T10:03:00.000Z');
+    expect(fixture.updates.prepareDueExecutions()).toEqual([]);
+    expect(pending(fixture.database, fixture.item.id)).not.toBeNull();
+    expect(
+      fixture.updates.workspace(
+        fixture.users.developer.id,
+        fixture.submission.id,
+      ).pendingDeliveries[0]!.availableActions,
+    ).toEqual([]);
+    expect(() =>
+      fixture.updates.freezeNow(fixture.users.developer.id, fixture.item.id, {
+        mutationId: randomUUID(),
+      }),
+    ).toThrow('已暂停使用环境');
+    const paused = submissions.getWorkspace(
+      fixture.users.owner.id,
+      fixture.submission.id,
+    );
+    submissions.changeEnvironment(fixture.users.owner.id, originalItem.id, {
+      mutationId: randomUUID(),
+      expectedRevision: paused.revision,
+      action: 'ACQUIRE',
+      takeover: paused.submission.items[0]!.environmentAccess.conflict!,
+    });
+    expect(fixture.updates.prepareDueExecutions()).toHaveLength(1);
+    const nextView = submissions.getWorkspace(fixture.users.owner.id, next.id);
+    const nextItem = nextView.submission.items[0]!;
+    expect(nextItem.environmentAccess.conflict!.blockedReason).toContain(
+      '正在更新',
+    );
+    expect(() =>
+      submissions.changeEnvironment(fixture.users.owner.id, nextItem.id, {
+        mutationId: randomUUID(),
+        expectedRevision: nextView.revision,
+        action: 'ACQUIRE',
+        takeover: nextItem.environmentAccess.conflict!,
+      }),
+    ).toThrow('正在更新');
+    expect(
+      submissions.getWorkspace(fixture.users.owner.id, fixture.submission.id)
+        .submission.items[0]!.environmentAccess.owned,
+    ).toBe(true);
+  });
+});
+
+test('外部部署等待期间禁止切换；失败后允许切换但原批次不能重试或同步', async () => {
+  const fixture = await setup({ deploymentKind: 'CI_CD' });
+  fixture.createBug('外部部署占用');
+  await completeNextRepair(fixture, 'external-lock-repair', ['ccccccc']);
+  const frozen = fixture.updates.freezeNow(
+    fixture.users.developer.id,
+    fixture.item.id,
+    { mutationId: randomUUID() },
+  );
+  const running = await startExecution(
+    fixture,
+    frozen.executionId,
+    'external-lock-update',
+  );
+  fixture.executions.complete(fixture.runner.id, running.executionId, {
+    leaseToken: running.leaseToken,
+    sessionId: running.sessionId,
+    outcome: { kind: 'SUCCEEDED', result: pushedUpdate('等待外部部署') },
+  });
+  const submissions = new SubmissionService(
+    fixture.database,
+    fixture.clock.now,
+  );
+  const original = submissions.getWorkspace(
+    fixture.users.owner.id,
+    fixture.submission.id,
+  );
+  const item = original.submission.items[0]!;
+  const input = {
+    mutationId: randomUUID(),
+    title: '等待环境',
+    requirementDescription: '验证外部部署保护',
+    testerUserId: fixture.users.tester.id,
+    items: [
+      {
+        engineeringId: item.engineering.id,
+        responsibleUserId: item.responsibleUser.id,
+        bindingId: fixture.binding.id,
+        targetBranch: item.targetBranch,
+        environmentId: item.environment.id,
+      },
+    ],
+  };
+  const projectId = original.submission.submission.projectId;
+  const blocked = submissions.environmentConflicts(
+    fixture.users.owner.id,
+    projectId,
+    input,
+  );
+  expect(blocked[0]!.blockedReason).toContain('等待部署结果');
+  expect(() =>
+    submissions.createSubmission(fixture.users.owner.id, projectId, {
+      ...input,
+      environmentTakeovers: blocked,
+    }),
+  ).toThrow('等待部署结果');
+  const waiting = latestBatch(fixture.database, fixture.item.id);
+  fixture.updates.reportExternalDeployment(
+    fixture.users.developer.id,
+    waiting.id,
+    {
+      mutationId: randomUUID(),
+      expectedVersion: waiting.version,
+      outcome: 'FAILED',
+      summary: '外部部署已经失败并结束',
+      attachmentIds: [],
+    },
+  );
+  const available = submissions.environmentConflicts(
+    fixture.users.owner.id,
+    projectId,
+    input,
+  );
+  expect(available[0]!.blockedReason).toBeNull();
+  submissions.createSubmission(fixture.users.owner.id, projectId, {
+    ...input,
+    environmentTakeovers: available,
+  });
+  const batch = latestBatch(fixture.database, fixture.item.id);
+  expect(() =>
+    fixture.updates.retryUpdate(fixture.users.developer.id, batch.id, {
+      mutationId: randomUUID(),
+      expectedVersion: batch.version,
+    }),
+  ).toThrow('已暂停使用环境');
+  expect(() =>
+    fixture.updates.synchronizeSession(fixture.users.developer.id, batch.id, {
+      mutationId: randomUUID(),
+      expectedVersion: batch.version,
+    }),
+  ).toThrow('已暂停使用环境');
+  expect(
+    fixture.updates.batchView(fixture.users.developer.id, batch.id)
+      .availableActions,
+  ).toEqual([]);
+});

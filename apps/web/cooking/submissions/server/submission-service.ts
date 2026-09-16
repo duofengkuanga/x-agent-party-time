@@ -1,3 +1,12 @@
+import {
+  environmentConflict,
+  environmentObservers,
+  environmentOwned,
+  environmentReady,
+  environmentBusy,
+  requireEnvironment,
+  releaseEnvironmentForTakeover,
+} from './environment-access';
 import { randomUUID } from 'node:crypto';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
@@ -11,6 +20,9 @@ import {
   SubmissionSummarySchema,
   TestSubmissionSchema,
   UpdateSubmissionInputSchema,
+  EnvironmentCommandSchema,
+  type EnvironmentCommand,
+  type EnvironmentConflict,
   type CookingWorkspaceSnapshot,
   type CreateSubmissionInput,
   type SubmissionItem,
@@ -110,6 +122,22 @@ export class SubmissionService {
     const projectId = ProjectIdSchema.parse(projectIdInput);
     const parsed = CreateSubmissionInputSchema.parse(input);
     this.ensureDistinctItems(parsed);
+    const takeovers = parsed.environmentTakeovers ?? [];
+    if (
+      new Set(takeovers.map((value) => value.environmentId)).size !==
+        takeovers.length ||
+      takeovers.some(
+        (value) =>
+          !parsed.items.some(
+            (item) => item.environmentId === value.environmentId,
+          ),
+      )
+    )
+      throw new PlatformError(
+        'VALIDATION_FAILED',
+        '环境切换确认与当前提测项不匹配',
+      );
+    const invalidations = new Map<string, number>();
     const result = this.writes.run({
       mutationId: parsed.mutationId,
       actorUserId,
@@ -165,17 +193,19 @@ export class SubmissionService {
             item.targetBranch,
             createdAt,
           );
-          const lock = this.db
+          const previous = releaseEnvironmentForTakeover(
+            this.db,
+            actorUserId,
+            item.source.environment_id,
+            takeovers.find(
+              (value) => value.environmentId === item.source.environment_id,
+            ),
+          );
+          this.db
             .prepare(
               `INSERT INTO cooking_submission_environment_lock(
-                 environment_id, engineering_id, submission_id,
-                 submission_item_id, created_at
-               )
-               SELECT ?, ?, ?, ?, ?
-               WHERE NOT EXISTS (
-                 SELECT 1 FROM cooking_submission_environment_lock
-                 WHERE environment_id = ?
-               )`,
+            environment_id, engineering_id, submission_id, submission_item_id, created_at, deployment_confirmed
+          ) VALUES (?, ?, ?, ?, ?, ?)`,
             )
             .run(
               item.source.environment_id,
@@ -183,14 +213,20 @@ export class SubmissionService {
               submissionId,
               item.id,
               createdAt,
-              item.source.environment_id,
+              previous ? 0 : 1,
             );
-          if (lock.changes !== 1)
-            throw new PlatformError(
-              'RESOURCE_CONFLICT',
-              '所选环境已被其他活动提测单占用',
-            );
+          for (const observer of environmentObservers(
+            this.db,
+            item.source.environment_id,
+            submissionId,
+          ))
+            invalidations.set(observer, 0);
         }
+        for (const previousId of invalidations.keys())
+          invalidations.set(
+            previousId,
+            this.writes.bumpRevision(previousId, createdAt),
+          );
         const submission = TestSubmissionSchema.parse({
           id: submissionId,
           projectId,
@@ -217,12 +253,170 @@ export class SubmissionService {
               details: {
                 testerUserId: parsed.testerUserId,
                 itemIds: itemSnapshots.map(({ id }) => id),
+                environmentTakeovers: takeovers,
               },
             },
           ],
         };
       },
     });
+    for (const [id, revision] of invalidations)
+      this.writes.publishInvalidation(id, revision);
+    return result;
+  }
+
+  environmentConflicts(
+    actorUserId: string,
+    projectId: string,
+    input: CreateSubmissionInput,
+  ): EnvironmentConflict[] {
+    this.requireProjectMember(actorUserId, ProjectIdSchema.parse(projectId));
+    const parsed = CreateSubmissionInputSchema.parse(input);
+    return parsed.items.flatMap((item) => {
+      this.snapshotItemSource(projectId, item);
+      const conflict = environmentConflict(
+        this.db,
+        actorUserId,
+        item.environmentId,
+      );
+      return conflict ? [conflict] : [];
+    });
+  }
+
+  changeEnvironment(
+    actorUserId: string,
+    itemId: string,
+    inputValue: EnvironmentCommand,
+  ): TestSubmission {
+    const input = EnvironmentCommandSchema.parse(inputValue);
+    const invalidations = new Map<string, number>();
+    const result = this.writes.run({
+      mutationId: input.mutationId,
+      actorUserId,
+      operation: 'SUBMISSION_ENVIRONMENT_CHANGE',
+      resourceType: 'TEST_SUBMISSION',
+      resultSchema: TestSubmissionSchema,
+      invalidation: (result) => ({
+        submissionId: result.id,
+        revision: result.workspaceRevision,
+      }),
+      perform: () => {
+        const item = this.db
+          .prepare('SELECT * FROM cooking_submission_item WHERE id = ?')
+          .get(itemId) as SubmissionItemRow | undefined;
+        if (!item)
+          throw new PlatformError('NOT_FOUND', SUBMISSION_HIDDEN_MESSAGE);
+        const submission = this.requireSubmissionAccess(
+          actorUserId,
+          item.submission_id,
+        );
+        if (submission.status !== 'ACTIVE')
+          throw new PlatformError(
+            'INVALID_TRANSITION',
+            '已关闭提测单不能切换环境',
+          );
+        if (submission.workspace_revision !== input.expectedRevision)
+          throw new PlatformError('STALE_STATE', '提测单已更新，请刷新后重试');
+        const now = this.now().toISOString();
+        if (input.action === 'CONFIRM_DEPLOYMENT') {
+          if (actorUserId !== item.responsible_user_id)
+            throw new PlatformError(
+              'PERMISSION_DENIED',
+              '只有对应工程负责人可以确认部署',
+            );
+          requireEnvironment(this.db, itemId);
+          if (environmentBusy(this.db, itemId))
+            throw new PlatformError(
+              'RESOURCE_CONFLICT',
+              '更新或部署尚未结束，暂时不能确认',
+            );
+          this.db
+            .prepare(
+              'UPDATE cooking_submission_environment_lock SET deployment_confirmed = 1 WHERE submission_item_id = ?',
+            )
+            .run(itemId);
+        } else {
+          if (
+            ![
+              submission.tester_user_id,
+              submission.created_by_user_id,
+              item.responsible_user_id,
+            ].includes(actorUserId) &&
+            submission.membership_role !== 'OWNER'
+          )
+            throw new PlatformError(
+              'PERMISSION_DENIED',
+              '只有提测参与者或项目所有者可以取得环境使用权',
+            );
+          if (environmentOwned(this.db, itemId))
+            throw new PlatformError(
+              'STALE_STATE',
+              '当前提测项已取得环境，请刷新后重试',
+            );
+          if (
+            input.takeover &&
+            input.takeover.environmentId !== item.environment_id
+          )
+            throw new PlatformError(
+              'VALIDATION_FAILED',
+              '环境切换确认与当前提测项不匹配',
+            );
+          releaseEnvironmentForTakeover(
+            this.db,
+            actorUserId,
+            item.environment_id,
+            input.takeover,
+          );
+          this.db
+            .prepare(
+              `INSERT INTO cooking_submission_environment_lock(environment_id, engineering_id, submission_id, submission_item_id, created_at, deployment_confirmed)
+            VALUES (?, ?, ?, ?, ?, 0)`,
+            )
+            .run(
+              item.environment_id,
+              item.engineering_id,
+              item.submission_id,
+              item.id,
+              now,
+            );
+          for (const observer of environmentObservers(
+            this.db,
+            item.environment_id,
+            submission.id,
+          ))
+            invalidations.set(
+              observer,
+              this.writes.bumpRevision(observer, now),
+            );
+        }
+        const revision = this.writes.bumpRevision(submission.id, now);
+        return {
+          result: {
+            ...mapSubmission(submission),
+            workspaceRevision: revision,
+            updatedAt: now,
+          },
+          resourceId: submission.id,
+          audits: [
+            {
+              projectId: submission.project_id,
+              action:
+                input.action === 'ACQUIRE'
+                  ? 'SUBMISSION_ENVIRONMENT_ACQUIRED'
+                  : 'SUBMISSION_DEPLOYMENT_CONFIRMED',
+              targetType: 'TEST_SUBMISSION',
+              targetId: submission.id,
+              details: {
+                submissionItemId: itemId,
+                takeover: input.takeover ?? null,
+              },
+            },
+          ],
+        };
+      },
+    });
+    for (const [id, revision] of invalidations)
+      this.writes.publishInvalidation(id, revision);
     return result;
   }
 
@@ -481,6 +675,28 @@ export class SubmissionService {
                   deployment: item.environment.deployment,
                 }
               : null,
+          environmentAccess: {
+            owned: environmentOwned(this.db, item.id),
+            deploymentConfirmed: environmentReady(this.db, item.id),
+            conflict: environmentOwned(this.db, item.id)
+              ? null
+              : environmentConflict(this.db, userId, item.environment.id),
+            canAcquire:
+              row.status === 'ACTIVE' &&
+              !environmentOwned(this.db, item.id) &&
+              (row.membership_role === 'OWNER' ||
+                [
+                  row.tester_user_id,
+                  row.created_by_user_id,
+                  item.responsibleUser.id,
+                ].includes(userId)),
+            canConfirmDeployment:
+              row.status === 'ACTIVE' &&
+              item.responsibleUser.id === userId &&
+              environmentOwned(this.db, item.id) &&
+              !environmentReady(this.db, item.id) &&
+              !environmentBusy(this.db, item.id),
+          },
           availableActions:
             row.status === 'ACTIVE' &&
             item.responsibleUser.id === userId &&

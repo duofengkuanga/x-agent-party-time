@@ -1,3 +1,7 @@
+import {
+  environmentOwned,
+  requireEnvironment,
+} from '@/cooking/submissions/server/environment-access';
 import { randomUUID } from 'node:crypto';
 import type {
   Execution,
@@ -831,7 +835,10 @@ export class UpdateService {
       lastCandidateAt: row.last_candidate_at,
       eligibleAt: row.eligible_at,
       availableActions:
-        row.responsible_user_id === userId ? (['FREEZE_NOW'] as const) : [],
+        row.responsible_user_id === userId &&
+        environmentOwned(this.db, row.submission_item_id)
+          ? (['FREEZE_NOW'] as const)
+          : [],
     }));
     const batchIds = (
       this.db
@@ -951,21 +958,22 @@ export class UpdateService {
         commits: technical ? parseCommits(entry.commits_json) : null,
       })),
       timeline,
-      availableActions: technical
-        ? [
-            ...(batch.state === 'FAILED' &&
-            latest &&
-            isTerminal(latest.state) &&
-            batch.session_id &&
-            !this.hasActiveSessionSync(batch.id)
-              ? (['SYNC_SESSION'] as const)
-              : []),
-            ...(batch.state === 'WAITING_EXTERNAL' &&
-            deployment.kind === 'CI_CD'
-              ? (['REPORT_EXTERNAL'] as const)
-              : []),
-          ]
-        : [],
+      availableActions:
+        technical && environmentOwned(this.db, batch.submission_item_id)
+          ? [
+              ...(batch.state === 'FAILED' &&
+              latest &&
+              isTerminal(latest.state) &&
+              batch.session_id &&
+              !this.hasActiveSessionSync(batch.id)
+                ? (['SYNC_SESSION'] as const)
+                : []),
+              ...(batch.state === 'WAITING_EXTERNAL' &&
+              deployment.kind === 'CI_CD'
+                ? (['REPORT_EXTERNAL'] as const)
+                : []),
+            ]
+          : [],
       presentation: {
         statusLabel,
         visual: updateVisual(
@@ -1022,7 +1030,11 @@ export class UpdateService {
     requireDue: boolean,
   ): FrozenBatch | undefined {
     const source = this.itemSource(submissionItemId);
-    if (source.submission_status !== 'ACTIVE') return undefined;
+    if (
+      source.submission_status !== 'ACTIVE' ||
+      !environmentOwned(this.db, submissionItemId)
+    )
+      return undefined;
     const deployment = DeploymentMethodSchema.parse(
       JSON.parse(source.deployment_json),
     );
@@ -1552,6 +1564,7 @@ export class UpdateService {
       );
     if (source.submission_status !== 'ACTIVE')
       throw new PlatformError('INVALID_TRANSITION', '已关闭提测单不能更新');
+    requireEnvironment(this.db, submissionItemId);
     return source;
   }
 

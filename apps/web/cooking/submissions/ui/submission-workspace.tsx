@@ -38,6 +38,7 @@ import {
   loadSubmissionCreationCatalogAction,
   updateSubmissionAction,
 } from '../server/actions';
+import { EnvironmentStatus } from './environment-status';
 import { SubmissionComposer } from './submission-composer';
 import { workspaceReducer, parseInvalidation } from './workspace-state';
 import {
@@ -475,6 +476,29 @@ export function SubmissionWorkspace({
           ) : null}
           {snapshot ? (
             <div className="collab-stage__content">
+              {snapshot.submission.submission.status === 'ACTIVE' &&
+              snapshot.submission.items.some(
+                (item) =>
+                  !item.environmentAccess.owned ||
+                  !item.environmentAccess.deploymentConfirmed,
+              ) ? (
+                <div
+                  className="collab-environment-notices"
+                  aria-label="环境使用提醒"
+                >
+                  {snapshot.submission.items.map((item) => (
+                    <EnvironmentStatus
+                      key={item.id}
+                      item={item}
+                      title={snapshot.submission.submission.title}
+                      revision={snapshot.revision}
+                      onChanged={(revision) => {
+                        void refreshSnapshot(revision);
+                      }}
+                    />
+                  ))}
+                </div>
+              ) : null}
               <BugBoard
                 onChanged={(revision, message) => {
                   setNotice(message);

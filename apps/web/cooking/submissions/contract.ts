@@ -68,12 +68,36 @@ export const CreateSubmissionItemInputSchema = z.object({
   environmentId: EnvironmentIdSchema,
 });
 
+export const EnvironmentTakeoverSchema = z.object({
+  environmentId: EnvironmentIdSchema,
+  submissionItemId: SubmissionItemIdSchema,
+  expectedRevision: z.number().int().positive(),
+});
+export const EnvironmentConflictSchema = EnvironmentTakeoverSchema.extend({
+  environmentName: EnvironmentNameSchema,
+  engineeringName: EngineeringNameSchema,
+  submissionId: SubmissionIdSchema,
+  submissionTitle: SubmissionTitleSchema,
+  testerName: z.string(),
+  blockedReason: z.string().nullable(),
+});
+export type EnvironmentTakeover = z.infer<typeof EnvironmentTakeoverSchema>;
+export type EnvironmentConflict = z.infer<typeof EnvironmentConflictSchema>;
+export const EnvironmentCommandSchema = z.object({
+  mutationId: CookingMutationIdSchema,
+  expectedRevision: z.number().int().positive(),
+  action: z.enum(['ACQUIRE', 'CONFIRM_DEPLOYMENT']),
+  takeover: EnvironmentTakeoverSchema.optional(),
+});
+export type EnvironmentCommand = z.infer<typeof EnvironmentCommandSchema>;
+
 export const CreateSubmissionInputSchema = z.object({
   mutationId: CookingMutationIdSchema,
   title: SubmissionTitleSchema,
   requirementDescription: RequirementDescriptionSchema,
   testerUserId: UserIdSchema,
   items: z.array(CreateSubmissionItemInputSchema).min(1).max(20),
+  environmentTakeovers: z.array(EnvironmentTakeoverSchema).max(20).optional(),
 });
 
 export const SubmissionSummarySchema = z.object({
@@ -99,6 +123,13 @@ export const SubmissionItemViewSchema = SubmissionItemSchema.omit({
       deployment: DeploymentMethodSchema,
     })
     .nullable(),
+  environmentAccess: z.object({
+    owned: z.boolean(),
+    deploymentConfirmed: z.boolean(),
+    conflict: EnvironmentConflictSchema.nullable(),
+    canAcquire: z.boolean(),
+    canConfirmDeployment: z.boolean(),
+  }),
   availableActions: z.array(z.literal('EDIT_TARGET_BRANCH')),
 });
 

@@ -49,8 +49,9 @@ export function submissionReferencesEnvironment(
     database
       .prepare(
         `SELECT 1 present
-         FROM cooking_submission_environment_lock
-         WHERE environment_id = ?
+         FROM cooking_submission_item item
+         JOIN cooking_test_submission submission ON submission.id = item.submission_id
+         WHERE item.environment_id = ? AND submission.status = 'ACTIVE'
          LIMIT 1`,
       )
       .get(environmentId),
