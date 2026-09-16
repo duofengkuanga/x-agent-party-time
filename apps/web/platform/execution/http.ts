@@ -1,3 +1,12 @@
+import { PlatformError } from '@/platform/errors';
+import type { LocalFileStore } from '@/platform/files/local-file-store';
+import {
+  errorResponse,
+  jsonResponse,
+  normalizeRequestError,
+} from '@/platform/http/responses';
+import { bearerCredential } from '@/platform/runner/http';
+import type { RunnerService } from '@/platform/runner/service';
 import {
   CompleteExecutionRequestSchema,
   ExecutionClaimRequestSchema,
@@ -11,11 +20,6 @@ import {
   WaitInteractionRequestSchema,
   WaitInteractionResponseSchema,
 } from '@agent-party-time/execution-contract';
-import { ZodError } from 'zod';
-import { publicError, PlatformError } from '@/platform/errors';
-import type { LocalFileStore } from '@/platform/files/local-file-store';
-import { bearerCredential } from '@/platform/runner/http';
-import type { RunnerService } from '@/platform/runner/service';
 import type { ExecutionService } from './service';
 
 type RunnerAuthenticator = Pick<RunnerService, 'authenticateCredential'>;
@@ -184,27 +188,4 @@ export async function handleExecutionFile(
   } catch (error) {
     return errorResponse(normalizeRequestError(error));
   }
-}
-
-function normalizeRequestError(error: unknown): unknown {
-  if (error instanceof SyntaxError || error instanceof ZodError)
-    return new PlatformError('VALIDATION_FAILED', '请求内容无效', {
-      cause: error,
-    });
-  return error;
-}
-
-function jsonResponse(value: unknown, status = 200): Response {
-  return Response.json(value, {
-    status,
-    headers: { 'cache-control': 'no-store' },
-  });
-}
-
-function errorResponse(error: unknown): Response {
-  const visible = publicError(error);
-  return jsonResponse(
-    { error: { code: visible.code, message: visible.message } },
-    visible.status,
-  );
 }

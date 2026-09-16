@@ -1,5 +1,5 @@
 import { handleOpenInteraction } from '@/platform/execution/http';
-import { cookingExecutionService } from '@/cooking/runtime/repair';
+import { cookingExecutionService } from '@/cooking/runtime/services';
 import { runnerService } from '@/platform/runner/server';
 
 export async function POST(

@@ -1,22 +1,4 @@
 import {
-  RunnerAuthorizationClaimResponseSchema,
-  RunnerAuthorizationCreateRequestSchema,
-  RunnerAuthorizationIssueSchema,
-  RunnerHeartbeatResponseSchema,
-  RunnerHeartbeatRequestSchema,
-  RunnerBindingsResponseSchema,
-  RunnerBindingWorkCompletionResponseSchema,
-  RunnerBindingWorkCompletionSchema,
-  RunnerBindingWorkResponseSchema,
-  type Runner,
-  type RunnerAuthorizationClaimResponse,
-  type RunnerAuthorizationCreateRequest,
-  type RunnerAuthorizationIssue,
-  type RunnerBindingRef,
-  type RunnerBindingWork,
-  type RunnerBindingWorkCompletion,
-} from '@agent-party-time/runner-contract';
-import {
   CompleteExecutionRequestSchema,
   ExecutionClaimRequestSchema,
   ExecutionClaimResponseSchema,
@@ -31,13 +13,30 @@ import {
   type ClaimedExecution,
   type CompleteExecutionRequest,
   type Execution,
+  type ExecutionInteraction,
   type ExecutionRenewResponse,
   type ExecutionStartRequest,
-  type ExecutionInteraction,
   type OpenInteractionRequest,
   type WaitInteractionResponse,
 } from '@agent-party-time/execution-contract';
-import type { ExecutionFileHttp } from '../execution/attachments';
+import {
+  RunnerAuthorizationClaimResponseSchema,
+  RunnerAuthorizationCreateRequestSchema,
+  RunnerAuthorizationIssueSchema,
+  RunnerBindingsResponseSchema,
+  RunnerBindingWorkCompletionResponseSchema,
+  RunnerBindingWorkCompletionSchema,
+  RunnerBindingWorkResponseSchema,
+  RunnerHeartbeatRequestSchema,
+  RunnerHeartbeatResponseSchema,
+  type Runner,
+  type RunnerAuthorizationClaimResponse,
+  type RunnerAuthorizationCreateRequest,
+  type RunnerAuthorizationIssue,
+  type RunnerBindingRef,
+  type RunnerBindingWork,
+  type RunnerBindingWorkCompletion,
+} from '@agent-party-time/runner-contract';
 import { z } from 'zod';
 
 const BugsDeleteRequestSchema = z
@@ -61,90 +60,29 @@ export type RunnerFetch = (
   init?: RequestInit,
 ) => Promise<Response>;
 
-export interface RunnerAuthorizationHttp {
-  createAuthorization(
-    serverOrigin: string,
-    input: RunnerAuthorizationCreateRequest,
-  ): Promise<RunnerAuthorizationIssue>;
-  claimAuthorization(
-    serverOrigin: string,
-    requestId: string,
-    verifier: string,
-  ): Promise<RunnerAuthorizationClaimResponse>;
-  heartbeat(
-    serverOrigin: string,
-    credential: string,
-    availableSlots: number,
-  ): Promise<Runner>;
-  revokeSelf(serverOrigin: string, credential: string): Promise<Runner>;
-}
+export type RunnerAuthorizationHttp = Pick<
+  RunnerHttpClient,
+  'createAuthorization' | 'claimAuthorization' | 'heartbeat' | 'revokeSelf'
+>;
 
-export interface RunnerBindingHttp {
-  listBindings(
-    serverOrigin: string,
-    credential: string,
-  ): Promise<RunnerBindingRef[]>;
-  claimBindingWork(
-    serverOrigin: string,
-    credential: string,
-  ): Promise<RunnerBindingWork | null>;
-  completeBindingWork(
-    serverOrigin: string,
-    credential: string,
-    requestId: string,
-    completion: RunnerBindingWorkCompletion,
-  ): Promise<'SUCCEEDED' | 'FAILED'>;
-}
+export type RunnerBindingHttp = Pick<
+  RunnerHttpClient,
+  'listBindings' | 'claimBindingWork' | 'completeBindingWork'
+>;
 
-export interface RunnerExecutionHttp extends ExecutionFileHttp {
-  claimExecutions(
-    serverOrigin: string,
-    credential: string,
-    availableSlots: number,
-    waitMs?: number,
-  ): Promise<ClaimedExecution[]>;
-  startExecution(
-    serverOrigin: string,
-    credential: string,
-    executionId: string,
-    request: ExecutionStartRequest,
-  ): Promise<Execution>;
-  renewExecution(
-    serverOrigin: string,
-    credential: string,
-    executionId: string,
-    leaseToken: string,
-  ): Promise<ExecutionRenewResponse>;
-  completeExecution(
-    serverOrigin: string,
-    credential: string,
-    executionId: string,
-    request: CompleteExecutionRequest,
-  ): Promise<Execution>;
-  openInteraction(
-    serverOrigin: string,
-    credential: string,
-    executionId: string,
-    request: OpenInteractionRequest,
-  ): Promise<ExecutionInteraction>;
-  waitInteraction(
-    serverOrigin: string,
-    credential: string,
-    executionId: string,
-    interactionId: string,
-    leaseToken: string,
-    waitMs?: number,
-  ): Promise<WaitInteractionResponse>;
-  deleteBugs(
-    serverOrigin: string,
-    credential: string,
-    input: { bugIds?: readonly string[]; all?: boolean; force?: boolean },
-  ): Promise<{ deletedBugIds: string[]; deletedExecutionIds: string[] }>;
-}
+export type RunnerExecutionHttp = Pick<
+  RunnerHttpClient,
+  | 'claimExecutions'
+  | 'startExecution'
+  | 'renewExecution'
+  | 'completeExecution'
+  | 'openInteraction'
+  | 'waitInteraction'
+  | 'deleteBugs'
+  | 'downloadExecutionFile'
+>;
 
-export class RunnerHttpClient
-  implements RunnerAuthorizationHttp, RunnerBindingHttp, RunnerExecutionHttp
-{
+export class RunnerHttpClient {
   constructor(
     private readonly fetchImplementation: RunnerFetch = fetch,
     private readonly timeoutMs = 10_000,
@@ -218,15 +156,15 @@ export class RunnerHttpClient
     serverOrigin: string,
     credential: string,
   ): Promise<RunnerBindingRef[]> {
-    return RunnerBindingsResponseSchema.parse(
+    return (
       await this.authorizedJson(
         serverOrigin,
         credential,
         '/api/runner/bindings',
-        {
-          method: 'GET',
-        },
-      ),
+        RunnerBindingsResponseSchema,
+        undefined,
+        'GET',
+      )
     ).bindings;
   }
 
@@ -234,13 +172,14 @@ export class RunnerHttpClient
     serverOrigin: string,
     credential: string,
   ): Promise<RunnerBindingWork | null> {
-    return RunnerBindingWorkResponseSchema.parse(
+    return (
       await this.authorizedJson(
         serverOrigin,
         credential,
         '/api/runner/binding-requests',
-        { method: 'POST' },
-      ),
+        RunnerBindingWorkResponseSchema,
+        undefined,
+      )
     ).request;
   }
 
@@ -251,13 +190,14 @@ export class RunnerHttpClient
     completionInput: RunnerBindingWorkCompletion,
   ): Promise<'SUCCEEDED' | 'FAILED'> {
     const completion = RunnerBindingWorkCompletionSchema.parse(completionInput);
-    return RunnerBindingWorkCompletionResponseSchema.parse(
+    return (
       await this.authorizedJson(
         serverOrigin,
         credential,
         `/api/runner/binding-requests/${encodeURIComponent(requestId)}`,
-        { method: 'POST', body: JSON.stringify(completion) },
-      ),
+        RunnerBindingWorkCompletionResponseSchema,
+        completion,
+      )
     ).state;
   }
 
@@ -268,13 +208,14 @@ export class RunnerHttpClient
     waitMs = 0,
   ): Promise<ClaimedExecution[]> {
     const body = ExecutionClaimRequestSchema.parse({ availableSlots, waitMs });
-    return ExecutionClaimResponseSchema.parse(
+    return (
       await this.authorizedJson(
         serverOrigin,
         credential,
         '/api/runner/executions/claim',
-        { method: 'POST', body: JSON.stringify(body) },
-      ),
+        ExecutionClaimResponseSchema,
+        body,
+      )
     ).executions;
   }
 
@@ -285,13 +226,14 @@ export class RunnerHttpClient
     requestInput: ExecutionStartRequest,
   ): Promise<Execution> {
     const body = ExecutionStartRequestSchema.parse(requestInput);
-    return ExecutionMutationResponseSchema.parse(
+    return (
       await this.authorizedJson(
         serverOrigin,
         credential,
         `/api/runner/executions/${encodeURIComponent(executionId)}/start`,
-        { method: 'POST', body: JSON.stringify(body) },
-      ),
+        ExecutionMutationResponseSchema,
+        body,
+      )
     ).execution;
   }
 
@@ -302,13 +244,12 @@ export class RunnerHttpClient
     leaseToken: string,
   ): Promise<ExecutionRenewResponse> {
     const body = ExecutionRenewRequestSchema.parse({ leaseToken });
-    return ExecutionRenewResponseSchema.parse(
-      await this.authorizedJson(
-        serverOrigin,
-        credential,
-        `/api/runner/executions/${encodeURIComponent(executionId)}/renew`,
-        { method: 'POST', body: JSON.stringify(body) },
-      ),
+    return await this.authorizedJson(
+      serverOrigin,
+      credential,
+      `/api/runner/executions/${encodeURIComponent(executionId)}/renew`,
+      ExecutionRenewResponseSchema,
+      body,
     );
   }
 
@@ -319,13 +260,14 @@ export class RunnerHttpClient
     requestInput: CompleteExecutionRequest,
   ): Promise<Execution> {
     const body = CompleteExecutionRequestSchema.parse(requestInput);
-    return ExecutionMutationResponseSchema.parse(
+    return (
       await this.authorizedJson(
         serverOrigin,
         credential,
         `/api/runner/executions/${encodeURIComponent(executionId)}/complete`,
-        { method: 'POST', body: JSON.stringify(body) },
-      ),
+        ExecutionMutationResponseSchema,
+        body,
+      )
     ).execution;
   }
 
@@ -336,13 +278,14 @@ export class RunnerHttpClient
     requestInput: OpenInteractionRequest,
   ): Promise<ExecutionInteraction> {
     const body = OpenInteractionRequestSchema.parse(requestInput);
-    return OpenInteractionResponseSchema.parse(
+    return (
       await this.authorizedJson(
         serverOrigin,
         credential,
         `/api/runner/executions/${encodeURIComponent(executionId)}/interactions/open`,
-        { method: 'POST', body: JSON.stringify(body) },
-      ),
+        OpenInteractionResponseSchema,
+        body,
+      )
     ).interaction;
   }
 
@@ -359,13 +302,12 @@ export class RunnerHttpClient
       leaseToken,
       waitMs,
     });
-    return WaitInteractionResponseSchema.parse(
-      await this.authorizedJson(
-        serverOrigin,
-        credential,
-        `/api/runner/interactions/${encodeURIComponent(interactionId)}/wait`,
-        { method: 'POST', body: JSON.stringify(body) },
-      ),
+    return await this.authorizedJson(
+      serverOrigin,
+      credential,
+      `/api/runner/interactions/${encodeURIComponent(interactionId)}/wait`,
+      WaitInteractionResponseSchema,
+      body,
     );
   }
 
@@ -375,13 +317,12 @@ export class RunnerHttpClient
     input: { bugIds?: readonly string[]; all?: boolean; force?: boolean },
   ): Promise<{ deletedBugIds: string[]; deletedExecutionIds: string[] }> {
     const body = BugsDeleteRequestSchema.parse(input);
-    return BugsDeleteResponseSchema.parse(
-      await this.authorizedJson(
-        serverOrigin,
-        credential,
-        '/api/cooking/bugs/delete',
-        { method: 'POST', body: JSON.stringify(body) },
-      ),
+    return await this.authorizedJson(
+      serverOrigin,
+      credential,
+      '/api/cooking/bugs/delete',
+      BugsDeleteResponseSchema,
+      body,
     );
   }
 
@@ -419,23 +360,25 @@ export class RunnerHttpClient
     return new Uint8Array(await response.arrayBuffer());
   }
 
-  private async authorizedJson(
+  private async authorizedJson<T>(
     serverOrigin: string,
     credential: string,
     path: string,
-    init: RequestInit,
-  ): Promise<unknown> {
-    return await requestJson(
-      this.fetchImplementation,
-      `${serverOrigin}${path}`,
-      {
-        ...init,
-        headers: {
-          ...Object.fromEntries(new Headers(init.headers).entries()),
-          authorization: `Bearer ${credential}`,
+    schema: z.ZodType<T>,
+    body?: unknown,
+    method = 'POST',
+  ): Promise<T> {
+    return schema.parse(
+      await requestJson(
+        this.fetchImplementation,
+        serverOrigin + path,
+        {
+          method,
+          headers: { authorization: `Bearer ${credential}` },
+          body: body === undefined ? undefined : JSON.stringify(body),
         },
-      },
-      this.timeoutMs,
+        this.timeoutMs,
+      ),
     );
   }
 }

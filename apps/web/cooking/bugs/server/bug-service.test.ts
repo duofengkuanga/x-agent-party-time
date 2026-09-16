@@ -1,30 +1,24 @@
-import { afterEach, describe, expect, test } from 'bun:test';
-import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { AuthService } from '@/platform/auth/service';
-import type { AppDatabase } from '@/platform/database';
-import { openDatabase } from '@/platform/database';
-import { LocalFileStore } from '@/platform/files/local-file-store';
-import { RunnerService } from '@/platform/runner/service';
 import { BindingService } from '@/cooking/bindings/server/binding-service';
 import { EngineeringService } from '@/cooking/engineering/server/engineering-service';
 import { ProjectService } from '@/cooking/projects/server/project-service';
-import { SubmissionService } from '@/cooking/submissions/server/submission-service';
 import { RepairService } from '@/cooking/repair/server/repair-service';
+import { SubmissionService } from '@/cooking/submissions/server/submission-service';
+import { AuthService } from '@/platform/auth/service';
+import type { AppDatabase } from '@/platform/database';
+import { LocalFileStore } from '@/platform/files/local-file-store';
+import { RunnerService } from '@/platform/runner/service';
+import { testDatabases } from '@/testing/database';
+import { describe, expect, test } from 'bun:test';
+import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
 import { ZodError } from 'zod';
 import { BugService } from './bug-service';
 import { BugRepairContextService } from './repair-context';
 
-const directories: string[] = [];
-const databases: AppDatabase[] = [];
+const createDatabase = testDatabases();
 
 async function setup() {
-  const directory = await mkdtemp(join(tmpdir(), 'agent-party-time-bugs-'));
-  directories.push(directory);
-  const database = openDatabase(join(directory, 'server.sqlite'));
-  databases.push(database);
+  const { directory, database } = await createDatabase();
   const auth = new AuthService(database);
   const users = {
     owner: await auth.seedUser(user('bug-owner', '项目所有者')),
@@ -175,15 +169,6 @@ async function setup() {
     users,
   };
 }
-
-afterEach(async () => {
-  for (const database of databases.splice(0)) database.close();
-  await Promise.all(
-    directories
-      .splice(0)
-      .map((directory) => rm(directory, { force: true, recursive: true })),
-  );
-});
 
 describe('BugService', () => {
   test('Repair Context 按报告角色投影附件与执行来源', async () => {

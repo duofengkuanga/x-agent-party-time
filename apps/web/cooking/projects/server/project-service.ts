@@ -1,3 +1,5 @@
+import { z } from 'zod';
+import { CookingWriteStore } from '@/cooking/shared/server/write-store';
 import { randomUUID } from 'node:crypto';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
@@ -53,15 +55,12 @@ type InvitationRow = {
   responded_at: string | null;
 };
 
-type MutationRow = {
-  actor_user_id: string;
-  operation: string;
-  result_json: string;
-};
-
 export type RemoveMemberResult = { removed: boolean; userId: string };
 
+const RemoveMemberResultSchema = z.unknown().transform(parseRemoveResult);
+
 export class ProjectService {
+  private readonly writes: CookingWriteStore;
   constructor(
     private readonly db: AppDatabase,
     private readonly now: () => Date = () => new Date(),
@@ -70,7 +69,9 @@ export class ProjectService {
       projectId: string,
       userId: string,
     ) => boolean = () => false,
-  ) {}
+  ) {
+    this.writes = new CookingWriteStore(db, now, createId);
+  }
 
   createProject(
     actorUserId: string,
@@ -78,68 +79,62 @@ export class ProjectService {
   ): ProjectSummary {
     const mutationId = MutationIdSchema.parse(input.mutationId);
     const name = ProjectNameSchema.parse(input.name);
-    const previous = this.readMutation(
+
+    return this.writes.run({
       mutationId,
       actorUserId,
-      'PROJECT_CREATE',
-      ProjectSummarySchema.parse,
-    );
-    if (previous) return previous;
-
-    return this.db.transaction(() => {
-      const projectId = this.createId();
-      const createdAt = this.now().toISOString();
-      this.db
-        .prepare(
+      operation: 'PROJECT_CREATE',
+      resourceType: 'PROJECT',
+      resultSchema: ProjectSummarySchema,
+      perform: () => {
+        const projectId = this.createId();
+        const createdAt = this.now().toISOString();
+        this.db.run(
           `INSERT INTO cooking_project(
              id, name, version, created_by_user_id, created_at, updated_at
            ) VALUES (?, ?, 1, ?, ?, ?)`,
-        )
-        .run(projectId, name, actorUserId, createdAt, createdAt);
-      this.db
-        .prepare(
+          [projectId, name, actorUserId, createdAt, createdAt],
+        );
+        this.db.run(
           `INSERT INTO cooking_project_membership(
              project_id, user_id, role, version, created_at
            ) VALUES (?, ?, 'OWNER', 1, ?)`,
-        )
-        .run(projectId, actorUserId, createdAt);
-      const result = ProjectSummarySchema.parse({
-        project: {
-          id: projectId,
-          name,
-          version: 1,
-          createdByUserId: actorUserId,
-          createdAt,
-          updatedAt: createdAt,
-        },
-        membership: {
-          projectId,
-          userId: actorUserId,
-          role: 'OWNER',
-          version: 1,
-          createdAt,
-        },
-      });
-      this.audit(
-        projectId,
-        actorUserId,
-        'PROJECT_CREATED',
-        'PROJECT',
-        projectId,
-        {
-          name,
-        },
-      );
-      this.recordMutation(
-        mutationId,
-        actorUserId,
-        'PROJECT_CREATE',
-        'PROJECT',
-        projectId,
-        result,
-      );
-      return result;
-    })();
+          [projectId, actorUserId, createdAt],
+        );
+        const result = ProjectSummarySchema.parse({
+          project: {
+            id: projectId,
+            name,
+            version: 1,
+            createdByUserId: actorUserId,
+            createdAt,
+            updatedAt: createdAt,
+          },
+          membership: {
+            projectId,
+            userId: actorUserId,
+            role: 'OWNER',
+            version: 1,
+            createdAt,
+          },
+        });
+        return {
+          result: result,
+          resourceId: projectId,
+          audits: [
+            {
+              projectId: projectId,
+              action: 'PROJECT_CREATED',
+              targetType: 'PROJECT',
+              targetId: projectId,
+              details: {
+                name,
+              },
+            },
+          ],
+        };
+      },
+    });
   }
 
   listProjects(userId: string): ProjectSummary[] {
@@ -243,58 +238,55 @@ export class ProjectService {
   ): ProjectInvitation {
     const mutationId = MutationIdSchema.parse(input.mutationId);
     const username = input.username.trim().toLowerCase();
-    const previous = this.readMutation(
+
+    return this.writes.run({
       mutationId,
       actorUserId,
-      'PROJECT_INVITE',
-      ProjectInvitationSchema.parse,
-    );
-    if (previous) return previous;
-
-    return this.db.transaction(() => {
-      this.requireOwner(actorUserId, projectId);
-      const user = this.db
-        .prepare(
-          'SELECT id FROM platform_user WHERE username = ? COLLATE NOCASE',
-        )
-        .get(username) as { id: string } | undefined;
-      if (!user) throw new PlatformError('VALIDATION_FAILED', '邀请用户不存在');
-      const member = this.db
-        .prepare(
-          'SELECT 1 present FROM cooking_project_membership WHERE project_id = ? AND user_id = ?',
-        )
-        .get(projectId, user.id);
-      if (member)
-        throw new PlatformError('RESOURCE_CONFLICT', '该用户已经是项目成员');
-      const pending = this.db
-        .prepare(
-          `SELECT id, project_id, invited_user_id, invited_by_user_id, status,
+      operation: 'PROJECT_INVITE',
+      resourceType: 'PROJECT_INVITATION',
+      resultSchema: ProjectInvitationSchema,
+      perform: () => {
+        this.requireOwner(actorUserId, projectId);
+        const user = this.db
+          .prepare(
+            'SELECT id FROM platform_user WHERE username = ? COLLATE NOCASE',
+          )
+          .get(username) as { id: string } | undefined;
+        if (!user)
+          throw new PlatformError('VALIDATION_FAILED', '邀请用户不存在');
+        const member = this.db
+          .prepare(
+            'SELECT 1 present FROM cooking_project_membership WHERE project_id = ? AND user_id = ?',
+          )
+          .get(projectId, user.id);
+        if (member)
+          throw new PlatformError('RESOURCE_CONFLICT', '该用户已经是项目成员');
+        const pending = this.db
+          .prepare(
+            `SELECT id, project_id, invited_user_id, invited_by_user_id, status,
                   version, created_at, responded_at
            FROM cooking_project_invitation
            WHERE project_id = ? AND invited_user_id = ? AND status = 'PENDING'`,
-        )
-        .get(projectId, user.id) as InvitationRow | undefined;
-      const invitation = pending
-        ? mapInvitation(pending)
-        : this.insertInvitation(projectId, user.id, actorUserId);
-      this.audit(
-        projectId,
-        actorUserId,
-        'PROJECT_USER_INVITED',
-        'PROJECT_INVITATION',
-        invitation.id,
-        { invitedUserId: user.id },
-      );
-      this.recordMutation(
-        mutationId,
-        actorUserId,
-        'PROJECT_INVITE',
-        'PROJECT_INVITATION',
-        invitation.id,
-        invitation,
-      );
-      return invitation;
-    })();
+          )
+          .get(projectId, user.id) as InvitationRow | undefined;
+        const invitation = pending
+          ? mapInvitation(pending)
+          : this.insertInvitation(projectId, user.id, actorUserId);
+        return {
+          result: invitation,
+          resourceId: invitation.id,
+          audits: [
+            {
+              projectId: projectId,
+              action: 'PROJECT_USER_INVITED',
+              targetType: 'PROJECT_INVITATION',
+              targetId: invitation.id,
+              details: { invitedUserId: user.id },
+            },
+          ],
+        };
+      },
+    });
   }
 
   listProjectInvitations(
@@ -369,78 +361,71 @@ export class ProjectService {
     const mutationId = MutationIdSchema.parse(input.mutationId);
     const decision = ProjectInvitationDecisionSchema.parse(input.decision);
     const operation = `PROJECT_INVITATION_${decision}`;
-    const previous = this.readMutation(
+
+    return this.writes.run({
       mutationId,
       actorUserId,
-      operation,
-      ProjectInvitationSchema.parse,
-    );
-    if (previous) return previous;
-
-    return this.db.transaction(() => {
-      const row = this.invitationForRecipient(invitationId, actorUserId);
-      const targetStatus =
-        input.decision === 'ACCEPT' ? 'ACCEPTED' : 'REJECTED';
-      if (row.status !== 'PENDING') {
-        if (row.status !== targetStatus)
-          throw new PlatformError('INVALID_TRANSITION', '邀请已完成其他处理');
-        const result = mapInvitation(row);
-        this.recordMutation(
-          mutationId,
-          actorUserId,
-          operation,
-          'PROJECT_INVITATION',
-          invitationId,
-          result,
-        );
-        return result;
-      }
-      if (row.version !== input.expectedVersion)
-        throw new PlatformError('STALE_STATE', '邀请状态已更新，请刷新后重试');
-      const respondedAt = this.now().toISOString();
-      const update = this.db
-        .prepare(
+      operation: operation,
+      resourceType: 'PROJECT_INVITATION',
+      resultSchema: ProjectInvitationSchema,
+      perform: () => {
+        const row = this.invitationForRecipient(invitationId, actorUserId);
+        const targetStatus =
+          input.decision === 'ACCEPT' ? 'ACCEPTED' : 'REJECTED';
+        if (row.status !== 'PENDING') {
+          if (row.status !== targetStatus)
+            throw new PlatformError('INVALID_TRANSITION', '邀请已完成其他处理');
+          const result = mapInvitation(row);
+          return { result: result, resourceId: invitationId };
+        }
+        if (row.version !== input.expectedVersion)
+          throw new PlatformError(
+            'STALE_STATE',
+            '邀请状态已更新，请刷新后重试',
+          );
+        const respondedAt = this.now().toISOString();
+        const update = this.db.run(
           `UPDATE cooking_project_invitation
            SET status = ?, version = version + 1, responded_at = ?
            WHERE id = ? AND version = ? AND status = 'PENDING'`,
-        )
-        .run(targetStatus, respondedAt, invitationId, input.expectedVersion);
-      if (update.changes !== 1)
-        throw new PlatformError('STALE_STATE', '邀请状态已更新，请刷新后重试');
-      if (targetStatus === 'ACCEPTED')
-        this.db
-          .prepare(
+          [targetStatus, respondedAt, invitationId, input.expectedVersion],
+        );
+        if (update.changes !== 1)
+          throw new PlatformError(
+            'STALE_STATE',
+            '邀请状态已更新，请刷新后重试',
+          );
+        if (targetStatus === 'ACCEPTED')
+          this.db.run(
             `INSERT OR IGNORE INTO cooking_project_membership(
                project_id, user_id, role, version, created_at
              ) VALUES (?, ?, 'MEMBER', 1, ?)`,
-          )
-          .run(row.project_id, actorUserId, respondedAt);
-      const result = mapInvitation({
-        ...row,
-        status: targetStatus,
-        version: row.version + 1,
-        responded_at: respondedAt,
-      });
-      this.audit(
-        row.project_id,
-        actorUserId,
-        targetStatus === 'ACCEPTED'
-          ? 'PROJECT_INVITATION_ACCEPTED'
-          : 'PROJECT_INVITATION_REJECTED',
-        'PROJECT_INVITATION',
-        invitationId,
-        {},
-      );
-      this.recordMutation(
-        mutationId,
-        actorUserId,
-        operation,
-        'PROJECT_INVITATION',
-        invitationId,
-        result,
-      );
-      return result;
-    })();
+            [row.project_id, actorUserId, respondedAt],
+          );
+        const result = mapInvitation({
+          ...row,
+          status: targetStatus,
+          version: row.version + 1,
+          responded_at: respondedAt,
+        });
+        return {
+          result: result,
+          resourceId: invitationId,
+          audits: [
+            {
+              projectId: row.project_id,
+              action:
+                targetStatus === 'ACCEPTED'
+                  ? 'PROJECT_INVITATION_ACCEPTED'
+                  : 'PROJECT_INVITATION_REJECTED',
+              targetType: 'PROJECT_INVITATION',
+              targetId: invitationId,
+              details: {},
+            },
+          ],
+        };
+      },
+    });
   }
 
   revokeInvitation(
@@ -449,63 +434,56 @@ export class ProjectService {
     input: { mutationId: string; expectedVersion: number },
   ): ProjectInvitation {
     const mutationId = MutationIdSchema.parse(input.mutationId);
-    const previous = this.readMutation(
+    return this.writes.run({
       mutationId,
       actorUserId,
-      'PROJECT_INVITATION_REVOKE',
-      ProjectInvitationSchema.parse,
-    );
-    if (previous) return previous;
-    return this.db.transaction(() => {
-      const row = this.invitationForOwner(invitationId, actorUserId);
-      if (row.status !== 'PENDING') {
-        if (row.status !== 'REVOKED')
-          throw new PlatformError('INVALID_TRANSITION', '邀请已完成，无法撤销');
-        const result = mapInvitation(row);
-        this.recordMutation(
-          mutationId,
-          actorUserId,
-          'PROJECT_INVITATION_REVOKE',
-          'PROJECT_INVITATION',
-          invitationId,
-          result,
-        );
-        return result;
-      }
-      if (row.version !== input.expectedVersion)
-        throw new PlatformError('STALE_STATE', '邀请状态已更新，请刷新后重试');
-      const respondedAt = this.now().toISOString();
-      this.db
-        .prepare(
+      operation: 'PROJECT_INVITATION_REVOKE',
+      resourceType: 'PROJECT_INVITATION',
+      resultSchema: ProjectInvitationSchema,
+      perform: () => {
+        const row = this.invitationForOwner(invitationId, actorUserId);
+        if (row.status !== 'PENDING') {
+          if (row.status !== 'REVOKED')
+            throw new PlatformError(
+              'INVALID_TRANSITION',
+              '邀请已完成，无法撤销',
+            );
+          const result = mapInvitation(row);
+          return { result: result, resourceId: invitationId };
+        }
+        if (row.version !== input.expectedVersion)
+          throw new PlatformError(
+            'STALE_STATE',
+            '邀请状态已更新，请刷新后重试',
+          );
+        const respondedAt = this.now().toISOString();
+        this.db.run(
           `UPDATE cooking_project_invitation
            SET status = 'REVOKED', version = version + 1, responded_at = ?
            WHERE id = ? AND version = ? AND status = 'PENDING'`,
-        )
-        .run(respondedAt, invitationId, input.expectedVersion);
-      const result = mapInvitation({
-        ...row,
-        status: 'REVOKED',
-        version: row.version + 1,
-        responded_at: respondedAt,
-      });
-      this.audit(
-        row.project_id,
-        actorUserId,
-        'PROJECT_INVITATION_REVOKED',
-        'PROJECT_INVITATION',
-        invitationId,
-        {},
-      );
-      this.recordMutation(
-        mutationId,
-        actorUserId,
-        'PROJECT_INVITATION_REVOKE',
-        'PROJECT_INVITATION',
-        invitationId,
-        result,
-      );
-      return result;
-    })();
+          [respondedAt, invitationId, input.expectedVersion],
+        );
+        const result = mapInvitation({
+          ...row,
+          status: 'REVOKED',
+          version: row.version + 1,
+          responded_at: respondedAt,
+        });
+        return {
+          result: result,
+          resourceId: invitationId,
+          audits: [
+            {
+              projectId: row.project_id,
+              action: 'PROJECT_INVITATION_REVOKED',
+              targetType: 'PROJECT_INVITATION',
+              targetId: invitationId,
+              details: {},
+            },
+          ],
+        };
+      },
+    });
   }
 
   updateProject(
@@ -515,52 +493,47 @@ export class ProjectService {
   ): Project {
     const mutationId = MutationIdSchema.parse(input.mutationId);
     const name = ProjectNameSchema.parse(input.name);
-    const previous = this.readMutation(
+    return this.writes.run({
       mutationId,
       actorUserId,
-      'PROJECT_UPDATE',
-      ProjectSchema.parse,
-    );
-    if (previous) return previous;
-    return this.db.transaction(() => {
-      const current = this.requireOwner(actorUserId, projectId);
-      if (current.version !== input.expectedVersion)
-        throw new PlatformError('STALE_STATE', '项目已更新，请刷新后重试');
-      const updatedAt = this.now().toISOString();
-      const update = this.db
-        .prepare(
+      operation: 'PROJECT_UPDATE',
+      resourceType: 'PROJECT',
+      resultSchema: ProjectSchema,
+      perform: () => {
+        const current = this.requireOwner(actorUserId, projectId);
+        if (current.version !== input.expectedVersion)
+          throw new PlatformError('STALE_STATE', '项目已更新，请刷新后重试');
+        const updatedAt = this.now().toISOString();
+        const update = this.db.run(
           `UPDATE cooking_project SET name = ?, version = version + 1, updated_at = ?
            WHERE id = ? AND version = ?`,
-        )
-        .run(name, updatedAt, projectId, input.expectedVersion);
-      if (update.changes !== 1)
-        throw new PlatformError('STALE_STATE', '项目已更新，请刷新后重试');
-      const result = ProjectSchema.parse({
-        ...current,
-        name,
-        version: current.version + 1,
-        updatedAt,
-      });
-      this.audit(
-        projectId,
-        actorUserId,
-        'PROJECT_UPDATED',
-        'PROJECT',
-        projectId,
-        {
+          [name, updatedAt, projectId, input.expectedVersion],
+        );
+        if (update.changes !== 1)
+          throw new PlatformError('STALE_STATE', '项目已更新，请刷新后重试');
+        const result = ProjectSchema.parse({
+          ...current,
           name,
-        },
-      );
-      this.recordMutation(
-        mutationId,
-        actorUserId,
-        'PROJECT_UPDATE',
-        'PROJECT',
-        projectId,
-        result,
-      );
-      return result;
-    })();
+          version: current.version + 1,
+          updatedAt,
+        });
+        return {
+          result: result,
+          resourceId: projectId,
+          audits: [
+            {
+              projectId: projectId,
+              action: 'PROJECT_UPDATED',
+              targetType: 'PROJECT',
+              targetId: projectId,
+              details: {
+                name,
+              },
+            },
+          ],
+        };
+      },
+    });
   }
 
   removeMember(
@@ -570,79 +543,69 @@ export class ProjectService {
     input: { mutationId: string; expectedVersion: number },
   ): RemoveMemberResult {
     const mutationId = MutationIdSchema.parse(input.mutationId);
-    const previous = this.readMutation(
+    return this.writes.run({
       mutationId,
       actorUserId,
-      'PROJECT_MEMBER_REMOVE',
-      parseRemoveResult,
-    );
-    if (previous) return previous;
-    return this.db.transaction(() => {
-      this.requireOwner(actorUserId, projectId);
-      const row = this.db
-        .prepare(
-          `SELECT project_id, user_id, role, version, created_at
+      operation: 'PROJECT_MEMBER_REMOVE',
+      resourceType: 'PROJECT_MEMBERSHIP',
+      resultSchema: RemoveMemberResultSchema,
+      perform: () => {
+        this.requireOwner(actorUserId, projectId);
+        const row = this.db
+          .prepare(
+            `SELECT project_id, user_id, role, version, created_at
            FROM cooking_project_membership
            WHERE project_id = ? AND user_id = ?`,
-        )
-        .get(projectId, targetUserId) as MembershipRow | undefined;
-      if (!row) {
-        const result = { removed: false, userId: targetUserId };
-        this.recordMutation(
-          mutationId,
-          actorUserId,
-          'PROJECT_MEMBER_REMOVE',
-          'PROJECT_MEMBERSHIP',
-          targetUserId,
-          result,
-        );
-        return result;
-      }
-      if (row.version !== input.expectedVersion)
-        throw new PlatformError('STALE_STATE', '成员关系已更新，请刷新后重试');
-      if (row.role === 'OWNER') {
-        const owners = this.db
-          .prepare(
-            `SELECT COUNT(*) count FROM cooking_project_membership
-             WHERE project_id = ? AND role = 'OWNER'`,
           )
-          .get(projectId) as { count: number };
-        if (owners.count <= 1)
+          .get(projectId, targetUserId) as MembershipRow | undefined;
+        if (!row) {
+          const result = { removed: false, userId: targetUserId };
+          return { result: result, resourceId: targetUserId };
+        }
+        if (row.version !== input.expectedVersion)
           throw new PlatformError(
-            'INVALID_TRANSITION',
-            '项目必须至少保留一名所有者',
+            'STALE_STATE',
+            '成员关系已更新，请刷新后重试',
           );
-      }
-      if (this.hasActiveResponsibilities(projectId, targetUserId))
-        throw new PlatformError(
-          'RESOURCE_CONFLICT',
-          '该成员仍有活动职责，暂时不能移除',
-        );
-      this.db
-        .prepare(
+        if (row.role === 'OWNER') {
+          const owners = this.db
+            .prepare(
+              `SELECT COUNT(*) count FROM cooking_project_membership
+             WHERE project_id = ? AND role = 'OWNER'`,
+            )
+            .get(projectId) as { count: number };
+          if (owners.count <= 1)
+            throw new PlatformError(
+              'INVALID_TRANSITION',
+              '项目必须至少保留一名所有者',
+            );
+        }
+        if (this.hasActiveResponsibilities(projectId, targetUserId))
+          throw new PlatformError(
+            'RESOURCE_CONFLICT',
+            '该成员仍有活动职责，暂时不能移除',
+          );
+        this.db.run(
           `DELETE FROM cooking_project_membership
            WHERE project_id = ? AND user_id = ? AND version = ?`,
-        )
-        .run(projectId, targetUserId, input.expectedVersion);
-      const result = { removed: true, userId: targetUserId };
-      this.audit(
-        projectId,
-        actorUserId,
-        'PROJECT_MEMBER_REMOVED',
-        'PROJECT_MEMBERSHIP',
-        targetUserId,
-        {},
-      );
-      this.recordMutation(
-        mutationId,
-        actorUserId,
-        'PROJECT_MEMBER_REMOVE',
-        'PROJECT_MEMBERSHIP',
-        targetUserId,
-        result,
-      );
-      return result;
-    })();
+          [projectId, targetUserId, input.expectedVersion],
+        );
+        const result = { removed: true, userId: targetUserId };
+        return {
+          result: result,
+          resourceId: targetUserId,
+          audits: [
+            {
+              projectId: projectId,
+              action: 'PROJECT_MEMBER_REMOVED',
+              targetType: 'PROJECT_MEMBERSHIP',
+              targetId: targetUserId,
+              details: {},
+            },
+          ],
+        };
+      },
+    });
   }
 
   private requireOwner(userId: string, projectId: string): Project {
@@ -671,14 +634,13 @@ export class ProjectService {
   ): ProjectInvitation {
     const id = this.createId();
     const createdAt = this.now().toISOString();
-    this.db
-      .prepare(
-        `INSERT INTO cooking_project_invitation(
+    this.db.run(
+      `INSERT INTO cooking_project_invitation(
            id, project_id, invited_user_id, invited_by_user_id, status,
            version, created_at, responded_at
          ) VALUES (?, ?, ?, ?, 'PENDING', 1, ?, NULL)`,
-      )
-      .run(id, projectId, invitedUserId, invitedByUserId, createdAt);
+      [id, projectId, invitedUserId, invitedByUserId, createdAt],
+    );
     return ProjectInvitationSchema.parse({
       id,
       projectId,
@@ -716,76 +678,6 @@ export class ProjectService {
       .get(id, userId) as InvitationRow | undefined;
     if (!row) throw hiddenInvitation();
     return row;
-  }
-
-  private readMutation<T>(
-    id: string,
-    actorUserId: string,
-    operation: string,
-    parse: (value: unknown) => T,
-  ): T | null {
-    const row = this.db
-      .prepare(
-        'SELECT actor_user_id, operation, result_json FROM cooking_mutation WHERE id = ?',
-      )
-      .get(id) as MutationRow | undefined;
-    if (!row) return null;
-    if (row.actor_user_id !== actorUserId || row.operation !== operation)
-      throw new PlatformError('RESOURCE_CONFLICT', '操作标识已用于其他操作');
-    return parse(JSON.parse(row.result_json));
-  }
-
-  private recordMutation(
-    id: string,
-    actorUserId: string,
-    operation: string,
-    resourceType: string,
-    resourceId: string,
-    result: unknown,
-  ): void {
-    this.db
-      .prepare(
-        `INSERT INTO cooking_mutation(
-           id, actor_user_id, operation, resource_type, resource_id,
-           result_json, created_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        id,
-        actorUserId,
-        operation,
-        resourceType,
-        resourceId,
-        JSON.stringify(result),
-        this.now().toISOString(),
-      );
-  }
-
-  private audit(
-    projectId: string,
-    actorUserId: string,
-    action: string,
-    targetType: string,
-    targetId: string,
-    details: unknown,
-  ): void {
-    this.db
-      .prepare(
-        `INSERT INTO cooking_audit_event(
-           id, project_id, actor_user_id, action, target_type, target_id,
-           details_json, created_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        this.createId(),
-        projectId,
-        actorUserId,
-        action,
-        targetType,
-        targetId,
-        JSON.stringify(details),
-        this.now().toISOString(),
-      );
   }
 }
 

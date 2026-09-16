@@ -1,3 +1,4 @@
+import { requireBindableFiles } from '@/cooking/shared/server/attachments';
 import { environmentReady } from '@/cooking/submissions/server/environment-access';
 import { BugDeletion } from './bug-deletion';
 import { randomUUID } from 'node:crypto';
@@ -136,20 +137,18 @@ export class BugService {
           );
         this.requireItem(submissionId, parsed.submissionItemId);
         const attachmentIds = reportAttachmentIds(parsed);
-        this.requireBindableFiles(actorUserId, attachmentIds);
+        requireBindableFiles(this.db, actorUserId, attachmentIds);
         const now = this.now().toISOString();
         const bugId = this.createId();
         const shortId = this.nextShortId(submissionId);
         const report = normalizedReport(parsed);
-        this.db
-          .prepare(
-            `INSERT INTO cooking_bug(
+        this.db.run(
+          `INSERT INTO cooking_bug(
                id, short_id, submission_id, submission_item_id, stage,
                title, operation_path, actual_result, expected_result,
                report_locked_at, version, created_by_user_id, created_at, updated_at
              ) VALUES (?, ?, ?, ?, 'WAITING_FOR_REPAIR', ?, ?, ?, ?, NULL, 1, ?, ?, ?)`,
-          )
-          .run(
+          [
             bugId,
             shortId,
             submissionId,
@@ -161,7 +160,8 @@ export class BugService {
             actorUserId,
             now,
             now,
-          );
+          ],
+        );
         this.bindAttachments(
           bugId,
           'ACTUAL_RESULT',
@@ -223,17 +223,15 @@ export class BugService {
         this.requireEditableReport(bug, parsed.expectedVersion);
         this.requireItem(bug.submissionId, parsed.submissionItemId);
         const attachmentIds = reportAttachmentIds(parsed);
-        this.requireBindableFiles(actorUserId, attachmentIds, bug.id);
+        requireBindableFiles(this.db, actorUserId, attachmentIds, bug.id);
         const report = normalizedReport(parsed);
-        const update = this.db
-          .prepare(
-            `UPDATE cooking_bug
+        const update = this.db.run(
+          `UPDATE cooking_bug
              SET submission_item_id = ?, title = ?, operation_path = ?,
                  actual_result = ?, expected_result = ?,
                  version = version + 1, updated_at = ?
              WHERE id = ? AND version = ? AND report_locked_at IS NULL`,
-          )
-          .run(
+          [
             parsed.submissionItemId,
             report.title,
             report.operationPath ?? null,
@@ -242,7 +240,8 @@ export class BugService {
             now,
             bug.id,
             parsed.expectedVersion,
-          );
+          ],
+        );
         if (update.changes !== 1) throw staleBug();
         this.replaceReportAttachments(bug.id, parsed, now);
         const previousAttachmentIds = reportAttachmentIds(bug.report);
@@ -284,13 +283,12 @@ export class BugService {
             '当前成员不能分诊此缺陷',
           );
         this.requireItem(bug.submissionId, parsed.submissionItemId);
-        const update = this.db
-          .prepare(
-            `UPDATE cooking_bug
+        const update = this.db.run(
+          `UPDATE cooking_bug
              SET submission_item_id = ?, version = version + 1, updated_at = ?
              WHERE id = ? AND version = ? AND report_locked_at IS NULL`,
-          )
-          .run(parsed.submissionItemId, now, bug.id, parsed.expectedVersion);
+          [parsed.submissionItemId, now, bug.id, parsed.expectedVersion],
+        );
         if (update.changes !== 1) throw staleBug();
         return {
           action: 'BUG_ASSIGNED',
@@ -326,14 +324,13 @@ export class BugService {
             'PERMISSION_DENIED',
             '只有测试负责人可以开始自动修复',
           );
-        const update = this.db
-          .prepare(
-            `UPDATE cooking_bug
+        const update = this.db.run(
+          `UPDATE cooking_bug
              SET stage = 'REPAIRING', report_locked_at = COALESCE(report_locked_at, ?),
                  version = version + 1, updated_at = ?
              WHERE id = ? AND version = ? AND stage = 'WAITING_FOR_REPAIR'`,
-          )
-          .run(now, now, bug.id, parsed.expectedVersion);
+          [now, now, bug.id, parsed.expectedVersion],
+        );
         if (update.changes !== 1) throw staleBug();
         this.repairHooks.requested(bug.id);
         return {
@@ -574,53 +571,6 @@ export class BugService {
       );
   }
 
-  private requireBindableFiles(
-    actorUserId: string,
-    fileIds: string[],
-    currentBugId?: string,
-  ): void {
-    for (const fileId of fileIds) {
-      const row = this.db
-        .prepare(
-          `SELECT file.uploaded_by_user_id, attachment.bug_id,
-                  verification_attachment.file_id verification_file_id,
-                  reopen_attachment.file_id reopen_file_id,
-                  report_attachment.file_id report_file_id
-           FROM platform_file file
-           LEFT JOIN cooking_bug_attachment attachment
-             ON attachment.file_id = file.id
-           LEFT JOIN cooking_verification_attachment verification_attachment
-             ON verification_attachment.file_id = file.id
-           LEFT JOIN cooking_reopen_attachment reopen_attachment
-             ON reopen_attachment.file_id = file.id
-           LEFT JOIN cooking_external_deployment_report_attachment report_attachment
-             ON report_attachment.file_id = file.id
-           WHERE file.id = ?`,
-        )
-        .get(fileId) as
-        | {
-            uploaded_by_user_id: string;
-            bug_id: string | null;
-            verification_file_id: string | null;
-            reopen_file_id: string | null;
-            report_file_id: string | null;
-          }
-        | undefined;
-      if (
-        !row ||
-        row.uploaded_by_user_id !== actorUserId ||
-        (row.bug_id && row.bug_id !== currentBugId) ||
-        row.verification_file_id ||
-        row.reopen_file_id ||
-        row.report_file_id
-      )
-        throw new PlatformError(
-          'VALIDATION_FAILED',
-          '附件不存在、已被使用或不属于当前用户',
-        );
-    }
-  }
-
   private bindAttachments(
     bugId: string,
     role: BugAttachmentRole,
@@ -628,13 +578,12 @@ export class BugService {
     now: string,
   ): void {
     fileIds.forEach((fileId, position) =>
-      this.db
-        .prepare(
-          `INSERT INTO cooking_bug_attachment(
+      this.db.run(
+        `INSERT INTO cooking_bug_attachment(
              file_id, bug_id, role, position, created_at
            ) VALUES (?, ?, ?, ?, ?)`,
-        )
-        .run(fileId, bugId, role, position, now),
+        [fileId, bugId, role, position, now],
+      ),
     );
   }
 
@@ -643,9 +592,7 @@ export class BugService {
     attachmentIds: ReportAttachmentIds,
     now: string,
   ): void {
-    this.db
-      .prepare(`DELETE FROM cooking_bug_attachment WHERE bug_id = ?`)
-      .run(bugId);
+    this.db.run(`DELETE FROM cooking_bug_attachment WHERE bug_id = ?`, [bugId]);
     this.bindAttachments(
       bugId,
       'ACTUAL_RESULT',

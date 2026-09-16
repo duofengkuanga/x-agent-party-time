@@ -1,0 +1,234 @@
+/* /cooking/projects restoration on top of the shared CookingShell. */
+.project-settings {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  width: 100%;
+}
+
+.project-settings__create {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.project-settings .project-settings__create > button {
+  grid-column: auto;
+  justify-self: stretch;
+}
+
+.collab-account-menu__invitation-list article form {
+  display: block;
+  padding: 0;
+}
+
+.project-dialog__feedback {
+  border-bottom: 1px solid var(--line);
+  font-size: 10px;
+  line-height: 1.6;
+  margin: 0;
+  padding: 10px 22px;
+}
+
+.project-dialog__feedback--error {
+  background: color-mix(in srgb, var(--accent), transparent 92%);
+  color: var(--accent-dark);
+}
+
+.project-dialog__feedback--success {
+  background: color-mix(in srgb, var(--success), transparent 90%);
+  color: var(--success);
+}
+
+.engineering-list > .collaboration-empty {
+  grid-column: 1 / -1;
+  min-height: 110px;
+  place-content: center;
+}
+
+.engineering-editor__setup-note {
+  background: var(--paper-deep);
+  border-left: 2px solid var(--accent-dark);
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+}
+
+.engineering-editor__setup-note > span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.engineering-editor__setup-note > strong {
+  font-size: 11px;
+}
+
+.engineering-editor__setup-note > small {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.engineering-editor__grid .field-wide,
+.engineering-environments > article .field-wide {
+  grid-column: 1 / -1;
+}
+
+.engineering-editor .inline-check > span {
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.engineering-detail__bindings li > form,
+.dialog-actions > form {
+  display: block;
+  padding: 0;
+}
+
+.engineering-detail__bindings li > form button {
+  min-height: 32px;
+  padding: 0 10px;
+}
+
+.engineering-binding-request {
+  border-left: 2px solid var(--line);
+  display: grid;
+  gap: 5px;
+  padding: 11px 14px;
+}
+
+.engineering-binding-request[data-state='PROCESSING'] {
+  border-color: var(--accent);
+}
+
+.engineering-binding-request[data-state='SUCCEEDED'] {
+  border-color: var(--success);
+}
+
+.engineering-binding-request > strong {
+  font-size: 10px;
+}
+
+.engineering-binding-request > p {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.engineering-detail__environments > .collaboration-empty,
+.engineering-detail__bindings > .collaboration-empty {
+  background: var(--paper-deep);
+  border-left: 2px solid var(--line);
+  padding: 12px 14px;
+}
+
+.engineering-detail__environments article > form.engineering-editor {
+  grid-column: 1 / -1;
+  overflow: visible;
+}
+
+.engineering-detail__environments article > form:not(.engineering-editor) {
+  display: block;
+  grid-column: 1 / -1;
+  padding: 0;
+}
+
+.dialog-actions {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding-top: 18px;
+}
+
+.dialog-actions > a,
+.dialog-actions > button,
+.dialog-actions > form button {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--strong-line);
+  color: var(--ink);
+  display: inline-flex;
+  font: inherit;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 18px;
+  text-decoration: none;
+}
+
+.dialog-actions > a:hover,
+.dialog-actions > button:hover,
+.dialog-actions > form button:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+@media (max-width: 900px) {
+  .project-settings__create {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .project-settings__create > button {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .engineering-editor > .dialog-actions {
+    margin-inline: 0;
+  }
+
+  .engineering-editor > .dialog-actions > a,
+  .engineering-editor > .dialog-actions > button {
+    flex: 1 1 120px;
+  }
+
+  .engineering-environments__title {
+    align-items: stretch;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .engineering-environments__title > button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 620px) {
+  .project-settings__hero {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .project-settings__toolbar-actions,
+  .project-settings .project-settings__primary-action {
+    width: 100%;
+  }
+
+  .project-settings__create {
+    grid-template-columns: 1fr;
+  }
+
+  .project-settings__create > button {
+    grid-column: auto;
+  }
+}
+
+.project-name-dialog label > small {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.6;
+}
+
+.project-name-dialog .dialog-actions {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 620px) {
+  .project-settings__row-actions:has(.project-settings__row-settings) {
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+  }
+}

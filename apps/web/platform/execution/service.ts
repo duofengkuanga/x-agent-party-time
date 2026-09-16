@@ -1,3 +1,4 @@
+import type { ExecutionProjector } from './projection';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import {
   ClaimedExecutionSchema,
@@ -95,28 +96,6 @@ const LEASED_STATES = [
 const DEFAULT_LEASE_DURATION_MS = 15_000;
 const POLL_INTERVAL_MS = 50;
 
-export type ExecutionLifecycleHooks = {
-  applyStarted: (execution: Execution) => void;
-  afterStarted: (execution: Execution) => void;
-  applyResumed: (execution: Execution) => void;
-  afterResumed: (execution: Execution) => void;
-  applyTerminal: (execution: Execution) => void;
-  afterTerminal: (execution: Execution) => void;
-  applyInteractionOpened: (interaction: ExecutionInteraction) => void;
-  afterInteractionOpened: (interaction: ExecutionInteraction) => void;
-};
-
-const NOOP_HOOKS: ExecutionLifecycleHooks = {
-  applyStarted: () => {},
-  afterStarted: () => {},
-  applyResumed: () => {},
-  afterResumed: () => {},
-  applyTerminal: () => {},
-  afterTerminal: () => {},
-  applyInteractionOpened: () => {},
-  afterInteractionOpened: () => {},
-};
-
 export class ExecutionService {
   constructor(
     private readonly db: AppDatabase,
@@ -125,7 +104,7 @@ export class ExecutionService {
     private readonly createLeaseToken: () => string = () =>
       randomBytes(32).toString('base64url'),
     private readonly leaseDurationMs: number = DEFAULT_LEASE_DURATION_MS,
-    private readonly hooks: ExecutionLifecycleHooks = NOOP_HOOKS,
+    private readonly project: ExecutionProjector = () => {},
   ) {}
 
   enqueue(inputValue: EnqueueExecutionInput): Execution {
@@ -145,9 +124,8 @@ export class ExecutionService {
 
     try {
       this.db.transaction(() => {
-        this.db
-          .prepare(
-            `INSERT INTO platform_execution(
+        this.db.run(
+          `INSERT INTO platform_execution(
                id, owner_namespace, owner_kind, owner_id, attempt,
                previous_execution_id, runner_id, binding_id, priority,
                approval_policy, state, codex_turn_json, skill_name,
@@ -160,8 +138,7 @@ export class ExecutionService {
                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'QUEUED', ?, ?, ?, ?,
                ?, NULL, NULL, NULL, NULL, NULL, 0, NULL, ?, NULL, NULL, NULL
              )`,
-          )
-          .run(
+          [
             executionId,
             input.owner.namespace,
             input.owner.kind,
@@ -184,7 +161,8 @@ export class ExecutionService {
               : null,
             input.workspace ? JSON.stringify(input.workspace) : null,
             createdAt,
-          );
+          ],
+        );
         const insertAttachment = this.db.prepare(
           `INSERT INTO platform_execution_attachment(
              execution_id, file_id, original_name, media_type, size_bytes,
@@ -250,23 +228,21 @@ export class ExecutionService {
           kind: 'FAILED',
           failure: request.failure,
         };
-        this.db
-          .prepare(
-            `UPDATE platform_execution
+        this.db.run(
+          `UPDATE platform_execution
              SET state = 'FAILED', outcome_json = ?, finished_at = ?,
                  lease_expires_at = NULL
              WHERE id = ?`,
-          )
-          .run(JSON.stringify(outcome), now, executionId);
+          [JSON.stringify(outcome), now, executionId],
+        );
         this.invalidatePendingInteractions(executionId, now);
       } else {
         const turn = row.codex_turn_json
           ? (JSON.parse(row.codex_turn_json) as CodexTurn)
           : null;
         validateStartedSkillBinding(turn, request.taskSkillBinding);
-        this.db
-          .prepare(
-            `UPDATE platform_execution
+        this.db.run(
+          `UPDATE platform_execution
              SET state = CASE
                    WHEN cancellation_requested = 1 THEN 'CANCEL_REQUESTED'
                    ELSE 'RUNNING'
@@ -275,23 +251,30 @@ export class ExecutionService {
                  skill_source_revision = ?,
                  started_at = COALESCE(started_at, ?)
              WHERE id = ?`,
-          )
-          .run(
+          [
             request.sessionId,
             request.taskSkillBinding?.skillName ?? null,
             request.taskSkillBinding?.bundleHash ?? null,
             request.taskSkillBinding?.sourceRevision ?? null,
             now,
             executionId,
-          );
+          ],
+        );
       }
       const execution = this.get(executionId);
-      if (request.kind === 'START_FAILED') this.hooks.applyTerminal(execution);
-      else this.hooks.applyStarted(execution);
+      if (request.kind === 'START_FAILED')
+        this.project({
+          phase: 'APPLY',
+          kind: 'TERMINAL',
+          execution: execution,
+        });
+      else
+        this.project({ phase: 'APPLY', kind: 'STARTED', execution: execution });
       return execution;
     })();
-    if (request.kind === 'START_FAILED') this.hooks.afterTerminal(result);
-    else this.hooks.afterStarted(result);
+    if (request.kind === 'START_FAILED')
+      this.project({ phase: 'AFTER', kind: 'TERMINAL', execution: result });
+    else this.project({ phase: 'AFTER', kind: 'STARTED', execution: result });
     return result;
   }
 
@@ -308,11 +291,10 @@ export class ExecutionService {
         [...LEASED_STATES],
       );
       const expiresAt = this.newLeaseExpiry();
-      this.db
-        .prepare(
-          `UPDATE platform_execution SET lease_expires_at = ? WHERE id = ?`,
-        )
-        .run(expiresAt, executionId);
+      this.db.run(
+        `UPDATE platform_execution SET lease_expires_at = ? WHERE id = ?`,
+        [expiresAt, executionId],
+      );
       return {
         expiresAt,
         cancellationRequested: Boolean(row.cancellation_requested),
@@ -346,34 +328,41 @@ export class ExecutionService {
       }
       const id = this.createId();
       const createdAt = this.now().toISOString();
-      this.db
-        .prepare(
-          `INSERT INTO platform_execution_interaction(
+      this.db.run(
+        `INSERT INTO platform_execution_interaction(
              id, execution_id, kind, method, payload_json, state,
              resolution_json, created_at, resolved_at
            ) VALUES (?, ?, ?, ?, ?, 'PENDING', NULL, ?, NULL)`,
-        )
-        .run(
+        [
           id,
           executionId,
           request.kind,
           request.method,
           JSON.stringify(request.payload),
           createdAt,
-        );
-      this.db
-        .prepare(
-          `UPDATE platform_execution
+        ],
+      );
+      this.db.run(
+        `UPDATE platform_execution
            SET state = 'WAITING_FOR_INTERACTION'
            WHERE id = ?`,
-        )
-        .run(executionId);
+        [executionId],
+      );
       const interaction = this.getInteraction(id);
-      this.hooks.applyInteractionOpened(interaction);
+      this.project({
+        phase: 'APPLY',
+        kind: 'INTERACTION_OPENED',
+        interaction: interaction,
+      });
       opened = true;
       return interaction;
     })();
-    if (opened) this.hooks.afterInteractionOpened(result);
+    if (opened)
+      this.project({
+        phase: 'AFTER',
+        kind: 'INTERACTION_OPENED',
+        interaction: result,
+      });
     return result;
   }
 
@@ -445,20 +434,18 @@ export class ExecutionService {
         resolution,
       );
       const resolvedAt = this.now().toISOString();
-      this.db
-        .prepare(
-          `UPDATE platform_execution_interaction
+      this.db.run(
+        `UPDATE platform_execution_interaction
            SET state = 'RESOLVED', resolution_json = ?, resolved_at = ?
            WHERE id = ? AND state = 'PENDING'`,
-        )
-        .run(JSON.stringify(parsedResolution), resolvedAt, interactionId);
-      this.db
-        .prepare(
-          `UPDATE platform_execution
+        [JSON.stringify(parsedResolution), resolvedAt, interactionId],
+      );
+      this.db.run(
+        `UPDATE platform_execution
            SET state = 'WAITING_TO_RESUME', resume_requested_at = ?
            WHERE id = ?`,
-        )
-        .run(resolvedAt, interaction.execution_id);
+        [resolvedAt, interaction.execution_id],
+      );
       return this.getInteraction(interactionId);
     })();
   }
@@ -501,40 +488,39 @@ export class ExecutionService {
       if (row.session_id !== request.sessionId)
         throw new PlatformError('STALE_STATE', '任务会话不匹配');
       const finishedAt = this.now().toISOString();
-      this.db
-        .prepare(
-          `UPDATE platform_execution
+      this.db.run(
+        `UPDATE platform_execution
            SET state = ?, outcome_json = ?, reported_outcome_json = ?,
                finished_at = ?, lease_expires_at = NULL
            WHERE id = ?`,
-        )
-        .run(
+        [
           request.outcome.kind,
           JSON.stringify(request.outcome),
           JSON.stringify(request.outcome),
           finishedAt,
           executionId,
-        );
+        ],
+      );
       this.invalidatePendingInteractions(executionId, finishedAt);
       const execution = this.get(executionId);
-      this.hooks.applyTerminal(execution);
+      this.project({ phase: 'APPLY', kind: 'TERMINAL', execution: execution });
       newlyTerminal = true;
       return this.get(executionId);
     })();
-    if (newlyTerminal) this.hooks.afterTerminal(result);
+    if (newlyTerminal)
+      this.project({ phase: 'AFTER', kind: 'TERMINAL', execution: result });
     return result;
   }
 
   cancelQueued(executionId: string, reason: string): Execution {
     const finishedAt = this.now().toISOString();
     const outcome: ExecutionOutcome = { kind: 'CANCELLED', reason };
-    const update = this.db
-      .prepare(
-        `UPDATE platform_execution
+    const update = this.db.run(
+      `UPDATE platform_execution
          SET state = 'CANCELLED', outcome_json = ?, finished_at = ?
          WHERE id = ? AND state = 'QUEUED'`,
-      )
-      .run(JSON.stringify(outcome), finishedAt, executionId);
+      [JSON.stringify(outcome), finishedAt, executionId],
+    );
     if (update.changes !== 1)
       throw new PlatformError(
         'INVALID_TRANSITION',
@@ -542,8 +528,8 @@ export class ExecutionService {
       );
     const execution = this.get(executionId);
     this.invalidatePendingInteractions(executionId, finishedAt);
-    this.hooks.applyTerminal(execution);
-    this.hooks.afterTerminal(execution);
+    this.project({ phase: 'APPLY', kind: 'TERMINAL', execution: execution });
+    this.project({ phase: 'AFTER', kind: 'TERMINAL', execution: execution });
     return execution;
   }
 
@@ -562,31 +548,34 @@ export class ExecutionService {
           kind: 'CANCELLED',
           reason: '服务端已请求取消',
         };
-        this.db
-          .prepare(
-            `UPDATE platform_execution
+        this.db.run(
+          `UPDATE platform_execution
              SET cancellation_requested = 1, state = 'CANCELLED',
                  outcome_json = ?, finished_at = ?,
                  lease_token_hash = NULL, lease_expires_at = NULL
              WHERE id = ?`,
-          )
-          .run(JSON.stringify(outcome), cancelledAt, executionId);
+          [JSON.stringify(outcome), cancelledAt, executionId],
+        );
         this.invalidatePendingInteractions(executionId, cancelledAt);
         const execution = this.get(executionId);
-        this.hooks.applyTerminal(execution);
+        this.project({
+          phase: 'APPLY',
+          kind: 'TERMINAL',
+          execution: execution,
+        });
         newlyTerminal = true;
         return execution;
       }
-      this.db
-        .prepare(
-          `UPDATE platform_execution
+      this.db.run(
+        `UPDATE platform_execution
            SET cancellation_requested = 1, state = 'CANCEL_REQUESTED'
            WHERE id = ?`,
-        )
-        .run(executionId);
+        [executionId],
+      );
       return this.get(executionId);
     })();
-    if (newlyTerminal) this.hooks.afterTerminal(result);
+    if (newlyTerminal)
+      this.project({ phase: 'AFTER', kind: 'TERMINAL', execution: result });
     return result;
   }
 
@@ -714,9 +703,8 @@ export class ExecutionService {
           return { laneAcquired: true, resumedExecution: null };
         if (execution.state !== 'WAITING_TO_RESUME')
           return { laneAcquired: false, resumedExecution: null };
-        const update = this.db
-          .prepare(
-            `UPDATE platform_execution AS candidate
+        const update = this.db.run(
+          `UPDATE platform_execution AS candidate
            SET state = 'RUNNING', resume_requested_at = NULL
            WHERE candidate.id = ?
              AND candidate.state = 'WAITING_TO_RESUME'
@@ -749,17 +737,25 @@ export class ExecutionService {
                    )
                  )
              )`,
-          )
-          .run(executionId, this.now().toISOString());
+          [executionId, this.now().toISOString()],
+        );
         if (update.changes !== 1)
           return { laneAcquired: false, resumedExecution: null };
         const resumedExecution = this.get(executionId);
-        this.hooks.applyResumed(resumedExecution);
+        this.project({
+          phase: 'APPLY',
+          kind: 'RESUMED',
+          execution: resumedExecution,
+        });
         return { laneAcquired: true, resumedExecution };
       },
     )();
     if (result.resumedExecution)
-      this.hooks.afterResumed(result.resumedExecution);
+      this.project({
+        phase: 'AFTER',
+        kind: 'RESUMED',
+        execution: result.resumedExecution,
+      });
     return result.laneAcquired;
   }
 
@@ -842,17 +838,16 @@ export class ExecutionService {
         const leaseToken = this.createLeaseToken();
         const expiresAt = this.newLeaseExpiry();
         const claimedAt = this.now().toISOString();
-        this.db
-          .prepare(
-            `UPDATE platform_execution
+        this.db.run(
+          `UPDATE platform_execution
              SET state = 'CLAIMED', lease_token_hash = ?,
                  lease_expires_at = ?, claimed_at = COALESCE(claimed_at, ?),
                  resume_requested_at = NULL
              WHERE id = ?
                AND cancellation_requested = 0
                AND state IN ('QUEUED', 'WAITING_TO_RESUME')`,
-          )
-          .run(hashSecret(leaseToken), expiresAt, claimedAt, row.id);
+          [hashSecret(leaseToken), expiresAt, claimedAt, row.id],
+        );
         const execution = this.get(row.id);
         return ClaimedExecutionSchema.parse({
           ...execution,
@@ -921,7 +916,11 @@ export class ExecutionService {
           invalidate.run(now, row.id);
           cancelled.run(JSON.stringify(outcome), now, row.id);
           const execution = this.get(row.id);
-          this.hooks.applyTerminal(execution);
+          this.project({
+            phase: 'APPLY',
+            kind: 'TERMINAL',
+            execution: execution,
+          });
           completed.push(execution);
           continue;
         }
@@ -929,7 +928,8 @@ export class ExecutionService {
       }
       return completed;
     })();
-    for (const execution of terminal) this.hooks.afterTerminal(execution);
+    for (const execution of terminal)
+      this.project({ phase: 'AFTER', kind: 'TERMINAL', execution: execution });
   }
 
   private requireLeasedExecution(
@@ -1056,13 +1056,12 @@ export class ExecutionService {
     executionId: string,
     resolvedAt: string,
   ): void {
-    this.db
-      .prepare(
-        `UPDATE platform_execution_interaction
+    this.db.run(
+      `UPDATE platform_execution_interaction
          SET state = 'INVALIDATED', resolved_at = ?
          WHERE execution_id = ? AND state = 'PENDING'`,
-      )
-      .run(resolvedAt, executionId);
+      [resolvedAt, executionId],
+    );
   }
 
   private newLeaseExpiry(): string {

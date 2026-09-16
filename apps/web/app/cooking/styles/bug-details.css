@@ -1,0 +1,671 @@
+/* Lifecycle storage drop targets. */
+.collab-shell .collab-storage-button--icon {
+  align-self: center;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  display: grid;
+  flex: 0 0 34px;
+  font-size: 16px;
+  height: 34px;
+  line-height: 1;
+  min-width: 34px;
+  outline: 0 !important;
+  padding: 0;
+  place-items: center;
+  position: relative;
+  width: 34px;
+}
+
+.collab-storage-button--icon > sup {
+  align-items: center;
+  background: var(--paper) !important;
+  border: 0;
+  color: var(--ink) !important;
+  display: flex;
+  font-size: 8px;
+  font-weight: 900;
+  height: 16px;
+  justify-content: center;
+  min-width: 16px;
+  padding: 0 3px;
+  position: absolute;
+  right: -6px;
+  top: -6px;
+}
+
+.collab-shell .collab-storage-button--icon:hover > sup,
+.collab-shell .collab-storage-button--icon:focus-visible > sup,
+.collab-shell .collab-storage-button--icon[data-drop-eligible='true'] > sup,
+.collab-shell .collab-storage-button--icon[data-drop-target='true'] > sup {
+  background: var(--paper) !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: var(--ink) !important;
+  filter: none !important;
+  transform: none !important;
+}
+
+.collab-storage-button__glyph {
+  font-family: system-ui, sans-serif;
+  font-size: 17px;
+  line-height: 1;
+  transform-origin: center;
+  transition: transform 120ms ease;
+}
+
+.collab-storage-button__drop-label {
+  display: none;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.collab-bug-drag-preview {
+  align-items: center;
+  color: var(--ink);
+  display: flex;
+  font-family: system-ui, sans-serif;
+  font-size: 24px;
+  height: 32px;
+  justify-content: center;
+  left: -100px;
+  pointer-events: none;
+  position: fixed;
+  text-shadow: 0 1px 0 color-mix(in srgb, var(--paper), transparent 12%);
+  top: -100px;
+  width: 32px;
+}
+
+.collab-shell .collab-storage-button--icon:hover,
+.collab-shell .collab-storage-button--icon:focus-visible {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  outline: 0 !important;
+  transform: none;
+}
+
+.collab-shell .collab-storage-button--icon:hover .collab-storage-button__glyph,
+.collab-shell
+  .collab-storage-button--icon:focus-visible
+  .collab-storage-button__glyph {
+  filter: drop-shadow(0 1px 0 var(--accent));
+  transform: translateY(-1px) scale(1.06);
+}
+
+.collab-storage-button[data-drop-target='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  transform: translateY(-2px);
+}
+
+.collab-shell .collab-storage-button--icon[data-drop-eligible='true'] {
+  background: color-mix(in srgb, var(--accent), transparent 90%) !important;
+  border: 0 !important;
+  color: var(--ink) !important;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 7px;
+  min-width: 128px;
+  padding: 0 10px;
+  width: auto;
+}
+
+.collab-storage-button--icon[data-drop-eligible='true']
+  .collab-storage-button__drop-label {
+  display: inline;
+}
+
+.collab-shell .collab-storage-button--icon[data-drop-target='true'] {
+  background: var(--accent) !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: #fff !important;
+  outline: 0 !important;
+  transform: none;
+}
+
+.collab-shell
+  .collab-storage-button--icon[data-drop-target='true']
+  .collab-storage-button__glyph {
+  filter: drop-shadow(0 1px 0 var(--accent));
+  transform: translateY(-2px) scale(1.1);
+}
+
+.collab-stored-bug-list {
+  display: grid;
+  gap: 0.65rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.collab-stored-bug-list button {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.8rem;
+  text-align: left;
+  width: 100%;
+}
+
+.collab-stored-bug-list small {
+  color: var(--muted);
+}
+
+.collab-bug-drawer {
+  width: min(940px, 100%);
+}
+
+.collab-dialog > .collab-bug-drawer__chrome {
+  align-items: center;
+  min-height: 43px;
+  padding: 7px 12px 7px 20px;
+}
+
+.collab-bug-drawer__chrome > small {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.collab-bug-drawer__chrome-actions {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+}
+
+.collab-bug-drawer__body {
+  padding: 0;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+}
+
+.collab-bug-drawer__body::-webkit-scrollbar {
+  display: none;
+}
+
+.collab-bug-drawer__actions {
+  background: var(--paper);
+  flex: 0 0 auto;
+  padding: 15px 20px 20px;
+}
+
+.collab-bug-drawer__body[data-detail-view='repair']
+  > [data-progress-kind='update'],
+.collab-bug-drawer__body[data-detail-view='update']
+  > [data-progress-kind='repair'] {
+  display: none;
+}
+
+.collab-bug-detail-hero {
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--accent), transparent 92%),
+      transparent 38%
+    ),
+    var(--paper);
+  border-bottom: 1px solid var(--strong-line);
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(340px, 1fr);
+  padding: 18px 20px 0;
+  position: sticky;
+  top: 0;
+  z-index: 4;
+}
+
+.collab-bug-drawer__body[data-detail-view] > .collab-bug-detail-hero {
+  grid-template-columns: 300px minmax(0, 1fr);
+  padding-bottom: 18px;
+  position: relative;
+  top: auto;
+}
+
+.collab-bug-detail-hero > div {
+  min-width: 0;
+}
+
+.collab-bug-detail-hero__title {
+  align-content: start;
+  display: grid;
+  gap: 10px;
+  width: 300px;
+}
+
+.collab-bug-detail-hero__title > button {
+  font-size: 9px;
+  justify-self: start;
+  padding: 4px 9px;
+}
+
+.collab-bug-detail-hero > div > small {
+  color: var(--accent-dark);
+  display: block;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  margin-bottom: 7px;
+  text-transform: uppercase;
+}
+
+.collab-bug-detail-hero h2 {
+  font-family: inherit;
+  font-size: clamp(18px, 2.2vw, 27px);
+  line-height: 1.2;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.collab-bug-detail-hero__title h2 {
+  font-size: 20px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collab-bug-detail-hero > dl {
+  align-self: start;
+  display: grid;
+  gap: 8px 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.collab-bug-drawer__body[data-detail-view] > .collab-bug-detail-hero > dl {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.collab-bug-detail-hero > dl > div {
+  border-left: 2px solid var(--line);
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding-left: 8px;
+}
+
+.collab-bug-detail-hero dt,
+.collab-bug-detail-list dt {
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 900;
+}
+
+.collab-bug-detail-hero dd,
+.collab-bug-detail-list dd {
+  font-size: 10px;
+  line-height: 1.55;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.collab-bug-detail-fact {
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  display: -webkit-box;
+  overflow: hidden;
+}
+
+.collab-bug-result-detail {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.collab-bug-detail-attachments {
+  display: grid;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.collab-bug-detail-attachments li {
+  gap: 5px;
+}
+
+.collab-bug-detail-attachments a {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collab-bug-detail-attachments small {
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+
+.collab-bug-id {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.collab-bug-id code {
+  font-size: 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.collab-bug-id button {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 9px;
+  padding: 1px 6px;
+}
+
+.collab-bug-detail-tabs {
+  align-items: end;
+  background: var(--paper);
+  border-bottom: 1px solid var(--strong-line);
+  display: flex;
+  gap: 24px;
+  padding: 0 20px;
+  position: sticky;
+  top: 0;
+  z-index: 4;
+}
+
+.collab-shell .collab-bug-detail-tabs button {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0;
+  color: var(--muted) !important;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  min-height: 38px;
+  min-width: 0;
+  padding: 1px 0 0;
+}
+
+.collab-shell .collab-bug-detail-tabs button:hover:not(:disabled) {
+  background: transparent !important;
+  color: var(--accent-dark) !important;
+}
+
+.collab-shell .collab-bug-detail-tabs button[aria-current='page'] {
+  box-shadow: inset 0 -2px 0 var(--accent);
+  color: var(--ink) !important;
+}
+
+.collab-bug-detail-section {
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 13px;
+  padding: 20px;
+}
+
+.collab-bug-detail-section > header {
+  align-items: start;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+}
+
+.collab-bug-detail-section h3,
+.collab-bug-detail-section h4 {
+  margin: 0;
+}
+
+.collab-bug-detail-section h3 {
+  font-size: 14px;
+}
+
+.collab-bug-detail-section h4 {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.collab-bug-detail-section p {
+  font-size: 10px;
+  line-height: 1.65;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.collab-bug-detail-list {
+  display: grid;
+  gap: 10px 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.collab-bug-detail-list > div {
+  display: grid;
+  gap: 4px;
+}
+
+.collab-repair-timeline {
+  display: grid;
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 22px;
+}
+
+.collab-repair-timeline > li {
+  border-left: 1px solid var(--strong-line);
+  padding: 0 0 24px 22px;
+  position: relative;
+}
+
+.collab-repair-timeline > li:last-child {
+  border-left-color: transparent;
+  padding-bottom: 0;
+}
+
+.collab-repair-timeline__mark {
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  height: 11px;
+  left: -6px;
+  position: absolute;
+  top: 3px;
+  transform: rotate(45deg);
+  width: 11px;
+}
+
+.collab-repair-timeline
+  > li[data-node-kind='REPAIR_ATTEMPT']
+  .collab-repair-timeline__mark {
+  border-color: var(--accent);
+}
+
+.collab-repair-timeline
+  > li[data-node-kind='UPDATE_BATCH']
+  .collab-repair-timeline__mark {
+  border-color: var(--blue);
+}
+
+.collab-repair-timeline
+  > li[data-node-kind='VERIFICATION']
+  .collab-repair-timeline__mark {
+  border-color: var(--warning);
+}
+
+.collab-repair-timeline
+  > li[data-node-kind='REOPEN']
+  .collab-repair-timeline__mark {
+  border-color: var(--accent);
+}
+
+.collab-repair-timeline
+  > li[data-node-kind='CANCELLED']
+  .collab-repair-timeline__mark {
+  border-color: var(--danger);
+}
+
+.collab-repair-timeline
+  > li[data-node-kind='RESTORED']
+  .collab-repair-timeline__mark {
+  border-color: var(--success);
+}
+
+.collab-progress-visual {
+  justify-self: start;
+}
+
+.collab-repair-timeline article {
+  display: grid;
+  gap: 13px;
+}
+
+.collab-progress-timeline[data-summary-only='true'] .collab-progress-summary {
+  gap: 0;
+}
+
+.collab-progress-timeline[data-summary-only='true']
+  .collab-repair-timeline
+  > li {
+  padding-bottom: 18px;
+}
+
+.collab-repair-timeline article > header {
+  align-items: baseline;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+}
+
+.collab-repair-timeline article > header strong {
+  font-size: 11px;
+}
+
+.collab-repair-timeline time {
+  color: var(--faint);
+  flex: 0 0 auto;
+  font-size: 8px;
+}
+
+.collab-repair-result-list,
+.collab-repair-validations {
+  border-left: 2px solid var(--line);
+  display: grid;
+  gap: 7px;
+  padding-left: 10px;
+}
+
+.collab-sync-correction {
+  border-left: 2px solid var(--warning);
+  display: grid;
+  gap: 8px;
+  padding-left: 10px;
+}
+
+.collab-sync-correction p,
+.collab-sync-correction pre {
+  margin: 0;
+}
+
+.collab-sync-correction pre {
+  max-height: 280px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.collab-repair-result-list ul,
+.collab-repair-validations ul,
+.collab-repair-timeline details ol {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.collab-repair-result-list li,
+.collab-repair-validations li {
+  font-size: 9px;
+  line-height: 1.6;
+}
+
+.collab-repair-validations li {
+  align-items: baseline;
+  display: grid;
+  gap: 7px;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.collab-repair-validations li strong {
+  border: 1px solid currentColor;
+  font-size: 8px;
+  padding: 1px 4px;
+}
+
+.collab-repair-validations li small {
+  color: var(--muted);
+  grid-column: 2;
+}
+
+.collab-repair-validations li[data-validation-status='PASSED'] {
+  color: var(--success);
+}
+
+.collab-repair-validations li[data-validation-status='FAILED'] {
+  color: var(--danger);
+}
+
+.collab-repair-validations li[data-validation-status='SKIPPED'] {
+  color: var(--muted);
+}
+
+.collab-repair-commit-count {
+  color: var(--accent-dark);
+  font-weight: 900;
+}
+
+.collab-repair-timeline details {
+  border-top: 1px dashed var(--line);
+  padding-top: 10px;
+}
+
+.collab-repair-timeline summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 9px;
+}
+
+.collab-repair-timeline details p,
+.collab-repair-timeline details code,
+.collab-repair-timeline details ol {
+  margin-top: 9px;
+}
+
+.collab-session-facts {
+  background: color-mix(in srgb, var(--paper), var(--blue) 4%);
+  border: 1px dashed var(--line);
+  padding: 8px 10px;
+}
+
+.collab-bug-detail-empty {
+  color: var(--muted);
+}
+
+@media (max-width: 760px) {
+  .collab-bug-detail-hero,
+  .collab-bug-drawer__body[data-detail-view] > .collab-bug-detail-hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .collab-bug-detail-hero__title {
+    width: 100%;
+  }
+
+  .collab-bug-detail-hero > dl,
+  .collab-bug-drawer__body[data-detail-view] > .collab-bug-detail-hero > dl {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .collab-bug-detail-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.collab-submission-projects td > span,
+.collab-submission-projects td > small {
+  display: block;
+}

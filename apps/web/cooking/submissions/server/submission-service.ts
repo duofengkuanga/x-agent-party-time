@@ -1,3 +1,4 @@
+import { requireProjectMember } from '@/cooking/shared/server/access';
 import {
   environmentConflict,
   environmentObservers,
@@ -149,8 +150,8 @@ export class SubmissionService {
         revision: submission.workspaceRevision,
       }),
       perform: () => {
-        this.requireProjectMember(actorUserId, projectId);
-        this.requireProjectMember(parsed.testerUserId, projectId);
+        requireProjectMember(this.db, actorUserId, projectId);
+        requireProjectMember(this.db, parsed.testerUserId, projectId);
         const createdAt = this.now().toISOString();
         const submissionId = this.createId();
         const itemSnapshots = parsed.items.map((item, position) => {
@@ -166,15 +167,13 @@ export class SubmissionService {
             targetBranch: item.targetBranch,
           };
         });
-        this.db
-          .prepare(
-            `INSERT INTO cooking_test_submission(
+        this.db.run(
+          `INSERT INTO cooking_test_submission(
                id, project_id, title, requirement_description,
                tester_user_id, status, version, workspace_revision,
                created_by_user_id, created_at, updated_at, closed_at
              ) VALUES (?, ?, ?, ?, ?, 'ACTIVE', 1, 1, ?, ?, ?, NULL)`,
-          )
-          .run(
+          [
             submissionId,
             projectId,
             parsed.title,
@@ -183,7 +182,8 @@ export class SubmissionService {
             actorUserId,
             createdAt,
             createdAt,
-          );
+          ],
+        );
         for (const item of itemSnapshots) {
           this.insertItem(
             submissionId,
@@ -201,20 +201,19 @@ export class SubmissionService {
               (value) => value.environmentId === item.source.environment_id,
             ),
           );
-          this.db
-            .prepare(
-              `INSERT INTO cooking_submission_environment_lock(
+          this.db.run(
+            `INSERT INTO cooking_submission_environment_lock(
             environment_id, engineering_id, submission_id, submission_item_id, created_at, deployment_confirmed
           ) VALUES (?, ?, ?, ?, ?, ?)`,
-            )
-            .run(
+            [
               item.source.environment_id,
               item.source.engineering_id,
               submissionId,
               item.id,
               createdAt,
               previous ? 0 : 1,
-            );
+            ],
+          );
           for (const observer of environmentObservers(
             this.db,
             item.source.environment_id,
@@ -270,7 +269,11 @@ export class SubmissionService {
     projectId: string,
     input: CreateSubmissionInput,
   ): EnvironmentConflict[] {
-    this.requireProjectMember(actorUserId, ProjectIdSchema.parse(projectId));
+    requireProjectMember(
+      this.db,
+      actorUserId,
+      ProjectIdSchema.parse(projectId),
+    );
     const parsed = CreateSubmissionInputSchema.parse(input);
     return parsed.items.flatMap((item) => {
       this.snapshotItemSource(projectId, item);
@@ -330,11 +333,10 @@ export class SubmissionService {
               'RESOURCE_CONFLICT',
               '更新或部署尚未结束，暂时不能确认',
             );
-          this.db
-            .prepare(
-              'UPDATE cooking_submission_environment_lock SET deployment_confirmed = 1 WHERE submission_item_id = ?',
-            )
-            .run(itemId);
+          this.db.run(
+            'UPDATE cooking_submission_environment_lock SET deployment_confirmed = 1 WHERE submission_item_id = ?',
+            [itemId],
+          );
         } else {
           if (
             ![
@@ -367,18 +369,17 @@ export class SubmissionService {
             item.environment_id,
             input.takeover,
           );
-          this.db
-            .prepare(
-              `INSERT INTO cooking_submission_environment_lock(environment_id, engineering_id, submission_id, submission_item_id, created_at, deployment_confirmed)
+          this.db.run(
+            `INSERT INTO cooking_submission_environment_lock(environment_id, engineering_id, submission_id, submission_item_id, created_at, deployment_confirmed)
             VALUES (?, ?, ?, ?, ?, 0)`,
-            )
-            .run(
+            [
               item.environment_id,
               item.engineering_id,
               item.submission_id,
               item.id,
               now,
-            );
+            ],
+          );
           for (const observer of environmentObservers(
             this.db,
             item.environment_id,
@@ -504,9 +505,8 @@ export class SubmissionService {
               '该工程已有缺陷，不能再修改目标分支',
             );
           if (item.target_branch === target.targetBranch) continue;
-          const updateItem = this.db
-            .prepare(
-              `UPDATE cooking_submission_item
+          const updateItem = this.db.run(
+            `UPDATE cooking_submission_item
                SET target_branch = ?
                WHERE id = ? AND submission_id = ?
                  AND responsible_user_id = ?
@@ -514,13 +514,13 @@ export class SubmissionService {
                    SELECT 1 FROM cooking_bug
                    WHERE submission_item_id = cooking_submission_item.id
                  )`,
-            )
-            .run(
+            [
               target.targetBranch,
               target.submissionItemId,
               submissionId,
               actorUserId,
-            );
+            ],
+          );
           if (updateItem.changes !== 1)
             throw new PlatformError(
               'STALE_STATE',
@@ -528,21 +528,20 @@ export class SubmissionService {
             );
           changedTargetBranches.push(target);
         }
-        const update = this.db
-          .prepare(
-            `UPDATE cooking_test_submission
+        const update = this.db.run(
+          `UPDATE cooking_test_submission
              SET title = ?, requirement_description = ?,
                  version = version + 1,
                  updated_at = ?
              WHERE id = ? AND version = ? AND status = 'ACTIVE'`,
-          )
-          .run(
+          [
             parsed.title,
             parsed.requirementDescription,
             updatedAt,
             submissionId,
             parsed.expectedVersion,
-          );
+          ],
+        );
         if (update.changes !== 1)
           throw new PlatformError('STALE_STATE', '提测单已更新，请刷新后重试');
         const workspaceRevision = this.writes.bumpRevision(
@@ -850,9 +849,8 @@ export class SubmissionService {
     targetBranch: string,
     createdAt: string,
   ): void {
-    this.db
-      .prepare(
-        `INSERT INTO cooking_submission_item(
+    this.db.run(
+      `INSERT INTO cooking_submission_item(
            id, submission_id, position, engineering_id, engineering_name,
            engineering_type, engineering_identifier, repository_url,
            responsible_user_id, responsible_username,
@@ -860,8 +858,7 @@ export class SubmissionService {
            binding_id, target_branch, environment_id, environment_name,
            deployment_json, created_at
          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
+      [
         itemId,
         submissionId,
         position,
@@ -880,18 +877,8 @@ export class SubmissionService {
         source.environment_name,
         source.deployment_json,
         createdAt,
-      );
-  }
-
-  private requireProjectMember(userId: string, projectId: string): void {
-    const membership = this.db
-      .prepare(
-        `SELECT 1 present FROM cooking_project_membership
-         WHERE project_id = ? AND user_id = ?`,
-      )
-      .get(projectId, userId);
-    if (!membership)
-      throw new PlatformError('NOT_FOUND', '项目不存在或无权访问');
+      ],
+    );
   }
 
   private requireSubmissionAccess(

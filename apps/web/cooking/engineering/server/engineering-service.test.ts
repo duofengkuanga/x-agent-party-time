@@ -1,27 +1,17 @@
-import { afterEach, describe, expect, test } from 'bun:test';
-import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { AuthService } from '@/platform/auth/service';
-import type { AppDatabase } from '@/platform/database';
-import { openDatabase } from '@/platform/database';
 import { ProjectService } from '@/cooking/projects/server/project-service';
+import { AuthService } from '@/platform/auth/service';
+import { testDatabases } from '@/testing/database';
+import { describe, expect, test } from 'bun:test';
+import { randomUUID } from 'node:crypto';
 import {
   EngineeringService,
   type EngineeringGuards,
 } from './engineering-service';
 
-const directories: string[] = [];
-const databases: AppDatabase[] = [];
+const createDatabase = testDatabases();
 
 async function setup() {
-  const directory = await mkdtemp(
-    join(tmpdir(), 'agent-party-time-engineering-'),
-  );
-  directories.push(directory);
-  const database = openDatabase(join(directory, 'server.sqlite'));
-  databases.push(database);
+  const { directory, database } = await createDatabase();
   const auth = new AuthService(
     database,
     () => new Date('2026-07-26T09:00:00Z'),
@@ -88,15 +78,6 @@ async function setup() {
     ),
   };
 }
-
-afterEach(async () => {
-  for (const database of databases.splice(0)) database.close();
-  await Promise.all(
-    directories
-      .splice(0)
-      .map((directory) => rm(directory, { force: true, recursive: true })),
-  );
-});
 
 describe('EngineeringService', () => {
   test('工程初始化原子创建创建者成员、额外成员与多个环境', async () => {

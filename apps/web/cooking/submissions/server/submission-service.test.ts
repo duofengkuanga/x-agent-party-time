@@ -1,15 +1,12 @@
-import { afterEach, describe, expect, test } from 'bun:test';
-import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { AuthService } from '@/platform/auth/service';
-import type { AppDatabase } from '@/platform/database';
-import { openDatabase } from '@/platform/database';
-import { RunnerService } from '@/platform/runner/service';
 import { BindingService } from '@/cooking/bindings/server/binding-service';
 import { EngineeringService } from '@/cooking/engineering/server/engineering-service';
 import { ProjectService } from '@/cooking/projects/server/project-service';
+import { AuthService } from '@/platform/auth/service';
+import type { AppDatabase } from '@/platform/database';
+import { RunnerService } from '@/platform/runner/service';
+import { testDatabases } from '@/testing/database';
+import { describe, expect, test } from 'bun:test';
+import { randomUUID } from 'node:crypto';
 import {
   engineeringMemberHasSubmissionResponsibilities,
   projectMemberHasSubmissionResponsibilities,
@@ -18,16 +15,10 @@ import {
 } from './references';
 import { SubmissionService } from './submission-service';
 
-const directories: string[] = [];
-const databases: AppDatabase[] = [];
+const createDatabase = testDatabases();
 
 async function setup(options: { confirmRepositories?: boolean } = {}) {
-  const directory = await mkdtemp(
-    join(tmpdir(), 'agent-party-time-submission-'),
-  );
-  directories.push(directory);
-  const database = openDatabase(join(directory, 'server.sqlite'));
-  databases.push(database);
+  const { directory, database } = await createDatabase();
   const auth = new AuthService(database);
   const users = {
     owner: await auth.seedUser(user('submission-owner', '项目所有者')),
@@ -163,15 +154,6 @@ async function setup(options: { confirmRepositories?: boolean } = {}) {
     events,
   };
 }
-
-afterEach(async () => {
-  for (const database of databases.splice(0)) database.close();
-  await Promise.all(
-    directories
-      .splice(0)
-      .map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
 
 describe('SubmissionService create', () => {
   test('首次本机 Binding 尚未确认仓库时不能创建提测', async () => {

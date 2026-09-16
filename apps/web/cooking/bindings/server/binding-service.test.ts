@@ -1,25 +1,17 @@
-import { afterEach, describe, expect, test } from 'bun:test';
-import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { AuthService } from '@/platform/auth/service';
-import type { AppDatabase } from '@/platform/database';
-import { openDatabase } from '@/platform/database';
-import { RunnerService } from '@/platform/runner/service';
 import { EngineeringService } from '@/cooking/engineering/server/engineering-service';
 import { ProjectService } from '@/cooking/projects/server/project-service';
+import { AuthService } from '@/platform/auth/service';
+import { RunnerService } from '@/platform/runner/service';
+import { testDatabases } from '@/testing/database';
+import { describe, expect, test } from 'bun:test';
+import { randomUUID } from 'node:crypto';
 import { BindingRequestService } from './binding-request-service';
 import { BindingService } from './binding-service';
 
-const directories: string[] = [];
-const databases: AppDatabase[] = [];
+const createDatabase = testDatabases();
 
 async function setup() {
-  const directory = await mkdtemp(join(tmpdir(), 'agent-party-time-binding-'));
-  directories.push(directory);
-  const database = openDatabase(join(directory, 'server.sqlite'));
-  databases.push(database);
+  const { directory, database } = await createDatabase();
   const auth = new AuthService(database);
   const users = {
     owner: await auth.seedUser({
@@ -97,15 +89,6 @@ async function setup() {
     users,
   };
 }
-
-afterEach(async () => {
-  for (const database of databases.splice(0)) database.close();
-  await Promise.all(
-    directories
-      .splice(0)
-      .map((directory) => rm(directory, { force: true, recursive: true })),
-  );
-});
 
 describe('BindingService', () => {
   test('工程成员只能用自己的有效 Runner 建立稳定 Binding', async () => {

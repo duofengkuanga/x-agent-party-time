@@ -1,4 +1,5 @@
 import {
+  isJsonSubset,
   sanitizeExecutionInteractionPayload,
   type JsonValue,
 } from '@agent-party-time/execution-contract';
@@ -87,62 +88,8 @@ function restoreSelectedJson(
       }),
     );
   }
-  if (!jsonEquals(selected, publicValue))
-    throw new Error('权限子集不属于原始请求');
+  if (selected !== publicValue) throw new Error('权限子集不属于原始请求');
   return sanitizeJsonValue(privateValue);
-}
-
-function isJsonSubset(candidate: unknown, requested: unknown): boolean {
-  if (
-    candidate === null ||
-    typeof candidate === 'string' ||
-    typeof candidate === 'number' ||
-    typeof candidate === 'boolean'
-  )
-    return candidate === requested;
-  if (Array.isArray(candidate))
-    return (
-      Array.isArray(requested) &&
-      candidate.every((value) =>
-        requested.some((requestedValue) => isJsonSubset(value, requestedValue)),
-      )
-    );
-  if (candidate && typeof candidate === 'object') {
-    if (!requested || typeof requested !== 'object' || Array.isArray(requested))
-      return false;
-    const requestedRecord = requested as Record<string, unknown>;
-    return Object.entries(candidate).every(
-      ([key, value]) =>
-        key in requestedRecord && isJsonSubset(value, requestedRecord[key]),
-    );
-  }
-  return false;
-}
-
-function jsonEquals(left: unknown, right: unknown): boolean {
-  if (
-    left === null ||
-    right === null ||
-    typeof left !== 'object' ||
-    typeof right !== 'object'
-  )
-    return left === right;
-  if (Array.isArray(left) || Array.isArray(right))
-    return (
-      Array.isArray(left) &&
-      Array.isArray(right) &&
-      left.length === right.length &&
-      left.every((value, index) => jsonEquals(value, right[index]))
-    );
-  const leftEntries = Object.entries(left);
-  const rightRecord = right as Record<string, unknown>;
-  return (
-    leftEntries.length === Object.keys(rightRecord).length &&
-    leftEntries.every(
-      ([key, value]) =>
-        key in rightRecord && jsonEquals(value, rightRecord[key]),
-    )
-  );
 }
 
 function sanitizeJsonValue(value: unknown): JsonValue {

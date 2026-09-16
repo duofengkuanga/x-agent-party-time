@@ -212,7 +212,11 @@ packages/runner-conformance/  协议验收 Adapter
 
 `runtime/` 是跨业务装配的集中入口，负责把修复候选、更新、善后与执行投影连接起来。通用 `platform/` 不引用 Cooking；路由在两者之间选择并装配所需能力。缺陷删除 HTTP 处理属于 `cooking/bugs/server/http.ts`，共享响应转换属于 `platform/http/responses.ts`。
 
-大文件内部按完整职责拆分：缺陷看板协调状态，附件、报告编辑、修复时间线、更新详情与交互记录分别实现；提测工作区把同步状态、侧栏偏好、详情和清理交互分开；项目路由只接入项目设置页。修复、更新和善后的结果解释与展示投影位于各自的 `server/results.ts`，数据行类型位于 `server/records.ts`，事务顺序继续由原有业务类控制。
+大文件按职责拆分：缺陷看板协调状态，附件、报告编辑、修复时间线、更新详情与交互记录分别实现；提测工作区把同步状态、侧栏偏好、详情和清理交互分开。修复与更新的命令、执行投影、查询分别位于 `server/*-service.ts`、`server/*-projection.ts`、`server/*-queries.ts`；生命周期将 Cleanup 独立到 `cleanup-service.ts`。结果解释与行类型仍位于 `results.ts`、`records.ts`。
+
+`runtime/create-cooking.ts` 是生产和集成测试共同使用的执行链装配入口。Platform 以同一个带类型的事件通知事务内的 APPLY 和提交后的 AFTER；会话同步先按记录归属选择 Repair 或 Update，避免跨领域解释结果。修复和更新的 Codex JSON Schema 从服务器 Zod 定义派生。共享权限检查、附件归属校验和幂等写入集中在 `shared/server/`。
+
+Cooking 样式入口 `app/cooking/cooking.css` 只声明有序导入；`styles/` 按页面和职责维护样式，导入顺序保留共享控件与布局的层叠规则。集成测试通过 `testing/database.ts` 管理隔离数据库，通过 `cooking/testing/project.ts` 建立真实项目和提测场景。
 
 `BugService.deleteBugs()` 是调用方的删除 Interface，内部 `BugDeletion` 集中处理关联执行收集、活动检查、事务删除、依赖校验与提测版本推进。测试继续通过 `BugService` 验证完整行为，不依赖删除过程的私有步骤。
 

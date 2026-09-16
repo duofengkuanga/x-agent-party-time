@@ -1,3 +1,4 @@
+import { requireProjectMember } from '@/cooking/shared/server/access';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { AppDatabase } from '@/platform/database';
@@ -170,14 +171,13 @@ export class EngineeringService {
         this.ensureEngineeringIdentifierAvailable(projectId, identifier);
         const id = this.createId();
         const createdAt = this.now().toISOString();
-        this.db
-          .prepare(
-            `INSERT INTO cooking_engineering(
+        this.db.run(
+          `INSERT INTO cooking_engineering(
                id, project_id, name, type, identifier, repository_state,
                repository_url, version, archived_at, created_at, updated_at
              ) VALUES (?, ?, ?, ?, ?, 'PENDING', NULL, 1, NULL, ?, ?)`,
-          )
-          .run(id, projectId, name, type, identifier, createdAt, createdAt);
+          [id, projectId, name, type, identifier, createdAt, createdAt],
+        );
         const result = EngineeringSchema.parse({
           id,
           projectId,
@@ -208,7 +208,7 @@ export class EngineeringService {
   }
 
   listEngineering(userId: string, projectId: string): Engineering[] {
-    this.requireProjectMember(userId, projectId);
+    requireProjectMember(this.db, userId, projectId);
     return this.db
       .prepare(
         `SELECT id, project_id, name, type, identifier, repository_state,
@@ -287,21 +287,20 @@ export class EngineeringService {
             engineeringId,
           );
         const updatedAt = this.now().toISOString();
-        const update = this.db
-          .prepare(
-            `UPDATE cooking_engineering
+        const update = this.db.run(
+          `UPDATE cooking_engineering
              SET name = ?, type = ?, identifier = ?, version = version + 1,
                  updated_at = ?
              WHERE id = ? AND version = ? AND archived_at IS NULL`,
-          )
-          .run(
+          [
             name,
             type,
             identifier,
             updatedAt,
             engineeringId,
             input.expectedVersion,
-          );
+          ],
+        );
         if (update.changes !== 1)
           throw new PlatformError('STALE_STATE', '工程已更新，请刷新后重试');
         const result = EngineeringSchema.parse({
@@ -355,13 +354,12 @@ export class EngineeringService {
             '工程正在被活动提测引用，暂时不能归档',
           );
         const archivedAt = this.now().toISOString();
-        const update = this.db
-          .prepare(
-            `UPDATE cooking_engineering
+        const update = this.db.run(
+          `UPDATE cooking_engineering
              SET archived_at = ?, version = version + 1, updated_at = ?
              WHERE id = ? AND version = ? AND archived_at IS NULL`,
-          )
-          .run(archivedAt, archivedAt, engineeringId, input.expectedVersion);
+          [archivedAt, archivedAt, engineeringId, input.expectedVersion],
+        );
         if (update.changes !== 1)
           throw new PlatformError('STALE_STATE', '工程已更新，请刷新后重试');
         const result = EngineeringSchema.parse({
@@ -438,7 +436,7 @@ export class EngineeringService {
             'INVALID_TRANSITION',
             '已归档工程不能增加成员',
           );
-        this.requireProjectMember(targetUserId, engineering.projectId);
+        requireProjectMember(this.db, targetUserId, engineering.projectId);
         const existing = this.db
           .prepare(
             `SELECT engineering_id, user_id, version, created_at
@@ -453,13 +451,12 @@ export class EngineeringService {
             resourceId: `${engineeringId}:${targetUserId}`,
           };
         const createdAt = this.now().toISOString();
-        this.db
-          .prepare(
-            `INSERT INTO cooking_engineering_membership(
+        this.db.run(
+          `INSERT INTO cooking_engineering_membership(
                engineering_id, user_id, version, created_at
              ) VALUES (?, ?, 1, ?)`,
-          )
-          .run(engineeringId, targetUserId, createdAt);
+          [engineeringId, targetUserId, createdAt],
+        );
         const result = EngineeringMembershipSchema.parse({
           engineeringId,
           userId: targetUserId,
@@ -524,12 +521,11 @@ export class EngineeringService {
             'RESOURCE_CONFLICT',
             '该工程成员仍有活动职责，暂时不能移除',
           );
-        this.db
-          .prepare(
-            `DELETE FROM cooking_engineering_membership
+        this.db.run(
+          `DELETE FROM cooking_engineering_membership
              WHERE engineering_id = ? AND user_id = ? AND version = ?`,
-          )
-          .run(engineeringId, targetUserId, input.expectedVersion);
+          [engineeringId, targetUserId, input.expectedVersion],
+        );
         return {
           result: { removed: true, userId: targetUserId },
           resourceId: `${engineeringId}:${targetUserId}`,
@@ -602,21 +598,20 @@ export class EngineeringService {
         this.ensureEnvironmentNameAvailable(engineeringId, name);
         const id = this.createId();
         const createdAt = this.now().toISOString();
-        this.db
-          .prepare(
-            `INSERT INTO cooking_environment(
+        this.db.run(
+          `INSERT INTO cooking_environment(
                id, engineering_id, name, deployment_json, version,
                created_at, updated_at
              ) VALUES (?, ?, ?, ?, 1, ?, ?)`,
-          )
-          .run(
+          [
             id,
             engineeringId,
             name,
             JSON.stringify(deployment),
             createdAt,
             createdAt,
-          );
+          ],
+        );
         const result = TestEnvironmentSchema.parse({
           id,
           engineeringId,
@@ -699,20 +694,19 @@ export class EngineeringService {
             '已归档工程的环境不能修改',
           );
         const updatedAt = this.now().toISOString();
-        const update = this.db
-          .prepare(
-            `UPDATE cooking_environment
+        const update = this.db.run(
+          `UPDATE cooking_environment
              SET name = ?, deployment_json = ?, version = version + 1,
                  updated_at = ?
              WHERE id = ? AND version = ?`,
-          )
-          .run(
+          [
             name,
             JSON.stringify(deployment),
             updatedAt,
             environmentId,
             input.expectedVersion,
-          );
+          ],
+        );
         if (update.changes !== 1)
           throw new PlatformError('STALE_STATE', '环境已更新，请刷新后重试');
         const result = TestEnvironmentSchema.parse({
@@ -771,11 +765,10 @@ export class EngineeringService {
             'INVALID_TRANSITION',
             '已归档工程的环境不能删除',
           );
-        const deleted = this.db
-          .prepare(
-            'DELETE FROM cooking_environment WHERE id = ? AND version = ?',
-          )
-          .run(environmentId, input.expectedVersion);
+        const deleted = this.db.run(
+          'DELETE FROM cooking_environment WHERE id = ? AND version = ?',
+          [environmentId, input.expectedVersion],
+        );
         if (deleted.changes !== 1)
           throw new PlatformError('STALE_STATE', '环境已更新，请刷新后重试');
         return {
@@ -808,17 +801,6 @@ export class EngineeringService {
         'PERMISSION_DENIED',
         '只有项目所有者可以管理工程',
       );
-  }
-
-  private requireProjectMember(userId: string, projectId: string): void {
-    const membership = this.db
-      .prepare(
-        `SELECT 1 present FROM cooking_project_membership
-         WHERE project_id = ? AND user_id = ?`,
-      )
-      .get(projectId, userId);
-    if (!membership)
-      throw new PlatformError('NOT_FOUND', '项目不存在或无权访问');
   }
 
   private engineeringForProjectMember(

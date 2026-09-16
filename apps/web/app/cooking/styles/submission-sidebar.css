@@ -1,0 +1,156 @@
+/* The sidebar switches between the list and one submission's details. */
+.collab-layout[data-sidebar-collapsed='true'] {
+  grid-template-columns: 52px minmax(0, 1fr);
+}
+
+.collab-rail__heading-actions,
+.collab-rail__detail-toolbar {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.collab-rail__expand {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--strong-line);
+  bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  justify-content: flex-start;
+  left: 7px;
+  opacity: 0;
+  padding: 12px 0;
+  pointer-events: none;
+  position: absolute;
+  right: 7px;
+  top: 8px;
+  transform: translateX(-6px);
+  transition:
+    opacity 90ms ease,
+    transform 160ms cubic-bezier(0.4, 0, 1, 1),
+    visibility 0s linear 160ms;
+  visibility: hidden;
+  z-index: 2;
+}
+
+.collab-rail[data-collapsed='true'] .collab-rail__expand {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+  transition:
+    opacity 130ms ease 90ms,
+    transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1) 50ms,
+    visibility 0s linear 0s;
+  visibility: visible;
+}
+
+.collab-rail__expand span {
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  writing-mode: vertical-rl;
+}
+
+.collab-rail__expand b {
+  color: var(--accent);
+  font-size: 18px;
+}
+
+.collab-rail--detail {
+  background: var(--paper-deep);
+}
+
+.collab-rail__detail-toolbar {
+  border-bottom: 1px solid var(--strong-line);
+  flex: 0 0 auto;
+  justify-content: space-between;
+  padding: 12px;
+}
+
+.collab-rail__detail-toolbar button {
+  background: transparent;
+  border: 1px solid var(--line);
+  min-height: 34px;
+  padding: 0 9px;
+}
+
+.collab-rail__switcher {
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  flex: 0 0 auto;
+  gap: 6px;
+  padding: 10px 12px;
+}
+
+.collab-rail__switcher span {
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+}
+
+.collab-rail__switcher select {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  min-height: 38px;
+  min-width: 0;
+  padding: 0 9px;
+}
+
+.collab-rail__detail-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 14px 12px 20px;
+}
+
+.collab-rail__detail-loading {
+  color: var(--muted);
+  font-size: 9px;
+  margin: 0;
+  padding: 18px 0;
+}
+
+.collab-rail__detail-footer {
+  border-top: 1px solid var(--strong-line);
+  display: grid;
+  flex: 0 0 auto;
+  gap: 7px;
+  padding: 12px;
+}
+
+.collab-rail__detail-footer button {
+  background: transparent;
+  border: 1px solid var(--strong-line);
+  min-height: 40px;
+}
+
+.collab-rail__detail-footer small {
+  color: var(--muted);
+  font-size: 9px;
+  text-align: center;
+}
+
+.collab-rail--detail .collab-submission-header {
+  border-bottom: 0;
+  display: block;
+  padding: 0;
+}
+
+.collab-rail--detail .collab-section-label {
+  align-items: start;
+  gap: 8px;
+}
+
+.collab-rail--detail .collab-section-label small {
+  max-width: 190px;
+  text-align: right;
+}
+
+.collab-stage__content > .collab-board-section {
+  margin-top: 0;
+}

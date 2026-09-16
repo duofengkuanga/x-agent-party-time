@@ -1,208 +1,71 @@
-import { afterEach, describe, expect, test } from 'bun:test';
+import { createCooking } from '@/cooking/runtime/create-cooking';
+import {
+  deliveryProject,
+  mutableClock,
+  mutation,
+} from '@/cooking/testing/project';
+import { CookingWorkspaceService } from '@/cooking/workspace/server/workspace-service';
+import type { AppDatabase } from '@/platform/database';
+import { LocalFileStore } from '@/platform/files/local-file-store';
+import { testDatabases } from '@/testing/database';
+import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { AuthService } from '@/platform/auth/service';
-import type { AppDatabase } from '@/platform/database';
-import { openDatabase } from '@/platform/database';
-import { ExecutionService } from '@/platform/execution/service';
-import { cookingExecutionProjection } from '@/cooking/runtime/execution-projection';
-import { LocalFileStore } from '@/platform/files/local-file-store';
-import { RunnerService } from '@/platform/runner/service';
-import { BindingService } from '@/cooking/bindings/server/binding-service';
-import { BugService } from '@/cooking/bugs/server/bug-service';
-import { EngineeringService } from '@/cooking/engineering/server/engineering-service';
-import { ProjectService } from '@/cooking/projects/server/project-service';
-import { RepairService } from '@/cooking/repair/server/repair-service';
-import { SubmissionService } from '@/cooking/submissions/server/submission-service';
-import { UpdateService } from '@/cooking/update/server/update-service';
-import { CookingWorkspaceService } from '@/cooking/workspace/server/workspace-service';
-import { LifecycleService } from './lifecycle-service';
 
-const directories: string[] = [];
-const databases: AppDatabase[] = [];
+const createDatabase = testDatabases();
 
 async function setup() {
-  const directory = await mkdtemp(join(tmpdir(), 'agent-party-lifecycle-'));
-  directories.push(directory);
-  const database = openDatabase(join(directory, 'server.sqlite'));
-  databases.push(database);
+  const { directory, database } = await createDatabase();
   const clock = mutableClock('2026-07-27T12:00:00.000Z');
-  const auth = new AuthService(database);
-  const users = {
-    owner: await auth.seedUser(user('lifecycle-owner', '项目所有者')),
-    tester: await auth.seedUser(user('lifecycle-tester', '测试负责人')),
-    developer: await auth.seedUser(user('lifecycle-developer', '工程负责人')),
-  };
-  const projects = new ProjectService(database);
-  const project = projects.createProject(users.owner.id, {
-    mutationId: randomUUID(),
+  const {
+    users,
+    engineering,
+    pairedRunner: paired,
+    project,
+    submission,
+    submissions,
+    sources,
+    items,
+  } = await deliveryProject(database, {
     name: '生命周期项目',
-  }).project;
-  for (const invited of [users.tester, users.developer]) {
-    const invitation = projects.inviteUser(users.owner.id, project.id, {
-      mutationId: randomUUID(),
-      username: invited.username,
-    });
-    projects.respondToInvitation(invited.id, invitation.id, {
-      mutationId: randomUUID(),
-      expectedVersion: invitation.version,
-      decision: 'ACCEPT',
-    });
-  }
-  const engineering = new EngineeringService(database);
-  const localEngineering = engineering.createEngineering(
-    users.owner.id,
-    project.id,
-    {
-      mutationId: randomUUID(),
-      name: '本地脚本工程',
-      type: 'FRONTEND',
-      identifier: 'local-web',
-    },
-  );
-  const ciEngineering = engineering.createEngineering(
-    users.owner.id,
-    project.id,
-    {
-      mutationId: randomUUID(),
-      name: '持续集成工程',
-      type: 'BACKEND',
-      identifier: 'ci-api',
-    },
-  );
-  for (const item of [localEngineering, ciEngineering])
-    engineering.addMember(users.owner.id, item.id, users.developer.id, {
-      mutationId: randomUUID(),
-    });
-  const localEnvironment = engineering.createEnvironment(
-    users.owner.id,
-    localEngineering.id,
-    {
-      mutationId: randomUUID(),
-      name: '本地测试环境',
-      deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' },
-    },
-  );
-  const ciEnvironment = engineering.createEnvironment(
-    users.owner.id,
-    ciEngineering.id,
-    {
-      mutationId: randomUUID(),
-      name: '持续集成环境',
-      deployment: { kind: 'CI_CD' },
-    },
-  );
-  const runners = new RunnerService(database);
-  const paired = runners.pair(
-    runners.issuePairingCode(users.developer.id).code,
-    '生命周期 Runner',
-  );
-  const bindings = new BindingService(database);
-  const localBinding = bindings.createBinding(
-    users.developer.id,
-    localEngineering.id,
-    paired.runner.id,
-    randomUUID(),
-  );
-  const ciBinding = bindings.createBinding(
-    users.developer.id,
-    ciEngineering.id,
-    paired.runner.id,
-    randomUUID(),
-  );
-  bindings.confirmRepository(
-    paired.runner.id,
-    localBinding.id,
-    'https://example.com/local.git',
-  );
-  bindings.confirmRepository(
-    paired.runner.id,
-    ciBinding.id,
-    'https://example.com/ci.git',
-  );
-  const submissions = new SubmissionService(database, clock.now);
-  const submission = submissions.createSubmission(users.owner.id, project.id, {
-    mutationId: randomUUID(),
+    prefix: 'lifecycle',
     title: '双工程提测',
-    requirementDescription: '验证关闭与清理闭环',
-    testerUserId: users.tester.id,
-    items: [
+    description: '验证关闭与清理闭环',
+    now: clock.now,
+    sources: [
       {
-        engineeringId: localEngineering.id,
-        responsibleUserId: users.developer.id,
-        bindingId: localBinding.id,
-        targetBranch: 'main',
-        environmentId: localEnvironment.id,
+        name: '本地脚本工程',
+        type: 'FRONTEND',
+        identifier: 'local-web',
+        environment: '本地测试环境',
+        deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' },
+        repository: 'https://example.com/local.git',
+        branch: 'main',
       },
       {
-        engineeringId: ciEngineering.id,
-        responsibleUserId: users.developer.id,
-        bindingId: ciBinding.id,
-        targetBranch: 'main',
-        environmentId: ciEnvironment.id,
+        name: '持续集成工程',
+        type: 'BACKEND',
+        identifier: 'ci-api',
+        environment: '持续集成环境',
+        deployment: { kind: 'CI_CD' },
+        repository: 'https://example.com/ci.git',
+        branch: 'main',
       },
     ],
   });
-  const items = database
-    .prepare(
-      `SELECT id, environment_id FROM cooking_submission_item
-       WHERE submission_id = ? ORDER BY position`,
-    )
-    .all(submission.id) as Array<{ id: string; environment_id: string }>;
+  const { source: localEngineering, environment: localEnvironment } =
+    sources[0]!;
+  const { source: ciEngineering, environment: ciEnvironment } = sources[1]!;
   const events: Array<{ submissionId: string; revision: number }> = [];
-  const updates = new UpdateService(
+  const { repairs, updates, lifecycle, bugs, executions } = createCooking(
     database,
-    new ExecutionService(database, clock.now),
-    clock.now,
-    undefined,
-    (submissionId, revision) => events.push({ submissionId, revision }),
-  );
-  const repairs = new RepairService(
-    database,
-    new ExecutionService(database, clock.now),
-    clock.now,
-    undefined,
-    (submissionId, revision) => events.push({ submissionId, revision }),
     {
-      candidateAvailable: (bugId, candidateAt) =>
-        updates.recordCandidateAvailable(bugId, candidateAt),
-      candidateReconsidered: (bugId) =>
-        updates.recalculatePendingDeliveryForBug(bugId),
+      now: clock.now,
+      publish: (submissionId, revision) =>
+        events.push({ submissionId, revision }),
     },
   );
-  const lifecycle = new LifecycleService(
-    database,
-    repairs,
-    new ExecutionService(database, clock.now),
-    clock.now,
-    undefined,
-    (submissionId, revision) => events.push({ submissionId, revision }),
-  );
-  let leaseIndex = 0;
-  const executions = new ExecutionService(
-    database,
-    clock.now,
-    undefined,
-    () => `lifecycle-lease-${++leaseIndex}`.padEnd(48, 'x'),
-    15_000,
-    cookingExecutionProjection(database, {
-      BUG_REPAIR: repairs,
-      SESSION_SYNC: repairs,
-      UPDATE_BATCH: updates,
-      CLEANUP: lifecycle,
-    }),
-  );
-  const bugs = new BugService(
-    database,
-    clock.now,
-    undefined,
-    (submissionId, revision) => events.push({ submissionId, revision }),
-    {
-      requested: (bugId) => repairs.createInitialExecution(bugId),
-    },
-  );
+
   return {
     bugs,
     ciEnvironment,
@@ -227,15 +90,6 @@ async function setup() {
     users,
   };
 }
-
-afterEach(async () => {
-  for (const database of databases.splice(0)) database.close();
-  await Promise.all(
-    directories
-      .splice(0)
-      .map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
 
 describe('LifecycleService', () => {
   test('Workspace 将修复、批次、验证和取消恢复投影为同一条旧到新时间线', async () => {
@@ -1057,29 +911,6 @@ function bindingForItem(
       .prepare('SELECT binding_id FROM cooking_submission_item WHERE id = ?')
       .get(submissionItemId) as { binding_id: string }
   ).binding_id;
-}
-
-function mutation(expectedVersion: number) {
-  return { mutationId: randomUUID(), expectedVersion };
-}
-
-function mutableClock(initial: string) {
-  let value = new Date(initial);
-  return {
-    now: () => new Date(value),
-    set: (next: string) => {
-      value = new Date(next);
-    },
-  };
-}
-
-function user(username: string, displayName: string) {
-  return {
-    id: randomUUID(),
-    username,
-    displayName,
-    password: 'password',
-  };
 }
 
 describe('环境切换与验证、关闭', () => {

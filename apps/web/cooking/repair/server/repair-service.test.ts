@@ -1,149 +1,57 @@
-import { afterEach, describe, expect, test } from 'bun:test';
-import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import type { ClaimedExecution } from '@agent-party-time/execution-contract';
-import { ProtocolAgent } from '@agent-party-time/runner-conformance';
-import { AuthService } from '@/platform/auth/service';
+import { createCooking } from '@/cooking/runtime/create-cooking';
+import { deliveryProject, mutation } from '@/cooking/testing/project';
 import type { AppDatabase } from '@/platform/database';
-import { openDatabase } from '@/platform/database';
 import {
   handleExecutionClaim,
   handleExecutionComplete,
   handleExecutionStart,
 } from '@/platform/execution/http';
-import { ExecutionService } from '@/platform/execution/service';
-import { cookingExecutionProjection } from '@/cooking/runtime/execution-projection';
-import { RunnerService } from '@/platform/runner/service';
 import { LocalFileStore } from '@/platform/files/local-file-store';
 import { handleRunnerHeartbeat } from '@/platform/runner/http';
-import { BindingService } from '@/cooking/bindings/server/binding-service';
-import { BugService } from '@/cooking/bugs/server/bug-service';
-import { EngineeringService } from '@/cooking/engineering/server/engineering-service';
-import { ProjectService } from '@/cooking/projects/server/project-service';
-import { SubmissionService } from '@/cooking/submissions/server/submission-service';
-import { RepairService } from './repair-service';
+import { testDatabases } from '@/testing/database';
+import type { ClaimedExecution } from '@agent-party-time/execution-contract';
+import { ProtocolAgent } from '@agent-party-time/runner-conformance';
+import { describe, expect, test } from 'bun:test';
+import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
 
-const directories: string[] = [];
-const databases: AppDatabase[] = [];
+const createDatabase = testDatabases();
 
 async function setup(options: { repairCreateId?: () => string } = {}) {
-  const directory = await mkdtemp(join(tmpdir(), 'agent-party-repair-'));
-  directories.push(directory);
-  const database = openDatabase(join(directory, 'server.sqlite'));
-  databases.push(database);
-  const auth = new AuthService(database);
-  const users = {
-    owner: await auth.seedUser(user('repair-owner', '项目所有者')),
-    tester: await auth.seedUser(user('repair-tester', '测试负责人')),
-    developer: await auth.seedUser(user('repair-developer', '工程负责人')),
-  };
-  const projects = new ProjectService(database);
-  const project = projects.createProject(users.owner.id, {
-    mutationId: randomUUID(),
-    name: 'Repair 项目',
-  }).project;
-  for (const invited of [users.tester, users.developer]) {
-    const invitation = projects.inviteUser(users.owner.id, project.id, {
-      mutationId: randomUUID(),
-      username: invited.username,
+  const { directory, database } = await createDatabase();
+  const { users, runners, pairedRunner, runner, submission, sources, items } =
+    await deliveryProject(database, {
+      name: 'Repair 项目',
+      prefix: 'repair',
+      title: '支付功能提测',
+      description: '验证支付修复链路',
+      sources: [
+        {
+          name: '支付工程',
+          type: 'BACKEND',
+          identifier: 'payment-api',
+          environment: '支付测试环境',
+          deployment: { kind: 'CI_CD' },
+          repository: 'https://example.com/payment.git',
+          branch: 'feature/payment',
+        },
+      ],
     });
-    projects.respondToInvitation(invited.id, invitation.id, {
-      mutationId: randomUUID(),
-      expectedVersion: invitation.version,
-      decision: 'ACCEPT',
-    });
-  }
-  const engineering = new EngineeringService(database);
-  const source = engineering.createEngineering(users.owner.id, project.id, {
-    mutationId: randomUUID(),
-    name: '支付工程',
-    type: 'BACKEND',
-    identifier: 'payment-api',
-  });
-  engineering.addMember(users.owner.id, source.id, users.developer.id, {
-    mutationId: randomUUID(),
-  });
-  const environment = engineering.createEnvironment(users.owner.id, source.id, {
-    mutationId: randomUUID(),
-    name: '支付测试环境',
-    deployment: { kind: 'CI_CD' },
-  });
-  const runners = new RunnerService(database);
-  const pairedRunner = runners.pair(
-    runners.issuePairingCode(users.developer.id).code,
-    'Repair Runner',
-  );
-  const runner = pairedRunner.runner;
+  const { binding } = sources[0]!;
+  const item = items[0]!;
   const otherRunner = runners.pair(
     runners.issuePairingCode(users.owner.id).code,
     '其他 Runner',
   ).runner;
-  const bindings = new BindingService(database);
-  const binding = bindings.createBinding(
-    users.developer.id,
-    source.id,
-    runner.id,
-    randomUUID(),
-  );
-  bindings.confirmRepository(
-    runner.id,
-    binding.id,
-    'https://example.com/payment.git',
-  );
-  const submission = new SubmissionService(database).createSubmission(
-    users.owner.id,
-    project.id,
-    {
-      mutationId: randomUUID(),
-      title: '支付功能提测',
-      requirementDescription: '验证支付修复链路',
-      testerUserId: users.tester.id,
-      items: [
-        {
-          engineeringId: source.id,
-          responsibleUserId: users.developer.id,
-          bindingId: binding.id,
-          targetBranch: 'feature/payment',
-          environmentId: environment.id,
-        },
-      ],
-    },
-  );
-  const item = database
-    .prepare('SELECT id FROM cooking_submission_item WHERE submission_id = ?')
-    .get(submission.id) as { id: string };
   const now = () => new Date('2026-07-27T10:00:00.000Z');
   const events: Array<{ submissionId: string; revision: number }> = [];
-  const repairs = new RepairService(
+  const { repairs, updates, lifecycle, bugs, executions } = createCooking(
     database,
-    new ExecutionService(database, now),
-    now,
-    options.repairCreateId,
-    (submissionId, revision) => events.push({ submissionId, revision }),
-  );
-  let leaseIndex = 0;
-  const executions = new ExecutionService(
-    database,
-    now,
-    undefined,
-    () => `repair-lease-${++leaseIndex}`.padEnd(40, 'x'),
-    15_000,
-    cookingExecutionProjection(database, {
-      BUG_REPAIR: repairs,
-      SESSION_SYNC: repairs,
-      UPDATE_BATCH: { projectExecution: () => {} },
-      CLEANUP: { projectExecution: () => {} },
-    }),
-  );
-  const bugs = new BugService(
-    database,
-    now,
-    undefined,
-    (submissionId, revision) => events.push({ submissionId, revision }),
     {
-      requested: (bugId) => repairs.createInitialExecution(bugId),
+      now: now,
+      publish: (submissionId, revision) =>
+        events.push({ submissionId, revision }),
+      ids: { repair: options.repairCreateId },
     },
   );
   const files = new LocalFileStore(database, join(directory, 'files'));
@@ -194,15 +102,6 @@ async function setup(options: { repairCreateId?: () => string } = {}) {
     users,
   };
 }
-
-afterEach(async () => {
-  for (const database of databases.splice(0)) database.close();
-  await Promise.all(
-    directories
-      .splice(0)
-      .map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
 
 describe('RepairService', () => {
   test('工作区允许缺陷暂未确定工程', async () => {
@@ -1288,17 +1187,4 @@ function currentBug(database: AppDatabase, bugId: string) {
   return database
     .prepare('SELECT stage, version FROM cooking_bug WHERE id = ?')
     .get(bugId) as { stage: string; version: number };
-}
-
-function mutation(expectedVersion: number) {
-  return { mutationId: randomUUID(), expectedVersion };
-}
-
-function user(username: string, displayName: string) {
-  return {
-    id: randomUUID(),
-    username,
-    displayName,
-    password: 'password',
-  };
 }
