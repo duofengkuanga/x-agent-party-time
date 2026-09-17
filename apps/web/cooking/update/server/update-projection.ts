@@ -1,8 +1,8 @@
 import { DeploymentMethodSchema } from '@/cooking/engineering/contract';
-import type { CookingExecutionProjectionEvent } from '@/cooking/runtime/execution-projection';
 import { TestSubmissionWriteStore } from '@/cooking/submissions/server/test-submission-write-store';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
+import { executionProjector } from '@/platform/execution/projection';
 import type {
   Execution,
   JsonValue,
@@ -27,32 +27,25 @@ export class UpdateProjection {
     private readonly now: () => Date,
     private readonly createId: () => string,
   ) {}
-  projectExecution(event: CookingExecutionProjectionEvent): void {
-    if (event.kind === 'INTERACTION_OPENED') {
-      if (event.phase === 'APPLY')
-        this.applyInteractionOpened(
-          event.interaction.executionId,
-          event.interaction.id,
-        );
-      else this.afterInteractionOpened(event.interaction.executionId);
-      return;
-    }
-    if (event.kind === 'STARTED') {
-      if (event.phase === 'APPLY') this.applyStartedExecution(event.execution);
-      else this.afterStartedExecution(event.execution);
-      return;
-    }
-    if (event.kind === 'RESUMED') {
-      if (event.phase === 'APPLY') this.applyResumedExecution(event.execution);
-      else this.afterResumedExecution(event.execution);
-      return;
-    }
-    if (event.phase === 'APPLY') {
-      if (event.execution.owner.kind === 'SESSION_SYNC')
-        this.applySynchronizedExecution(event.execution);
-      else this.applyTerminalExecution(event.execution);
-    } else this.afterTerminalExecution(event.execution);
-  }
+  readonly projectExecution = executionProjector({
+    APPLY: {
+      STARTED: this.applyStartedExecution.bind(this),
+      RESUMED: this.applyResumedExecution.bind(this),
+      TERMINAL: (execution) =>
+        execution.owner.kind === 'SESSION_SYNC'
+          ? this.applySynchronizedExecution(execution)
+          : this.applyTerminalExecution(execution),
+      INTERACTION_OPENED: ({ executionId, id }) =>
+        this.applyInteractionOpened(executionId, id),
+    },
+    AFTER: {
+      STARTED: this.afterStartedExecution.bind(this),
+      RESUMED: this.afterStartedExecution.bind(this),
+      TERMINAL: this.afterTerminalExecution.bind(this),
+      INTERACTION_OPENED: ({ executionId }) =>
+        this.afterInteractionOpened(executionId),
+    },
+  });
 
   private applyStartedExecution(execution: Execution): void {
     if (
@@ -207,10 +200,6 @@ export class UpdateProjection {
   }
 
   private afterStartedExecution(execution: Execution): void {
-    if (isUpdateExecution(execution)) this.publishExecution(execution.id);
-  }
-
-  private afterResumedExecution(execution: Execution): void {
     if (isUpdateExecution(execution)) this.publishExecution(execution.id);
   }
 

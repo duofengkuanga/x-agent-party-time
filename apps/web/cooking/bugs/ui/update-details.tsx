@@ -1,6 +1,7 @@
 'use client';
+import { useWorkspaceMutation } from './use-workspace-mutation';
+import { ValidationResults } from './validation-results';
 
-import { useRef, useState, useTransition } from 'react';
 import { createClientId } from '@/cooking/shared/ui/client-id';
 import type { UpdateBatchView } from '@/cooking/update/contract';
 import {
@@ -8,14 +9,12 @@ import {
   resolveUpdateInteractionAction,
   synchronizeUpdateSessionAction,
 } from '@/cooking/update/server/actions';
-import type { WorkspaceActionResult } from './board-model';
+import { useRef, useState } from 'react';
 import {
-  messageOf,
   deploymentLabel,
   formatDateTime,
-  updateAttemptLabel,
-  validationLabel,
   repairStateLabel,
+  updateAttemptLabel,
 } from './board-model';
 import { Detail, DetailList } from './detail-fields';
 
@@ -39,30 +38,8 @@ export function UpdateBatchDetails({
   >('SUCCEEDED');
   const [externalSummary, setExternalSummary] = useState('');
   const [externalFiles, setExternalFiles] = useState<File[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  const { error, setError, pending, run } = useWorkspaceMutation(onChanged);
   const externalFileInput = useRef<HTMLInputElement>(null);
-
-  function run(
-    command: () => Promise<WorkspaceActionResult>,
-    message: string,
-    afterSuccess?: () => void,
-  ) {
-    startTransition(async () => {
-      try {
-        const result = await command();
-        if (!result.ok) {
-          setError(result.error.message);
-          return;
-        }
-        setError(null);
-        afterSuccess?.();
-        onChanged(result.result.revision, message);
-      } catch (actionError) {
-        setError(messageOf(actionError, '操作失败，请稍后重试。'));
-      }
-    });
-  }
 
   const batchFacts = (
     <dl>
@@ -209,52 +186,32 @@ export function UpdateBatchDetails({
                       <Detail label="更新会话 ID">{node.sessionId}</Detail>
                     </dl>
                   ) : null}
-                  {node.result?.outcome === 'FAILED' ? (
+                  {node.result ? (
                     <>
-                      <div className="collab-structured-failure">
-                        <header>
-                          <span>本轮中断</span>
-                          <strong>{node.result.failedStep}</strong>
-                        </header>
-                        <p>
-                          <span>失败原因</span>
-                          {node.result.reason}
-                        </p>
-                      </div>
+                      {node.result.outcome === 'FAILED' ? (
+                        <div className="collab-structured-failure">
+                          <header>
+                            <span>本轮中断</span>
+                            <strong>{node.result.failedStep}</strong>
+                          </header>
+                          <p>
+                            <span>失败原因</span>
+                            {node.result.reason}
+                          </p>
+                        </div>
+                      ) : null}
                       <div className="collab-update-attempt-results">
                         <DetailList
                           kind="completed"
                           items={node.result.completedActions}
                           title="已完成操作"
                         />
-                        <div
-                          className="collab-repair-validations"
-                          data-result-kind="validation"
-                        >
-                          <h4>验证结果</h4>
-                          {node.result.validations.length ? (
-                            <ul>
-                              {node.result.validations.map(
-                                (validation, index) => (
-                                  <li
-                                    data-validation-status={validation.status}
-                                    key={`${validation.name}:${index}`}
-                                  >
-                                    <strong>
-                                      {validationLabel(validation.status)}
-                                    </strong>
-                                    <span>{validation.name}</span>
-                                    {validation.detail ? (
-                                      <small>{validation.detail}</small>
-                                    ) : null}
-                                  </li>
-                                ),
-                              )}
-                            </ul>
-                          ) : (
-                            <p>Codex 未报告验证项</p>
-                          )}
-                        </div>
+                        <ValidationResults
+                          items={node.result.validations}
+                          title="验证结果"
+                          emptyLabel="Codex 未报告验证项"
+                          kind="validation"
+                        />
                         {node.result.warnings.length ? (
                           <DetailList
                             kind="warning"
@@ -262,54 +219,11 @@ export function UpdateBatchDetails({
                             title="提醒"
                           />
                         ) : null}
-                        <DetailList
-                          kind="pending"
-                          items={node.result.pendingActions}
-                          title="待处理事项"
-                        />
-                      </div>
-                    </>
-                  ) : node.result ? (
-                    <>
-                      <div className="collab-update-attempt-results">
-                        <DetailList
-                          kind="completed"
-                          items={node.result.completedActions}
-                          title="已完成操作"
-                        />
-                        <div
-                          className="collab-repair-validations"
-                          data-result-kind="validation"
-                        >
-                          <h4>验证结果</h4>
-                          {node.result.validations.length ? (
-                            <ul>
-                              {node.result.validations.map(
-                                (validation, index) => (
-                                  <li
-                                    data-validation-status={validation.status}
-                                    key={`${validation.name}:${index}`}
-                                  >
-                                    <strong>
-                                      {validationLabel(validation.status)}
-                                    </strong>
-                                    <span>{validation.name}</span>
-                                    {validation.detail ? (
-                                      <small>{validation.detail}</small>
-                                    ) : null}
-                                  </li>
-                                ),
-                              )}
-                            </ul>
-                          ) : (
-                            <p>Codex 未报告验证项</p>
-                          )}
-                        </div>
-                        {node.result.warnings.length ? (
+                        {node.result.outcome === 'FAILED' ? (
                           <DetailList
-                            kind="warning"
-                            items={node.result.warnings}
-                            title="提醒"
+                            kind="pending"
+                            items={node.result.pendingActions}
+                            title="待处理事项"
                           />
                         ) : null}
                       </div>
@@ -345,10 +259,7 @@ export function UpdateBatchDetails({
                   node.result.failureCode ? (
                     <details className="collab-technical-details">
                       <summary>技术详情</summary>
-                      {node.result.outcome === 'FAILED' &&
-                      node.result.failureCode ? (
-                        <code>{node.result.failureCode}</code>
-                      ) : null}
+                      <code>{node.result.failureCode}</code>
                     </details>
                   ) : null}
                 </article>

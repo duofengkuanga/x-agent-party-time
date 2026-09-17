@@ -1,13 +1,14 @@
 'use client';
+import { ValidationResults } from './validation-results';
 
-import { useState } from 'react';
-import { createClientId } from '@/cooking/shared/ui/client-id';
-import type { BugProgressTimelineNode } from '@/cooking/workspace/contract';
 import type { BugRepairView } from '@/cooking/repair/contract';
 import {
   resolveRepairInteractionAction,
   synchronizeRepairSessionAction,
 } from '@/cooking/repair/server/actions';
+import { createClientId } from '@/cooking/shared/ui/client-id';
+import type { BugProgressTimelineNode } from '@/cooking/workspace/contract';
+import { useState } from 'react';
 import type { BugView } from '../contract';
 import type { StoredAttachment } from './attachments';
 import { AttachmentLink } from './attachments';
@@ -360,27 +361,12 @@ function RepairAttemptTimelineArticle({
             items={node.result.changes}
             title="修改内容"
           />
-          <div className="collab-repair-validations">
-            <h4>检查结果</h4>
-            {node.result.validations.length ? (
-              <ul>
-                {node.result.validations.map((validation) => (
-                  <li
-                    data-validation-status={validation.status}
-                    key={`${validation.name}:${validation.status}`}
-                  >
-                    <strong>{validationStatusLabel(validation.status)}</strong>
-                    <span>{validation.name}</span>
-                    {validation.detail ? (
-                      <small>{validation.detail}</small>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p>Codex 未报告检查项</p>
-            )}
-          </div>
+          <ValidationResults
+            statusLabel={validationStatusLabel}
+            items={node.result.validations}
+            title="检查结果"
+            emptyLabel="Codex 未报告检查项"
+          />
           {node.result.warnings.length ? (
             <TimelineList items={node.result.warnings} title="警告" />
           ) : null}

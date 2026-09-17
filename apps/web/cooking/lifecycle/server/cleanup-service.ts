@@ -1,8 +1,8 @@
-import type { CookingExecutionProjectionEvent } from '@/cooking/runtime/execution-projection';
 import { requireSubmissionAccess } from '@/cooking/shared/server/access';
 import { TestSubmissionWriteStore } from '@/cooking/submissions/server/test-submission-write-store';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
+import { executionProjector } from '@/platform/execution/projection';
 import { ExecutionService } from '@/platform/execution/service';
 import { type Execution } from '@agent-party-time/execution-contract';
 import {
@@ -190,29 +190,22 @@ export class CleanupService {
     return result;
   }
 
-  projectExecution(event: CookingExecutionProjectionEvent): void {
-    if (event.kind === 'INTERACTION_OPENED') {
-      if (event.phase === 'APPLY')
-        this.applyInteractionOpened(
-          event.interaction.executionId,
-          event.interaction.id,
-        );
-      else this.afterInteractionOpened(event.interaction.executionId);
-      return;
-    }
-    if (event.kind === 'STARTED') {
-      if (event.phase === 'APPLY') this.applyStartedExecution(event.execution);
-      else this.afterStartedExecution(event.execution);
-      return;
-    }
-    if (event.kind === 'RESUMED') {
-      if (event.phase === 'APPLY') this.applyResumedExecution(event.execution);
-      else this.afterResumedExecution(event.execution);
-      return;
-    }
-    if (event.phase === 'APPLY') this.applyTerminalExecution(event.execution);
-    else this.afterTerminalExecution(event.execution);
-  }
+  readonly projectExecution = executionProjector({
+    APPLY: {
+      STARTED: this.applyStartedExecution.bind(this),
+      RESUMED: this.applyResumedExecution.bind(this),
+      TERMINAL: this.applyTerminalExecution.bind(this),
+      INTERACTION_OPENED: ({ executionId, id }) =>
+        this.applyInteractionOpened(executionId, id),
+    },
+    AFTER: {
+      STARTED: this.afterStartedExecution.bind(this),
+      RESUMED: this.afterStartedExecution.bind(this),
+      TERMINAL: this.afterTerminalExecution.bind(this),
+      INTERACTION_OPENED: ({ executionId }) =>
+        this.afterInteractionOpened(executionId),
+    },
+  });
 
   private applyStartedExecution(execution: Execution): void {
     if (!isCleanupExecution(execution)) return;
@@ -297,10 +290,6 @@ export class CleanupService {
   }
 
   private afterStartedExecution(execution: Execution): void {
-    if (isCleanupExecution(execution)) this.publishExecution(execution.id);
-  }
-
-  private afterResumedExecution(execution: Execution): void {
     if (isCleanupExecution(execution)) this.publishExecution(execution.id);
   }
 

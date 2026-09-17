@@ -17,3 +17,25 @@ export type ExecutionProjectionEvent =
     };
 
 export type ExecutionProjector = (event: ExecutionProjectionEvent) => void;
+
+type ProjectionHandlers = Record<
+  ExecutionProjectionEvent['phase'],
+  {
+    STARTED: (execution: Execution) => void;
+    RESUMED: (execution: Execution) => void;
+    TERMINAL: (execution: Execution) => void;
+    INTERACTION_OPENED: (interaction: ExecutionInteraction) => void;
+  }
+>;
+
+/** Keep phase dispatch exhaustive without duplicating it in each domain. */
+export function executionProjector(
+  handlers: ProjectionHandlers,
+): ExecutionProjector {
+  return (event) => {
+    const phase = handlers[event.phase];
+    if (event.kind === 'INTERACTION_OPENED')
+      phase.INTERACTION_OPENED(event.interaction);
+    else phase[event.kind](event.execution);
+  };
+}
