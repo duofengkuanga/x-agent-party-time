@@ -106,18 +106,12 @@ export class LifecycleService {
     inputValue: VerifyBugInput,
   ): BugLifecycleMutationResult {
     const input = VerifyBugInputSchema.parse(inputValue);
-    const result = this.writes.run({
-      mutationId: input.mutationId,
+    return this.writeBugTransition(
       actorUserId,
-      operation: 'BUG_VERIFY',
-      resourceType: 'BUG',
-      resultSchema: BugLifecycleMutationResultSchema,
-      invalidation: (mutation) => ({
-        submissionId: this.queries.bugSource(bugId).submission_id,
-        revision: mutation.revision,
-      }),
-      perform: () => {
-        const source = this.requireTester(actorUserId, bugId);
+      bugId,
+      input,
+      'BUG_VERIFY',
+      (source) => {
         if (source.submission_item_id)
           requireEnvironment(this.db, source.submission_item_id, true);
         this.requireBugVersion(source, input.expectedVersion);
@@ -152,20 +146,13 @@ export class LifecycleService {
           this.updateBugStage(bugId, 'WAITING_FOR_VERIFICATION', 'DONE', now);
           const revision = this.writes.bumpRevision(source.submission_id, now);
           return {
-            result: {
-              bugId,
-              bugVersion: input.expectedVersion + 1,
-              executionId: null,
-              cleanupId: null,
-              revision,
+            revision: revision,
+
+            action: 'BUG_VERIFICATION_PASSED',
+            details: {
+              round,
+              comment: Boolean(input.comment),
             },
-            resourceId: bugId,
-            audits: [
-              this.audit(source, 'BUG_VERIFICATION_PASSED', {
-                round,
-                comment: Boolean(input.comment),
-              }),
-            ],
           };
         }
         const failure = this.recordVerificationFailureAndContinue(
@@ -177,25 +164,17 @@ export class LifecycleService {
           now,
         );
         return {
-          result: {
-            bugId,
-            bugVersion: input.expectedVersion + 1,
+          revision: failure.revision,
+          executionId: failure.executionId,
+          action: 'BUG_VERIFICATION_FAILED',
+          details: {
+            round,
+            attachmentCount: input.attachmentIds.length,
             executionId: failure.executionId,
-            cleanupId: null,
-            revision: failure.revision,
           },
-          resourceId: bugId,
-          audits: [
-            this.audit(source, 'BUG_VERIFICATION_FAILED', {
-              round,
-              attachmentCount: input.attachmentIds.length,
-              executionId: failure.executionId,
-            }),
-          ],
         };
       },
-    });
-    return result;
+    );
   }
 
   reopenBug(
@@ -204,18 +183,12 @@ export class LifecycleService {
     inputValue: ReopenBugInput,
   ): BugLifecycleMutationResult {
     const input = ReopenBugInputSchema.parse(inputValue);
-    const result = this.writes.run({
-      mutationId: input.mutationId,
+    return this.writeBugTransition(
       actorUserId,
-      operation: 'BUG_REOPEN',
-      resourceType: 'BUG',
-      resultSchema: BugLifecycleMutationResultSchema,
-      invalidation: (mutation) => ({
-        submissionId: this.queries.bugSource(bugId).submission_id,
-        revision: mutation.revision,
-      }),
-      perform: () => {
-        const source = this.requireTester(actorUserId, bugId);
+      bugId,
+      input,
+      'BUG_REOPEN',
+      (source) => {
         this.requireBugVersion(source, input.expectedVersion);
         if (source.stage !== 'DONE')
           throw new PlatformError(
@@ -263,26 +236,18 @@ export class LifecycleService {
         );
         const revision = this.writes.bumpRevision(source.submission_id, now);
         return {
-          result: {
-            bugId,
-            bugVersion: input.expectedVersion + 1,
+          revision: revision,
+          executionId: executionId,
+          action: 'BUG_REOPENED',
+          details: {
+            round,
+            repairAttempt,
+            attachmentCount: input.attachmentIds.length,
             executionId,
-            cleanupId: null,
-            revision,
           },
-          resourceId: bugId,
-          audits: [
-            this.audit(source, 'BUG_REOPENED', {
-              round,
-              repairAttempt,
-              attachmentCount: input.attachmentIds.length,
-              executionId,
-            }),
-          ],
         };
       },
-    });
-    return result;
+    );
   }
 
   cancelBug(
@@ -291,18 +256,12 @@ export class LifecycleService {
     inputValue: LifecycleCommandInput,
   ): BugLifecycleMutationResult {
     const input = LifecycleCommandInputSchema.parse(inputValue);
-    const result = this.writes.run({
-      mutationId: input.mutationId,
+    return this.writeBugTransition(
       actorUserId,
-      operation: 'BUG_CANCEL',
-      resourceType: 'BUG',
-      resultSchema: BugLifecycleMutationResultSchema,
-      invalidation: (mutation) => ({
-        submissionId: this.queries.bugSource(bugId).submission_id,
-        revision: mutation.revision,
-      }),
-      perform: () => {
-        const source = this.requireTester(actorUserId, bugId);
+      bugId,
+      input,
+      'BUG_CANCEL',
+      (source) => {
         this.requireBugVersion(source, input.expectedVersion);
         if (source.stage !== 'WAITING_FOR_REPAIR')
           throw new PlatformError(
@@ -320,19 +279,13 @@ export class LifecycleService {
         this.recordBugTransition(bugId, 'CANCELLED', actorUserId, now);
         const revision = this.writes.bumpRevision(source.submission_id, now);
         return {
-          result: {
-            bugId,
-            bugVersion: input.expectedVersion + 1,
-            executionId: null,
-            cleanupId: null,
-            revision,
-          },
-          resourceId: bugId,
-          audits: [this.audit(source, 'BUG_CANCELLED', {})],
+          revision: revision,
+
+          action: 'BUG_CANCELLED',
+          details: {},
         };
       },
-    });
-    return result;
+    );
   }
 
   restoreBug(
@@ -508,18 +461,12 @@ export class LifecycleService {
     auditAction: string,
   ): BugLifecycleMutationResult {
     const input = LifecycleCommandInputSchema.parse(inputValue);
-    const result = this.writes.run({
-      mutationId: input.mutationId,
+    return this.writeBugTransition(
       actorUserId,
+      bugId,
+      input,
       operation,
-      resourceType: 'BUG',
-      resultSchema: BugLifecycleMutationResultSchema,
-      invalidation: (mutation) => ({
-        submissionId: this.queries.bugSource(bugId).submission_id,
-        revision: mutation.revision,
-      }),
-      perform: () => {
-        const source = this.requireTester(actorUserId, bugId);
+      (source) => {
         this.requireBugVersion(source, input.expectedVersion);
         const now = this.now().toISOString();
         const update = this.db.run(
@@ -536,19 +483,13 @@ export class LifecycleService {
         this.recordBugTransition(bugId, transition, actorUserId, now);
         const revision = this.writes.bumpRevision(source.submission_id, now);
         return {
-          result: {
-            bugId,
-            bugVersion: input.expectedVersion + 1,
-            executionId: null,
-            cleanupId: null,
-            revision,
-          },
-          resourceId: bugId,
-          audits: [this.audit(source, auditAction, {})],
+          revision: revision,
+
+          action: auditAction,
+          details: {},
         };
       },
-    });
-    return result;
+    );
   }
 
   private changeArchiveState(
@@ -558,18 +499,12 @@ export class LifecycleService {
     archived: boolean,
   ): BugLifecycleMutationResult {
     const input = LifecycleCommandInputSchema.parse(inputValue);
-    const result = this.writes.run({
-      mutationId: input.mutationId,
+    return this.writeBugTransition(
       actorUserId,
-      operation: archived ? 'BUG_ARCHIVE' : 'BUG_UNARCHIVE',
-      resourceType: 'BUG',
-      resultSchema: BugLifecycleMutationResultSchema,
-      invalidation: (mutation) => ({
-        submissionId: this.queries.bugSource(bugId).submission_id,
-        revision: mutation.revision,
-      }),
-      perform: () => {
-        const source = this.requireTester(actorUserId, bugId);
+      bugId,
+      input,
+      archived ? 'BUG_ARCHIVE' : 'BUG_UNARCHIVE',
+      (source) => {
         this.requireBugVersion(source, input.expectedVersion);
         if (source.stage !== 'DONE')
           throw new PlatformError(
@@ -599,25 +534,53 @@ export class LifecycleService {
         if (update.changes !== 1) throw staleLifecycle('缺陷');
         const revision = this.writes.bumpRevision(source.submission_id, now);
         return {
+          revision: revision,
+
+          action: archived ? 'BUG_ARCHIVED' : 'BUG_UNARCHIVED',
+          details: {},
+        };
+      },
+    );
+  }
+
+  private writeBugTransition(
+    actorUserId: string,
+    bugId: string,
+    input: LifecycleCommandInput,
+    operation: string,
+    perform: (source: BugSourceRow) => {
+      revision: number;
+      executionId?: string;
+      action: string;
+      details: unknown;
+    },
+  ): BugLifecycleMutationResult {
+    return this.writes.run({
+      mutationId: input.mutationId,
+      actorUserId,
+      operation,
+      resourceType: 'BUG',
+      resultSchema: BugLifecycleMutationResultSchema,
+      invalidation: (result) => ({
+        submissionId: this.queries.bugSource(bugId).submission_id,
+        revision: result.revision,
+      }),
+      perform: () => {
+        const source = this.requireTester(actorUserId, bugId);
+        const outcome = perform(source);
+        return {
+          resourceId: bugId,
           result: {
             bugId,
             bugVersion: input.expectedVersion + 1,
-            executionId: null,
+            executionId: outcome.executionId ?? null,
             cleanupId: null,
-            revision,
+            revision: outcome.revision,
           },
-          resourceId: bugId,
-          audits: [
-            this.audit(
-              source,
-              archived ? 'BUG_ARCHIVED' : 'BUG_UNARCHIVED',
-              {},
-            ),
-          ],
+          audits: [this.audit(source, outcome.action, outcome.details)],
         };
       },
     });
-    return result;
   }
 
   private recordBugTransition(
