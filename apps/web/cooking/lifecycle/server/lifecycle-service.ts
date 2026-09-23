@@ -345,12 +345,11 @@ export class LifecycleService {
         );
         if (submission.version !== input.expectedVersion)
           throw staleLifecycle('提测单');
-        const nonTerminal = this.db
-          .prepare(
-            `SELECT COUNT(*) count FROM cooking_bug
+        const nonTerminal = this.db.get(
+          `SELECT COUNT(*) count FROM cooking_bug
              WHERE submission_id = ? AND stage NOT IN ('DONE', 'CANCELLED')`,
-          )
-          .get(submissionId) as { count: number };
+          submissionId,
+        ) as { count: number };
         if (nonTerminal.count > 0)
           throw new PlatformError(
             'INVALID_TRANSITION',
@@ -361,13 +360,12 @@ export class LifecycleService {
             'RESOURCE_CONFLICT',
             '仍有修复或更新执行未结束，不能关闭提测单',
           );
-        const unfinishedBatch = this.db
-          .prepare(
-            `SELECT 1 blocked FROM cooking_update_batch
+        const unfinishedBatch = this.db.get(
+          `SELECT 1 blocked FROM cooking_update_batch
              WHERE submission_id = ? AND state != 'COMPLETED'
              LIMIT 1`,
-          )
-          .get(submissionId);
+          submissionId,
+        );
         if (unfinishedBatch)
           throw new PlatformError(
             'INVALID_TRANSITION',
@@ -384,11 +382,10 @@ export class LifecycleService {
         );
         if (update.changes !== 1) throw staleLifecycle('提测单');
         const revision = this.writes.bumpRevision(submissionId, now);
-        const heldEnvironments = this.db
-          .prepare(
-            'SELECT environment_id FROM cooking_submission_environment_lock WHERE submission_id = ?',
-          )
-          .all(submissionId) as Array<{ environment_id: string }>;
+        const heldEnvironments = this.db.all<{ environment_id: string }>(
+          'SELECT environment_id FROM cooking_submission_environment_lock WHERE submission_id = ?',
+          submissionId,
+        );
         for (const { environment_id } of heldEnvironments)
           for (const observer of environmentObservers(
             this.db,
@@ -405,12 +402,11 @@ export class LifecycleService {
           'DELETE FROM cooking_submission_environment_lock WHERE submission_id = ?',
           [submissionId],
         );
-        const items = this.db
-          .prepare(
-            `SELECT id FROM cooking_submission_item
+        const items = this.db.all<{ id: string }>(
+          `SELECT id FROM cooking_submission_item
              WHERE submission_id = ? ORDER BY position`,
-          )
-          .all(submissionId) as Array<{ id: string }>;
+          submissionId,
+        );
         const cleanupExecutionIds: string[] = [];
         for (const item of items) {
           const workspaceKeys = this.queries.cleanupScopeForItem(item.id);
@@ -675,12 +671,11 @@ export class LifecycleService {
   }
 
   private requireSubmissionTester(userId: string, submissionId: string) {
-    const row = this.db
-      .prepare(
-        `SELECT project_id, tester_user_id, status, version
+    const row = this.db.get(
+      `SELECT project_id, tester_user_id, status, version
          FROM cooking_test_submission WHERE id = ?`,
-      )
-      .get(submissionId) as
+      submissionId,
+    ) as
       | {
           project_id: string;
           tester_user_id: string;
@@ -724,53 +719,48 @@ export class LifecycleService {
 
   private nextVerificationRound(bugId: string): number {
     return (
-      this.db
-        .prepare(
-          `SELECT COALESCE(MAX(round), 0) + 1 round
+      this.db.get(
+        `SELECT COALESCE(MAX(round), 0) + 1 round
            FROM cooking_verification_record WHERE bug_id = ?`,
-        )
-        .get(bugId) as { round: number }
+        bugId,
+      ) as { round: number }
     ).round;
   }
 
   private nextReopenRound(bugId: string): number {
     return (
-      this.db
-        .prepare(
-          `SELECT COALESCE(MAX(round), 0) + 1 round
+      this.db.get(
+        `SELECT COALESCE(MAX(round), 0) + 1 round
            FROM cooking_reopen_record WHERE bug_id = ?`,
-        )
-        .get(bugId) as { round: number }
+        bugId,
+      ) as { round: number }
     ).round;
   }
 
   private nextRepairAttempt(bugId: string): number {
     return (
-      this.db
-        .prepare(
-          `SELECT COALESCE(MAX(attempt), 0) + 1 attempt
+      this.db.get(
+        `SELECT COALESCE(MAX(attempt), 0) + 1 attempt
            FROM cooking_repair_attempt WHERE bug_id = ?`,
-        )
-        .get(bugId) as { attempt: number }
+        bugId,
+      ) as { attempt: number }
     ).attempt;
   }
 
   private hasActiveRepair(bugId: string): boolean {
-    const row = this.db
-      .prepare(
-        `SELECT execution.state
+    const row = this.db.get(
+      `SELECT execution.state
          FROM cooking_repair_attempt attempt
          JOIN platform_execution execution ON execution.id = attempt.execution_id
          WHERE attempt.bug_id = ? ORDER BY attempt.attempt DESC LIMIT 1`,
-      )
-      .get(bugId) as { state: Execution['state'] } | undefined;
+      bugId,
+    ) as { state: Execution['state'] } | undefined;
     return Boolean(row && !isTerminal(row.state));
   }
 
   private hasActiveSubmissionExecution(submissionId: string): boolean {
-    const row = this.db
-      .prepare(
-        `SELECT 1 active
+    const row = this.db.get(
+      `SELECT 1 active
          FROM platform_execution execution
          WHERE execution.state IN (
            'QUEUED', 'CLAIMED', 'RUNNING', 'WAITING_FOR_INTERACTION',
@@ -786,8 +776,9 @@ export class LifecycleService {
              WHERE batch.submission_id = ?
            )
          ) LIMIT 1`,
-      )
-      .get(submissionId, submissionId);
+      submissionId,
+      submissionId,
+    );
     return Boolean(row);
   }
 

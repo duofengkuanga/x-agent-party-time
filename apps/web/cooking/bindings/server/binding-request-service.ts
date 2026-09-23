@@ -69,17 +69,16 @@ export class BindingRequestService {
       resultSchema: BindingRequestSchema,
       perform: () => {
         this.failExpired();
-        const engineering = this.db
-          .prepare(
-            `SELECT engineering.project_id, engineering.archived_at
+        const engineering = this.db.get(
+          `SELECT engineering.project_id, engineering.archived_at
              FROM cooking_engineering engineering
              JOIN cooking_engineering_membership membership
                ON membership.engineering_id = engineering.id
               AND membership.user_id = ?
              WHERE engineering.id = ?`,
-          )
-          .get(actorUserId, engineeringId) as
-          { project_id: string; archived_at: string | null } | undefined;
+          actorUserId,
+          engineeringId,
+        ) as { project_id: string; archived_at: string | null } | undefined;
         if (!engineering)
           throw new PlatformError('NOT_FOUND', '工程不存在或你不是工程成员');
         if (engineering.archived_at)
@@ -87,13 +86,12 @@ export class BindingRequestService {
             'INVALID_TRANSITION',
             '已归档工程不能建立绑定',
           );
-        const runner = this.db
-          .prepare(
-            `SELECT last_seen_at FROM platform_runner
+        const runner = this.db.get(
+          `SELECT last_seen_at FROM platform_runner
              WHERE id = ? AND owner_user_id = ? AND revoked_at IS NULL`,
-          )
-          .get(runnerId, actorUserId) as
-          { last_seen_at: string | null } | undefined;
+          runnerId,
+          actorUserId,
+        ) as { last_seen_at: string | null } | undefined;
         if (
           !runner?.last_seen_at ||
           this.now().getTime() - Date.parse(runner.last_seen_at) >
@@ -103,27 +101,27 @@ export class BindingRequestService {
             'INVALID_TRANSITION',
             '所选 Agent 当前不在线',
           );
-        const existingBinding = this.db
-          .prepare(
-            `SELECT 1 present FROM cooking_engineering_binding
+        const existingBinding = this.db.get(
+          `SELECT 1 present FROM cooking_engineering_binding
              WHERE engineering_id = ? AND user_id = ?`,
-          )
-          .get(engineeringId, actorUserId);
+          engineeringId,
+          actorUserId,
+        );
         if (existingBinding)
           throw new PlatformError(
             'RESOURCE_CONFLICT',
             '你已经为这个工程建立绑定',
           );
-        const active = this.db
-          .prepare(
-            `SELECT id, engineering_id, user_id, runner_id, state,
+        const active = this.db.get(
+          `SELECT id, engineering_id, user_id, runner_id, state,
                     error_message, repository_url, binding_id, expires_at,
                     claimed_at, completed_at, created_at
              FROM cooking_binding_request
              WHERE engineering_id = ? AND user_id = ?
                AND state IN ('PENDING', 'PROCESSING')`,
-          )
-          .get(engineeringId, actorUserId) as BindingRequestRow | undefined;
+          engineeringId,
+          actorUserId,
+        ) as BindingRequestRow | undefined;
         if (active)
           return { result: mapRequest(active), resourceId: active.id };
 
@@ -181,15 +179,15 @@ export class BindingRequestService {
   getRequest(userId: string, requestIdInput: string): BindingRequest {
     const requestId = BindingRequestIdSchema.parse(requestIdInput);
     this.failExpired();
-    const row = this.db
-      .prepare(
-        `SELECT id, engineering_id, user_id, runner_id, state,
+    const row = this.db.get(
+      `SELECT id, engineering_id, user_id, runner_id, state,
                 error_message, repository_url, binding_id, expires_at,
                 claimed_at, completed_at, created_at
          FROM cooking_binding_request
          WHERE id = ? AND user_id = ?`,
-      )
-      .get(requestId, userId) as BindingRequestRow | undefined;
+      requestId,
+      userId,
+    ) as BindingRequestRow | undefined;
     if (!row) throw new PlatformError('NOT_FOUND', '绑定请求不存在或无权访问');
     return mapRequest(row);
   }
@@ -200,9 +198,8 @@ export class BindingRequestService {
       this.now().getTime() - CLAIM_RECOVERY_MS,
     ).toISOString();
     return this.db.transaction(() => {
-      const row = this.db
-        .prepare(
-          `SELECT id, engineering_id, user_id, runner_id, state,
+      const row = this.db.get(
+        `SELECT id, engineering_id, user_id, runner_id, state,
                   error_message, repository_url, binding_id, expires_at,
                   claimed_at, completed_at, created_at
            FROM cooking_binding_request
@@ -213,9 +210,10 @@ export class BindingRequestService {
              )
            ORDER BY created_at, id
            LIMIT 1`,
-        )
-        .get(runnerId, this.now().toISOString(), reclaimBefore) as
-        BindingRequestRow | undefined;
+        runnerId,
+        this.now().toISOString(),
+        reclaimBefore,
+      ) as BindingRequestRow | undefined;
       if (!row) return null;
       const claimedAt = this.now().toISOString();
       const claimed = this.db
@@ -298,15 +296,15 @@ export class BindingRequestService {
     requestId: string,
   ): BindingRequestRow {
     this.failExpired();
-    const row = this.db
-      .prepare(
-        `SELECT id, engineering_id, user_id, runner_id, state,
+    const row = this.db.get(
+      `SELECT id, engineering_id, user_id, runner_id, state,
                 error_message, repository_url, binding_id, expires_at,
                 claimed_at, completed_at, created_at
          FROM cooking_binding_request
          WHERE id = ? AND runner_id = ?`,
-      )
-      .get(requestId, runnerId) as BindingRequestRow | undefined;
+      requestId,
+      runnerId,
+    ) as BindingRequestRow | undefined;
     if (!row)
       throw new PlatformError('NOT_FOUND', '绑定请求不存在或不属于当前 Agent');
     return row;

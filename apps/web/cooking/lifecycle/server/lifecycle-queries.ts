@@ -22,11 +22,12 @@ export class LifecycleQueries {
     submissionId: string,
   ): LifecycleWorkspaceProjection {
     requireSubmissionAccess(this.db, userId, submissionId);
-    const bugIds = (
-      this.db
-        .prepare('SELECT id FROM cooking_bug WHERE submission_id = ?')
-        .all(submissionId) as Array<{ id: string }>
-    ).map(({ id }) => id);
+    const bugIds = this.db
+      .all<{ id: string }>(
+        'SELECT id FROM cooking_bug WHERE submission_id = ?',
+        submissionId,
+      )
+      .map(({ id }) => id);
     const verificationsByBug = Object.fromEntries(
       bugIds.map((bugId) => [bugId, this.verificationViews(bugId)]),
     );
@@ -36,14 +37,13 @@ export class LifecycleQueries {
     const transitionsByBug = Object.fromEntries(
       bugIds.map((bugId) => [bugId, this.bugTransitionViews(bugId)]),
     );
-    const cleanupIds = (
-      this.db
-        .prepare(
-          `SELECT id FROM cooking_cleanup
+    const cleanupIds = this.db
+      .all<{ id: string }>(
+        `SELECT id FROM cooking_cleanup
            WHERE submission_id = ? ORDER BY created_at, id`,
-        )
-        .all(submissionId) as Array<{ id: string }>
-    ).map(({ id }) => id);
+        submissionId,
+      )
+      .map(({ id }) => id);
     return LifecycleWorkspaceProjectionSchema.parse({
       verificationsByBug,
       reopensByBug,
@@ -59,20 +59,7 @@ export class LifecycleQueries {
     submissionId: string,
   ): CleanupInteractionView[] {
     requireSubmissionAccess(this.db, userId, submissionId);
-    const rows = this.db
-      .prepare(
-        `SELECT interaction.*, cleanup.id cleanup_id,
-                cleanup.submission_item_id, item.responsible_user_id
-         FROM platform_execution_interaction interaction
-         JOIN cooking_cleanup_attempt attempt
-           ON attempt.execution_id = interaction.execution_id
-         JOIN cooking_cleanup cleanup ON cleanup.id = attempt.cleanup_id
-         JOIN cooking_submission_item item
-           ON item.id = cleanup.submission_item_id
-         WHERE cleanup.submission_id = ? AND interaction.state = 'PENDING'
-         ORDER BY interaction.created_at, interaction.id`,
-      )
-      .all(submissionId) as Array<{
+    const rows = this.db.all<{
       id: string;
       execution_id: string;
       cleanup_id: string;
@@ -83,7 +70,19 @@ export class LifecycleQueries {
       method: string;
       payload_json: string;
       created_at: string;
-    }>;
+    }>(
+      `SELECT interaction.*, cleanup.id cleanup_id,
+                cleanup.submission_item_id, item.responsible_user_id
+         FROM platform_execution_interaction interaction
+         JOIN cooking_cleanup_attempt attempt
+           ON attempt.execution_id = interaction.execution_id
+         JOIN cooking_cleanup cleanup ON cleanup.id = attempt.cleanup_id
+         JOIN cooking_submission_item item
+           ON item.id = cleanup.submission_item_id
+         WHERE cleanup.submission_id = ? AND interaction.state = 'PENDING'
+         ORDER BY interaction.created_at, interaction.id`,
+      submissionId,
+    );
     return rows.map((row) => {
       const responsible = row.responsible_user_id === userId;
       return CleanupInteractionViewSchema.parse({
@@ -107,58 +106,54 @@ export class LifecycleQueries {
   }
 
   cleanupScopeForItem(submissionItemId: string): string[] {
-    const repairs = this.db
-      .prepare(
-        `SELECT context.workspace_key key
+    const repairs = this.db.all<{ key: string }>(
+      `SELECT context.workspace_key key
          FROM cooking_bug bug
          JOIN cooking_bug_repair_context context ON context.bug_id = bug.id
          WHERE bug.submission_item_id = ?`,
-      )
-      .all(submissionItemId) as Array<{ key: string }>;
-    const updates = this.db
-      .prepare(
-        `SELECT 'update-batch:' || id key FROM cooking_update_batch
+      submissionItemId,
+    );
+    const updates = this.db.all<{ key: string }>(
+      `SELECT 'update-batch:' || id key FROM cooking_update_batch
          WHERE submission_item_id = ?`,
-      )
-      .all(submissionItemId) as Array<{ key: string }>;
+      submissionItemId,
+    );
     return [...new Set([...repairs, ...updates].map(({ key }) => key))];
   }
 
   bugTransitionViews(bugId: string) {
-    return (
-      this.db
-        .prepare(
-          `SELECT id, kind, created_at FROM cooking_bug_lifecycle_event
-           WHERE bug_id = ? ORDER BY created_at, rowid`,
-        )
-        .all(bugId) as Array<{
+    return this.db
+      .all<{
         id: string;
         kind: 'CANCELLED' | 'RESTORED';
         created_at: string;
-      }>
-    ).map((row) => ({
-      id: row.id,
-      bugId,
-      kind: row.kind,
-      createdAt: row.created_at,
-    }));
+      }>(
+        `SELECT id, kind, created_at FROM cooking_bug_lifecycle_event
+           WHERE bug_id = ? ORDER BY created_at, rowid`,
+        bugId,
+      )
+      .map((row) => ({
+        id: row.id,
+        bugId,
+        kind: row.kind,
+        createdAt: row.created_at,
+      }));
   }
 
   verificationViews(bugId: string) {
-    const records = this.db
-      .prepare(
-        `SELECT id, round, result, comment, repair_attempt, created_at
-         FROM cooking_verification_record
-         WHERE bug_id = ? ORDER BY round`,
-      )
-      .all(bugId) as Array<{
+    const records = this.db.all<{
       id: string;
       round: number;
       result: 'PASSED' | 'FAILED';
       comment: string | null;
       repair_attempt: number | null;
       created_at: string;
-    }>;
+    }>(
+      `SELECT id, round, result, comment, repair_attempt, created_at
+         FROM cooking_verification_record
+         WHERE bug_id = ? ORDER BY round`,
+      bugId,
+    );
     return records.map((record) => ({
       id: record.id,
       bugId,
@@ -176,18 +171,17 @@ export class LifecycleQueries {
   }
 
   reopenViews(bugId: string) {
-    const records = this.db
-      .prepare(
-        `SELECT id, round, feedback, repair_attempt, created_at
-         FROM cooking_reopen_record WHERE bug_id = ? ORDER BY round`,
-      )
-      .all(bugId) as Array<{
+    const records = this.db.all<{
       id: string;
       round: number;
       feedback: string;
       repair_attempt: number;
       created_at: string;
-    }>;
+    }>(
+      `SELECT id, round, feedback, repair_attempt, created_at
+         FROM cooking_reopen_record WHERE bug_id = ? ORDER BY round`,
+      bugId,
+    );
     return records.map((record) => ({
       id: record.id,
       bugId,
@@ -208,29 +202,28 @@ export class LifecycleQueries {
     ownerColumn: 'verification_id' | 'reopen_id',
     ownerId: string,
   ) {
-    return (
-      this.db
-        .prepare(
-          `SELECT file.id, file.original_name, file.media_type,
-                  file.size_bytes, file.created_at
-           FROM ${table} attachment
-           JOIN platform_file file ON file.id = attachment.file_id
-           WHERE attachment.${ownerColumn} = ? ORDER BY attachment.position`,
-        )
-        .all(ownerId) as Array<{
+    return this.db
+      .all<{
         id: string;
         original_name: string;
         media_type: string;
         size_bytes: number;
         created_at: string;
-      }>
-    ).map((row) => ({
-      id: row.id,
-      originalName: row.original_name,
-      mediaType: row.media_type,
-      sizeBytes: row.size_bytes,
-      createdAt: row.created_at,
-    }));
+      }>(
+        `SELECT file.id, file.original_name, file.media_type,
+                  file.size_bytes, file.created_at
+           FROM ${table} attachment
+           JOIN platform_file file ON file.id = attachment.file_id
+           WHERE attachment.${ownerColumn} = ? ORDER BY attachment.position`,
+        ownerId,
+      )
+      .map((row) => ({
+        id: row.id,
+        originalName: row.original_name,
+        mediaType: row.media_type,
+        sizeBytes: row.size_bytes,
+        createdAt: row.created_at,
+      }));
   }
 
   cleanupView(userId: string, cleanupId: string) {
@@ -287,16 +280,7 @@ export class LifecycleQueries {
       summary: string;
       createdAt: string;
     }> = [];
-    const verifications = this.db
-      .prepare(
-        `SELECT verification.id, verification.bug_id, verification.round,
-                verification.result, verification.comment,
-                verification.created_at, bug.short_id
-         FROM cooking_verification_record verification
-         JOIN cooking_bug bug ON bug.id = verification.bug_id
-         WHERE bug.submission_id = ?`,
-      )
-      .all(submissionId) as Array<{
+    const verifications = this.db.all<{
       id: string;
       bug_id: string;
       round: number;
@@ -305,7 +289,15 @@ export class LifecycleQueries {
       repair_attempt: number | null;
       created_at: string;
       short_id: number;
-    }>;
+    }>(
+      `SELECT verification.id, verification.bug_id, verification.round,
+                verification.result, verification.comment,
+                verification.created_at, bug.short_id
+         FROM cooking_verification_record verification
+         JOIN cooking_bug bug ON bug.id = verification.bug_id
+         WHERE bug.submission_id = ?`,
+      submissionId,
+    );
     for (const row of verifications)
       entries.push({
         id: `verification:${row.id}`,
@@ -318,15 +310,7 @@ export class LifecycleQueries {
             : `${row.comment || '验证未通过'}；已进入第 ${row.repair_attempt} 轮修复。`,
         createdAt: row.created_at,
       });
-    const reopens = this.db
-      .prepare(
-        `SELECT reopen.id, reopen.bug_id, reopen.round, reopen.feedback,
-                reopen.repair_attempt, reopen.created_at, bug.short_id
-         FROM cooking_reopen_record reopen
-         JOIN cooking_bug bug ON bug.id = reopen.bug_id
-         WHERE bug.submission_id = ?`,
-      )
-      .all(submissionId) as Array<{
+    const reopens = this.db.all<{
       id: string;
       bug_id: string;
       round: number;
@@ -334,7 +318,14 @@ export class LifecycleQueries {
       repair_attempt: number;
       created_at: string;
       short_id: number;
-    }>;
+    }>(
+      `SELECT reopen.id, reopen.bug_id, reopen.round, reopen.feedback,
+                reopen.repair_attempt, reopen.created_at, bug.short_id
+         FROM cooking_reopen_record reopen
+         JOIN cooking_bug bug ON bug.id = reopen.bug_id
+         WHERE bug.submission_id = ?`,
+      submissionId,
+    );
     for (const row of reopens)
       entries.push({
         id: `reopen:${row.id}`,
@@ -344,21 +335,20 @@ export class LifecycleQueries {
         summary: `${row.feedback}；已进入第 ${row.repair_attempt} 轮修复。`,
         createdAt: row.created_at,
       });
-    const reports = this.db
-      .prepare(
-        `SELECT report.id, report.round, report.outcome, report.created_at,
-                batch.id batch_id
-         FROM cooking_external_deployment_report report
-         JOIN cooking_update_batch batch ON batch.id = report.batch_id
-         WHERE batch.submission_id = ?`,
-      )
-      .all(submissionId) as Array<{
+    const reports = this.db.all<{
       id: string;
       round: number;
       outcome: 'SUCCEEDED' | 'FAILED';
       created_at: string;
       batch_id: string;
-    }>;
+    }>(
+      `SELECT report.id, report.round, report.outcome, report.created_at,
+                batch.id batch_id
+         FROM cooking_external_deployment_report report
+         JOIN cooking_update_batch batch ON batch.id = report.batch_id
+         WHERE batch.submission_id = ?`,
+      submissionId,
+    );
     for (const row of reports)
       entries.push({
         id: `external:${row.id}`,
@@ -371,17 +361,16 @@ export class LifecycleQueries {
             : '外部部署失败，等待工程负责人继续原批次。',
         createdAt: row.created_at,
       });
-    const cleanups = this.db
-      .prepare(
-        `SELECT id, reason, state, created_at FROM cooking_cleanup
-         WHERE submission_id = ?`,
-      )
-      .all(submissionId) as Array<{
+    const cleanups = this.db.all<{
       id: string;
       reason: 'SUBMISSION_CLOSED';
       state: 'READY' | 'RUNNING' | 'FAILED' | 'COMPLETED';
       created_at: string;
-    }>;
+    }>(
+      `SELECT id, reason, state, created_at FROM cooking_cleanup
+         WHERE submission_id = ?`,
+      submissionId,
+    );
     for (const row of cleanups)
       entries.push({
         id: `cleanup:${row.id}`,
@@ -391,11 +380,10 @@ export class LifecycleQueries {
         summary: cleanupStateLabel(row.state),
         createdAt: row.created_at,
       });
-    const submission = this.db
-      .prepare(
-        `SELECT status, closed_at FROM cooking_test_submission WHERE id = ?`,
-      )
-      .get(submissionId) as {
+    const submission = this.db.get(
+      `SELECT status, closed_at FROM cooking_test_submission WHERE id = ?`,
+      submissionId,
+    ) as {
       status: 'ACTIVE' | 'CLOSED';
       closed_at: string | null;
     };
@@ -416,9 +404,8 @@ export class LifecycleQueries {
   }
 
   bugSource(bugId: string): BugSourceRow {
-    const row = this.db
-      .prepare(
-        `SELECT bug.id, bug.submission_id, bug.submission_item_id, bug.stage,
+    const row = this.db.get(
+      `SELECT bug.id, bug.submission_id, bug.submission_item_id, bug.stage,
                 bug.version, bug.short_id, bug.title, submission.project_id,
                 submission.status submission_status,
                 submission.title submission_title,
@@ -431,23 +418,22 @@ export class LifecycleQueries {
          LEFT JOIN cooking_submission_item item ON item.id = bug.submission_item_id
          LEFT JOIN cooking_engineering_binding binding ON binding.id = item.binding_id
          WHERE bug.id = ?`,
-      )
-      .get(bugId) as BugSourceRow | undefined;
+      bugId,
+    ) as BugSourceRow | undefined;
     if (!row) throw new PlatformError('NOT_FOUND', '缺陷不存在');
     return row;
   }
 
   itemCleanupSource(submissionItemId: string) {
-    const row = this.db
-      .prepare(
-        `SELECT item.binding_id, binding.runner_id, item.engineering_name,
+    const row = this.db.get(
+      `SELECT item.binding_id, binding.runner_id, item.engineering_name,
                 item.target_branch, submission.title submission_title
          FROM cooking_submission_item item
          JOIN cooking_engineering_binding binding ON binding.id = item.binding_id
          JOIN cooking_test_submission submission ON submission.id = item.submission_id
          WHERE item.id = ?`,
-      )
-      .get(submissionItemId) as
+      submissionItemId,
+    ) as
       | {
           binding_id: string;
           runner_id: string;
@@ -461,9 +447,8 @@ export class LifecycleQueries {
   }
 
   cleanupSource(cleanupId: string): CleanupSourceRow {
-    const row = this.db
-      .prepare(
-        `SELECT cleanup.*, item.responsible_user_id, item.binding_id,
+    const row = this.db.get(
+      `SELECT cleanup.*, item.responsible_user_id, item.binding_id,
                 binding.runner_id, item.engineering_name, item.target_branch,
                 submission.title submission_title, submission.project_id
          FROM cooking_cleanup cleanup
@@ -471,21 +456,20 @@ export class LifecycleQueries {
          JOIN cooking_engineering_binding binding ON binding.id = item.binding_id
          JOIN cooking_test_submission submission ON submission.id = cleanup.submission_id
          WHERE cleanup.id = ?`,
-      )
-      .get(cleanupId) as CleanupSourceRow | undefined;
+      cleanupId,
+    ) as CleanupSourceRow | undefined;
     if (!row) throw new PlatformError('NOT_FOUND', '清理任务不存在');
     return row;
   }
 
   cleanupAttempts(cleanupId: string): CleanupAttemptRow[] {
-    return this.db
-      .prepare(
-        `SELECT attempt.*, execution.state, execution.session_id
+    return this.db.all<CleanupAttemptRow>(
+      `SELECT attempt.*, execution.state, execution.session_id
          FROM cooking_cleanup_attempt attempt
          JOIN platform_execution execution ON execution.id = attempt.execution_id
          WHERE attempt.cleanup_id = ? ORDER BY attempt.attempt`,
-      )
-      .all(cleanupId) as CleanupAttemptRow[];
+      cleanupId,
+    );
   }
 
   latestCleanupAttempt(cleanupId: string): CleanupAttemptRow | undefined {
@@ -496,16 +480,14 @@ export class LifecycleQueries {
     cleanup_id: string;
     execution_id: string;
   } {
-    const row = this.db
-      .prepare(
-        `SELECT attempt.cleanup_id, interaction.execution_id
+    const row = this.db.get(
+      `SELECT attempt.cleanup_id, interaction.execution_id
          FROM platform_execution_interaction interaction
          JOIN cooking_cleanup_attempt attempt
            ON attempt.execution_id = interaction.execution_id
          WHERE interaction.id = ?`,
-      )
-      .get(interactionId) as
-      { cleanup_id: string; execution_id: string } | undefined;
+      interactionId,
+    ) as { cleanup_id: string; execution_id: string } | undefined;
     if (!row) throw new PlatformError('NOT_FOUND', '清理操作请求不存在');
     return row;
   }
@@ -513,13 +495,12 @@ export class LifecycleQueries {
   cleanupAttemptForExecution(
     executionId: string,
   ): CleanupAttemptRow | undefined {
-    return this.db
-      .prepare(
-        `SELECT attempt.*, execution.state, execution.session_id
+    return this.db.get(
+      `SELECT attempt.*, execution.state, execution.session_id
          FROM cooking_cleanup_attempt attempt
          JOIN platform_execution execution ON execution.id = attempt.execution_id
          WHERE attempt.execution_id = ?`,
-      )
-      .get(executionId) as CleanupAttemptRow | undefined;
+      executionId,
+    ) as CleanupAttemptRow | undefined;
   }
 }

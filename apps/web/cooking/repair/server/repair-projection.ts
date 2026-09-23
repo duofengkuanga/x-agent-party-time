@@ -52,9 +52,8 @@ export class RepairProjection {
       !['BUG_REPAIR', 'SESSION_SYNC'].includes(execution.owner.kind)
     )
       return;
-    const attempt = this.db
-      .prepare(
-        `SELECT attempt.id, attempt.bug_id, attempt.execution_id,
+    const attempt = this.db.get(
+      `SELECT attempt.id, attempt.bug_id, attempt.execution_id,
                 attempt.attempt, attempt.outcome_json, attempt.created_at,
                 execution.started_at, attempt.finished_at, execution.state,
                 execution.session_id, execution.outcome_json outcome,
@@ -63,8 +62,8 @@ export class RepairProjection {
          JOIN platform_execution execution ON execution.id = attempt.execution_id
          JOIN platform_runner runner ON runner.id = execution.runner_id
          WHERE attempt.execution_id = ?`,
-      )
-      .get(execution.id) as AttemptRow | undefined;
+      execution.id,
+    ) as AttemptRow | undefined;
     if (!attempt || attempt.outcome_json) return;
     const context = this.queries.requireContext(attempt.bug_id);
     const now = this.now().toISOString();
@@ -179,11 +178,10 @@ export class RepairProjection {
       return;
     }
     if (execution.owner.kind !== 'SESSION_SYNC') return;
-    const sync = this.db
-      .prepare(
-        'SELECT bug_id FROM cooking_repair_session_sync WHERE execution_id = ?',
-      )
-      .get(execution.id) as { bug_id: string } | undefined;
+    const sync = this.db.get(
+      'SELECT bug_id FROM cooking_repair_session_sync WHERE execution_id = ?',
+      execution.id,
+    ) as { bug_id: string } | undefined;
     if (sync)
       this.writes.bumpRevisionForBug(sync.bug_id, this.now().toISOString());
   }
@@ -204,11 +202,10 @@ export class RepairProjection {
     )
       return;
     if (execution.outcome?.kind !== 'SUCCEEDED') return;
-    const sync = this.db
-      .prepare(
-        'SELECT bug_id FROM cooking_repair_session_sync WHERE execution_id = ?',
-      )
-      .get(execution.id) as { bug_id: string } | undefined;
+    const sync = this.db.get(
+      'SELECT bug_id FROM cooking_repair_session_sync WHERE execution_id = ?',
+      execution.id,
+    ) as { bug_id: string } | undefined;
     if (!sync) return;
     const envelope = execution.outcome.result as Record<string, unknown>;
     const turnId = typeof envelope.turnId === 'string' ? envelope.turnId : null;
@@ -219,12 +216,13 @@ export class RepairProjection {
       this.markExecutionResultInvalid(execution.id);
       return;
     }
-    const duplicate = this.db
-      .prepare(
-        `SELECT 1 FROM cooking_repair_session_sync
+    const duplicate = this.db.get(
+      `SELECT 1 FROM cooking_repair_session_sync
          WHERE session_id = ? AND turn_id = ? AND execution_id <> ? LIMIT 1`,
-      )
-      .get(execution.sessionId, turnId, execution.id);
+      execution.sessionId,
+      turnId,
+      execution.id,
+    );
     if (duplicate) return;
     this.db.run(
       'UPDATE cooking_repair_session_sync SET turn_id = ? WHERE execution_id = ?',
@@ -251,16 +249,14 @@ export class RepairProjection {
   }
 
   private publishExecutionInvalidation(executionId: string): void {
-    const row = this.db
-      .prepare(
-        `SELECT bug.submission_id, submission.workspace_revision
+    const row = this.db.get(
+      `SELECT bug.submission_id, submission.workspace_revision
          FROM cooking_repair_attempt attempt
          JOIN cooking_bug bug ON bug.id = attempt.bug_id
          JOIN cooking_test_submission submission ON submission.id = bug.submission_id
          WHERE attempt.execution_id = ?`,
-      )
-      .get(executionId) as
-      { submission_id: string; workspace_revision: number } | undefined;
+      executionId,
+    ) as { submission_id: string; workspace_revision: number } | undefined;
     if (row)
       this.writes.publishInvalidation(
         row.submission_id,

@@ -113,9 +113,10 @@ export async function seedBrowserFixture(
         ],
       },
     );
-    const item = db
-      .prepare('SELECT id FROM cooking_submission_item WHERE submission_id = ?')
-      .get(submission.id) as { id: string };
+    const item = db.get(
+      'SELECT id FROM cooking_submission_item WHERE submission_id = ?',
+      submission.id,
+    ) as { id: string };
 
     const { repairs, executions, bugs } = createCooking(db);
 

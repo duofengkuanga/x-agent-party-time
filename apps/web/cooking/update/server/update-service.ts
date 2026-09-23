@@ -91,12 +91,11 @@ export class UpdateService {
   }
 
   recordCandidateAvailable(bugId: string, candidateAt: string): void {
-    const row = this.db
-      .prepare(
-        `SELECT submission_item_id FROM cooking_bug
+    const row = this.db.get(
+      `SELECT submission_item_id FROM cooking_bug
          WHERE id = ? AND stage = 'WAITING_FOR_UPDATE'`,
-      )
-      .get(bugId) as { submission_item_id: string | null } | undefined;
+      bugId,
+    ) as { submission_item_id: string | null } | undefined;
     if (!row?.submission_item_id) return;
     const eligibleAt = new Date(
       Date.parse(candidateAt) + QUIET_WINDOW_MS,
@@ -113,18 +112,18 @@ export class UpdateService {
   }
 
   recalculatePendingDeliveryForBug(bugId: string): void {
-    const row = this.db
-      .prepare('SELECT submission_item_id FROM cooking_bug WHERE id = ?')
-      .get(bugId) as { submission_item_id: string | null } | undefined;
+    const row = this.db.get(
+      'SELECT submission_item_id FROM cooking_bug WHERE id = ?',
+      bugId,
+    ) as { submission_item_id: string | null } | undefined;
     if (!row?.submission_item_id) return;
     this.recalculatePendingDelivery(row.submission_item_id);
   }
 
   prepareDueExecutions(nowValue: Date = this.now()): string[] {
     const now = nowValue.toISOString();
-    const due = this.db
-      .prepare(
-        `SELECT pending.submission_item_id
+    const due = this.db.all<{ submission_item_id: string }>(
+      `SELECT pending.submission_item_id
          FROM cooking_pending_delivery pending
          JOIN cooking_submission_item item
            ON item.id = pending.submission_item_id
@@ -133,8 +132,8 @@ export class UpdateService {
          WHERE pending.eligible_at <= ?
            AND submission.status = 'ACTIVE'
          ORDER BY pending.eligible_at, pending.submission_item_id`,
-      )
-      .all(now) as Array<{ submission_item_id: string }>;
+      now,
+    );
     const prepared: Array<FrozenBatch & { submissionId: string }> = [];
     for (const { submission_item_id } of due) {
       const frozen = this.db.transaction(() =>
@@ -592,13 +591,11 @@ export class UpdateService {
     const deployment = DeploymentMethodSchema.parse(
       JSON.parse(source.deployment_json),
     );
-    const pending = this.db
-      .prepare(
-        `SELECT last_candidate_at, eligible_at
+    const pending = this.db.get(
+      `SELECT last_candidate_at, eligible_at
          FROM cooking_pending_delivery WHERE submission_item_id = ?`,
-      )
-      .get(submissionItemId) as
-      { last_candidate_at: string; eligible_at: string } | undefined;
+      submissionItemId,
+    ) as { last_candidate_at: string; eligible_at: string } | undefined;
     if (!pending || (requireDue && pending.eligible_at > now)) return undefined;
     if (this.queries.activeBatch(submissionItemId)) return undefined;
     const candidates = this.queries.candidates(submissionItemId);
@@ -710,17 +707,16 @@ export class UpdateService {
   }
 
   private recalculatePendingDelivery(submissionItemId: string): void {
-    const latest = this.db
-      .prepare(
-        `SELECT MAX(context.last_candidate_at) last_candidate_at
+    const latest = this.db.get(
+      `SELECT MAX(context.last_candidate_at) last_candidate_at
          FROM cooking_bug bug
          JOIN cooking_bug_repair_context context ON context.bug_id = bug.id
          WHERE bug.submission_item_id = ?
            AND bug.stage = 'WAITING_FOR_UPDATE'
            AND context.last_candidate_at IS NOT NULL
            AND context.pending_commits_json <> '[]'`,
-      )
-      .get(submissionItemId) as { last_candidate_at: string | null };
+      submissionItemId,
+    ) as { last_candidate_at: string | null };
     if (!latest.last_candidate_at) {
       this.db.run(
         'DELETE FROM cooking_pending_delivery WHERE submission_item_id = ?',

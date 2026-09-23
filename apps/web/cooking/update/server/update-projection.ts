@@ -133,11 +133,10 @@ export class UpdateProjection {
     )
       return;
     if (execution.outcome?.kind !== 'SUCCEEDED') return;
-    const sync = this.db
-      .prepare(
-        'SELECT batch_id FROM cooking_update_session_sync WHERE execution_id = ?',
-      )
-      .get(execution.id) as { batch_id: string } | undefined;
+    const sync = this.db.get(
+      'SELECT batch_id FROM cooking_update_session_sync WHERE execution_id = ?',
+      execution.id,
+    ) as { batch_id: string } | undefined;
     if (!sync) return;
     const batch = this.queries.batch(sync.batch_id);
     const envelope = execution.outcome.result as Record<string, unknown>;
@@ -158,12 +157,13 @@ export class UpdateProjection {
     const latest = this.queries.latestAttempt(batch.id);
     if (!latest || !isTerminal(latest.state) || batch.state !== 'FAILED')
       return;
-    const duplicate = this.db
-      .prepare(
-        `SELECT 1 FROM cooking_update_session_sync
+    const duplicate = this.db.get(
+      `SELECT 1 FROM cooking_update_session_sync
        WHERE session_id = ? AND turn_id = ? AND execution_id <> ? LIMIT 1`,
-      )
-      .get(execution.sessionId, turnId, execution.id);
+      execution.sessionId,
+      turnId,
+      execution.id,
+    );
     if (duplicate) return;
     this.db.run(
       'UPDATE cooking_update_session_sync SET turn_id = ? WHERE execution_id = ?',
@@ -209,11 +209,10 @@ export class UpdateProjection {
       return;
     }
     if (execution.owner.kind !== 'SESSION_SYNC') return;
-    const sync = this.db
-      .prepare(
-        'SELECT batch_id FROM cooking_update_session_sync WHERE execution_id = ?',
-      )
-      .get(execution.id) as { batch_id: string } | undefined;
+    const sync = this.db.get(
+      'SELECT batch_id FROM cooking_update_session_sync WHERE execution_id = ?',
+      execution.id,
+    ) as { batch_id: string } | undefined;
     if (sync) {
       const batch = this.queries.batch(sync.batch_id);
       this.writes.bumpRevision(batch.submission_id, this.now().toISOString());
@@ -356,16 +355,14 @@ export class UpdateProjection {
   }
 
   private publishExecution(executionId: string): void {
-    const row = this.db
-      .prepare(
-        `SELECT batch.submission_id, submission.workspace_revision
+    const row = this.db.get(
+      `SELECT batch.submission_id, submission.workspace_revision
          FROM cooking_update_attempt attempt
          JOIN cooking_update_batch batch ON batch.id = attempt.batch_id
          JOIN cooking_test_submission submission ON submission.id = batch.submission_id
          WHERE attempt.execution_id = ?`,
-      )
-      .get(executionId) as
-      { submission_id: string; workspace_revision: number } | undefined;
+      executionId,
+    ) as { submission_id: string; workspace_revision: number } | undefined;
     if (row)
       this.writes.publishInvalidation(
         row.submission_id,

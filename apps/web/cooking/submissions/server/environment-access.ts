@@ -8,21 +8,19 @@ import {
 
 export function environmentOwned(db: AppDatabase, itemId: string): boolean {
   return Boolean(
-    db
-      .prepare(
-        'SELECT 1 FROM cooking_submission_environment_lock WHERE submission_item_id = ?',
-      )
-      .get(itemId),
+    db.get(
+      'SELECT 1 FROM cooking_submission_environment_lock WHERE submission_item_id = ?',
+      itemId,
+    ),
   );
 }
 
 export function environmentReady(db: AppDatabase, itemId: string): boolean {
   return Boolean(
-    db
-      .prepare(
-        'SELECT 1 FROM cooking_submission_environment_lock WHERE submission_item_id = ? AND deployment_confirmed = 1',
-      )
-      .get(itemId),
+    db.get(
+      'SELECT 1 FROM cooking_submission_environment_lock WHERE submission_item_id = ? AND deployment_confirmed = 1',
+      itemId,
+    ),
   );
 }
 
@@ -45,9 +43,8 @@ export function requireEnvironment(
 
 export function environmentBusy(db: AppDatabase, itemId: string): boolean {
   return Boolean(
-    db
-      .prepare(
-        `SELECT 1 FROM cooking_update_batch batch
+    db.get(
+      `SELECT 1 FROM cooking_update_batch batch
     WHERE batch.submission_item_id = ? AND (
       batch.state IN ('READY', 'RUNNING', 'WAITING_EXTERNAL') OR
       EXISTS (SELECT 1 FROM cooking_update_attempt attempt JOIN platform_execution execution ON execution.id = attempt.execution_id
@@ -55,8 +52,8 @@ export function environmentBusy(db: AppDatabase, itemId: string): boolean {
       EXISTS (SELECT 1 FROM cooking_update_session_sync sync JOIN platform_execution execution ON execution.id = sync.execution_id
         WHERE sync.batch_id = batch.id AND execution.state IN ('QUEUED', 'CLAIMED', 'RUNNING', 'WAITING_FOR_INTERACTION', 'WAITING_TO_RESUME', 'CANCEL_REQUESTED'))
     ) LIMIT 1`,
-      )
-      .get(itemId),
+      itemId,
+    ),
   );
 }
 
@@ -65,9 +62,8 @@ export function environmentConflict(
   userId: string,
   environmentId: string,
 ): EnvironmentConflict | null {
-  const row = db
-    .prepare(
-      `SELECT lock.submission_id, lock.submission_item_id,
+  const row = db.get(
+    `SELECT lock.submission_id, lock.submission_item_id,
       submission.title, submission.workspace_revision, submission.tester_user_id,
       item.environment_name, item.engineering_name, tester.display_name tester_name, membership.role
     FROM cooking_submission_environment_lock lock
@@ -76,8 +72,9 @@ export function environmentConflict(
     JOIN cooking_project_membership membership ON membership.project_id = submission.project_id AND membership.user_id = ?
     JOIN platform_user tester ON tester.id = submission.tester_user_id
     WHERE lock.environment_id = ?`,
-    )
-    .get(userId, environmentId) as
+    userId,
+    environmentId,
+  ) as
     | {
         submission_id: string;
         submission_item_id: string;
@@ -146,15 +143,15 @@ export function environmentObservers(
   environmentId: string,
   exceptSubmissionId: string,
 ): string[] {
-  return (
-    db
-      .prepare(
-        `SELECT DISTINCT item.submission_id FROM cooking_submission_item item
+  return db
+    .all<{
+      submission_id: string;
+    }>(
+      `SELECT DISTINCT item.submission_id FROM cooking_submission_item item
     JOIN cooking_test_submission submission ON submission.id = item.submission_id
     WHERE item.environment_id = ? AND item.submission_id != ? AND submission.status = 'ACTIVE'`,
-      )
-      .all(environmentId, exceptSubmissionId) as Array<{
-      submission_id: string;
-    }>
-  ).map((row) => row.submission_id);
+      environmentId,
+      exceptSubmissionId,
+    )
+    .map((row) => row.submission_id);
 }

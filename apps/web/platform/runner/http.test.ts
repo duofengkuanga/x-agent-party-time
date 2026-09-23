@@ -1,13 +1,8 @@
 import { handleBugDelete } from '@/cooking/bugs/server/http';
-import { afterEach, describe, expect, test } from 'bun:test';
-import { createHash } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { AuthService } from '@/platform/auth/service';
-import type { AppDatabase } from '@/platform/database';
-import { openDatabase } from '@/platform/database';
-import { RunnerService } from './service';
+import { testDatabases } from '@/testing/database';
+import { describe, expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 import {
   handleRunnerAuthorizationClaim,
   handleRunnerAuthorizationCreate,
@@ -19,15 +14,12 @@ import {
   handleRunnerPair,
   handleRunnerSelfRevocation,
 } from './http';
+import { RunnerService } from './service';
 
-const directories: string[] = [];
-const databases: AppDatabase[] = [];
+const createDatabase = testDatabases();
 
 async function setup() {
-  const directory = await mkdtemp(join(tmpdir(), 'agent-party-time-http-'));
-  directories.push(directory);
-  const database = openDatabase(join(directory, 'server.sqlite'));
-  databases.push(database);
+  const { directory, database } = await createDatabase();
   const auth = new AuthService(database);
   const user = await auth.seedUser({
     id: 'http-runner-user',
@@ -38,15 +30,6 @@ async function setup() {
   const runners = new RunnerService(database);
   return { runners, user };
 }
-
-afterEach(async () => {
-  for (const database of databases.splice(0)) database.close();
-  await Promise.all(
-    directories
-      .splice(0)
-      .map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
 
 describe('Runner HTTP protocol', () => {
   test('Pair Route 只在成功响应返回一次明文 Credential', async () => {

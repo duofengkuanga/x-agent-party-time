@@ -216,6 +216,8 @@ packages/runner-conformance/  协议验收 Adapter
 
 `runtime/create-cooking.ts` 是生产和集成测试共同使用的执行链装配入口。Platform 以同一个带类型的事件通知事务内的 APPLY 和提交后的 AFTER；会话同步先按记录归属选择 Repair 或 Update，避免跨领域解释结果。修复和更新的 Codex JSON Schema 从服务器 Zod 定义派生。共享权限检查、附件归属校验和幂等写入集中在 `shared/server/`。
 
+Execution 的领域无关状态转换在 `platform/execution/service.ts`；`queue.ts` 管领取、恢复及 Lease 到期，`records.ts` 读取并映射持久记录，`lease.ts` 集中 Lease 状态与校验。xapt 的 `execution/service.ts` 驱动本机 Codex，`execution/outbox.ts` 持久化待上报结果并负责恢复后重放。两侧通过 Runner HTTP 协议连接，Cooking 只接收归属明确的 Execution 投影事件。
+
 Cooking 样式入口 `app/cooking/cooking.css` 只声明有序导入；`styles/` 按页面和职责维护样式，导入顺序保留共享控件与布局的层叠规则。集成测试通过 `testing/database.ts` 管理隔离数据库，通过 `cooking/testing/project.ts` 建立真实项目和提测场景。
 
 `BugService.deleteBugs()` 是调用方的删除 Interface，内部 `BugDeletion` 集中处理关联执行收集、活动检查、事务删除、依赖校验与提测版本推进。测试继续通过 `BugService` 验证完整行为，不依赖删除过程的私有步骤。

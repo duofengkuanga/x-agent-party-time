@@ -1,22 +1,15 @@
-import { afterEach, describe, expect, test } from 'bun:test';
-import { createHash } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { AuthService } from '@/platform/auth/service';
-import type { AppDatabase } from '@/platform/database';
-import { openDatabase } from '@/platform/database';
+import { testDatabases } from '@/testing/database';
+import { describe, expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 import { RunnerService } from './service';
 
-const directories: string[] = [];
-const databases: AppDatabase[] = [];
+const createDatabase = testDatabases();
+
 const installationId = '00000000-0000-4000-8000-000000000010';
 
 async function setup() {
-  const directory = await mkdtemp(join(tmpdir(), 'agent-party-time-runner-'));
-  directories.push(directory);
-  const database = openDatabase(join(directory, 'server.sqlite'));
-  databases.push(database);
+  const { directory, database } = await createDatabase();
   const auth = new AuthService(database);
   const users = {
     owner: await auth.seedUser({
@@ -56,15 +49,6 @@ async function setup() {
     },
   };
 }
-
-afterEach(async () => {
-  for (const database of databases.splice(0)) database.close();
-  await Promise.all(
-    directories
-      .splice(0)
-      .map((directory) => rm(directory, { force: true, recursive: true })),
-  );
-});
 
 describe('Runner pairing', () => {
   test('Server 只保存配对码 Hash，成功交换后 Credential 只明文返回一次', async () => {

@@ -17,14 +17,13 @@ export function cookingExecutionProjection(
   return (event) => {
     const owner =
       event.kind === 'INTERACTION_OPENED'
-        ? (db
-            .prepare(
-              `
+        ? (db.get(
+            `
           SELECT owner_namespace namespace, owner_kind kind
           FROM platform_execution WHERE id = ?
         `,
-            )
-            .get(event.interaction.executionId) as {
+            event.interaction.executionId,
+          ) as {
             namespace: string;
             kind: string;
           } | null)
@@ -36,15 +35,15 @@ export function cookingExecutionProjection(
         event.kind === 'INTERACTION_OPENED'
           ? event.interaction.executionId
           : event.execution.id;
-      const sync = db
-        .prepare(
-          `
+      const sync = db.get(
+        `
         SELECT 'BUG_REPAIR' kind FROM cooking_repair_session_sync WHERE execution_id = ?
         UNION ALL
         SELECT 'UPDATE_BATCH' kind FROM cooking_update_session_sync WHERE execution_id = ?
       `,
-        )
-        .get(executionId, executionId) as { kind: CookingExecutionKind } | null;
+        executionId,
+        executionId,
+      ) as { kind: CookingExecutionKind } | null;
       if (!sync) return;
       kind = sync.kind;
     }

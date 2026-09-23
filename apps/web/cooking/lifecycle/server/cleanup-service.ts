@@ -378,16 +378,14 @@ export class CleanupService {
   }
 
   private publishExecution(executionId: string): void {
-    const row = this.db
-      .prepare(
-        `SELECT cleanup.submission_id, submission.workspace_revision
+    const row = this.db.get(
+      `SELECT cleanup.submission_id, submission.workspace_revision
          FROM cooking_cleanup_attempt attempt
          JOIN cooking_cleanup cleanup ON cleanup.id = attempt.cleanup_id
          JOIN cooking_test_submission submission ON submission.id = cleanup.submission_id
          WHERE attempt.execution_id = ?`,
-      )
-      .get(executionId) as
-      { submission_id: string; workspace_revision: number } | undefined;
+      executionId,
+    ) as { submission_id: string; workspace_revision: number } | undefined;
     if (row)
       this.writes.publishInvalidation(
         row.submission_id,

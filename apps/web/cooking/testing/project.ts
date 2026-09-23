@@ -123,14 +123,13 @@ export async function deliveryProject(
       responsibleUserId: users.developer.id,
     })),
   });
-  const items = database
-    .prepare(
-      `
+  const items = database.all<{ id: string; environment_id: string }>(
+    `
     SELECT id, environment_id FROM cooking_submission_item
     WHERE submission_id = ? ORDER BY position
   `,
-    )
-    .all(submission.id) as Array<{ id: string; environment_id: string }>;
+    submission.id,
+  );
   return {
     users,
     projects,

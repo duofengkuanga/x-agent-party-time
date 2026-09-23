@@ -37,47 +37,45 @@ export class UpdateQueries {
   ) {}
   workspace(userId: string, submissionId: string): UpdateWorkspaceProjection {
     requireSubmissionAccess(this.db, userId, submissionId);
-    const pendingDeliveries = (
-      this.db
-        .prepare(
-          `SELECT pending.*, item.responsible_user_id,
+    const pendingDeliveries = this.db
+      .all<{
+        submission_item_id: string;
+        last_candidate_at: string;
+        eligible_at: string;
+        responsible_user_id: string;
+        deployment_kind: string;
+      }>(
+        `SELECT pending.*, item.responsible_user_id,
                   json_extract(item.deployment_json, '$.kind') deployment_kind
            FROM cooking_pending_delivery pending
            JOIN cooking_submission_item item
              ON item.id = pending.submission_item_id
            WHERE item.submission_id = ?
            ORDER BY item.position`,
-        )
-        .all(submissionId) as Array<{
-        submission_item_id: string;
-        last_candidate_at: string;
-        eligible_at: string;
-        responsible_user_id: string;
-        deployment_kind: string;
-      }>
-    ).map((row) => ({
-      submissionItemId: row.submission_item_id,
-      lastCandidateAt: row.last_candidate_at,
-      eligibleAt: row.eligible_at,
-      availableActions:
-        row.responsible_user_id === userId &&
-        environmentOwned(this.db, row.submission_item_id)
-          ? (['FREEZE_NOW'] as const)
-          : [],
-    }));
-    const batchIds = (
-      this.db
-        .prepare(
-          `SELECT id FROM cooking_update_batch
+        submissionId,
+      )
+      .map((row) => ({
+        submissionItemId: row.submission_item_id,
+        lastCandidateAt: row.last_candidate_at,
+        eligibleAt: row.eligible_at,
+        availableActions:
+          row.responsible_user_id === userId &&
+          environmentOwned(this.db, row.submission_item_id)
+            ? (['FREEZE_NOW'] as const)
+            : [],
+      }));
+    const batchIds = this.db
+      .all<{ id: string }>(
+        `SELECT id FROM cooking_update_batch
            WHERE submission_id = ?
              AND EXISTS (
                SELECT 1 FROM cooking_update_batch_entry entry
                WHERE entry.batch_id = cooking_update_batch.id
              )
            ORDER BY created_at, id`,
-        )
-        .all(submissionId) as Array<{ id: string }>
-    ).map(({ id }) => id);
+        submissionId,
+      )
+      .map(({ id }) => id);
     return UpdateWorkspaceProjectionSchema.parse({
       pendingDeliveries,
       updateBatches: batchIds.map((id) => this.batchView(userId, id)),
@@ -214,32 +212,29 @@ export class UpdateQueries {
   }
 
   interactionsForBatch(batchId: string): CookingInteractionRow[] {
-    return this.db
-      .prepare(
-        `SELECT interaction.*
+    return this.db.all<CookingInteractionRow>(
+      `SELECT interaction.*
          FROM platform_execution_interaction interaction
          JOIN cooking_update_attempt attempt
            ON attempt.execution_id = interaction.execution_id
          WHERE attempt.batch_id = ?
            AND interaction.state IN ('PENDING', 'RESOLVED')
          ORDER BY interaction.created_at, interaction.id`,
-      )
-      .all(batchId) as CookingInteractionRow[];
+      batchId,
+    );
   }
 
   requireExternalAttachmentAccess(userId: string, fileId: string): void {
-    const row = this.db
-      .prepare(
-        `SELECT batch.submission_id, item.responsible_user_id
+    const row = this.db.get(
+      `SELECT batch.submission_id, item.responsible_user_id
          FROM cooking_external_deployment_report_attachment attachment
          JOIN cooking_external_deployment_report report
            ON report.id = attachment.report_id
          JOIN cooking_update_batch batch ON batch.id = report.batch_id
          JOIN cooking_submission_item item ON item.id = batch.submission_item_id
          WHERE attachment.file_id = ?`,
-      )
-      .get(fileId) as
-      { submission_id: string; responsible_user_id: string } | undefined;
+      fileId,
+    ) as { submission_id: string; responsible_user_id: string } | undefined;
     if (!row || row.responsible_user_id !== userId)
       throw new PlatformError('NOT_FOUND', '附件不存在或无权访问');
     try {
@@ -250,66 +245,60 @@ export class UpdateQueries {
   }
 
   nextExternalReportRound(batchId: string): number {
-    const row = this.db
-      .prepare(
-        `SELECT COALESCE(MAX(round), 0) + 1 round
+    const row = this.db.get(
+      `SELECT COALESCE(MAX(round), 0) + 1 round
          FROM cooking_external_deployment_report WHERE batch_id = ?`,
-      )
-      .get(batchId) as { round: number };
+      batchId,
+    ) as { round: number };
     return row.round;
   }
 
   externalReports(batchId: string): ExternalReportRow[] {
-    return this.db
-      .prepare(
-        `SELECT * FROM cooking_external_deployment_report
+    return this.db.all<ExternalReportRow>(
+      `SELECT * FROM cooking_external_deployment_report
          WHERE batch_id = ? ORDER BY round, created_at, id`,
-      )
-      .all(batchId) as ExternalReportRow[];
+      batchId,
+    );
   }
 
   latestUnconsumedFailedReport(batchId: string): ExternalReportRow | undefined {
-    return this.db
-      .prepare(
-        `SELECT report.*
+    return this.db.get(
+      `SELECT report.*
          FROM cooking_external_deployment_report report
          LEFT JOIN cooking_update_attempt attempt
            ON attempt.continuation_report_id = report.id
          WHERE report.batch_id = ? AND report.outcome = 'FAILED'
            AND attempt.id IS NULL
          ORDER BY report.round DESC LIMIT 1`,
-      )
-      .get(batchId) as ExternalReportRow | undefined;
+      batchId,
+    ) as ExternalReportRow | undefined;
   }
 
   externalReportAttachmentIds(reportId: string): string[] {
-    return (
-      this.db
-        .prepare(
-          `SELECT file_id
+    return this.db
+      .all<{ file_id: string }>(
+        `SELECT file_id
            FROM cooking_external_deployment_report_attachment
            WHERE report_id = ? ORDER BY position`,
-        )
-        .all(reportId) as Array<{ file_id: string }>
-    ).map(({ file_id }) => file_id);
+        reportId,
+      )
+      .map(({ file_id }) => file_id);
   }
 
   externalReportAttachments(reportId: string): ExternalReportAttachmentRow[] {
-    return this.db
-      .prepare(
-        `SELECT file.id, file.original_name, file.media_type,
+    return this.db.all<ExternalReportAttachmentRow>(
+      `SELECT file.id, file.original_name, file.media_type,
                 file.size_bytes, file.created_at
          FROM cooking_external_deployment_report_attachment attachment
          JOIN platform_file file ON file.id = attachment.file_id
          WHERE attachment.report_id = ? ORDER BY attachment.position`,
-      )
-      .all(reportId) as ExternalReportAttachmentRow[];
+      reportId,
+    );
   }
 
   candidates(submissionItemId: string): CandidateRow[] {
-    return this.db
-      .prepare(
-        `SELECT bug.id bug_id, bug.short_id, bug.title,
+    return this.db.all<CandidateRow>(
+      `SELECT bug.id bug_id, bug.short_id, bug.title,
                 context.pending_commits_json,
                 context.pending_manual_operations_json,
                 context.last_candidate_at
@@ -320,8 +309,8 @@ export class UpdateQueries {
            AND context.last_candidate_at IS NOT NULL
            AND context.pending_commits_json <> '[]'
          ORDER BY bug.short_id, bug.id`,
-      )
-      .all(submissionItemId) as CandidateRow[];
+      submissionItemId,
+    );
   }
 
   batchEntries(batchId: string): Array<{
@@ -331,27 +320,25 @@ export class UpdateQueries {
     commits_json: string;
     manual_operations_json: string;
   }> {
-    return this.db
-      .prepare(
-        `SELECT entry.bug_id, bug.short_id, bug.title, entry.commits_json,
-                entry.manual_operations_json
-         FROM cooking_update_batch_entry entry
-         JOIN cooking_bug bug ON bug.id = entry.bug_id
-         WHERE entry.batch_id = ? ORDER BY entry.position`,
-      )
-      .all(batchId) as Array<{
+    return this.db.all<{
       bug_id: string;
       short_id: number;
       title: string;
       commits_json: string;
       manual_operations_json: string;
-    }>;
+    }>(
+      `SELECT entry.bug_id, bug.short_id, bug.title, entry.commits_json,
+                entry.manual_operations_json
+         FROM cooking_update_batch_entry entry
+         JOIN cooking_bug bug ON bug.id = entry.bug_id
+         WHERE entry.batch_id = ? ORDER BY entry.position`,
+      batchId,
+    );
   }
 
   itemSource(submissionItemId: string): ItemSourceRow {
-    const row = this.db
-      .prepare(
-        `SELECT submission.id submission_id, item.id submission_item_id,
+    const row = this.db.get(
+      `SELECT submission.id submission_id, item.id submission_item_id,
                 submission.project_id, submission.status submission_status,
                 submission.title submission_title,
                 item.engineering_name, item.repository_url, item.target_branch,
@@ -361,39 +348,38 @@ export class UpdateQueries {
          JOIN cooking_test_submission submission ON submission.id = item.submission_id
          JOIN cooking_engineering_binding binding ON binding.id = item.binding_id
          WHERE item.id = ?`,
-      )
-      .get(submissionItemId) as ItemSourceRow | undefined;
+      submissionItemId,
+    ) as ItemSourceRow | undefined;
     if (!row) throw new PlatformError('NOT_FOUND', 'Submission Item 不存在');
     return row;
   }
 
   batch(batchId: string): BatchRow {
-    const row = this.db
-      .prepare('SELECT * FROM cooking_update_batch WHERE id = ?')
-      .get(batchId) as BatchRow | undefined;
+    const row = this.db.get(
+      'SELECT * FROM cooking_update_batch WHERE id = ?',
+      batchId,
+    ) as BatchRow | undefined;
     if (!row) throw new PlatformError('NOT_FOUND', '更新批次不存在');
     return row;
   }
 
   activeBatch(submissionItemId: string): BatchRow | undefined {
-    return this.db
-      .prepare(
-        `SELECT * FROM cooking_update_batch
+    return this.db.get(
+      `SELECT * FROM cooking_update_batch
          WHERE submission_item_id = ?
            AND state IN ('READY', 'RUNNING', 'WAITING_EXTERNAL', 'FAILED')`,
-      )
-      .get(submissionItemId) as BatchRow | undefined;
+      submissionItemId,
+    ) as BatchRow | undefined;
   }
 
   attempts(batchId: string): AttemptRow[] {
-    return this.db
-      .prepare(
-        `SELECT attempt.*, execution.state, execution.session_id
+    return this.db.all<AttemptRow>(
+      `SELECT attempt.*, execution.state, execution.session_id
          FROM cooking_update_attempt attempt
          JOIN platform_execution execution ON execution.id = attempt.execution_id
          WHERE attempt.batch_id = ? ORDER BY attempt.attempt`,
-      )
-      .all(batchId) as AttemptRow[];
+      batchId,
+    );
   }
 
   latestAttempt(batchId: string): AttemptRow | undefined {
@@ -402,27 +388,25 @@ export class UpdateQueries {
 
   hasActiveSessionSync(batchId: string): boolean {
     return Boolean(
-      this.db
-        .prepare(
-          `SELECT 1 FROM cooking_update_session_sync sync
+      this.db.get(
+        `SELECT 1 FROM cooking_update_session_sync sync
            JOIN platform_execution execution ON execution.id = sync.execution_id
            WHERE sync.batch_id = ? AND execution.state IN ('QUEUED', 'CLAIMED', 'RUNNING')
            LIMIT 1`,
-        )
-        .get(batchId),
+        batchId,
+      ),
     );
   }
 
   sessionSynchronizationError(batchId: string): string | null {
-    const row = this.db
-      .prepare(
-        `SELECT execution.outcome_json
+    const row = this.db.get(
+      `SELECT execution.outcome_json
          FROM cooking_update_session_sync sync
          JOIN platform_execution execution ON execution.id = sync.execution_id
          WHERE sync.batch_id = ? AND execution.state = 'FAILED'
          ORDER BY sync.created_at DESC LIMIT 1`,
-      )
-      .get(batchId) as { outcome_json: string | null } | undefined;
+      batchId,
+    ) as { outcome_json: string | null } | undefined;
     const failure = row?.outcome_json
       ? (JSON.parse(row.outcome_json) as { failure?: { message?: unknown } })
       : null;
@@ -432,30 +416,27 @@ export class UpdateQueries {
   }
 
   attemptForExecution(executionId: string): AttemptRow | undefined {
-    return this.db
-      .prepare(
-        `SELECT attempt.*, execution.state, execution.session_id
+    return this.db.get(
+      `SELECT attempt.*, execution.state, execution.session_id
          FROM cooking_update_attempt attempt
          JOIN platform_execution execution ON execution.id = attempt.execution_id
          WHERE attempt.execution_id = ?`,
-      )
-      .get(executionId) as AttemptRow | undefined;
+      executionId,
+    ) as AttemptRow | undefined;
   }
 
   interactionSource(interactionId: string): {
     batch_id: string;
     execution_id: string;
   } {
-    const row = this.db
-      .prepare(
-        `SELECT attempt.batch_id, interaction.execution_id
+    const row = this.db.get(
+      `SELECT attempt.batch_id, interaction.execution_id
          FROM platform_execution_interaction interaction
          JOIN cooking_update_attempt attempt
            ON attempt.execution_id = interaction.execution_id
          WHERE interaction.id = ?`,
-      )
-      .get(interactionId) as
-      { batch_id: string; execution_id: string } | undefined;
+      interactionId,
+    ) as { batch_id: string; execution_id: string } | undefined;
     if (!row) throw new PlatformError('NOT_FOUND', '更新操作请求不存在');
     return row;
   }

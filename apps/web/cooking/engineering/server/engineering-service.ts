@@ -210,14 +210,14 @@ export class EngineeringService {
   listEngineering(userId: string, projectId: string): Engineering[] {
     requireProjectMember(this.db, userId, projectId);
     return this.db
-      .prepare(
+      .all(
         `SELECT id, project_id, name, type, identifier, repository_state,
                 repository_url, version, archived_at, created_at, updated_at
          FROM cooking_engineering
          WHERE project_id = ?
          ORDER BY archived_at IS NOT NULL, name COLLATE NOCASE, id`,
+        projectId,
       )
-      .all(projectId)
       .map((row) => mapEngineering(row as EngineeringRow));
   }
 
@@ -387,15 +387,15 @@ export class EngineeringService {
   listMembers(userId: string, engineeringId: string): EngineeringMember[] {
     this.getEngineering(userId, engineeringId);
     return this.db
-      .prepare(
+      .all(
         `SELECT m.engineering_id, m.user_id, m.version, m.created_at,
                 u.username, u.display_name, u.created_at user_created_at
          FROM cooking_engineering_membership m
          JOIN platform_user u ON u.id = m.user_id
          WHERE m.engineering_id = ?
          ORDER BY u.display_name, u.id`,
+        engineeringId,
       )
-      .all(engineeringId)
       .map((row) => {
         const value = row as EngineeringMembershipRow & {
           username: string;
@@ -437,14 +437,13 @@ export class EngineeringService {
             '已归档工程不能增加成员',
           );
         requireProjectMember(this.db, targetUserId, engineering.projectId);
-        const existing = this.db
-          .prepare(
-            `SELECT engineering_id, user_id, version, created_at
+        const existing = this.db.get(
+          `SELECT engineering_id, user_id, version, created_at
              FROM cooking_engineering_membership
              WHERE engineering_id = ? AND user_id = ?`,
-          )
-          .get(engineeringId, targetUserId) as
-          EngineeringMembershipRow | undefined;
+          engineeringId,
+          targetUserId,
+        ) as EngineeringMembershipRow | undefined;
         if (existing)
           return {
             result: mapMembership(existing),
@@ -496,14 +495,13 @@ export class EngineeringService {
           actorUserId,
           engineeringId,
         );
-        const row = this.db
-          .prepare(
-            `SELECT engineering_id, user_id, version, created_at
+        const row = this.db.get(
+          `SELECT engineering_id, user_id, version, created_at
              FROM cooking_engineering_membership
              WHERE engineering_id = ? AND user_id = ?`,
-          )
-          .get(engineeringId, targetUserId) as
-          EngineeringMembershipRow | undefined;
+          engineeringId,
+          targetUserId,
+        ) as EngineeringMembershipRow | undefined;
         if (!row)
           return {
             result: { removed: false, userId: targetUserId },
@@ -641,14 +639,14 @@ export class EngineeringService {
   listEnvironments(userId: string, engineeringId: string): TestEnvironment[] {
     this.getEngineering(userId, engineeringId);
     return this.db
-      .prepare(
+      .all(
         `SELECT id, engineering_id, name, deployment_json, version,
                 created_at, updated_at
          FROM cooking_environment
          WHERE engineering_id = ?
          ORDER BY name COLLATE NOCASE, id`,
+        engineeringId,
       )
-      .all(engineeringId)
       .map((row) => mapEnvironment(row as EnvironmentRow));
   }
 
@@ -788,12 +786,12 @@ export class EngineeringService {
   }
 
   private requireProjectOwner(userId: string, projectId: string): void {
-    const membership = this.db
-      .prepare(
-        `SELECT role FROM cooking_project_membership
+    const membership = this.db.get(
+      `SELECT role FROM cooking_project_membership
          WHERE project_id = ? AND user_id = ?`,
-      )
-      .get(projectId, userId) as { role: 'OWNER' | 'MEMBER' } | undefined;
+      projectId,
+      userId,
+    ) as { role: 'OWNER' | 'MEMBER' } | undefined;
     if (!membership)
       throw new PlatformError('NOT_FOUND', '项目不存在或无权访问');
     if (membership.role !== 'OWNER')
@@ -807,17 +805,17 @@ export class EngineeringService {
     userId: string,
     engineeringId: string,
   ): EngineeringRow {
-    const row = this.db
-      .prepare(
-        `SELECT e.id, e.project_id, e.name, e.type, e.identifier,
+    const row = this.db.get(
+      `SELECT e.id, e.project_id, e.name, e.type, e.identifier,
                 e.repository_state, e.repository_url, e.version,
                 e.archived_at, e.created_at, e.updated_at
          FROM cooking_engineering e
          JOIN cooking_project_membership p
            ON p.project_id = e.project_id AND p.user_id = ?
          WHERE e.id = ?`,
-      )
-      .get(userId, engineeringId) as EngineeringRow | undefined;
+      userId,
+      engineeringId,
+    ) as EngineeringRow | undefined;
     if (!row) throw new PlatformError('NOT_FOUND', '工程不存在或无权访问');
     return row;
   }
@@ -826,18 +824,17 @@ export class EngineeringService {
     userId: string,
     engineeringId: string,
   ): Engineering {
-    const row = this.db
-      .prepare(
-        `SELECT e.id, e.project_id, e.name, e.type, e.identifier,
+    const row = this.db.get(
+      `SELECT e.id, e.project_id, e.name, e.type, e.identifier,
                 e.repository_state, e.repository_url, e.version,
                 e.archived_at, e.created_at, e.updated_at, p.role
          FROM cooking_engineering e
          JOIN cooking_project_membership p
            ON p.project_id = e.project_id AND p.user_id = ?
          WHERE e.id = ?`,
-      )
-      .get(userId, engineeringId) as
-      (EngineeringRow & { role: 'OWNER' | 'MEMBER' }) | undefined;
+      userId,
+      engineeringId,
+    ) as (EngineeringRow & { role: 'OWNER' | 'MEMBER' }) | undefined;
     if (!row) throw new PlatformError('NOT_FOUND', '工程不存在或无权访问');
     if (row.role !== 'OWNER')
       throw new PlatformError(
@@ -851,18 +848,17 @@ export class EngineeringService {
     userId: string,
     environmentId: string,
   ): TestEnvironment {
-    const row = this.db
-      .prepare(
-        `SELECT env.id, env.engineering_id, env.name, env.deployment_json,
+    const row = this.db.get(
+      `SELECT env.id, env.engineering_id, env.name, env.deployment_json,
                 env.version, env.created_at, env.updated_at, p.role
          FROM cooking_environment env
          JOIN cooking_engineering e ON e.id = env.engineering_id
          JOIN cooking_project_membership p
            ON p.project_id = e.project_id AND p.user_id = ?
          WHERE env.id = ?`,
-      )
-      .get(userId, environmentId) as
-      (EnvironmentRow & { role: 'OWNER' | 'MEMBER' }) | undefined;
+      userId,
+      environmentId,
+    ) as (EnvironmentRow & { role: 'OWNER' | 'MEMBER' }) | undefined;
     if (!row) throw new PlatformError('NOT_FOUND', '环境不存在或无权访问');
     if (row.role !== 'OWNER')
       throw new PlatformError(
@@ -876,12 +872,12 @@ export class EngineeringService {
     projectId: string,
     name: string,
   ): void {
-    const existing = this.db
-      .prepare(
-        `SELECT 1 present FROM cooking_engineering
+    const existing = this.db.get(
+      `SELECT 1 present FROM cooking_engineering
          WHERE project_id = ? AND name = ? COLLATE NOCASE AND archived_at IS NULL`,
-      )
-      .get(projectId, name);
+      projectId,
+      name,
+    );
     if (existing)
       throw new PlatformError('RESOURCE_CONFLICT', '项目中已存在同名工程');
   }
@@ -891,18 +887,15 @@ export class EngineeringService {
     identifier: string,
     excludedEngineeringId?: string,
   ): void {
-    const existing = this.db
-      .prepare(
-        `SELECT 1 present FROM cooking_engineering
+    const existing = this.db.get(
+      `SELECT 1 present FROM cooking_engineering
          WHERE project_id = ? AND identifier = ? COLLATE NOCASE
            AND (? IS NULL OR id <> ?)`,
-      )
-      .get(
-        projectId,
-        identifier,
-        excludedEngineeringId ?? null,
-        excludedEngineeringId ?? null,
-      );
+      projectId,
+      identifier,
+      excludedEngineeringId ?? null,
+      excludedEngineeringId ?? null,
+    );
     if (existing)
       throw new PlatformError('RESOURCE_CONFLICT', '项目中已存在相同工程标识');
   }
@@ -911,12 +904,12 @@ export class EngineeringService {
     engineeringId: string,
     name: string,
   ): void {
-    const existing = this.db
-      .prepare(
-        `SELECT 1 present FROM cooking_environment
+    const existing = this.db.get(
+      `SELECT 1 present FROM cooking_environment
          WHERE engineering_id = ? AND name = ? COLLATE NOCASE`,
-      )
-      .get(engineeringId, name);
+      engineeringId,
+      name,
+    );
     if (existing)
       throw new PlatformError('RESOURCE_CONFLICT', '工程中已存在同名环境');
   }

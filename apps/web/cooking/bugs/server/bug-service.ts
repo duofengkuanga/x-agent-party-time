@@ -343,54 +343,53 @@ export class BugService {
 
   workspace(userId: string, submissionId: string): BugWorkspaceProjection {
     const access = this.requireAccess(userId, submissionId);
-    const bugs = (
-      this.db
-        .prepare(
-          `SELECT * FROM cooking_bug
+    const bugs = this.db
+      .all<BugRow>(
+        `SELECT * FROM cooking_bug
            WHERE submission_id = ? ORDER BY short_id`,
-        )
-        .all(submissionId) as BugRow[]
-    ).map((row) => {
-      const bug = mapBug(row, this.reportAttachmentIds(row.id));
-      const item = this.requireItem(submissionId, bug.submissionItemId);
-      return {
-        ...bug,
-        report: {
-          title: bug.report.title,
-          ...(bug.report.operationPath
-            ? { operationPath: bug.report.operationPath }
-            : {}),
-          ...(bug.report.actualResult
-            ? { actualResult: bug.report.actualResult }
-            : {}),
-          ...(bug.report.expectedResult
-            ? { expectedResult: bug.report.expectedResult }
-            : {}),
-          actualResultAttachments: this.attachments(row.id, 'ACTUAL_RESULT'),
-          expectedResultAttachments: this.attachments(
-            row.id,
-            'EXPECTED_RESULT',
-          ),
-        },
-        createdBy: this.getUser(bug.createdByUserId),
-        assignment: item
-          ? {
-              submissionItemId: item.id,
-              engineeringName: item.engineering_name,
-              engineeringType: item.engineering_type,
-              engineeringIdentifier: item.engineering_identifier,
-              responsibleUser: itemUser(item),
-            }
-          : null,
-        availableActions: this.availableActions(userId, access, bug, item),
-        presentation: {
-          stageLabel: STAGE_LABELS[bug.stage],
-          assignmentLabel: item
-            ? `${item.engineering_name}（${item.engineering_identifier}）`
-            : '暂未确定工程',
-        },
-      };
-    });
+        submissionId,
+      )
+      .map((row) => {
+        const bug = mapBug(row, this.reportAttachmentIds(row.id));
+        const item = this.requireItem(submissionId, bug.submissionItemId);
+        return {
+          ...bug,
+          report: {
+            title: bug.report.title,
+            ...(bug.report.operationPath
+              ? { operationPath: bug.report.operationPath }
+              : {}),
+            ...(bug.report.actualResult
+              ? { actualResult: bug.report.actualResult }
+              : {}),
+            ...(bug.report.expectedResult
+              ? { expectedResult: bug.report.expectedResult }
+              : {}),
+            actualResultAttachments: this.attachments(row.id, 'ACTUAL_RESULT'),
+            expectedResultAttachments: this.attachments(
+              row.id,
+              'EXPECTED_RESULT',
+            ),
+          },
+          createdBy: this.getUser(bug.createdByUserId),
+          assignment: item
+            ? {
+                submissionItemId: item.id,
+                engineeringName: item.engineering_name,
+                engineeringType: item.engineering_type,
+                engineeringIdentifier: item.engineering_identifier,
+                responsibleUser: itemUser(item),
+              }
+            : null,
+          availableActions: this.availableActions(userId, access, bug, item),
+          presentation: {
+            stageLabel: STAGE_LABELS[bug.stage],
+            assignmentLabel: item
+              ? `${item.engineering_name}（${item.engineering_identifier}）`
+              : '暂未确定工程',
+          },
+        };
+      });
     return BugWorkspaceProjectionSchema.parse({
       availableActions:
         access.submission_status === 'ACTIVE' &&
@@ -402,9 +401,8 @@ export class BugService {
   }
 
   requireAttachmentAccess(userId: string, fileId: string): void {
-    const row = this.db
-      .prepare(
-        `SELECT submission_id FROM (
+    const row = this.db.get(
+      `SELECT submission_id FROM (
            SELECT bug.submission_id
            FROM cooking_bug_attachment attachment
            JOIN cooking_bug bug ON bug.id = attachment.bug_id
@@ -423,8 +421,10 @@ export class BugService {
            JOIN cooking_bug bug ON bug.id = reopen.bug_id
            WHERE attachment.file_id = ?
          ) LIMIT 1`,
-      )
-      .get(fileId, fileId, fileId) as { submission_id: string } | undefined;
+      fileId,
+      fileId,
+      fileId,
+    ) as { submission_id: string } | undefined;
     if (!row) throw new PlatformError('NOT_FOUND', '附件不存在或无权访问');
     try {
       this.requireAccess(userId, row.submission_id);
@@ -490,9 +490,8 @@ export class BugService {
   }
 
   private requireAccess(userId: string, submissionId: string): AccessRow {
-    const row = this.db
-      .prepare(
-        `SELECT submission.id submission_id,
+    const row = this.db.get(
+      `SELECT submission.id submission_id,
                 submission.status submission_status,
                 submission.tester_user_id,
                 submission.project_id,
@@ -502,8 +501,9 @@ export class BugService {
            ON membership.project_id = submission.project_id
           AND membership.user_id = ?
          WHERE submission.id = ?`,
-      )
-      .get(userId, submissionId) as AccessRow | undefined;
+      userId,
+      submissionId,
+    ) as AccessRow | undefined;
     if (!row) throw new PlatformError('NOT_FOUND', '提测单不存在或无权访问');
     return row;
   }
@@ -514,9 +514,8 @@ export class BugService {
   }
 
   private requireBug(bugId: string): Bug {
-    const row = this.db
-      .prepare('SELECT * FROM cooking_bug WHERE id = ?')
-      .get(bugId) as BugRow | undefined;
+    const row = this.db.get('SELECT * FROM cooking_bug WHERE id = ?', bugId) as
+      BugRow | undefined;
     if (!row) throw new PlatformError('NOT_FOUND', '缺陷不存在或无权访问');
     return mapBug(row, this.reportAttachmentIds(row.id));
   }
@@ -526,16 +525,16 @@ export class BugService {
     itemId: string | null,
   ): ItemRow | null {
     if (!itemId) return null;
-    const row = this.db
-      .prepare(
-        `SELECT id, engineering_name, engineering_type,
+    const row = this.db.get(
+      `SELECT id, engineering_name, engineering_type,
                 engineering_identifier, responsible_user_id,
                 responsible_username, responsible_display_name,
                 responsible_user_created_at, binding_id
          FROM cooking_submission_item
          WHERE id = ? AND submission_id = ?`,
-      )
-      .get(itemId, submissionId) as ItemRow | undefined;
+      itemId,
+      submissionId,
+    ) as ItemRow | undefined;
     if (!row)
       throw new PlatformError('VALIDATION_FAILED', '所选工程不属于当前提测单');
     return row;
@@ -543,22 +542,21 @@ export class BugService {
 
   private isAnyResponsible(userId: string, submissionId: string): boolean {
     return Boolean(
-      this.db
-        .prepare(
-          `SELECT 1 FROM cooking_submission_item
+      this.db.get(
+        `SELECT 1 FROM cooking_submission_item
            WHERE submission_id = ? AND responsible_user_id = ? LIMIT 1`,
-        )
-        .get(submissionId, userId),
+        submissionId,
+        userId,
+      ),
     );
   }
 
   private nextShortId(submissionId: string): number {
-    const row = this.db
-      .prepare(
-        `SELECT COALESCE(MAX(short_id), 0) + 1 next_id
+    const row = this.db.get(
+      `SELECT COALESCE(MAX(short_id), 0) + 1 next_id
          FROM cooking_bug WHERE submission_id = ?`,
-      )
-      .get(submissionId) as { next_id: number };
+      submissionId,
+    ) as { next_id: number };
     return row.next_id;
   }
 
@@ -608,15 +606,14 @@ export class BugService {
   }
 
   private reportAttachmentIds(bugId: string): ReportAttachmentIds {
-    const rows = this.db
-      .prepare(
-        `SELECT file_id, role FROM cooking_bug_attachment
-         WHERE bug_id = ? ORDER BY role, position`,
-      )
-      .all(bugId) as Array<{
+    const rows = this.db.all<{
       file_id: string;
       role: BugAttachmentRole;
-    }>;
+    }>(
+      `SELECT file_id, role FROM cooking_bug_attachment
+         WHERE bug_id = ? ORDER BY role, position`,
+      bugId,
+    );
     return {
       actualResultAttachmentIds: rows
         .filter(({ role }) => role === 'ACTUAL_RESULT')
@@ -636,17 +633,7 @@ export class BugService {
       'id' | 'originalName' | 'mediaType' | 'sizeBytes' | 'createdAt'
     >
   > {
-    const rows = this.db
-      .prepare(
-        `SELECT file.id, file.storage_key, file.original_name, file.media_type,
-                file.size_bytes, file.sha256, file.uploaded_by_user_id,
-                file.created_at
-         FROM cooking_bug_attachment attachment
-         JOIN platform_file file ON file.id = attachment.file_id
-         WHERE attachment.bug_id = ? AND attachment.role = ?
-         ORDER BY attachment.position`,
-      )
-      .all(bugId, role) as Array<{
+    const rows = this.db.all<{
       id: string;
       storage_key: string;
       original_name: string;
@@ -655,7 +642,17 @@ export class BugService {
       sha256: string;
       uploaded_by_user_id: string;
       created_at: string;
-    }>;
+    }>(
+      `SELECT file.id, file.storage_key, file.original_name, file.media_type,
+                file.size_bytes, file.sha256, file.uploaded_by_user_id,
+                file.created_at
+         FROM cooking_bug_attachment attachment
+         JOIN platform_file file ON file.id = attachment.file_id
+         WHERE attachment.bug_id = ? AND attachment.role = ?
+         ORDER BY attachment.position`,
+      bugId,
+      role,
+    );
     return rows.map((row) => {
       const file = StoredFileSchema.parse({
         id: row.id,
@@ -724,12 +721,11 @@ export class BugService {
   }
 
   private getUser(userId: string): User {
-    const row = this.db
-      .prepare(
-        `SELECT id, username, display_name, created_at
+    const row = this.db.get(
+      `SELECT id, username, display_name, created_at
          FROM platform_user WHERE id = ?`,
-      )
-      .get(userId) as
+      userId,
+    ) as
       | {
           id: string;
           username: string;

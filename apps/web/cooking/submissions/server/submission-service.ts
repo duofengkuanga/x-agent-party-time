@@ -304,9 +304,10 @@ export class SubmissionService {
         revision: result.workspaceRevision,
       }),
       perform: () => {
-        const item = this.db
-          .prepare('SELECT * FROM cooking_submission_item WHERE id = ?')
-          .get(itemId) as SubmissionItemRow | undefined;
+        const item = this.db.get(
+          'SELECT * FROM cooking_submission_item WHERE id = ?',
+          itemId,
+        ) as SubmissionItemRow | undefined;
         if (!item)
           throw new PlatformError('NOT_FOUND', SUBMISSION_HIDDEN_MESSAGE);
         const submission = this.requireSubmissionAccess(
@@ -474,13 +475,13 @@ export class SubmissionService {
           targetBranch: string;
         }> = [];
         for (const target of targetBranches) {
-          const item = this.db
-            .prepare(
-              `SELECT responsible_user_id, target_branch
+          const item = this.db.get(
+            `SELECT responsible_user_id, target_branch
                FROM cooking_submission_item
                WHERE id = ? AND submission_id = ?`,
-            )
-            .get(target.submissionItemId, submissionId) as
+            target.submissionItemId,
+            submissionId,
+          ) as
             { responsible_user_id: string; target_branch: string } | undefined;
           if (!item)
             throw new PlatformError(
@@ -493,12 +494,11 @@ export class SubmissionService {
               '只有对应开发负责人可以修改目标分支',
             );
           if (
-            this.db
-              .prepare(
-                `SELECT 1 FROM cooking_bug
+            this.db.get(
+              `SELECT 1 FROM cooking_bug
                  WHERE submission_item_id = ? LIMIT 1`,
-              )
-              .get(target.submissionItemId)
+              target.submissionItemId,
+            )
           )
             throw new PlatformError(
               'INVALID_TRANSITION',
@@ -580,7 +580,7 @@ export class SubmissionService {
 
   listSubmissions(userId: string): SubmissionSummary[] {
     return this.db
-      .prepare(
+      .all(
         `SELECT submission.*, project.name project_name,
                 tester.username tester_username,
                 tester.display_name tester_display_name,
@@ -598,8 +598,8 @@ export class SubmissionService {
          JOIN platform_user tester ON tester.id = submission.tester_user_id
          ORDER BY submission.status = 'ACTIVE' DESC,
                   submission.updated_at DESC, submission.id`,
+        userId,
       )
-      .all(userId)
       .map((row) => {
         const value = row as SubmissionRow & {
           project_name: string;
@@ -620,7 +620,7 @@ export class SubmissionService {
   getWorkspace(userId: string, submissionId: string): CookingWorkspaceSnapshot {
     const row = this.requireSubmissionAccess(userId, submissionId);
     const items = this.db
-      .prepare(
+      .all(
         `SELECT item.*,
                 (
                   SELECT COUNT(*) FROM cooking_bug bug
@@ -629,8 +629,8 @@ export class SubmissionService {
          FROM cooking_submission_item item
          WHERE submission_id = ?
          ORDER BY position, id`,
+        submissionId,
       )
-      .all(submissionId)
       .map((row) => {
         const itemRow = row as WorkspaceSubmissionItemRow;
         return { item: mapItem(itemRow), hasBug: itemRow.bug_count > 0 };
@@ -724,25 +724,22 @@ export class SubmissionService {
   }
 
   private canCloseSubmission(submissionId: string): boolean {
-    const nonTerminal = this.db
-      .prepare(
-        `SELECT 1 blocked FROM cooking_bug
+    const nonTerminal = this.db.get(
+      `SELECT 1 blocked FROM cooking_bug
          WHERE submission_id = ? AND stage NOT IN ('DONE', 'CANCELLED')
          LIMIT 1`,
-      )
-      .get(submissionId);
+      submissionId,
+    );
     if (nonTerminal) return false;
-    const unfinishedBatch = this.db
-      .prepare(
-        `SELECT 1 blocked FROM cooking_update_batch
+    const unfinishedBatch = this.db.get(
+      `SELECT 1 blocked FROM cooking_update_batch
          WHERE submission_id = ? AND state NOT IN ('COMPLETED', 'CANCELLED')
          LIMIT 1`,
-      )
-      .get(submissionId);
+      submissionId,
+    );
     if (unfinishedBatch) return false;
-    return !this.db
-      .prepare(
-        `SELECT 1 active
+    return !this.db.get(
+      `SELECT 1 active
          FROM platform_execution execution
          WHERE execution.state IN (
            'QUEUED', 'CLAIMED', 'RUNNING', 'WAITING_FOR_INTERACTION',
@@ -758,8 +755,9 @@ export class SubmissionService {
              WHERE batch.submission_id = ?
            )
          ) LIMIT 1`,
-      )
-      .get(submissionId, submissionId);
+      submissionId,
+      submissionId,
+    );
   }
 
   private ensureDistinctItems(input: CreateSubmissionInput): void {
@@ -785,9 +783,8 @@ export class SubmissionService {
     projectId: string,
     item: CreateSubmissionInput['items'][number],
   ): ItemSnapshotSource {
-    const source = this.db
-      .prepare(
-        `SELECT engineering.id engineering_id,
+    const source = this.db.get(
+      `SELECT engineering.id engineering_id,
                 engineering.name engineering_name,
                 engineering.type engineering_type,
                 engineering.identifier engineering_identifier,
@@ -824,15 +821,13 @@ export class SubmissionService {
            AND engineering.project_id = ?
            AND engineering.repository_state = 'CONFIRMED'
            AND engineering.archived_at IS NULL`,
-      )
-      .get(
-        item.responsibleUserId,
-        item.responsibleUserId,
-        item.bindingId,
-        item.environmentId,
-        item.engineeringId,
-        projectId,
-      ) as ItemSnapshotSource | undefined;
+      item.responsibleUserId,
+      item.responsibleUserId,
+      item.bindingId,
+      item.environmentId,
+      item.engineeringId,
+      projectId,
+    ) as ItemSnapshotSource | undefined;
     if (!source)
       throw new PlatformError(
         'VALIDATION_FAILED',
@@ -885,9 +880,8 @@ export class SubmissionService {
     userId: string,
     submissionId: string,
   ): SubmissionAccessRow {
-    const row = this.db
-      .prepare(
-        `SELECT submission.*, project.name project_name,
+    const row = this.db.get(
+      `SELECT submission.*, project.name project_name,
                 membership.role membership_role,
                 tester.username tester_username,
                 tester.display_name tester_display_name,
@@ -903,19 +897,19 @@ export class SubmissionService {
          JOIN platform_user tester ON tester.id = submission.tester_user_id
          JOIN platform_user creator ON creator.id = submission.created_by_user_id
          WHERE submission.id = ?`,
-      )
-      .get(userId, submissionId) as SubmissionAccessRow | undefined;
+      userId,
+      submissionId,
+    ) as SubmissionAccessRow | undefined;
     if (!row) throw new PlatformError('NOT_FOUND', SUBMISSION_HIDDEN_MESSAGE);
     return row;
   }
 
   private getUser(userId: string): User {
-    const row = this.db
-      .prepare(
-        `SELECT id, username, display_name, created_at
+    const row = this.db.get(
+      `SELECT id, username, display_name, created_at
          FROM platform_user WHERE id = ?`,
-      )
-      .get(userId) as
+      userId,
+    ) as
       | {
           id: string;
           username: string;

@@ -27,15 +27,14 @@ export class RepairQueries {
   ) {}
   workspace(userId: string, submissionId: string): RepairWorkspaceProjection {
     requireSubmissionAccess(this.db, userId, submissionId);
-    const bugIds = (
-      this.db
-        .prepare(
-          `SELECT id bug_id FROM cooking_bug
+    const bugIds = this.db
+      .all<{ bug_id: string }>(
+        `SELECT id bug_id FROM cooking_bug
            WHERE submission_id = ? AND submission_item_id IS NOT NULL
            ORDER BY short_id`,
-        )
-        .all(submissionId) as Array<{ bug_id: string }>
-    ).map(({ bug_id }) => bug_id);
+        submissionId,
+      )
+      .map(({ bug_id }) => bug_id);
     return RepairWorkspaceProjectionSchema.parse({
       repairByBug: Object.fromEntries(
         bugIds.map((bugId) => [bugId, this.repairView(userId, bugId)]),
@@ -120,23 +119,21 @@ export class RepairQueries {
   interactionsForBug(
     bugId: string,
   ): Array<CookingInteractionRow & { attempt: number }> {
-    return this.db
-      .prepare(
-        `SELECT interaction.*, attempt.attempt
+    return this.db.all<CookingInteractionRow & { attempt: number }>(
+      `SELECT interaction.*, attempt.attempt
          FROM platform_execution_interaction interaction
          JOIN cooking_repair_attempt attempt
            ON attempt.execution_id = interaction.execution_id
          WHERE attempt.bug_id = ?
            AND interaction.state IN ('PENDING', 'RESOLVED')
          ORDER BY interaction.created_at, interaction.id`,
-      )
-      .all(bugId) as Array<CookingInteractionRow & { attempt: number }>;
+      bugId,
+    );
   }
 
   source(bugId: string): RepairSourceRow {
-    const row = this.db
-      .prepare(
-        `SELECT bug.id bug_id, bug.submission_id, bug.submission_item_id,
+    const row = this.db.get(
+      `SELECT bug.id bug_id, bug.submission_id, bug.submission_item_id,
                 submission.project_id, submission.status submission_status,
                 bug.stage, bug.version bug_version,
                 item.responsible_user_id
@@ -144,16 +141,17 @@ export class RepairQueries {
          JOIN cooking_test_submission submission ON submission.id = bug.submission_id
          JOIN cooking_submission_item item ON item.id = bug.submission_item_id
          WHERE bug.id = ?`,
-      )
-      .get(bugId) as RepairSourceRow | undefined;
+      bugId,
+    ) as RepairSourceRow | undefined;
     if (!row) throw new PlatformError('NOT_FOUND', '修复缺陷不存在');
     return row;
   }
 
   context(bugId: string): ContextRow | undefined {
-    return this.db
-      .prepare('SELECT * FROM cooking_bug_repair_context WHERE bug_id = ?')
-      .get(bugId) as ContextRow | undefined;
+    return this.db.get(
+      'SELECT * FROM cooking_bug_repair_context WHERE bug_id = ?',
+      bugId,
+    ) as ContextRow | undefined;
   }
 
   requireContext(bugId: string): ContextRow {
@@ -167,28 +165,26 @@ export class RepairQueries {
   }
 
   hasActiveSessionSync(bugId: string): boolean {
-    const row = this.db
-      .prepare(
-        `SELECT 1 FROM cooking_repair_session_sync sync
+    const row = this.db.get(
+      `SELECT 1 FROM cooking_repair_session_sync sync
          JOIN platform_execution execution ON execution.id = sync.execution_id
          WHERE sync.bug_id = ?
            AND execution.state IN ('QUEUED', 'CLAIMED', 'RUNNING')
          LIMIT 1`,
-      )
-      .get(bugId);
+      bugId,
+    );
     return Boolean(row);
   }
 
   sessionSynchronizationError(bugId: string): string | null {
-    const row = this.db
-      .prepare(
-        `SELECT execution.outcome_json
+    const row = this.db.get(
+      `SELECT execution.outcome_json
          FROM cooking_repair_session_sync sync
          JOIN platform_execution execution ON execution.id = sync.execution_id
          WHERE sync.bug_id = ? AND execution.state = 'FAILED'
          ORDER BY sync.created_at DESC LIMIT 1`,
-      )
-      .get(bugId) as { outcome_json: string | null } | undefined;
+      bugId,
+    ) as { outcome_json: string | null } | undefined;
     const failure = row?.outcome_json
       ? (JSON.parse(row.outcome_json) as { failure?: { message?: unknown } })
       : null;
@@ -201,17 +197,16 @@ export class RepairQueries {
     instruction: string;
     schema: string | null;
   } | null {
-    const row = this.db
-      .prepare(
-        `SELECT execution.outcome_json, previous.codex_turn_json
+    const row = this.db.get(
+      `SELECT execution.outcome_json, previous.codex_turn_json
          FROM cooking_repair_session_sync sync
          JOIN platform_execution execution ON execution.id = sync.execution_id
          LEFT JOIN platform_execution previous
            ON previous.id = execution.previous_execution_id
          WHERE sync.bug_id = ? AND execution.state = 'FAILED'
          ORDER BY sync.created_at DESC LIMIT 1`,
-      )
-      .get(bugId) as
+      bugId,
+    ) as
       | {
           outcome_json: string | null;
           codex_turn_json: string | null;
@@ -250,9 +245,8 @@ export class RepairQueries {
   }
 
   attemptForExecution(executionId: string): AttemptRow | undefined {
-    return this.db
-      .prepare(
-        `SELECT attempt.id, attempt.bug_id, attempt.execution_id,
+    return this.db.get(
+      `SELECT attempt.id, attempt.bug_id, attempt.execution_id,
                 attempt.attempt, attempt.outcome_json, attempt.created_at,
                 execution.started_at, attempt.finished_at, execution.state,
                 execution.session_id, execution.outcome_json outcome,
@@ -261,14 +255,13 @@ export class RepairQueries {
          JOIN platform_execution execution ON execution.id = attempt.execution_id
          JOIN platform_runner runner ON runner.id = execution.runner_id
          WHERE attempt.execution_id = ?`,
-      )
-      .get(executionId) as AttemptRow | undefined;
+      executionId,
+    ) as AttemptRow | undefined;
   }
 
   attempts(bugId: string): AttemptRow[] {
-    return this.db
-      .prepare(
-        `SELECT attempt.id, attempt.bug_id, attempt.execution_id,
+    return this.db.all<AttemptRow>(
+      `SELECT attempt.id, attempt.bug_id, attempt.execution_id,
                 attempt.attempt, attempt.outcome_json, attempt.created_at,
                 execution.started_at, attempt.finished_at, execution.state,
                 execution.session_id, execution.outcome_json outcome,
@@ -277,14 +270,15 @@ export class RepairQueries {
          JOIN platform_execution execution ON execution.id = attempt.execution_id
          JOIN platform_runner runner ON runner.id = execution.runner_id
          WHERE attempt.bug_id = ? ORDER BY attempt.attempt`,
-      )
-      .all(bugId) as AttemptRow[];
+      bugId,
+    );
   }
 
   bugRegisteredAt(bugId: string): string {
-    const row = this.db
-      .prepare('SELECT created_at FROM cooking_bug WHERE id = ?')
-      .get(bugId) as { created_at: string } | undefined;
+    const row = this.db.get(
+      'SELECT created_at FROM cooking_bug WHERE id = ?',
+      bugId,
+    ) as { created_at: string } | undefined;
     if (!row) throw new PlatformError('NOT_FOUND', '修复缺陷不存在');
     return row.created_at;
   }
@@ -293,16 +287,14 @@ export class RepairQueries {
     bug_id: string;
     execution_id: string;
   } {
-    const row = this.db
-      .prepare(
-        `SELECT attempt.bug_id, interaction.execution_id
+    const row = this.db.get(
+      `SELECT attempt.bug_id, interaction.execution_id
          FROM platform_execution_interaction interaction
          JOIN cooking_repair_attempt attempt
            ON attempt.execution_id = interaction.execution_id
          WHERE interaction.id = ?`,
-      )
-      .get(interactionId) as
-      { bug_id: string; execution_id: string } | undefined;
+      interactionId,
+    ) as { bug_id: string; execution_id: string } | undefined;
     if (!row) throw new PlatformError('NOT_FOUND', '修复操作请求不存在');
     return row;
   }

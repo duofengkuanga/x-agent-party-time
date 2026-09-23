@@ -1,24 +1,17 @@
-import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import type { EnqueueExecutionInput } from '@agent-party-time/execution-contract';
 import { AuthService } from '@/platform/auth/service';
-import type { AppDatabase } from '@/platform/database';
-import { openDatabase } from '@/platform/database';
 import { LocalFileStore } from '@/platform/files/local-file-store';
 import { RunnerService } from '@/platform/runner/service';
-import { ExecutionService } from './service';
+import { testDatabases } from '@/testing/database';
+import type { EnqueueExecutionInput } from '@agent-party-time/execution-contract';
+import { describe, expect, test } from 'bun:test';
+import { join } from 'node:path';
 import { createInitialCodexTurn } from './codex-turn';
+import { ExecutionService } from './service';
 
-const directories: string[] = [];
-const databases: AppDatabase[] = [];
+const createDatabase = testDatabases();
 
 async function setup() {
-  const directory = await mkdtemp(join(tmpdir(), 'agent-party-execution-'));
-  directories.push(directory);
-  const database = openDatabase(join(directory, 'server.sqlite'));
-  databases.push(database);
+  const { directory, database } = await createDatabase();
   const user = await new AuthService(database).seedUser({
     id: 'execution-user',
     username: 'execution-user',
@@ -52,15 +45,6 @@ async function setup() {
     },
   };
 }
-
-afterEach(async () => {
-  for (const database of databases.splice(0)) database.close();
-  await Promise.all(
-    directories
-      .splice(0)
-      .map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
 
 describe('Execution lifecycle', () => {
   test('同 Binding 可排队但只串行 Claim，不同 Binding 可并行', async () => {

@@ -139,7 +139,7 @@ export class ProjectService {
 
   listProjects(userId: string): ProjectSummary[] {
     return this.db
-      .prepare(
+      .all(
         `SELECT p.id, p.name, p.version, p.created_by_user_id, p.created_at,
                 p.updated_at, m.user_id, m.role, m.version membership_version,
                 m.created_at membership_created_at
@@ -147,8 +147,8 @@ export class ProjectService {
          JOIN cooking_project p ON p.id = m.project_id
          WHERE m.user_id = ?
          ORDER BY p.updated_at DESC, p.id`,
+        userId,
       )
-      .all(userId)
       .map((row) => {
         const value = row as ProjectRow & {
           user_id: string;
@@ -171,16 +171,16 @@ export class ProjectService {
 
   getProject(userId: string, projectId: string): ProjectSummary {
     ProjectIdSchema.parse(projectId);
-    const row = this.db
-      .prepare(
-        `SELECT p.id, p.name, p.version, p.created_by_user_id, p.created_at,
+    const row = this.db.get(
+      `SELECT p.id, p.name, p.version, p.created_by_user_id, p.created_at,
                 p.updated_at, m.user_id, m.role, m.version membership_version,
                 m.created_at membership_created_at
          FROM cooking_project p
          JOIN cooking_project_membership m ON m.project_id = p.id
          WHERE p.id = ? AND m.user_id = ?`,
-      )
-      .get(projectId, userId) as
+      projectId,
+      userId,
+    ) as
       | (ProjectRow & {
           user_id: string;
           role: 'OWNER' | 'MEMBER';
@@ -204,15 +204,15 @@ export class ProjectService {
   listMembers(userId: string, projectId: string): ProjectMember[] {
     this.getProject(userId, projectId);
     return this.db
-      .prepare(
+      .all(
         `SELECT m.project_id, m.user_id, m.role, m.version, m.created_at,
                 u.username, u.display_name, u.created_at user_created_at
          FROM cooking_project_membership m
          JOIN platform_user u ON u.id = m.user_id
          WHERE m.project_id = ?
          ORDER BY CASE m.role WHEN 'OWNER' THEN 0 ELSE 1 END, u.display_name, u.id`,
+        projectId,
       )
-      .all(projectId)
       .map((row) => {
         const value = row as MembershipRow & {
           username: string;
@@ -247,28 +247,27 @@ export class ProjectService {
       resultSchema: ProjectInvitationSchema,
       perform: () => {
         this.requireOwner(actorUserId, projectId);
-        const user = this.db
-          .prepare(
-            'SELECT id FROM platform_user WHERE username = ? COLLATE NOCASE',
-          )
-          .get(username) as { id: string } | undefined;
+        const user = this.db.get(
+          'SELECT id FROM platform_user WHERE username = ? COLLATE NOCASE',
+          username,
+        ) as { id: string } | undefined;
         if (!user)
           throw new PlatformError('VALIDATION_FAILED', '邀请用户不存在');
-        const member = this.db
-          .prepare(
-            'SELECT 1 present FROM cooking_project_membership WHERE project_id = ? AND user_id = ?',
-          )
-          .get(projectId, user.id);
+        const member = this.db.get(
+          'SELECT 1 present FROM cooking_project_membership WHERE project_id = ? AND user_id = ?',
+          projectId,
+          user.id,
+        );
         if (member)
           throw new PlatformError('RESOURCE_CONFLICT', '该用户已经是项目成员');
-        const pending = this.db
-          .prepare(
-            `SELECT id, project_id, invited_user_id, invited_by_user_id, status,
+        const pending = this.db.get(
+          `SELECT id, project_id, invited_user_id, invited_by_user_id, status,
                   version, created_at, responded_at
            FROM cooking_project_invitation
            WHERE project_id = ? AND invited_user_id = ? AND status = 'PENDING'`,
-          )
-          .get(projectId, user.id) as InvitationRow | undefined;
+          projectId,
+          user.id,
+        ) as InvitationRow | undefined;
         const invitation = pending
           ? mapInvitation(pending)
           : this.insertInvitation(projectId, user.id, actorUserId);
@@ -295,7 +294,7 @@ export class ProjectService {
   ): ProjectInvitationDetail[] {
     this.requireOwner(userId, projectId);
     return this.db
-      .prepare(
+      .all(
         `SELECT i.id, i.project_id, i.invited_user_id, i.invited_by_user_id,
                 i.status, i.version, i.created_at, i.responded_at,
                 u.username, u.display_name, u.created_at user_created_at
@@ -303,8 +302,8 @@ export class ProjectService {
          JOIN platform_user u ON u.id = i.invited_user_id
          WHERE i.project_id = ? AND i.status = 'PENDING'
          ORDER BY i.created_at DESC, i.id`,
+        projectId,
       )
-      .all(projectId)
       .map((row) => {
         const value = row as InvitationRow & {
           username: string;
@@ -325,7 +324,7 @@ export class ProjectService {
 
   listReceivedInvitations(userId: string): ReceivedProjectInvitation[] {
     return this.db
-      .prepare(
+      .all(
         `SELECT i.id, i.project_id, i.invited_user_id, i.invited_by_user_id,
                 i.status, i.version, i.created_at, i.responded_at,
                 p.name project_name, inviter.display_name inviter_name
@@ -334,8 +333,8 @@ export class ProjectService {
          JOIN platform_user inviter ON inviter.id = i.invited_by_user_id
          WHERE i.invited_user_id = ? AND i.status = 'PENDING'
          ORDER BY i.created_at DESC, i.id`,
+        userId,
       )
-      .all(userId)
       .map((row) => {
         const value = row as InvitationRow & {
           project_name: string;
@@ -551,13 +550,13 @@ export class ProjectService {
       resultSchema: RemoveMemberResultSchema,
       perform: () => {
         this.requireOwner(actorUserId, projectId);
-        const row = this.db
-          .prepare(
-            `SELECT project_id, user_id, role, version, created_at
+        const row = this.db.get(
+          `SELECT project_id, user_id, role, version, created_at
            FROM cooking_project_membership
            WHERE project_id = ? AND user_id = ?`,
-          )
-          .get(projectId, targetUserId) as MembershipRow | undefined;
+          projectId,
+          targetUserId,
+        ) as MembershipRow | undefined;
         if (!row) {
           const result = { removed: false, userId: targetUserId };
           return { result: result, resourceId: targetUserId };
@@ -568,12 +567,11 @@ export class ProjectService {
             '成员关系已更新，请刷新后重试',
           );
         if (row.role === 'OWNER') {
-          const owners = this.db
-            .prepare(
-              `SELECT COUNT(*) count FROM cooking_project_membership
+          const owners = this.db.get(
+            `SELECT COUNT(*) count FROM cooking_project_membership
              WHERE project_id = ? AND role = 'OWNER'`,
-            )
-            .get(projectId) as { count: number };
+            projectId,
+          ) as { count: number };
           if (owners.count <= 1)
             throw new PlatformError(
               'INVALID_TRANSITION',
@@ -609,15 +607,15 @@ export class ProjectService {
   }
 
   private requireOwner(userId: string, projectId: string): Project {
-    const row = this.db
-      .prepare(
-        `SELECT p.id, p.name, p.version, p.created_by_user_id, p.created_at,
+    const row = this.db.get(
+      `SELECT p.id, p.name, p.version, p.created_by_user_id, p.created_at,
                 p.updated_at, m.role
          FROM cooking_project p
          JOIN cooking_project_membership m ON m.project_id = p.id
          WHERE p.id = ? AND m.user_id = ?`,
-      )
-      .get(projectId, userId) as (ProjectRow & { role: string }) | undefined;
+      projectId,
+      userId,
+    ) as (ProjectRow & { role: string }) | undefined;
     if (!row) throw hiddenProject();
     if (row.role !== 'OWNER')
       throw new PlatformError(
@@ -654,28 +652,28 @@ export class ProjectService {
   }
 
   private invitationForRecipient(id: string, userId: string): InvitationRow {
-    const row = this.db
-      .prepare(
-        `SELECT id, project_id, invited_user_id, invited_by_user_id, status,
+    const row = this.db.get(
+      `SELECT id, project_id, invited_user_id, invited_by_user_id, status,
                 version, created_at, responded_at
          FROM cooking_project_invitation
          WHERE id = ? AND invited_user_id = ?`,
-      )
-      .get(id, userId) as InvitationRow | undefined;
+      id,
+      userId,
+    ) as InvitationRow | undefined;
     if (!row) throw hiddenInvitation();
     return row;
   }
 
   private invitationForOwner(id: string, userId: string): InvitationRow {
-    const row = this.db
-      .prepare(
-        `SELECT i.id, i.project_id, i.invited_user_id, i.invited_by_user_id,
+    const row = this.db.get(
+      `SELECT i.id, i.project_id, i.invited_user_id, i.invited_by_user_id,
                 i.status, i.version, i.created_at, i.responded_at
          FROM cooking_project_invitation i
          JOIN cooking_project_membership m ON m.project_id = i.project_id
          WHERE i.id = ? AND m.user_id = ? AND m.role = 'OWNER'`,
-      )
-      .get(id, userId) as InvitationRow | undefined;
+      id,
+      userId,
+    ) as InvitationRow | undefined;
     if (!row) throw hiddenInvitation();
     return row;
   }
