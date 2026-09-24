@@ -1,22 +1,7 @@
+import { runnerFetch } from '@/platform/runner/router';
 import { AuthService } from '@/platform/auth/service';
-import {
-  handleExecutionClaim,
-  handleExecutionComplete,
-  handleExecutionFile,
-  handleExecutionRenew,
-  handleExecutionStart,
-  handleOpenInteraction,
-  handleWaitInteraction,
-} from '@/platform/execution/http';
 import { ExecutionService } from '@/platform/execution/service';
 import { LocalFileStore } from '@/platform/files/local-file-store';
-import {
-  handleRunnerAuthorizationClaim,
-  handleRunnerAuthorizationCreate,
-  handleRunnerBindingConfirmation,
-  handleRunnerBindings,
-  handleRunnerHeartbeat,
-} from '@/platform/runner/http';
 import { RunnerService } from '@/platform/runner/service';
 import { testDatabases } from '@/testing/database';
 import type { EnqueueExecutionInput } from '@agent-party-time/execution-contract';
@@ -256,78 +241,19 @@ function protocolFetch(
   executions: ExecutionService,
   files: LocalFileStore,
   bindingRefs: Set<string>,
-): typeof fetch {
-  return async (inputValue, init) => {
-    const request =
-      inputValue instanceof Request
-        ? inputValue
-        : new Request(String(inputValue), init);
-    const path = new URL(request.url).pathname;
-    if (path === '/api/runner/authorizations')
-      return handleRunnerAuthorizationCreate(request, runners);
-    const authorizationClaim =
-      /^\/api\/runner\/authorizations\/([^/]+)\/claim$/u.exec(path);
-    if (authorizationClaim)
-      return handleRunnerAuthorizationClaim(
-        request,
-        authorizationClaim[1]!,
-        runners,
-      );
-    if (path === '/api/runner/heartbeat')
-      return handleRunnerHeartbeat(request, runners);
-    if (path === '/api/runner/bindings' && request.method === 'GET')
-      return handleRunnerBindings(request, runners, () =>
-        [...bindingRefs].map((bindingId) => ({ bindingId })),
-      );
-    if (path === '/api/runner/bindings' && request.method === 'POST')
-      return handleRunnerBindingConfirmation(
-        request,
-        runners,
-        (_runnerId, _bindingId, repositoryUrl) => repositoryUrl,
-      );
-    if (path === '/api/runner/executions/claim')
-      return handleExecutionClaim(request, runners, executions);
-    const executionMatch =
-      /^\/api\/runner\/executions\/([^/]+)\/([^/]+)$/u.exec(path);
-    if (executionMatch) {
-      const [, executionId, operation] = executionMatch;
-      if (operation === 'start')
-        return handleExecutionStart(request, executionId!, runners, executions);
-      if (operation === 'renew')
-        return handleExecutionRenew(request, executionId!, runners, executions);
-      if (operation === 'complete')
-        return handleExecutionComplete(
-          request,
-          executionId!,
-          runners,
-          executions,
-        );
-    }
-    const openMatch =
-      /^\/api\/runner\/executions\/([^/]+)\/interactions\/open$/u.exec(path);
-    if (openMatch)
-      return handleOpenInteraction(request, openMatch[1]!, runners, executions);
-    const waitMatch = /^\/api\/runner\/interactions\/([^/]+)\/wait$/u.exec(
-      path,
-    );
-    if (waitMatch)
-      return handleWaitInteraction(request, waitMatch[1]!, runners, executions);
-    const fileMatch =
-      /^\/api\/runner\/executions\/([^/]+)\/files\/([^/]+)$/u.exec(path);
-    if (fileMatch)
-      return handleExecutionFile(
-        request,
-        fileMatch[1]!,
-        fileMatch[2]!,
-        runners,
-        executions,
-        files,
-      );
-    return Response.json(
-      { error: { code: 'NOT_FOUND', message: '未找到' } },
-      { status: 404 },
-    );
-  };
+): ReturnType<typeof runnerFetch> {
+  return runnerFetch({
+    runners,
+    executions,
+    files,
+    prepare: () => {},
+    bindings: {
+      list: () => [...bindingRefs].map((bindingId) => ({ bindingId })),
+      confirm: (_runnerId, _bindingId, repositoryUrl) => repositoryUrl,
+      claim: () => null,
+      complete: () => 'FAILED',
+    },
+  });
 }
 
 function input(
@@ -350,3 +276,41 @@ function input(
 function bindingId(index: number): string {
   return `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`;
 }
+
+test('正式 Runner 路由保留认证顺序、方法限制和 HEAD 响应', async () => {
+  const fixture = await setup();
+  for (const [method, path, status] of [
+    ['DELETE', '', 401],
+    ['POST', '/pair', 400],
+    ['POST', '/authorizations', 400],
+    ['POST', '/authorizations/request/claim', 400],
+    ['POST', '/heartbeat', 401],
+    ['GET', '/bindings', 401],
+    ['POST', '/bindings', 401],
+    ['POST', '/binding-requests', 401],
+    ['POST', '/binding-requests/request', 401],
+    ['POST', '/executions/claim', 401],
+    ['POST', '/executions/execution/start', 401],
+    ['POST', '/executions/execution/renew', 401],
+    ['POST', '/executions/execution/complete', 401],
+    ['POST', '/executions/execution/interactions/open', 401],
+    ['POST', '/interactions/interaction/wait', 401],
+    ['GET', '/executions/execution/files/file', 401],
+    ['GET', '/heartbeat', 405],
+    ['PATCH', '/bindings', 405],
+    ['GET', '/unknown', 404],
+  ] as const) {
+    const response = await fixture.dispatch(
+      `http://server.test/api/runner${path}`,
+      { method },
+    );
+    expect(response.status, `${method} ${path}`).toBe(status);
+  }
+  const head = await fixture.dispatch(
+    'http://server.test/api/runner/bindings',
+    { method: 'HEAD' },
+  );
+  expect(head.status).toBe(401);
+  expect(await head.text()).toBe('');
+  expect(head.headers.get('cache-control')).toBe('no-store');
+});

@@ -1,13 +1,9 @@
+import { cookingRunnerFetch } from '@/cooking/runtime/runner-http';
 import { createCooking } from '@/cooking/runtime/create-cooking';
 import { deliveryProject, mutation } from '@/cooking/testing/project';
 import type { AppDatabase } from '@/platform/database';
-import {
-  handleExecutionClaim,
-  handleExecutionComplete,
-  handleExecutionStart,
-} from '@/platform/execution/http';
+
 import { LocalFileStore } from '@/platform/files/local-file-store';
-import { handleRunnerHeartbeat } from '@/platform/runner/http';
 import { testDatabases } from '@/testing/database';
 import type { ClaimedExecution } from '@agent-party-time/execution-contract';
 import { ProtocolAgent } from '@agent-party-time/runner-conformance';
@@ -1115,37 +1111,16 @@ describe('RepairService', () => {
 
 function repairProtocolFetch(
   fixture: Awaited<ReturnType<typeof setup>>,
-): typeof fetch {
-  return async (inputValue, init) => {
-    const request =
-      inputValue instanceof Request
-        ? inputValue
-        : new Request(String(inputValue), init);
-    const path = new URL(request.url).pathname;
-    if (path === '/api/runner/heartbeat')
-      return handleRunnerHeartbeat(request, fixture.runners);
-    if (path === '/api/runner/executions/claim')
-      return handleExecutionClaim(request, fixture.runners, fixture.executions);
-    const match = /^\/api\/runner\/executions\/([^/]+)\/([^/]+)$/u.exec(path);
-    if (match?.[2] === 'start')
-      return handleExecutionStart(
-        request,
-        match[1]!,
-        fixture.runners,
-        fixture.executions,
-      );
-    if (match?.[2] === 'complete')
-      return handleExecutionComplete(
-        request,
-        match[1]!,
-        fixture.runners,
-        fixture.executions,
-      );
-    return Response.json(
-      { error: { code: 'NOT_FOUND', message: '未找到' } },
-      { status: 404 },
-    );
-  };
+): ReturnType<typeof cookingRunnerFetch> {
+  return cookingRunnerFetch(fixture.database, {
+    runners: fixture.runners,
+    executions: fixture.executions,
+    files: new LocalFileStore(
+      fixture.database,
+      join(fixture.directory, 'files'),
+    ),
+    prepare: () => {},
+  });
 }
 
 async function startLatest(
@@ -1188,3 +1163,34 @@ function currentBug(database: AppDatabase, bugId: string) {
     .prepare('SELECT stage, version FROM cooking_bug WHERE id = ?')
     .get(bugId) as { stage: string; version: number };
 }
+
+test('协议领取回收取消中的过期租约时同步结束 Repair Attempt', async () => {
+  const fixture = await setup();
+  const started = await startLatest(fixture, 'cancelled-session');
+  fixture.executions.requestCancellation(started.executionId);
+  fixture.database.run(
+    'UPDATE platform_execution SET lease_expires_at = ? WHERE id = ?',
+    ['2026-07-27T09:59:00.000Z', started.executionId],
+  );
+  const response = await repairProtocolFetch(fixture)(
+    'http://repair.test/api/runner/executions/claim',
+    {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${fixture.pairedRunner.credential}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ availableSlots: 1, waitMs: 0 }),
+    },
+  );
+  expect(response.status).toBe(200);
+  expect(fixture.executions.get(started.executionId).state).toBe('CANCELLED');
+  expect(
+    fixture.repairs
+      .repairView(fixture.users.developer.id, fixture.requested.bug.id)
+      ?.timeline.at(-1),
+  ).toMatchObject({
+    kind: 'REPAIR_ATTEMPT',
+    result: { outcome: 'FAILED', failureCode: 'CANCELLED' },
+  });
+});

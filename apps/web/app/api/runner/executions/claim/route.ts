@@ -1,13 +1,1 @@
-import { handleExecutionClaim } from '@/platform/execution/http';
-import { executionService } from '@/platform/execution/server';
-import { runnerService } from '@/platform/runner/server';
-import { prepareDueUpdateExecutions } from '@/cooking/runtime/services';
-
-export async function POST(request: Request): Promise<Response> {
-  return handleExecutionClaim(
-    request,
-    runnerService(),
-    executionService(),
-    prepareDueUpdateExecutions,
-  );
-}
+export { handleRunnerRequest as POST } from '@/cooking/runtime/runner-http';

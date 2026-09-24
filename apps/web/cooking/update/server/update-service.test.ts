@@ -1,3 +1,4 @@
+import { cookingRunnerFetch } from '@/cooking/runtime/runner-http';
 import { createCooking } from '@/cooking/runtime/create-cooking';
 import { SubmissionService } from '@/cooking/submissions/server/submission-service';
 import {
@@ -8,14 +9,9 @@ import {
 import { CookingWorkspaceService } from '@/cooking/workspace/server/workspace-service';
 import { AuthService } from '@/platform/auth/service';
 import type { AppDatabase } from '@/platform/database';
-import {
-  handleExecutionClaim,
-  handleExecutionComplete,
-  handleExecutionStart,
-} from '@/platform/execution/http';
+import { handleExecutionClaim } from '@/platform/execution/http';
 import { ExecutionService } from '@/platform/execution/service';
 import { LocalFileStore } from '@/platform/files/local-file-store';
-import { handleRunnerHeartbeat } from '@/platform/runner/http';
 import { testDatabases } from '@/testing/database';
 import { ProtocolAgent } from '@agent-party-time/runner-conformance';
 import { describe, expect, test } from 'bun:test';
@@ -1384,37 +1380,16 @@ function pendingCommits(database: AppDatabase, bugId: string): string[] {
 
 function updateProtocolFetch(
   fixture: Awaited<ReturnType<typeof setup>>,
-): typeof fetch {
-  return async (inputValue, init) => {
-    const request =
-      inputValue instanceof Request
-        ? inputValue
-        : new Request(String(inputValue), init);
-    const path = new URL(request.url).pathname;
-    if (path === '/api/runner/heartbeat')
-      return handleRunnerHeartbeat(request, fixture.runners);
-    if (path === '/api/runner/executions/claim')
-      return handleExecutionClaim(request, fixture.runners, fixture.executions);
-    const match = /^\/api\/runner\/executions\/([^/]+)\/([^/]+)$/u.exec(path);
-    if (match?.[2] === 'start')
-      return handleExecutionStart(
-        request,
-        match[1]!,
-        fixture.runners,
-        fixture.executions,
-      );
-    if (match?.[2] === 'complete')
-      return handleExecutionComplete(
-        request,
-        match[1]!,
-        fixture.runners,
-        fixture.executions,
-      );
-    return Response.json(
-      { error: { code: 'NOT_FOUND', message: '未找到' } },
-      { status: 404 },
-    );
-  };
+): ReturnType<typeof cookingRunnerFetch> {
+  return cookingRunnerFetch(fixture.database, {
+    runners: fixture.runners,
+    executions: fixture.executions,
+    files: new LocalFileStore(
+      fixture.database,
+      join(fixture.directory, 'files'),
+    ),
+    prepare: () => {},
+  });
 }
 
 describe('更新遵守环境使用权', () => {
