@@ -4,7 +4,7 @@ import type {
 } from '@agent-party-time/execution-contract';
 import type { AuthenticatedRunnerSession } from '../agent/connection';
 import type { RunnerExecutionHttp } from '../agent/server-http';
-import { RunnerHttpError } from '../agent/server-http';
+import { RunnerHttpError } from '@agent-party-time/runner-contract/http-client';
 import {
   OUTBOX_STATE_SCHEMA_VERSION,
   type OutboxEntry,

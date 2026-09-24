@@ -12,7 +12,7 @@ import Ajv from 'ajv';
 import { createHash, randomUUID } from 'node:crypto';
 import type { AuthenticatedRunnerSession } from '../agent/connection';
 import type { RunnerExecutionHttp } from '../agent/server-http';
-import { RunnerHttpError } from '../agent/server-http';
+import { RunnerHttpError } from '@agent-party-time/runner-contract/http-client';
 import {
   type CodexExecutor,
   type StartedCodexExecution,

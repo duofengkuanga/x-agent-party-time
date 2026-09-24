@@ -5,10 +5,8 @@ import { LocalFileStore } from '@/platform/files/local-file-store';
 import { RunnerService } from '@/platform/runner/service';
 import { testDatabases } from '@/testing/database';
 import type { EnqueueExecutionInput } from '@agent-party-time/execution-contract';
-import {
-  ProtocolAgent,
-  ProtocolError,
-} from '@agent-party-time/runner-conformance';
+import { ProtocolAgent } from '@agent-party-time/runner-conformance';
+import { RunnerHttpError } from '@agent-party-time/runner-contract/http-client';
 import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
 
@@ -232,7 +230,7 @@ describe('Runner Contract Conformance Harness', () => {
         sessionId: 'invalid-session',
         outcome: { kind: 'SUCCEEDED', result: {} },
       }),
-    ).rejects.toBeInstanceOf(ProtocolError);
+    ).rejects.toBeInstanceOf(RunnerHttpError);
   });
 });
 
