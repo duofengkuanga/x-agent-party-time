@@ -370,11 +370,10 @@ describe('RepairService', () => {
       },
     });
     expect(
-      fixture.database
-        .prepare(
-          'SELECT COUNT(*) count FROM cooking_pending_delivery WHERE submission_item_id = ?',
-        )
-        .get(fixture.requested.bug.submissionItemId),
+      fixture.database.get(
+        'SELECT COUNT(*) count FROM cooking_pending_delivery WHERE submission_item_id = ?',
+        fixture.requested.bug.submissionItemId,
+      ),
     ).toEqual({ count: 0 });
   });
 
@@ -910,11 +909,10 @@ describe('RepairService', () => {
     });
     const started = await startLatest(fixture, 'rollback-session');
     const before = currentBug(fixture.database, fixture.requested.bug.id);
-    const beforeRevision = fixture.database
-      .prepare(
-        'SELECT workspace_revision FROM cooking_test_submission WHERE id = ?',
-      )
-      .get(fixture.submission.id);
+    const beforeRevision = fixture.database.get(
+      'SELECT workspace_revision FROM cooking_test_submission WHERE id = ?',
+      fixture.submission.id,
+    );
 
     expect(() =>
       fixture.executions.complete(fixture.runner.id, started.executionId, {
@@ -942,11 +940,10 @@ describe('RepairService', () => {
       before,
     );
     expect(
-      fixture.database
-        .prepare(
-          'SELECT workspace_revision FROM cooking_test_submission WHERE id = ?',
-        )
-        .get(fixture.submission.id),
+      fixture.database.get(
+        'SELECT workspace_revision FROM cooking_test_submission WHERE id = ?',
+        fixture.submission.id,
+      ),
     ).toEqual(beforeRevision);
     expect(
       fixture.repairs.repairView(
@@ -1055,11 +1052,10 @@ describe('RepairService', () => {
     );
     expect(resolved.bugVersion).toBe(3);
     expect(
-      fixture.database
-        .prepare(
-          'SELECT state FROM platform_execution_interaction WHERE id = ?',
-        )
-        .get(interaction.id),
+      fixture.database.get(
+        'SELECT state FROM platform_execution_interaction WHERE id = ?',
+        interaction.id,
+      ),
     ).toEqual({ state: 'RESOLVED' });
     expect(
       fixture.repairs
@@ -1150,18 +1146,18 @@ function testSkillBinding(skillName: string) {
 }
 
 function latestAttempt(database: AppDatabase, bugId: string) {
-  return database
-    .prepare(
-      `SELECT id, execution_id, attempt FROM cooking_repair_attempt
+  return database.get(
+    `SELECT id, execution_id, attempt FROM cooking_repair_attempt
        WHERE bug_id = ? ORDER BY attempt DESC LIMIT 1`,
-    )
-    .get(bugId) as { id: string; execution_id: string; attempt: number };
+    bugId,
+  ) as { id: string; execution_id: string; attempt: number };
 }
 
 function currentBug(database: AppDatabase, bugId: string) {
-  return database
-    .prepare('SELECT stage, version FROM cooking_bug WHERE id = ?')
-    .get(bugId) as { stage: string; version: number };
+  return database.get(
+    'SELECT stage, version FROM cooking_bug WHERE id = ?',
+    bugId,
+  ) as { stage: string; version: number };
 }
 
 test('协议领取回收取消中的过期租约时同步结束 Repair Attempt', async () => {

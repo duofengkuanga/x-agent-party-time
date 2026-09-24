@@ -231,11 +231,10 @@ describe('Execution lifecycle', () => {
       sessionId: 'session-resume',
     });
     expect(
-      database
-        .query<{ state: string }, [string]>(
-          'SELECT state FROM platform_execution_interaction WHERE id = ?',
-        )
-        .get(interaction.id)?.state,
+      database.get<{ state: string }>(
+        'SELECT state FROM platform_execution_interaction WHERE id = ?',
+        interaction.id,
+      )?.state,
     ).toBe('PENDING');
     executions.resolveInteraction(interaction.id, { decision: 'accept' });
     const reclaimed = (await executions.claim(runnerId, 1, 0))[0]!;
@@ -314,11 +313,10 @@ describe('Execution lifecycle', () => {
       },
     );
     expect(
-      database
-        .query<{ state: string }, [string]>(
-          'SELECT state FROM platform_execution_interaction WHERE id = ?',
-        )
-        .get(interaction.id)?.state,
+      database.get<{ state: string }>(
+        'SELECT state FROM platform_execution_interaction WHERE id = ?',
+        interaction.id,
+      )?.state,
     ).toBe('INVALIDATED');
     expect((await executions.claim(runnerId, 1, 0))[0]?.id).toBe(next.id);
 

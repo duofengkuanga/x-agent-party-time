@@ -331,11 +331,10 @@ describe('UpdateService', () => {
       workspace.getWorkspace(outsider.id, fixture.submission.id),
     ).toThrow(expect.objectContaining({ code: 'NOT_FOUND' }));
     expect(
-      fixture.database
-        .prepare(
-          'SELECT COUNT(*) count FROM cooking_update_batch WHERE submission_id = ?',
-        )
-        .get(fixture.submission.id),
+      fixture.database.get(
+        'SELECT COUNT(*) count FROM cooking_update_batch WHERE submission_id = ?',
+        fixture.submission.id,
+      ),
     ).toEqual({ count: 0 });
     expect(pending(fixture.database, fixture.item.id)).not.toBeNull();
   });
@@ -683,12 +682,11 @@ describe('UpdateService', () => {
       'repositoryUrl',
     );
     expect(
-      fixture.database
-        .prepare(
-          `SELECT file_id FROM platform_execution_attachment
+      fixture.database.all(
+        `SELECT file_id FROM platform_execution_attachment
            WHERE execution_id = ?`,
-        )
-        .all(continued.executionId!),
+        continued.executionId!,
+      ),
     ).toEqual([{ file_id: evidence.id }]);
     const second = await startExecution(
       fixture,
@@ -823,11 +821,10 @@ describe('UpdateService', () => {
       ),
     });
     expect(
-      fixture.database
-        .prepare(
-          'SELECT COUNT(*) count FROM cooking_update_attempt WHERE batch_id = ?',
-        )
-        .get(latestBatch(fixture.database, fixture.item.id).id),
+      fixture.database.get(
+        'SELECT COUNT(*) count FROM cooking_update_attempt WHERE batch_id = ?',
+        latestBatch(fixture.database, fixture.item.id).id,
+      ),
     ).toEqual({ count: 1 });
   });
 
@@ -1076,11 +1073,10 @@ describe('UpdateService', () => {
       },
     );
     expect(
-      fixture.database
-        .prepare(
-          'SELECT state FROM platform_execution_interaction WHERE id = ?',
-        )
-        .get(interaction.id),
+      fixture.database.get(
+        'SELECT state FROM platform_execution_interaction WHERE id = ?',
+        interaction.id,
+      ),
     ).toEqual({ state: 'RESOLVED' });
     const resolvedAttempt = fixture.updates
       .workspace(fixture.users.developer.id, fixture.submission.id)
@@ -1325,23 +1321,20 @@ async function startExecution(
 }
 
 function pending(database: AppDatabase, submissionItemId: string) {
-  return database
-    .prepare(
-      `SELECT last_candidate_at, eligible_at FROM cooking_pending_delivery
+  return database.get(
+    `SELECT last_candidate_at, eligible_at FROM cooking_pending_delivery
        WHERE submission_item_id = ?`,
-    )
-    .get(submissionItemId) as
-    { last_candidate_at: string; eligible_at: string } | undefined;
+    submissionItemId,
+  ) as { last_candidate_at: string; eligible_at: string } | undefined;
 }
 
 function latestBatch(database: AppDatabase, submissionItemId: string) {
-  return database
-    .prepare(
-      `SELECT id, state, version, active_execution_id
+  return database.get(
+    `SELECT id, state, version, active_execution_id
        FROM cooking_update_batch WHERE submission_item_id = ?
        ORDER BY created_at DESC, rowid DESC LIMIT 1`,
-    )
-    .get(submissionItemId) as {
+    submissionItemId,
+  ) as {
     id: string;
     state: string;
     version: number;
@@ -1351,12 +1344,11 @@ function latestBatch(database: AppDatabase, submissionItemId: string) {
 
 function batchEntries(database: AppDatabase, batchId: string) {
   return (
-    database
-      .prepare(
-        `SELECT bug_id, commits_json FROM cooking_update_batch_entry
+    database.all(
+      `SELECT bug_id, commits_json FROM cooking_update_batch_entry
          WHERE batch_id = ? ORDER BY position`,
-      )
-      .all(batchId) as Array<{ bug_id: string; commits_json: string }>
+      batchId,
+    ) as Array<{ bug_id: string; commits_json: string }>
   ).map((row) => ({
     bug_id: row.bug_id,
     commits: JSON.parse(row.commits_json),
@@ -1364,17 +1356,17 @@ function batchEntries(database: AppDatabase, batchId: string) {
 }
 
 function currentBug(database: AppDatabase, bugId: string) {
-  return database
-    .prepare('SELECT stage, version FROM cooking_bug WHERE id = ?')
-    .get(bugId) as { stage: string; version: number };
+  return database.get(
+    'SELECT stage, version FROM cooking_bug WHERE id = ?',
+    bugId,
+  ) as { stage: string; version: number };
 }
 
 function pendingCommits(database: AppDatabase, bugId: string): string[] {
-  const row = database
-    .prepare(
-      'SELECT pending_commits_json FROM cooking_bug_repair_context WHERE bug_id = ?',
-    )
-    .get(bugId) as { pending_commits_json: string };
+  const row = database.get(
+    'SELECT pending_commits_json FROM cooking_bug_repair_context WHERE bug_id = ?',
+    bugId,
+  ) as { pending_commits_json: string };
   return JSON.parse(row.pending_commits_json) as string[];
 }
 

@@ -259,12 +259,11 @@ describe('LifecycleService', () => {
         : '',
     ).toContain('第 1 轮验证未通过');
     expect(
-      fixture.database
-        .prepare(
-          `SELECT file_id FROM platform_execution_attachment
+      fixture.database.all(
+        `SELECT file_id FROM platform_execution_attachment
            WHERE execution_id = ?`,
-        )
-        .all(failed.executionId!),
+        failed.executionId!,
+      ),
     ).toEqual([{ file_id: evidence.id }]);
     expect(
       fixture.lifecycle.workspace(
@@ -325,12 +324,11 @@ describe('LifecycleService', () => {
       version: beforeClose.version + 1,
     });
     expect(
-      fixture.database
-        .prepare(
-          `SELECT COUNT(*) count FROM cooking_submission_environment_lock
+      fixture.database.get(
+        `SELECT COUNT(*) count FROM cooking_submission_environment_lock
            WHERE submission_id = ?`,
-        )
-        .get(fixture.submission.id),
+        fixture.submission.id,
+      ),
     ).toEqual({ count: 0 });
     const replacement = fixture.submissions.createSubmission(
       fixture.users.owner.id,
@@ -436,11 +434,10 @@ describe('LifecycleService', () => {
       runningCleanup.version + 1,
     );
     expect(
-      fixture.database
-        .prepare(
-          'SELECT state FROM platform_execution_interaction WHERE id = ?',
-        )
-        .get(cleanupInteraction.id),
+      fixture.database.get(
+        'SELECT state FROM platform_execution_interaction WHERE id = ?',
+        cleanupInteraction.id,
+      ),
     ).toEqual({ state: 'RESOLVED' });
     const eventsBeforeResume = fixture.events.length;
     const revisionBeforeResume = fixture.events.at(-1)!.revision;
@@ -466,14 +463,13 @@ describe('LifecycleService', () => {
         result: { outcome: 'FAILED', summary: 'Worktree 被占用' },
       },
     });
-    const failedCleanup = fixture.database
-      .prepare(
-        `SELECT cleanup.id cleanupId, cleanup.state
+    const failedCleanup = fixture.database.get(
+      `SELECT cleanup.id cleanupId, cleanup.state
          FROM cooking_cleanup_attempt attempt
          JOIN cooking_cleanup cleanup ON cleanup.id = attempt.cleanup_id
          WHERE attempt.execution_id = ?`,
-      )
-      .get(claimedCleanup.id) as { cleanupId: string; state: string };
+      claimedCleanup.id,
+    ) as { cleanupId: string; state: string };
     await completeCleanup(
       fixture,
       cleanupExecutions[1]!,
@@ -851,14 +847,13 @@ async function completeCleanup(
     sessionId,
     outcome: { kind: 'SUCCEEDED', result },
   });
-  return fixture.database
-    .prepare(
-      `SELECT cleanup.id cleanupId, cleanup.state
+  return fixture.database.get(
+    `SELECT cleanup.id cleanupId, cleanup.state
        FROM cooking_cleanup_attempt attempt
        JOIN cooking_cleanup cleanup ON cleanup.id = attempt.cleanup_id
        WHERE attempt.execution_id = ?`,
-    )
-    .get(executionId) as { cleanupId: string; state: string };
+    executionId,
+  ) as { cleanupId: string; state: string };
 }
 
 function testSkillBinding(skillName: string) {
@@ -870,18 +865,18 @@ function testSkillBinding(skillName: string) {
 }
 
 function latestBatch(database: AppDatabase, submissionItemId: string) {
-  return database
-    .prepare(
-      `SELECT id, state, version FROM cooking_update_batch
+  return database.get(
+    `SELECT id, state, version FROM cooking_update_batch
        WHERE submission_item_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`,
-    )
-    .get(submissionItemId) as { id: string; state: string; version: number };
+    submissionItemId,
+  ) as { id: string; state: string; version: number };
 }
 
 function currentBug(database: AppDatabase, bugId: string) {
-  return database
-    .prepare('SELECT stage, version, archived_at FROM cooking_bug WHERE id = ?')
-    .get(bugId) as {
+  return database.get(
+    'SELECT stage, version, archived_at FROM cooking_bug WHERE id = ?',
+    bugId,
+  ) as {
     stage: string;
     version: number;
     archived_at: string | null;
@@ -889,12 +884,11 @@ function currentBug(database: AppDatabase, bugId: string) {
 }
 
 function submissionRow(database: AppDatabase, submissionId: string) {
-  return database
-    .prepare(
-      `SELECT status, version, workspace_revision, closed_at
+  return database.get(
+    `SELECT status, version, workspace_revision, closed_at
        FROM cooking_test_submission WHERE id = ?`,
-    )
-    .get(submissionId) as {
+    submissionId,
+  ) as {
     status: 'ACTIVE' | 'CLOSED';
     version: number;
     workspace_revision: number;
@@ -907,9 +901,10 @@ function bindingForItem(
   submissionItemId: string,
 ): string {
   return (
-    database
-      .prepare('SELECT binding_id FROM cooking_submission_item WHERE id = ?')
-      .get(submissionItemId) as { binding_id: string }
+    database.get(
+      'SELECT binding_id FROM cooking_submission_item WHERE id = ?',
+      submissionItemId,
+    ) as { binding_id: string }
   ).binding_id;
 }
 

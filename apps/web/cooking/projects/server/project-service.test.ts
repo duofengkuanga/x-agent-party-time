@@ -66,25 +66,19 @@ describe('ProjectService', () => {
     expect(service.listProjects(users.owner.id)).toEqual([created]);
     expect(service.listProjects(users.member.id)).toEqual([]);
     expect(
-      database
-        .query<{ count: number }, []>(
-          'SELECT COUNT(*) count FROM cooking_project',
-        )
-        .get()?.count,
+      database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM cooking_project',
+      )?.count,
     ).toBe(1);
     expect(
-      database
-        .query<{ count: number }, []>(
-          'SELECT COUNT(*) count FROM cooking_project_membership',
-        )
-        .get()?.count,
+      database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM cooking_project_membership',
+      )?.count,
     ).toBe(1);
     expect(
-      database
-        .query<{ count: number }, []>(
-          'SELECT COUNT(*) count FROM cooking_audit_event',
-        )
-        .get()?.count,
+      database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM cooking_audit_event',
+      )?.count,
     ).toBe(1);
   });
 
@@ -162,12 +156,12 @@ describe('ProjectService', () => {
     );
     expect(service.listMembers(users.owner.id, project.id)).toHaveLength(2);
     expect(
-      database
-        .query<{ count: number }, []>(
-          `SELECT COUNT(*) count FROM cooking_project_membership
+      database.get<{ count: number }>(
+        `SELECT COUNT(*) count FROM cooking_project_membership
            WHERE project_id = ? AND user_id = ?`,
-        )
-        .get(project.id, users.member.id)?.count,
+        project.id,
+        users.member.id,
+      )?.count,
     ).toBe(1);
     expect(() =>
       service.inviteUser(users.member.id, project.id, {

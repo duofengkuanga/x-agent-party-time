@@ -587,12 +587,11 @@ describe('Submission workspace', () => {
     );
     expect(ownerUpdate).toMatchObject({ version: 3, workspaceRevision: 3 });
     expect(
-      fixture.database
-        .query<{ count: number }, []>(
-          `SELECT COUNT(*) count FROM cooking_audit_event
+      fixture.database.get<{ count: number }>(
+        `SELECT COUNT(*) count FROM cooking_audit_event
            WHERE target_id = ? AND action = 'SUBMISSION_DETAILS_UPDATED'`,
-        )
-        .get(submission.id)?.count,
+        submission.id,
+      )?.count,
     ).toBe(2);
   });
 });
@@ -667,9 +666,8 @@ function insertBug(
 
 function countRows(database: AppDatabase, table: string): number {
   return (
-    database
-      .query<{ count: number }, []>(`SELECT COUNT(*) count FROM ${table}`)
-      .get()?.count ?? 0
+    database.get<{ count: number }>(`SELECT COUNT(*) count FROM ${table}`)
+      ?.count ?? 0
   );
 }
 

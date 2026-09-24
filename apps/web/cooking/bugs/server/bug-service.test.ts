@@ -89,12 +89,11 @@ async function setup() {
       ],
     },
   );
-  const items = database
-    .prepare(
-      `SELECT id, engineering_id FROM cooking_submission_item
+  const items = database.all(
+    `SELECT id, engineering_id FROM cooking_submission_item
        WHERE submission_id = ? ORDER BY position`,
-    )
-    .all(submission.id) as Array<{ id: string; engineering_id: string }>;
+    submission.id,
+  ) as Array<{ id: string; engineering_id: string }>;
   const events: Array<{ submissionId: string; revision: number }> = [];
   const service = new BugService(
     database,
@@ -322,8 +321,7 @@ describe('BugService', () => {
     expect(assignedView?.presentation.assignmentLabel).toBe('前端工程（web）');
     expect(
       fixture.database
-        .query<{ name: string }, []>('PRAGMA table_info(cooking_bug)')
-        .all()
+        .all<{ name: string }>('PRAGMA table_info(cooking_bug)')
         .map(({ name }) => name)
         .filter((name) => name.startsWith('engineering_')),
     ).toEqual([]);
@@ -450,12 +448,11 @@ describe('BugService', () => {
       { submissionId: fixture.submission.id, revision: first.revision },
     ]);
     expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          `SELECT COUNT(*) count FROM cooking_audit_event
+      fixture.database.get<{ count: number }>(
+        `SELECT COUNT(*) count FROM cooking_audit_event
            WHERE target_id = ? AND action = 'BUG_CREATED'`,
-        )
-        .get(first.bug.id)?.count,
+        first.bug.id,
+      )?.count,
     ).toBe(1);
     expect(
       fixture.service.workspace(fixture.users.tester.id, fixture.submission.id)
@@ -498,27 +495,24 @@ describe('BugService', () => {
     expect(result.deletedBugIds).toEqual([first.bug.id, second.bug.id]);
     expect(result.deletedExecutionIds).toEqual([]);
     expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          'SELECT COUNT(*) count FROM cooking_bug WHERE id = ?',
-        )
-        .get(first.bug.id)?.count,
+      fixture.database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM cooking_bug WHERE id = ?',
+        first.bug.id,
+      )?.count,
     ).toBe(0);
     expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          `SELECT COUNT(*) count FROM cooking_mutation
+      fixture.database.get<{ count: number }>(
+        `SELECT COUNT(*) count FROM cooking_mutation
            WHERE resource_type = 'BUG' AND resource_id = ?`,
-        )
-        .get(first.bug.id)?.count,
+        first.bug.id,
+      )?.count,
     ).toBe(0);
     expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          `SELECT COUNT(*) count FROM cooking_audit_event
+      fixture.database.get<{ count: number }>(
+        `SELECT COUNT(*) count FROM cooking_audit_event
            WHERE target_type = 'BUG' AND target_id = ?`,
-        )
-        .get(second.bug.id)?.count,
+        second.bug.id,
+      )?.count,
     ).toBe(0);
     expect(fixture.events.at(-1)).toEqual({
       submissionId: fixture.submission.id,
@@ -534,11 +528,10 @@ describe('BugService', () => {
       expect.objectContaining({ code: 'RESOURCE_CONFLICT' }),
     );
     expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          'SELECT COUNT(*) count FROM cooking_bug WHERE id = ?',
-        )
-        .get(bug.id)?.count,
+      fixture.database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM cooking_bug WHERE id = ?',
+        bug.id,
+      )?.count,
     ).toBe(1);
   });
 
@@ -560,11 +553,12 @@ describe('BugService', () => {
          SET state = 'SUCCEEDED', finished_at = ? WHERE id = ?`,
       )
       .run('2026-07-27T04:00:00.000Z', second);
-    const previous = fixture.database
-      .query<{ previous_execution_id: string | null }, [string]>(
-        'SELECT previous_execution_id FROM platform_execution WHERE id = ?',
-      )
-      .get(second)?.previous_execution_id;
+    const previous = fixture.database.get<{
+      previous_execution_id: string | null;
+    }>(
+      'SELECT previous_execution_id FROM platform_execution WHERE id = ?',
+      second,
+    )?.previous_execution_id;
     expect(previous).toBe(first);
 
     const result = fixture.service.deleteBugs({
@@ -575,32 +569,28 @@ describe('BugService', () => {
       new Set([first, second]),
     );
     expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          'SELECT COUNT(*) count FROM platform_execution WHERE id = ?',
-        )
-        .get(first)?.count,
+      fixture.database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM platform_execution WHERE id = ?',
+        first,
+      )?.count,
     ).toBe(0);
     expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          'SELECT COUNT(*) count FROM cooking_repair_attempt WHERE bug_id = ?',
-        )
-        .get(bug.id)?.count,
+      fixture.database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM cooking_repair_attempt WHERE bug_id = ?',
+        bug.id,
+      )?.count,
     ).toBe(0);
     expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          'SELECT COUNT(*) count FROM cooking_bug_repair_context WHERE bug_id = ?',
-        )
-        .get(bug.id)?.count,
+      fixture.database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM cooking_bug_repair_context WHERE bug_id = ?',
+        bug.id,
+      )?.count,
     ).toBe(0);
     expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          'SELECT COUNT(*) count FROM cooking_bug WHERE id = ?',
-        )
-        .get(bug.id)?.count,
+      fixture.database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM cooking_bug WHERE id = ?',
+        bug.id,
+      )?.count,
     ).toBe(0);
   });
 
@@ -659,37 +649,31 @@ describe('BugService', () => {
       new Set([executionId, sync]),
     );
     expect(
-      fixture.database
-        .query('SELECT id FROM cooking_update_session_sync')
-        .all(),
+      fixture.database.all('SELECT id FROM cooking_update_session_sync'),
     ).toEqual([]);
     expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          `SELECT COUNT(*) count FROM cooking_update_batch_entry WHERE bug_id = ?`,
-        )
-        .get(bug.id)?.count,
+      fixture.database.get<{ count: number }>(
+        `SELECT COUNT(*) count FROM cooking_update_batch_entry WHERE bug_id = ?`,
+        bug.id,
+      )?.count,
     ).toBe(0);
     expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          `SELECT COUNT(*) count FROM cooking_update_attempt WHERE execution_id = ?`,
-        )
-        .get(executionId)?.count,
+      fixture.database.get<{ count: number }>(
+        `SELECT COUNT(*) count FROM cooking_update_attempt WHERE execution_id = ?`,
+        executionId,
+      )?.count,
     ).toBe(0);
     expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          'SELECT COUNT(*) count FROM cooking_update_batch WHERE id = ?',
-        )
-        .get(batchId)?.count,
+      fixture.database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM cooking_update_batch WHERE id = ?',
+        batchId,
+      )?.count,
     ).toBe(0);
     expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          'SELECT COUNT(*) count FROM platform_execution WHERE id = ?',
-        )
-        .get(executionId)?.count,
+      fixture.database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM platform_execution WHERE id = ?',
+        executionId,
+      )?.count,
     ).toBe(0);
   });
 
@@ -726,13 +710,9 @@ describe('BugService', () => {
         new Set([parent, sync]),
       );
       expect(
-        fixture.database
-          .query('SELECT id FROM cooking_repair_session_sync')
-          .all(),
+        fixture.database.all('SELECT id FROM cooking_repair_session_sync'),
       ).toEqual([]);
-      expect(fixture.database.query('PRAGMA foreign_key_check').all()).toEqual(
-        [],
-      );
+      expect(fixture.database.all('PRAGMA foreign_key_check')).toEqual([]);
     },
   );
 
@@ -752,19 +732,19 @@ describe('BugService', () => {
       }),
     );
     expect(
-      fixture.database
-        .query('SELECT id FROM cooking_bug WHERE id = ?')
-        .get(bug.id),
+      fixture.database.get('SELECT id FROM cooking_bug WHERE id = ?', bug.id),
     ).not.toBeNull();
     expect(
-      fixture.database
-        .query('SELECT id FROM cooking_repair_attempt WHERE execution_id = ?')
-        .get(parent),
+      fixture.database.get(
+        'SELECT id FROM cooking_repair_attempt WHERE execution_id = ?',
+        parent,
+      ),
     ).not.toBeNull();
     expect(
-      fixture.database
-        .query('SELECT id FROM platform_execution WHERE id = ?')
-        .get(successor),
+      fixture.database.get(
+        'SELECT id FROM platform_execution WHERE id = ?',
+        successor,
+      ),
     ).not.toBeNull();
   });
 
@@ -775,11 +755,10 @@ describe('BugService', () => {
     const result = fixture.service.deleteBugs({ all: true });
     expect(result.deletedBugIds).toHaveLength(2);
     expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          'SELECT COUNT(*) count FROM cooking_bug WHERE submission_id = ?',
-        )
-        .get(fixture.submission.id)?.count,
+      fixture.database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM cooking_bug WHERE submission_id = ?',
+        fixture.submission.id,
+      )?.count,
     ).toBe(0);
   });
 });

@@ -99,11 +99,9 @@ describe('EngineeringService', () => {
 
   test('工程初始化后续步骤失败时回滚工程与 Mutation', async () => {
     const { database, project, service, users } = await setup();
-    const mutationCountBefore = database
-      .query<{ count: number }, []>(
-        'SELECT COUNT(*) count FROM cooking_mutation',
-      )
-      .get()!.count;
+    const mutationCountBefore = database.get<{ count: number }>(
+      'SELECT COUNT(*) count FROM cooking_mutation',
+    )!.count;
     expect(() =>
       service.createEngineeringSetup(users.owner.id, project.id, {
         mutationId: randomUUID(),
@@ -128,11 +126,9 @@ describe('EngineeringService', () => {
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
     expect(service.listEngineering(users.owner.id, project.id)).toEqual([]);
     expect(
-      database
-        .query<{ count: number }, []>(
-          'SELECT COUNT(*) count FROM cooking_mutation',
-        )
-        .get()?.count,
+      database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM cooking_mutation',
+      )?.count,
     ).toBe(mutationCountBefore);
   });
 
@@ -213,11 +209,9 @@ describe('EngineeringService', () => {
       }),
     ).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
     expect(
-      database
-        .query<{ count: number }, []>(
-          'SELECT COUNT(*) count FROM cooking_engineering',
-        )
-        .get()?.count,
+      database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM cooking_engineering',
+      )?.count,
     ).toBe(1);
   });
 
@@ -492,11 +486,10 @@ describe('EngineeringService', () => {
     );
     expect(archived.archivedAt).not.toBeNull();
     expect(
-      database
-        .query<{ count: number }, []>(
-          'SELECT COUNT(*) count FROM cooking_engineering WHERE id = ?',
-        )
-        .get(engineering.id)?.count,
+      database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM cooking_engineering WHERE id = ?',
+        engineering.id,
+      )?.count,
     ).toBe(1);
     expect(
       service.getWorkspace(users.member.id, engineering.id).members,

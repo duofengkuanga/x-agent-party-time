@@ -54,21 +54,18 @@ describe('Runner pairing', () => {
   test('Server 只保存配对码 Hash，成功交换后 Credential 只明文返回一次', async () => {
     const { database, service, users } = await setup();
     const issue = service.issuePairingCode(users.owner.id, 60_000);
-    const pairingRow = database
-      .query<{ code_hash: string }, []>(
-        'SELECT code_hash FROM platform_runner_pairing_code',
-      )
-      .get();
+    const pairingRow = database.get<{ code_hash: string }>(
+      'SELECT code_hash FROM platform_runner_pairing_code',
+    );
     expect(pairingRow?.code_hash).not.toBe(issue.code);
     expect(pairingRow?.code_hash).not.toContain(issue.code);
 
     const paired = service.pair(issue.code, '开发机 Runner');
     expect(paired.runner.ownerUserId).toBe(users.owner.id);
-    const runnerRow = database
-      .query<{ credential_hash: string }, []>(
-        'SELECT credential_hash FROM platform_runner WHERE id = ?',
-      )
-      .get(paired.runner.id);
+    const runnerRow = database.get<{ credential_hash: string }>(
+      'SELECT credential_hash FROM platform_runner WHERE id = ?',
+      paired.runner.id,
+    );
     expect(runnerRow?.credential_hash).not.toBe(paired.credential);
     expect(JSON.stringify(runnerRow)).not.toContain(paired.credential);
     expect(() => service.pair(issue.code, '重复 Runner')).toThrow(
@@ -100,12 +97,14 @@ describe('Agent 浏览器授权', () => {
       suggestedName: '本机 Agent',
     });
     expect(issue.requestId).not.toContain(verifier);
-    const stored = database
-      .query<{ verifier_hash: string; approval_token_hash: string | null }, []>(
-        `SELECT verifier_hash, approval_token_hash
+    const stored = database.get<{
+      verifier_hash: string;
+      approval_token_hash: string | null;
+    }>(
+      `SELECT verifier_hash, approval_token_hash
          FROM platform_runner_authorization_request WHERE id = ?`,
-      )
-      .get(issue.requestId);
+      issue.requestId,
+    );
     expect(stored?.verifier_hash).not.toBe(verifier);
 
     expect(service.claimAuthorization(issue.requestId, verifier)).toEqual({
@@ -123,12 +122,11 @@ describe('Agent 浏览器授权', () => {
     });
     expect(approval.approvalToken).toBeTruthy();
     expect(
-      database
-        .query<{ approval_token_hash: string }, []>(
-          `SELECT approval_token_hash
+      database.get<{ approval_token_hash: string }>(
+        `SELECT approval_token_hash
            FROM platform_runner_authorization_request WHERE id = ?`,
-        )
-        .get(issue.requestId)?.approval_token_hash,
+        issue.requestId,
+      )?.approval_token_hash,
     ).not.toBe(approval.approvalToken);
     expect(() =>
       service.prepareAuthorizationApproval(users.other.id, issue.requestId),
@@ -191,11 +189,9 @@ describe('Agent 浏览器授权', () => {
       { state: 'REJECTED' },
     );
     expect(
-      database
-        .query<{ count: number }, []>(
-          'SELECT COUNT(*) count FROM platform_runner',
-        )
-        .get()?.count,
+      database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM platform_runner',
+      )?.count,
     ).toBe(0);
     setNow('2026-07-26T10:00:02Z');
     expect(service.claimAuthorization(issue.requestId, verifier)).toMatchObject(
@@ -261,11 +257,9 @@ describe('Agent 浏览器授权', () => {
       createdAt: first.runner.createdAt,
     });
     expect(
-      database
-        .query<{ count: number }, []>(
-          'SELECT COUNT(*) count FROM platform_runner',
-        )
-        .get()?.count,
+      database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM platform_runner',
+      )?.count,
     ).toBe(1);
     expect(() => service.heartbeat(first.credential)).toThrow(
       expect.objectContaining({ code: 'NOT_AUTHENTICATED' }),
@@ -283,11 +277,10 @@ describe('Runner credential and heartbeat', () => {
     const heartbeat = service.heartbeat(paired.credential, 1);
     expect(heartbeat.lastSeenAt).toBe('2026-07-26T10:00:00.000Z');
     expect(
-      database
-        .query<{ available_slots: number }, [string]>(
-          'SELECT available_slots FROM platform_runner WHERE id = ?',
-        )
-        .get(paired.runner.id)?.available_slots,
+      database.get<{ available_slots: number }>(
+        'SELECT available_slots FROM platform_runner WHERE id = ?',
+        paired.runner.id,
+      )?.available_slots,
     ).toBe(1);
     expect(service.listRunners(users.owner.id)[0]?.online).toBe(true);
     setNow('2026-07-26T10:00:31Z');

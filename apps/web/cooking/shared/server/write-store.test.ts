@@ -53,12 +53,10 @@ test('CookingWriteStore 在同一事务中完成业务写入、Audit 与幂等�
   expect(command()).toEqual({ value: '稳定结果' });
   expect(executions).toBe(1);
   expect(
-    database
-      .query<{ count: number }, []>(
-        `SELECT COUNT(*) count FROM cooking_audit_event
-         WHERE action = 'TEST_WRITTEN'`,
-      )
-      .get()?.count,
+    database.get<{
+      count: number;
+    }>(`SELECT COUNT(*) count FROM cooking_audit_event
+         WHERE action = 'TEST_WRITTEN'`)?.count,
   ).toBe(1);
 });
 
@@ -155,12 +153,10 @@ test('TestSubmissionWriteStore 只在首次成功提交后发布 Revision', asyn
   expect(executions).toBe(1);
   expect(invalidations).toEqual([{ submissionId, revision: 2 }]);
   expect(
-    database
-      .query<{ count: number }, []>(
-        `SELECT COUNT(*) count FROM cooking_audit_event
-         WHERE action = 'TEST_SUBMISSION_WRITTEN'`,
-      )
-      .get()?.count,
+    database.get<{
+      count: number;
+    }>(`SELECT COUNT(*) count FROM cooking_audit_event
+         WHERE action = 'TEST_SUBMISSION_WRITTEN'`)?.count,
   ).toBe(1);
 
   expect(() =>
@@ -178,11 +174,10 @@ test('TestSubmissionWriteStore 只在首次成功提交后发布 Revision', asyn
     }),
   ).toThrow('rollback');
   expect(
-    database
-      .query<{ workspace_revision: number }, [string]>(
-        `SELECT workspace_revision FROM cooking_test_submission WHERE id = ?`,
-      )
-      .get(submissionId)?.workspace_revision,
+    database.get<{ workspace_revision: number }>(
+      `SELECT workspace_revision FROM cooking_test_submission WHERE id = ?`,
+      submissionId,
+    )?.workspace_revision,
   ).toBe(2);
   expect(invalidations).toEqual([{ submissionId, revision: 2 }]);
 });

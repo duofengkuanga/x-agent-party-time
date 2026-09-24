@@ -126,10 +126,7 @@ describe('BindingService', () => {
       randomUUID(),
     );
     const columns = database
-      .query<{ name: string }, []>(
-        'PRAGMA table_info(cooking_engineering_binding)',
-      )
-      .all()
+      .all<{ name: string }>('PRAGMA table_info(cooking_engineering_binding)')
       .map(({ name }) => name);
     expect(columns).toEqual([
       'id',
@@ -184,12 +181,10 @@ test('首次 Runner Binding 确认仓库身份，后续 Binding 必须匹配', a
     ),
   ).toBe('https://example.com/team/project.git');
   expect(
-    database
-      .query<{ count: number }, []>(
-        `SELECT COUNT(*) count FROM cooking_audit_event
-         WHERE action = 'ENGINEERING_REPOSITORY_CONFIRMED'`,
-      )
-      .get()?.count,
+    database.get<{
+      count: number;
+    }>(`SELECT COUNT(*) count FROM cooking_audit_event
+         WHERE action = 'ENGINEERING_REPOSITORY_CONFIRMED'`)?.count,
   ).toBe(1);
   expect(() =>
     service.confirmRepository(
@@ -219,11 +214,9 @@ describe('Web 驱动工程绑定', () => {
       randomUUID(),
     );
     expect(
-      database
-        .query<{ count: number }, []>(
-          'SELECT COUNT(*) count FROM cooking_engineering_binding',
-        )
-        .get()?.count,
+      database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM cooking_engineering_binding',
+      )?.count,
     ).toBe(0);
     expect(requestService.claimNext(runners.other.runner.id)).toBeNull();
     const work = requestService.claimNext(runners.member.runner.id);
@@ -380,11 +373,10 @@ describe('删除未使用工程绑定', () => {
       1,
     );
     expect(
-      database
-        .query<{ count: number }, []>(
-          'SELECT COUNT(*) count FROM cooking_submission_item WHERE id = ?',
-        )
-        .get(itemId)?.count,
+      database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM cooking_submission_item WHERE id = ?',
+        itemId,
+      )?.count,
     ).toBe(1);
   });
 
@@ -420,11 +412,10 @@ describe('删除未使用工程绑定', () => {
       service.deleteBinding(users.member.id, binding.id, randomUUID()),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
     expect(
-      database
-        .query<{ count: number }, []>(
-          'SELECT COUNT(*) count FROM platform_execution WHERE id = ?',
-        )
-        .get(executionId)?.count,
+      database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM platform_execution WHERE id = ?',
+        executionId,
+      )?.count,
     ).toBe(1);
   });
 });
