@@ -1,6 +1,5 @@
+import { projectScenario } from '@/cooking/testing/scenario';
 import { EngineeringService } from '@/cooking/engineering/server/engineering-service';
-import { ProjectService } from '@/cooking/projects/server/project-service';
-import { AuthService } from '@/platform/auth/service';
 import { RunnerService } from '@/platform/runner/service';
 import { testDatabases } from '@/testing/database';
 import { describe, expect, test } from 'bun:test';
@@ -12,40 +11,15 @@ const createDatabase = testDatabases();
 
 async function setup() {
   const { directory, database } = await createDatabase();
-  const auth = new AuthService(database);
-  const users = {
-    owner: await auth.seedUser({
-      id: 'binding-owner',
-      username: 'binding-owner',
-      displayName: 'Binding 所有者',
-      password: 'password',
-    }),
-    member: await auth.seedUser({
-      id: 'binding-member',
-      username: 'binding-member',
-      displayName: 'Binding 成员',
-      password: 'password',
-    }),
-    other: await auth.seedUser({
-      id: 'binding-other',
-      username: 'binding-other',
-      displayName: 'Binding 外部用户',
-      password: 'password',
-    }),
-  };
-  const projects = new ProjectService(database);
-  const project = projects.createProject(users.owner.id, {
-    mutationId: randomUUID(),
+  const { users, project } = await projectScenario(database, {
     name: 'Binding 项目',
-  }).project;
-  const invitation = projects.inviteUser(users.owner.id, project.id, {
-    mutationId: randomUUID(),
-    username: users.member.username,
-  });
-  projects.respondToInvitation(users.member.id, invitation.id, {
-    mutationId: randomUUID(),
-    expectedVersion: invitation.version,
-    decision: 'ACCEPT',
+    owner: 'owner',
+    members: ['member'],
+    people: {
+      owner: ['binding-owner', 'Binding 所有者'],
+      member: ['binding-member', 'Binding 成员'],
+      other: ['binding-other', 'Binding 外部用户'],
+    },
   });
   const engineeringService = new EngineeringService(database);
   const engineering = engineeringService.createEngineering(

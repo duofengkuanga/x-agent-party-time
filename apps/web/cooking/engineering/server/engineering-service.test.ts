@@ -1,5 +1,4 @@
-import { ProjectService } from '@/cooking/projects/server/project-service';
-import { AuthService } from '@/platform/auth/service';
+import { projectScenario } from '@/cooking/testing/scenario';
 import { testDatabases } from '@/testing/database';
 import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
@@ -12,45 +11,17 @@ const createDatabase = testDatabases();
 
 async function setup() {
   const { directory, database } = await createDatabase();
-  const auth = new AuthService(
-    database,
-    () => new Date('2026-07-26T09:00:00Z'),
-  );
-  const users = {
-    owner: await auth.seedUser({
-      id: 'engineering-owner',
-      username: 'engineering-owner',
-      displayName: '工程所有者',
-      password: 'password',
-    }),
-    member: await auth.seedUser({
-      id: 'engineering-member',
-      username: 'engineering-member',
-      displayName: '工程成员',
-      password: 'password',
-    }),
-    other: await auth.seedUser({
-      id: 'engineering-other',
-      username: 'engineering-other',
-      displayName: '项目外用户',
-      password: 'password',
-    }),
-  };
-  const projects = new ProjectService(database);
-  const project = projects.createProject(users.owner.id, {
-    mutationId: randomUUID(),
+  const { users, projects, project } = await projectScenario(database, {
     name: '工程测试项目',
-  }).project;
-  const invitation = projects.inviteUser(users.owner.id, project.id, {
-    mutationId: randomUUID(),
-    username: users.member.username,
+    owner: 'owner',
+    members: ['member'],
+    authNow: () => new Date('2026-07-26T09:00:00Z'),
+    people: {
+      owner: ['engineering-owner', '工程所有者'],
+      member: ['engineering-member', '工程成员'],
+      other: ['engineering-other', '项目外用户'],
+    },
   });
-  projects.respondToInvitation(users.member.id, invitation.id, {
-    mutationId: randomUUID(),
-    expectedVersion: invitation.version,
-    decision: 'ACCEPT',
-  });
-
   const references = {
     engineering: new Set<string>(),
     environment: new Set<string>(),

@@ -1,9 +1,9 @@
-import { BindingService } from '@/cooking/bindings/server/binding-service';
-import { EngineeringService } from '@/cooking/engineering/server/engineering-service';
-import { ProjectService } from '@/cooking/projects/server/project-service';
+import {
+  projectScenario,
+  engineeringScenario,
+} from '@/cooking/testing/scenario';
 import { RepairService } from '@/cooking/repair/server/repair-service';
 import { SubmissionService } from '@/cooking/submissions/server/submission-service';
-import { AuthService } from '@/platform/auth/service';
 import type { AppDatabase } from '@/platform/database';
 import { LocalFileStore } from '@/platform/files/local-file-store';
 import { RunnerService } from '@/platform/runner/service';
@@ -19,73 +19,19 @@ const createDatabase = testDatabases();
 
 async function setup() {
   const { directory, database } = await createDatabase();
-  const auth = new AuthService(database);
-  const users = {
-    owner: await auth.seedUser(user('bug-owner', '项目所有者')),
-    tester: await auth.seedUser(user('bug-tester', '测试负责人')),
-    developerA: await auth.seedUser(user('bug-dev-a', '开发甲')),
-    developerB: await auth.seedUser(user('bug-dev-b', '开发乙')),
-    member: await auth.seedUser(user('bug-member', '普通成员')),
-    outsider: await auth.seedUser(user('bug-outsider', '项目外用户')),
-  };
-  const projects = new ProjectService(database);
-  const project = projects.createProject(users.owner.id, {
-    mutationId: randomUUID(),
+  const { users, project } = await projectScenario(database, {
     name: '缺陷协作项目',
-  }).project;
-  for (const invited of [
-    users.tester,
-    users.developerA,
-    users.developerB,
-    users.member,
-  ]) {
-    const invitation = projects.inviteUser(users.owner.id, project.id, {
-      mutationId: randomUUID(),
-      username: invited.username,
-    });
-    projects.respondToInvitation(invited.id, invitation.id, {
-      mutationId: randomUUID(),
-      expectedVersion: invitation.version,
-      decision: 'ACCEPT',
-    });
-  }
-  const engineering = new EngineeringService(database);
-  const front = engineering.createEngineering(users.owner.id, project.id, {
-    mutationId: randomUUID(),
-    name: '前端工程',
-    type: 'FRONTEND',
-    identifier: 'web',
-  });
-  const back = engineering.createEngineering(users.owner.id, project.id, {
-    mutationId: randomUUID(),
-    name: '后端工程',
-    type: 'BACKEND',
-    identifier: 'api',
-  });
-  engineering.addMember(users.owner.id, front.id, users.developerA.id, {
-    mutationId: randomUUID(),
-  });
-  engineering.addMember(users.owner.id, back.id, users.developerB.id, {
-    mutationId: randomUUID(),
-  });
-  const frontEnvironment = engineering.createEnvironment(
-    users.owner.id,
-    front.id,
-    {
-      mutationId: randomUUID(),
-      name: '前端测试环境',
-      deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' },
+    owner: 'owner',
+    members: ['tester', 'developerA', 'developerB', 'member'],
+    people: {
+      owner: ['bug-owner', '项目所有者'],
+      tester: ['bug-tester', '测试负责人'],
+      developerA: ['bug-dev-a', '开发甲'],
+      developerB: ['bug-dev-b', '开发乙'],
+      member: ['bug-member', '普通成员'],
+      outsider: ['bug-outsider', '项目外用户'],
     },
-  );
-  const backEnvironment = engineering.createEnvironment(
-    users.owner.id,
-    back.id,
-    {
-      mutationId: randomUUID(),
-      name: '后端测试环境',
-      deployment: { kind: 'CI_CD' },
-    },
-  );
+  });
   const runners = new RunnerService(database);
   const runnerA = runners.pair(
     runners.issuePairingCode(users.developerA.id).code,
@@ -95,29 +41,28 @@ async function setup() {
     runners.issuePairingCode(users.developerB.id).code,
     '开发乙 Runner',
   );
-  const bindings = new BindingService(database);
-  const frontBinding = bindings.createBinding(
-    users.developerA.id,
-    front.id,
-    runnerA.runner.id,
-    randomUUID(),
-  );
-  const backBinding = bindings.createBinding(
-    users.developerB.id,
-    back.id,
-    runnerB.runner.id,
-    randomUUID(),
-  );
-  bindings.confirmRepository(
-    runnerA.runner.id,
-    frontBinding.id,
-    'https://example.com/front.git',
-  );
-  bindings.confirmRepository(
-    runnerB.runner.id,
-    backBinding.id,
-    'https://example.com/back.git',
-  );
+  const front = engineeringScenario(database, users.owner.id, project.id, {
+    name: '前端工程',
+    type: 'FRONTEND',
+    identifier: 'web',
+    environment: '前端测试环境',
+    deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' },
+    repository: 'https://example.com/front.git',
+    developers: {
+      developer: { userId: users.developerA.id, runnerId: runnerA.runner.id },
+    },
+  });
+  const back = engineeringScenario(database, users.owner.id, project.id, {
+    name: '后端工程',
+    type: 'BACKEND',
+    identifier: 'api',
+    environment: '后端测试环境',
+    deployment: { kind: 'CI_CD' },
+    repository: 'https://example.com/back.git',
+    developers: {
+      developer: { userId: users.developerB.id, runnerId: runnerB.runner.id },
+    },
+  });
   const submission = new SubmissionService(database).createSubmission(
     users.owner.id,
     project.id,
@@ -128,18 +73,18 @@ async function setup() {
       testerUserId: users.tester.id,
       items: [
         {
-          engineeringId: front.id,
+          engineeringId: front.source.id,
           responsibleUserId: users.developerA.id,
-          bindingId: frontBinding.id,
+          bindingId: front.bindings.developer.id,
           targetBranch: 'feature/front',
-          environmentId: frontEnvironment.id,
+          environmentId: front.environment.id,
         },
         {
-          engineeringId: back.id,
+          engineeringId: back.source.id,
           responsibleUserId: users.developerB.id,
-          bindingId: backBinding.id,
+          bindingId: back.bindings.developer.id,
           targetBranch: 'feature/back',
-          environmentId: backEnvironment.id,
+          environmentId: back.environment.id,
         },
       ],
     },
@@ -879,15 +824,6 @@ function createAssignedBug(
 
 function mutation(expectedVersion: number) {
   return { mutationId: randomUUID(), expectedVersion };
-}
-
-function user(id: string, displayName: string) {
-  return {
-    id,
-    username: id,
-    displayName,
-    password: 'password',
-  };
 }
 
 function addSessionSync(
