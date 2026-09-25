@@ -1,0 +1,255 @@
+.collab-stage {
+  min-width: 0;
+}
+
+.collab-banner {
+  align-items: center;
+  background: color-mix(in srgb, var(--success), transparent 88%);
+  border: 1px solid var(--success);
+  display: flex;
+  font-size: 10px;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+}
+
+.collab-banner--error {
+  background: color-mix(in srgb, var(--accent), transparent 88%);
+  border-color: var(--accent);
+}
+
+.collab-banner button {
+  background: transparent;
+  border: 0;
+  font-size: 18px;
+}
+
+.collab-submission-header {
+  border-bottom: 1px solid var(--strong-line);
+  display: grid;
+}
+
+.collab-submission-facts {
+  display: grid;
+  gap: 0;
+  grid-template-columns: 1fr;
+  margin: 0;
+  padding: 0;
+}
+
+.collab-submission-facts div {
+  align-items: start;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 7px;
+  grid-template-columns: 78px minmax(0, 1fr);
+  padding: 7px 0;
+}
+
+.collab-submission-facts div:first-child {
+  border-top: 1px solid var(--line);
+}
+
+.collab-submission-facts dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.collab-submission-facts dd {
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.collab-submission-projects {
+  container-type: inline-size;
+  margin-top: 14px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.collab-submission-projects table {
+  border-collapse: collapse;
+  font-size: 11px;
+  line-height: 1.4;
+  table-layout: auto;
+  width: 100%;
+}
+
+.collab-submission-projects th,
+.collab-submission-projects td {
+  border: 1px solid var(--line);
+  padding: 6px 7px;
+  text-align: left;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  vertical-align: middle;
+  white-space: normal;
+}
+
+.collab-submission-projects th {
+  background: color-mix(in srgb, var(--panel), var(--paper-deep) 48%);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.collab-submission-projects td:first-child {
+  font-weight: 800;
+}
+
+.collab-submission-projects code {
+  font-size: 10px;
+}
+
+.collab-table-input {
+  background: var(--panel);
+  contain: inline-size;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font: inherit;
+  max-width: 100%;
+  min-height: 30px;
+  min-width: 0;
+  width: 100%;
+}
+
+.collab-table-input {
+  padding: 4px 6px;
+}
+
+.collab-table-input:focus {
+  border-color: var(--accent);
+  outline: 1px solid var(--accent);
+}
+
+@container (max-width: 420px) {
+  .collab-submission-projects table,
+  .collab-submission-projects tbody,
+  .collab-submission-projects tr,
+  .collab-submission-projects td {
+    display: block;
+    width: 100%;
+  }
+
+  .collab-submission-projects thead {
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    height: 1px;
+    overflow: hidden;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+  }
+
+  .collab-submission-projects tbody {
+    display: grid;
+    gap: 10px;
+  }
+
+  .collab-submission-projects tr {
+    background: color-mix(in srgb, var(--panel), var(--paper-deep) 25%);
+    border: 1px solid var(--strong-line);
+    padding: 4px 8px;
+  }
+
+  .collab-submission-projects td {
+    align-items: start;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    display: grid;
+    gap: 8px;
+    grid-template-columns: minmax(72px, 0.42fr) minmax(0, 1fr);
+    padding: 7px 0;
+    text-align: left !important;
+  }
+
+  .collab-submission-projects td:last-child {
+    border-bottom: 0;
+  }
+
+  .collab-submission-projects td::before {
+    color: var(--muted);
+    content: attr(data-label);
+    font-size: 9px;
+    font-weight: 900;
+  }
+}
+
+.collab-primary {
+  background: var(--accent) !important;
+  border: 1px solid var(--strong-line) !important;
+  box-shadow: 4px 4px 0 var(--strong-line);
+  color: #fff8ef !important;
+  font-weight: 900;
+  min-height: 40px;
+  padding: 0 13px;
+}
+
+.collab-primary:active:not(:disabled) {
+  box-shadow: 1px 1px 0 var(--strong-line);
+  transform: translate(3px, 3px);
+}
+
+.collab-section-label {
+  align-items: baseline;
+  border-bottom: 1px solid var(--strong-line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  justify-content: space-between;
+  min-width: 0;
+  padding-bottom: 9px;
+}
+
+.collab-section-label small {
+  color: var(--muted);
+  flex: 0 1 auto;
+  font-size: 8px;
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.collab-board-section {
+  container-type: inline-size;
+}
+
+.collab-bug-card dt {
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.collab-bug-card dd {
+  font-size: 9px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.collab-bug-card button,
+.collab-dialog button,
+.collab-submission-header__actions > button:not(.collab-primary) {
+  background: transparent;
+  border: 1px solid var(--line);
+  min-height: 32px;
+  padding: 0 9px;
+}
+
+.collab-engineering-card button:hover:not(:disabled),
+.collab-bug-card button:not(.collab-bug-card__open):hover:not(:disabled),
+.collab-dialog button:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.collab-bug-card button:focus-visible,
+.collab-dialog button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

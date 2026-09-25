@@ -1,0 +1,96 @@
+.collab-composer-fields {
+  display: contents;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.collab-environment-notice {
+  margin: 16px 0;
+  padding: 18px 20px;
+  border: 1px solid var(--ink);
+  border-left: 5px solid var(--accent);
+  background: var(--paper);
+}
+
+.collab-environment-notice h3,
+.collab-environment-dialog h2 {
+  margin: 0 0 12px;
+}
+
+.collab-environment-notice p,
+.collab-environment-dialog p {
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.collab-environment-conflict {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--muted);
+}
+
+.collab-environment-conflict p {
+  margin: 6px 0;
+}
+
+.collab-environment-conflict small {
+  color: var(--muted);
+}
+
+.collab-environment-dialog {
+  width: min(580px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  overflow: auto;
+  padding: 24px;
+  border: 2px solid var(--ink);
+  box-shadow: 6px 6px 0 var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.collab-environment-dialog::backdrop {
+  background: rgb(0 0 0 / 55%);
+}
+
+.collab-environment-target {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--muted);
+}
+
+.collab-environment-target dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-weight: 700;
+}
+
+.collab-environment-confirm-deployment {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--muted);
+}
+
+.collab-environment-notices {
+  flex: 0 1 auto;
+  max-height: 38dvh;
+  min-height: 0;
+  overflow-y: auto;
+  margin-bottom: 12px;
+}
+
+.collab-environment-notices .collab-environment-notice {
+  margin: 0 0 10px;
+}
+
+.collab-environment-conflict a {
+  color: var(--ink);
+  text-underline-offset: 3px;
+}
+
+.collab-environment-conflict a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}

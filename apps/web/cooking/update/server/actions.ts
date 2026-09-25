@@ -7,7 +7,7 @@ import {
   runInteractiveMutation,
   type InteractiveActionResult,
 } from '@/cooking/shared/server/action-transport';
-import { updateService } from '../../runtime/update';
+import { updateService } from '../../runtime/services';
 import type {
   RetryUpdateInput,
   SynchronizeUpdateSessionInput,

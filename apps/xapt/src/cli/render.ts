@@ -24,7 +24,3 @@ export function renderVersion(): string {
 export function renderUsageError(message: string): string {
   return `错误：${message}。\n下一步：运行 xapt --help 查看可用命令。`;
 }
-
-export function renderNotImplemented(command: string): string {
-  return `错误：${command} 尚未实现。\n下一步：请等待对应功能完成。`;
-}

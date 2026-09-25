@@ -4,13 +4,15 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./http-client": "./src/http-client.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@agent-party-time/execution-contract": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

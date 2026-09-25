@@ -1,5 +1,6 @@
 import { ZodError } from 'zod';
-import { PlatformError, publicError } from '@/platform/errors';
+import { PlatformError } from '@/platform/errors';
+import { errorResponse, jsonResponse } from '@/platform/http/responses';
 import { logger } from '@/platform/logging';
 import type { CookingWorkspaceService } from '@/cooking/workspace/server/workspace-service';
 import { CookingWorkspaceSnapshotSchema } from '@/cooking/workspace/contract';
@@ -19,11 +20,10 @@ export function handleWorkspaceSnapshot(
 ): Response {
   try {
     const submissionId = SubmissionIdSchema.parse(submissionIdInput);
-    return Response.json(
+    return jsonResponse(
       CookingWorkspaceSnapshotSchema.parse(
         submissions.getWorkspace(userId, submissionId),
       ),
-      { headers: { 'cache-control': 'no-store' } },
     );
   } catch (error) {
     return errorResponse(normalizeRequestError(error));
@@ -147,15 +147,4 @@ function normalizeRequestError(error: unknown): unknown {
       cause: error,
     });
   return error;
-}
-
-function errorResponse(error: unknown): Response {
-  const visible = publicError(error);
-  return Response.json(
-    { error: { code: visible.code, message: visible.message } },
-    {
-      status: visible.status,
-      headers: { 'cache-control': 'no-store' },
-    },
-  );
 }

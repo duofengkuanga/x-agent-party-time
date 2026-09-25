@@ -1,5 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
-import Ajv from 'ajv';
+import type { ExecutionRecoveryState } from '../state/schemas';
 import type {
   ClaimedExecution,
   CompleteExecutionRequest,
@@ -9,32 +8,31 @@ import type {
   JsonValue,
 } from '@agent-party-time/execution-contract';
 import { serializeDeterministicJson } from '@agent-party-time/execution-contract';
-import type { LocalFileSystem } from '../platform/files';
-import {
-  EXECUTION_STATE_SCHEMA_VERSION,
-  OUTBOX_STATE_SCHEMA_VERSION,
-  type OutboxEntry,
-} from '../state/schemas';
-import type { LocalStateStore } from '../state/store';
+import Ajv from 'ajv';
+import { createHash, randomUUID } from 'node:crypto';
 import type { AuthenticatedRunnerSession } from '../agent/connection';
 import type { RunnerExecutionHttp } from '../agent/server-http';
-import { RunnerHttpError } from '../agent/server-http';
-import type { AttachmentMaterializer } from './attachments';
-import { CodexAppServerError } from '../codex/errors';
+import { RunnerHttpError } from '@agent-party-time/runner-contract/http-client';
 import {
   type CodexExecutor,
   type StartedCodexExecution,
 } from '../codex/contract';
-import type { ExecutionWorkspaceManager } from './workspaces';
-import {
-  ExecutionResultVerificationError,
-  type ExecutionResultVerifier,
-} from './result-verification';
+import { CodexAppServerError } from '../codex/errors';
+import type { LocalFileSystem } from '../platform/files';
 import {
   SkillBundleManager,
   XAPT_SKILL_NAMES,
   type XaptSkillName,
 } from '../skills/manager';
+import { EXECUTION_STATE_SCHEMA_VERSION } from '../state/schemas';
+import type { LocalStateStore } from '../state/store';
+import type { AttachmentMaterializer } from './attachments';
+import { ExecutionOutbox } from './outbox';
+import {
+  ExecutionResultVerificationError,
+  type ExecutionResultVerifier,
+} from './result-verification';
+import type { ExecutionWorkspaceManager } from './workspaces';
 
 const MAX_FAILURE_MESSAGE_LENGTH = 1_000;
 const sessionResultSchemaValidator = new Ajv({
@@ -49,6 +47,7 @@ export interface ExecutionProjection {
 }
 
 export class ExecutionService {
+  private readonly outbox: ExecutionOutbox;
   private readonly tasks = new Map<string, Promise<void>>();
   private readonly bindingTails = new Map<string, Promise<void>>();
   private readonly controllers = new Map<string, AbortController>();
@@ -75,12 +74,14 @@ export class ExecutionService {
     private readonly skills: SkillBundleManager,
     private readonly resultVerifier: ExecutionResultVerifier,
     private readonly now: () => Date = () => new Date(),
-    private readonly createId: () => string = randomUUID,
-  ) {}
+    createId: () => string = randomUUID,
+  ) {
+    this.outbox = new ExecutionOutbox(http, state, now, createId);
+  }
 
   async cycle(session: AuthenticatedRunnerSession): Promise<boolean> {
     if (this.tasks.size === 0) {
-      if (!(await this.replayOutbox(session))) return false;
+      if (!(await this.outbox.replayOutbox(session))) return false;
       if (await this.recoverInterrupted()) {
         this.recoveryRequired = true;
         return true;
@@ -120,15 +121,7 @@ export class ExecutionService {
   ): void {
     if (this.tasks.has(execution.id)) return;
     const previous = this.bindingTails.get(execution.bindingId);
-    const persisted = this.state.saveExecution({
-      schemaVersion: EXECUTION_STATE_SCHEMA_VERSION,
-      executionId: execution.id,
-      bindingId: execution.bindingId,
-      phase: 'CLAIMED',
-      sessionId: null,
-      claimedExecution: execution,
-      updatedAt: this.now().toISOString(),
-    });
+    const persisted = this.recordPhase(execution, 'CLAIMED', null);
     let task!: Promise<void>;
     task = Promise.all([persisted, previous ?? Promise.resolve()])
       .then(async () => {
@@ -364,7 +357,7 @@ export class ExecutionService {
       },
     };
     if (
-      !(await this.persistAndDeliver(
+      !(await this.outbox.persistAndDeliver(
         session,
         'START',
         execution.id,
@@ -378,15 +371,7 @@ export class ExecutionService {
     }
     startAccepted = true;
     releaseStartGate();
-    await this.state.saveExecution({
-      schemaVersion: EXECUTION_STATE_SCHEMA_VERSION,
-      executionId: execution.id,
-      bindingId: execution.bindingId,
-      phase: 'RUNNING',
-      sessionId: started.sessionId,
-      claimedExecution: execution,
-      updatedAt: this.now().toISOString(),
-    });
+    await this.recordPhase(execution, 'RUNNING', started.sessionId);
 
     const lease = this.keepLease(session, execution, controller);
     let request: CompleteExecutionRequest;
@@ -426,16 +411,15 @@ export class ExecutionService {
     } finally {
       lease.stop();
     }
-    await this.state.saveExecution({
-      schemaVersion: EXECUTION_STATE_SCHEMA_VERSION,
-      executionId: execution.id,
-      bindingId: execution.bindingId,
-      phase: 'OUTCOME_PENDING',
-      sessionId: started.sessionId,
-      claimedExecution: execution,
-      updatedAt: this.now().toISOString(),
-    });
-    if (await this.persistAndDeliver(session, 'OUTCOME', execution.id, request))
+    await this.recordPhase(execution, 'OUTCOME_PENDING', started.sessionId);
+    if (
+      await this.outbox.persistAndDeliver(
+        session,
+        'OUTCOME',
+        execution.id,
+        request,
+      )
+    )
       await this.state.removeExecution(execution.id);
     this.controllers.delete(execution.id);
   }
@@ -460,15 +444,7 @@ export class ExecutionService {
       },
     );
     this.waitingInteractionCount += 1;
-    await this.state.saveExecution({
-      schemaVersion: EXECUTION_STATE_SCHEMA_VERSION,
-      executionId: execution.id,
-      bindingId: execution.bindingId,
-      phase: 'WAITING_INTERACTION',
-      sessionId,
-      claimedExecution: execution,
-      updatedAt: this.now().toISOString(),
-    });
+    await this.recordPhase(execution, 'WAITING_INTERACTION', sessionId);
     try {
       for (;;) {
         const waited = await this.http.waitInteraction(
@@ -506,7 +482,7 @@ export class ExecutionService {
     failure: ExecutionFailure,
   ): Promise<void> {
     if (
-      await this.persistAndDeliver(session, 'START', execution.id, {
+      await this.outbox.persistAndDeliver(session, 'START', execution.id, {
         kind: 'START_FAILED',
         leaseToken: execution.lease.token,
         failure,
@@ -522,7 +498,7 @@ export class ExecutionService {
   ): Promise<void> {
     const sessionId = `xapt-workspace:${execution.id}`;
     if (
-      !(await this.persistAndDeliver(session, 'START', execution.id, {
+      !(await this.outbox.persistAndDeliver(session, 'START', execution.id, {
         kind: 'STARTED',
         leaseToken: execution.lease.token,
         sessionId,
@@ -531,7 +507,7 @@ export class ExecutionService {
     )
       return;
     if (
-      await this.persistAndDeliver(session, 'OUTCOME', execution.id, {
+      await this.outbox.persistAndDeliver(session, 'OUTCOME', execution.id, {
         leaseToken: execution.lease.token,
         sessionId,
         outcome: { kind: 'SUCCEEDED', result },
@@ -604,7 +580,7 @@ export class ExecutionService {
       return;
     }
     if (
-      !(await this.persistAndDeliver(session, 'START', execution.id, {
+      !(await this.outbox.persistAndDeliver(session, 'START', execution.id, {
         kind: 'STARTED',
         leaseToken: execution.lease.token,
         sessionId,
@@ -613,13 +589,29 @@ export class ExecutionService {
     )
       return;
     if (
-      await this.persistAndDeliver(session, 'OUTCOME', execution.id, {
+      await this.outbox.persistAndDeliver(session, 'OUTCOME', execution.id, {
         leaseToken: execution.lease.token,
         sessionId,
         outcome: { kind: 'SUCCEEDED', result },
       })
     )
       await this.state.removeExecution(execution.id);
+  }
+
+  private recordPhase(
+    execution: ClaimedExecution,
+    phase: ExecutionRecoveryState['phase'],
+    sessionId: string | null,
+  ): Promise<void> {
+    return this.state.saveExecution({
+      schemaVersion: EXECUTION_STATE_SCHEMA_VERSION,
+      executionId: execution.id,
+      bindingId: execution.bindingId,
+      phase,
+      sessionId,
+      claimedExecution: execution,
+      updatedAt: this.now().toISOString(),
+    });
   }
 
   private async recoverInterrupted(): Promise<boolean> {
@@ -648,75 +640,6 @@ export class ExecutionService {
       },
       updatedAt: this.now().toISOString(),
     });
-  }
-
-  private async persistAndDeliver(
-    session: AuthenticatedRunnerSession,
-    kind: 'START' | 'OUTCOME',
-    executionId: string,
-    request: ExecutionStartRequest | CompleteExecutionRequest,
-  ): Promise<boolean> {
-    const entry = {
-      schemaVersion: OUTBOX_STATE_SCHEMA_VERSION,
-      id: this.createId(),
-      kind,
-      executionId,
-      request,
-      createdAt: this.now().toISOString(),
-    } as OutboxEntry;
-    await this.state.saveOutbox(entry);
-    try {
-      await this.deliver(session, entry);
-      await this.state.removeOutbox(entry.id);
-      return true;
-    } catch (error) {
-      if (isTerminalDeliveryError(error)) {
-        await this.state.removeOutbox(entry.id);
-        return true;
-      }
-      return false;
-    }
-  }
-
-  private async replayOutbox(
-    session: AuthenticatedRunnerSession,
-  ): Promise<boolean> {
-    for (const entry of await this.state.loadOutbox())
-      try {
-        await this.deliver(session, entry);
-        await this.state.removeOutbox(entry.id);
-        if (entry.kind === 'OUTCOME' || entry.request.kind === 'START_FAILED')
-          await this.state.removeExecution(entry.executionId);
-      } catch (error) {
-        if (isTerminalDeliveryError(error)) {
-          await this.state.removeOutbox(entry.id);
-          await this.state.removeExecution(entry.executionId);
-          continue;
-        }
-        return false;
-      }
-    return true;
-  }
-
-  private async deliver(
-    session: AuthenticatedRunnerSession,
-    entry: OutboxEntry,
-  ): Promise<void> {
-    if (entry.kind === 'START') {
-      await this.http.startExecution(
-        session.serverOrigin,
-        session.credential,
-        entry.executionId,
-        entry.request,
-      );
-      return;
-    }
-    await this.http.completeExecution(
-      session.serverOrigin,
-      session.credential,
-      entry.executionId,
-      entry.request,
-    );
   }
 
   private keepLease(
@@ -783,15 +706,6 @@ function verifySessionResultSchema(
     throw new ExecutionResultVerificationError(
       'Codex 会话的最新轮次不符合原任务结果约束',
     );
-}
-
-function isTerminalDeliveryError(error: unknown): boolean {
-  return (
-    error instanceof RunnerHttpError &&
-    ['LEASE_EXPIRED', 'OUTCOME_CONFLICT', 'INVALID_TRANSITION'].includes(
-      error.code,
-    )
-  );
 }
 
 class CancellationRequested extends Error {}

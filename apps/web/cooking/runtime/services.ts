@@ -1,28 +1,23 @@
-import { database } from '@/platform/database';
-import { serverPaths } from '@/platform/config';
-import { LocalFileStore } from '@/platform/files/local-file-store';
-import { BindingService } from '@/cooking/bindings/server/binding-service';
 import { BindingRequestService } from '@/cooking/bindings/server/binding-request-service';
-import { BugService } from '@/cooking/bugs/server/bug-service';
+import { BindingService } from '@/cooking/bindings/server/binding-service';
 import { EngineeringService } from '@/cooking/engineering/server/engineering-service';
 import { projectMemberHasEngineeringResponsibilities } from '@/cooking/engineering/server/responsibilities';
 import { ProjectService } from '@/cooking/projects/server/project-service';
+import {
+  SubmissionCreationCatalogSchema,
+  type SubmissionCreationCatalog,
+} from '@/cooking/submissions/contract';
 import {
   engineeringMemberHasSubmissionResponsibilities,
   projectMemberHasSubmissionResponsibilities,
   submissionReferencesEngineering,
   submissionReferencesEnvironment,
 } from '@/cooking/submissions/server/references';
-import { SubmissionService } from '@/cooking/submissions/server/submission-service';
 import { workspaceEvents } from '@/cooking/submissions/server/workspace-events';
-import {
-  SubmissionCreationCatalogSchema,
-  type SubmissionCreationCatalog,
-} from '@/cooking/submissions/contract';
-import { CookingWorkspaceService } from '@/cooking/workspace/server/workspace-service';
-import { repairService } from '@/cooking/runtime/repair';
-import { updateService } from '@/cooking/runtime/update';
-import { lifecycleService } from '@/cooking/runtime/lifecycle';
+import { serverPaths } from '@/platform/config';
+import { database } from '@/platform/database';
+import { LocalFileStore } from '@/platform/files/local-file-store';
+import { createCooking } from './create-cooking';
 
 export function projectService(): ProjectService {
   const appDatabase = database();
@@ -72,40 +67,6 @@ export function bindingRequestService(): BindingRequestService {
   );
 }
 
-export function submissionService(): SubmissionService {
-  return new SubmissionService(
-    database(),
-    undefined,
-    undefined,
-    (submissionId, revision) =>
-      workspaceEvents().publish({ submissionId, revision }),
-  );
-}
-
-export function bugService(): BugService {
-  const repairs = repairService();
-  return new BugService(
-    database(),
-    undefined,
-    undefined,
-    (submissionId, revision) =>
-      workspaceEvents().publish({ submissionId, revision }),
-    {
-      requested: (bugId) => repairs.createInitialExecution(bugId),
-    },
-  );
-}
-
-export function workspaceService(): CookingWorkspaceService {
-  return new CookingWorkspaceService(
-    submissionService(),
-    bugService(),
-    repairService(),
-    updateService(),
-    lifecycleService(),
-  );
-}
-
 export function cookingFileStore(): LocalFileStore {
   return new LocalFileStore(database(), serverPaths().files);
 }
@@ -151,3 +112,31 @@ export function submissionCreationCatalog(
     })),
   );
 }
+
+const workflows = new WeakMap<
+  ReturnType<typeof database>,
+  ReturnType<typeof createCooking>
+>();
+
+function workflow() {
+  const db = database();
+  let cooking = workflows.get(db);
+  if (!cooking) {
+    cooking = createCooking(db, {
+      publish: (submissionId, revision) =>
+        workspaceEvents().publish({ submissionId, revision }),
+    });
+    workflows.set(db, cooking);
+  }
+  return cooking;
+}
+
+export const submissionService = () => workflow().submissions;
+export const bugService = () => workflow().bugs;
+export const repairService = () => workflow().repairs;
+export const updateService = () => workflow().updates;
+export const lifecycleService = () => workflow().lifecycle;
+export const cookingExecutionService = () => workflow().executions;
+export const workspaceService = () => workflow().workspace;
+export const prepareDueUpdateExecutions = () =>
+  workflow().updates.prepareDueExecutions();

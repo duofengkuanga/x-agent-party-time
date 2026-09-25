@@ -47,13 +47,13 @@ export class AuthService {
     if (!input.password)
       throw new PlatformError('VALIDATION_FAILED', '开发 Seed 密码不能为空');
 
-    const existing = this.db
-      .prepare(
-        `SELECT id, username, display_name, password_hash, created_at
+    const existing = this.db.get(
+      `SELECT id, username, display_name, password_hash, created_at
          FROM platform_user
          WHERE id = ? OR username = ? COLLATE NOCASE`,
-      )
-      .get(id, username) as UserRow | undefined;
+      id,
+      username,
+    ) as UserRow | undefined;
 
     if (existing) {
       if (existing.id !== id || existing.username.toLowerCase() !== username)
@@ -80,13 +80,12 @@ export class AuthService {
     const parsedUsername = UsernameSchema.safeParse(normalized);
     if (!parsedUsername.success || !password) return null;
 
-    const row = this.db
-      .prepare(
-        `SELECT id, username, display_name, password_hash, created_at
+    const row = this.db.get(
+      `SELECT id, username, display_name, password_hash, created_at
          FROM platform_user
          WHERE username = ? COLLATE NOCASE`,
-      )
-      .get(parsedUsername.data) as UserRow | undefined;
+      parsedUsername.data,
+    ) as UserRow | undefined;
     if (!row || !(await verifyPassword(password, row.password_hash)))
       return null;
     return mapUser(row);
@@ -117,15 +116,14 @@ export class AuthService {
 
   currentUser(token: string | undefined): User | null {
     if (!token) return null;
-    const row = this.db
-      .prepare(
-        `SELECT u.id, u.username, u.display_name, u.password_hash, u.created_at,
+    const row = this.db.get(
+      `SELECT u.id, u.username, u.display_name, u.password_hash, u.created_at,
                 s.expires_at
          FROM platform_session s
          JOIN platform_user u ON u.id = s.user_id
          WHERE s.token_hash = ?`,
-      )
-      .get(hashToken(token)) as SessionUserRow | undefined;
+      hashToken(token),
+    ) as SessionUserRow | undefined;
     if (!row) return null;
 
     if (Date.parse(row.expires_at) <= this.now().getTime()) {

@@ -1,59 +1,25 @@
-import { afterEach, describe, expect, test } from 'bun:test';
-import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { AuthService } from '@/platform/auth/service';
-import type { AppDatabase } from '@/platform/database';
-import { openDatabase } from '@/platform/database';
-import { RunnerService } from '@/platform/runner/service';
+import { projectScenario } from '@/cooking/testing/scenario';
 import { EngineeringService } from '@/cooking/engineering/server/engineering-service';
-import { ProjectService } from '@/cooking/projects/server/project-service';
+import { RunnerService } from '@/platform/runner/service';
+import { testDatabases } from '@/testing/database';
+import { describe, expect, test } from 'bun:test';
+import { randomUUID } from 'node:crypto';
 import { BindingRequestService } from './binding-request-service';
 import { BindingService } from './binding-service';
 
-const directories: string[] = [];
-const databases: AppDatabase[] = [];
+const createDatabase = testDatabases();
 
 async function setup() {
-  const directory = await mkdtemp(join(tmpdir(), 'agent-party-time-binding-'));
-  directories.push(directory);
-  const database = openDatabase(join(directory, 'server.sqlite'));
-  databases.push(database);
-  const auth = new AuthService(database);
-  const users = {
-    owner: await auth.seedUser({
-      id: 'binding-owner',
-      username: 'binding-owner',
-      displayName: 'Binding 所有者',
-      password: 'password',
-    }),
-    member: await auth.seedUser({
-      id: 'binding-member',
-      username: 'binding-member',
-      displayName: 'Binding 成员',
-      password: 'password',
-    }),
-    other: await auth.seedUser({
-      id: 'binding-other',
-      username: 'binding-other',
-      displayName: 'Binding 外部用户',
-      password: 'password',
-    }),
-  };
-  const projects = new ProjectService(database);
-  const project = projects.createProject(users.owner.id, {
-    mutationId: randomUUID(),
+  const { directory, database } = await createDatabase();
+  const { users, project } = await projectScenario(database, {
     name: 'Binding 项目',
-  }).project;
-  const invitation = projects.inviteUser(users.owner.id, project.id, {
-    mutationId: randomUUID(),
-    username: users.member.username,
-  });
-  projects.respondToInvitation(users.member.id, invitation.id, {
-    mutationId: randomUUID(),
-    expectedVersion: invitation.version,
-    decision: 'ACCEPT',
+    owner: 'owner',
+    members: ['member'],
+    people: {
+      owner: ['binding-owner', 'Binding 所有者'],
+      member: ['binding-member', 'Binding 成员'],
+      other: ['binding-other', 'Binding 外部用户'],
+    },
   });
   const engineeringService = new EngineeringService(database);
   const engineering = engineeringService.createEngineering(
@@ -97,15 +63,6 @@ async function setup() {
     users,
   };
 }
-
-afterEach(async () => {
-  for (const database of databases.splice(0)) database.close();
-  await Promise.all(
-    directories
-      .splice(0)
-      .map((directory) => rm(directory, { force: true, recursive: true })),
-  );
-});
 
 describe('BindingService', () => {
   test('工程成员只能用自己的有效 Runner 建立稳定 Binding', async () => {
@@ -169,10 +126,7 @@ describe('BindingService', () => {
       randomUUID(),
     );
     const columns = database
-      .query<{ name: string }, []>(
-        'PRAGMA table_info(cooking_engineering_binding)',
-      )
-      .all()
+      .all<{ name: string }>('PRAGMA table_info(cooking_engineering_binding)')
       .map(({ name }) => name);
     expect(columns).toEqual([
       'id',
@@ -227,12 +181,10 @@ test('首次 Runner Binding 确认仓库身份，后续 Binding 必须匹配', a
     ),
   ).toBe('https://example.com/team/project.git');
   expect(
-    database
-      .query<{ count: number }, []>(
-        `SELECT COUNT(*) count FROM cooking_audit_event
-         WHERE action = 'ENGINEERING_REPOSITORY_CONFIRMED'`,
-      )
-      .get()?.count,
+    database.get<{
+      count: number;
+    }>(`SELECT COUNT(*) count FROM cooking_audit_event
+         WHERE action = 'ENGINEERING_REPOSITORY_CONFIRMED'`)?.count,
   ).toBe(1);
   expect(() =>
     service.confirmRepository(
@@ -262,11 +214,9 @@ describe('Web 驱动工程绑定', () => {
       randomUUID(),
     );
     expect(
-      database
-        .query<{ count: number }, []>(
-          'SELECT COUNT(*) count FROM cooking_engineering_binding',
-        )
-        .get()?.count,
+      database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM cooking_engineering_binding',
+      )?.count,
     ).toBe(0);
     expect(requestService.claimNext(runners.other.runner.id)).toBeNull();
     const work = requestService.claimNext(runners.member.runner.id);
@@ -423,11 +373,10 @@ describe('删除未使用工程绑定', () => {
       1,
     );
     expect(
-      database
-        .query<{ count: number }, []>(
-          'SELECT COUNT(*) count FROM cooking_submission_item WHERE id = ?',
-        )
-        .get(itemId)?.count,
+      database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM cooking_submission_item WHERE id = ?',
+        itemId,
+      )?.count,
     ).toBe(1);
   });
 
@@ -463,11 +412,10 @@ describe('删除未使用工程绑定', () => {
       service.deleteBinding(users.member.id, binding.id, randomUUID()),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
     expect(
-      database
-        .query<{ count: number }, []>(
-          'SELECT COUNT(*) count FROM platform_execution WHERE id = ?',
-        )
-        .get(executionId)?.count,
+      database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM platform_execution WHERE id = ?',
+        executionId,
+      )?.count,
     ).toBe(1);
   });
 });

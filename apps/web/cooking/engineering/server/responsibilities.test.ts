@@ -1,32 +1,15 @@
-import { afterEach, expect, test } from 'bun:test';
-import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { AuthService } from '@/platform/auth/service';
-import type { AppDatabase } from '@/platform/database';
-import { openDatabase } from '@/platform/database';
 import { ProjectService } from '@/cooking/projects/server/project-service';
+import { AuthService } from '@/platform/auth/service';
+import { testDatabases } from '@/testing/database';
+import { expect, test } from 'bun:test';
+import { randomUUID } from 'node:crypto';
 import { EngineeringService } from './engineering-service';
 import { projectMemberHasEngineeringResponsibilities } from './responsibilities';
 
-const directories: string[] = [];
-const databases: AppDatabase[] = [];
-
-afterEach(async () => {
-  for (const database of databases.splice(0)) database.close();
-  await Promise.all(
-    directories
-      .splice(0)
-      .map((directory) => rm(directory, { force: true, recursive: true })),
-  );
-});
+const createDatabase = testDatabases();
 
 test('工程成员关系接入 Project 成员活动职责保护', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'agent-party-time-duty-'));
-  directories.push(directory);
-  const database = openDatabase(join(directory, 'server.sqlite'));
-  databases.push(database);
+  const { directory, database } = await createDatabase();
   const auth = new AuthService(database);
   const owner = await auth.seedUser({
     id: 'duty-owner',

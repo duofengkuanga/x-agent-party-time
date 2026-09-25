@@ -1,8 +1,4 @@
-import {
-  errorResponse,
-  jsonResponse,
-  normalizeRequestError,
-} from '@/platform/http/responses';
+import { jsonOperation } from '@/platform/http/responses';
 import {
   RunnerAuthorizationClaimRequestSchema,
   RunnerAuthorizationClaimResponseSchema,
@@ -26,33 +22,26 @@ export async function handleRunnerPair(
   request: Request,
   runners: Pick<RunnerService, 'pair'>,
 ): Promise<Response> {
-  try {
+  return jsonOperation(RunnerPairingResultSchema, async () => {
     const body = RunnerPairRequestSchema.parse(await request.json());
-    return jsonResponse(
-      RunnerPairingResultSchema.parse(runners.pair(body.code, body.name)),
-    );
-  } catch (error) {
-    return errorResponse(normalizeRequestError(error));
-  }
+    return runners.pair(body.code, body.name);
+  });
 }
 
 export async function handleRunnerAuthorizationCreate(
   request: Request,
   runners: Pick<RunnerService, 'createAuthorizationRequest'>,
 ): Promise<Response> {
-  try {
-    const body = RunnerAuthorizationCreateRequestSchema.parse(
-      await request.json(),
-    );
-    return jsonResponse(
-      RunnerAuthorizationIssueSchema.parse(
-        runners.createAuthorizationRequest(body),
-      ),
-      201,
-    );
-  } catch (error) {
-    return errorResponse(normalizeRequestError(error));
-  }
+  return jsonOperation(
+    RunnerAuthorizationIssueSchema,
+    async () => {
+      const body = RunnerAuthorizationCreateRequestSchema.parse(
+        await request.json(),
+      );
+      return runners.createAuthorizationRequest(body);
+    },
+    { status: 201 },
+  );
 }
 
 export async function handleRunnerAuthorizationClaim(
@@ -60,51 +49,37 @@ export async function handleRunnerAuthorizationClaim(
   requestId: string,
   runners: Pick<RunnerService, 'claimAuthorization'>,
 ): Promise<Response> {
-  try {
+  return jsonOperation(RunnerAuthorizationClaimResponseSchema, async () => {
     const body = RunnerAuthorizationClaimRequestSchema.parse(
       await request.json(),
     );
-    return jsonResponse(
-      RunnerAuthorizationClaimResponseSchema.parse(
-        runners.claimAuthorization(requestId, body.verifier),
-      ),
-    );
-  } catch (error) {
-    return errorResponse(normalizeRequestError(error));
-  }
+    return runners.claimAuthorization(requestId, body.verifier);
+  });
 }
 
 export async function handleRunnerHeartbeat(
   request: Request,
   runners: Pick<RunnerService, 'authenticateCredential' | 'heartbeat'>,
 ): Promise<Response> {
-  try {
+  return jsonOperation(RunnerHeartbeatResponseSchema, async () => {
     const credential = bearerCredential(request);
     runners.authenticateCredential(credential);
     const body = RunnerHeartbeatRequestSchema.parse(await request.json());
-    return jsonResponse(
-      RunnerHeartbeatResponseSchema.parse({
-        runner: runners.heartbeat(credential, body.availableSlots),
-      }),
-    );
-  } catch (error) {
-    return errorResponse(normalizeRequestError(error));
-  }
+    return {
+      runner: runners.heartbeat(credential, body.availableSlots),
+    };
+  });
 }
 
 export async function handleRunnerSelfRevocation(
   request: Request,
   runners: Pick<RunnerService, 'revokeSelf'>,
 ): Promise<Response> {
-  try {
-    return jsonResponse(
-      RunnerHeartbeatResponseSchema.parse({
-        runner: runners.revokeSelf(bearerCredential(request)),
-      }),
-    );
-  } catch (error) {
-    return errorResponse(normalizeRequestError(error));
-  }
+  return jsonOperation(RunnerHeartbeatResponseSchema, async () => {
+    return {
+      runner: runners.revokeSelf(bearerCredential(request)),
+    };
+  });
 }
 
 export async function handleRunnerBindings(
@@ -112,16 +87,12 @@ export async function handleRunnerBindings(
   runners: Pick<RunnerService, 'authenticateCredential'>,
   listBindingRefs: (runnerId: string) => RunnerBindingRef[],
 ): Promise<Response> {
-  try {
+  return jsonOperation(RunnerBindingsResponseSchema, async () => {
     const runner = runners.authenticateCredential(bearerCredential(request));
-    return jsonResponse(
-      RunnerBindingsResponseSchema.parse({
-        bindings: listBindingRefs(runner.id),
-      }),
-    );
-  } catch (error) {
-    return errorResponse(normalizeRequestError(error));
-  }
+    return {
+      bindings: listBindingRefs(runner.id),
+    };
+  });
 }
 
 export async function handleRunnerBindingConfirmation(
@@ -133,20 +104,16 @@ export async function handleRunnerBindingConfirmation(
     repositoryUrl: string,
   ) => string,
 ): Promise<Response> {
-  try {
+  return jsonOperation(RunnerBindingConfirmationResponseSchema, async () => {
     const runner = runners.authenticateCredential(bearerCredential(request));
     const body = RunnerBindingConfirmationRequestSchema.parse(
       await request.json(),
     );
-    return jsonResponse(
-      RunnerBindingConfirmationResponseSchema.parse({
-        ...body,
-        repositoryUrl: confirm(runner.id, body.bindingId, body.repositoryUrl),
-      }),
-    );
-  } catch (error) {
-    return errorResponse(normalizeRequestError(error));
-  }
+    return {
+      ...body,
+      repositoryUrl: confirm(runner.id, body.bindingId, body.repositoryUrl),
+    };
+  });
 }
 
 export async function handleRunnerBindingWorkClaim(
@@ -154,14 +121,10 @@ export async function handleRunnerBindingWorkClaim(
   runners: Pick<RunnerService, 'authenticateCredential'>,
   claim: (runnerId: string) => unknown,
 ): Promise<Response> {
-  try {
+  return jsonOperation(RunnerBindingWorkResponseSchema, async () => {
     const runner = runners.authenticateCredential(bearerCredential(request));
-    return jsonResponse(
-      RunnerBindingWorkResponseSchema.parse({ request: claim(runner.id) }),
-    );
-  } catch (error) {
-    return errorResponse(normalizeRequestError(error));
-  }
+    return { request: claim(runner.id) };
+  });
 }
 
 export async function handleRunnerBindingWorkCompletion(
@@ -174,19 +137,15 @@ export async function handleRunnerBindingWorkCompletion(
     completion: ReturnType<typeof RunnerBindingWorkCompletionSchema.parse>,
   ) => 'SUCCEEDED' | 'FAILED',
 ): Promise<Response> {
-  try {
+  return jsonOperation(RunnerBindingWorkCompletionResponseSchema, async () => {
     const runner = runners.authenticateCredential(bearerCredential(request));
     const completion = RunnerBindingWorkCompletionSchema.parse(
       await request.json(),
     );
-    return jsonResponse(
-      RunnerBindingWorkCompletionResponseSchema.parse({
-        state: complete(runner.id, requestId, completion),
-      }),
-    );
-  } catch (error) {
-    return errorResponse(normalizeRequestError(error));
-  }
+    return {
+      state: complete(runner.id, requestId, completion),
+    };
+  });
 }
 
 export function bearerCredential(request: Request): string | undefined {

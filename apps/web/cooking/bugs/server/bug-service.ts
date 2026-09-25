@@ -1,3 +1,4 @@
+import { requireBindableFiles } from '@/cooking/shared/server/attachments';
 import { environmentReady } from '@/cooking/submissions/server/environment-access';
 import { BugDeletion } from './bug-deletion';
 import { randomUUID } from 'node:crypto';
@@ -136,20 +137,18 @@ export class BugService {
           );
         this.requireItem(submissionId, parsed.submissionItemId);
         const attachmentIds = reportAttachmentIds(parsed);
-        this.requireBindableFiles(actorUserId, attachmentIds);
+        requireBindableFiles(this.db, actorUserId, attachmentIds);
         const now = this.now().toISOString();
         const bugId = this.createId();
         const shortId = this.nextShortId(submissionId);
         const report = normalizedReport(parsed);
-        this.db
-          .prepare(
-            `INSERT INTO cooking_bug(
+        this.db.run(
+          `INSERT INTO cooking_bug(
                id, short_id, submission_id, submission_item_id, stage,
                title, operation_path, actual_result, expected_result,
                report_locked_at, version, created_by_user_id, created_at, updated_at
              ) VALUES (?, ?, ?, ?, 'WAITING_FOR_REPAIR', ?, ?, ?, ?, NULL, 1, ?, ?, ?)`,
-          )
-          .run(
+          [
             bugId,
             shortId,
             submissionId,
@@ -161,7 +160,8 @@ export class BugService {
             actorUserId,
             now,
             now,
-          );
+          ],
+        );
         this.bindAttachments(
           bugId,
           'ACTUAL_RESULT',
@@ -223,17 +223,15 @@ export class BugService {
         this.requireEditableReport(bug, parsed.expectedVersion);
         this.requireItem(bug.submissionId, parsed.submissionItemId);
         const attachmentIds = reportAttachmentIds(parsed);
-        this.requireBindableFiles(actorUserId, attachmentIds, bug.id);
+        requireBindableFiles(this.db, actorUserId, attachmentIds, bug.id);
         const report = normalizedReport(parsed);
-        const update = this.db
-          .prepare(
-            `UPDATE cooking_bug
+        const update = this.db.run(
+          `UPDATE cooking_bug
              SET submission_item_id = ?, title = ?, operation_path = ?,
                  actual_result = ?, expected_result = ?,
                  version = version + 1, updated_at = ?
              WHERE id = ? AND version = ? AND report_locked_at IS NULL`,
-          )
-          .run(
+          [
             parsed.submissionItemId,
             report.title,
             report.operationPath ?? null,
@@ -242,7 +240,8 @@ export class BugService {
             now,
             bug.id,
             parsed.expectedVersion,
-          );
+          ],
+        );
         if (update.changes !== 1) throw staleBug();
         this.replaceReportAttachments(bug.id, parsed, now);
         const previousAttachmentIds = reportAttachmentIds(bug.report);
@@ -284,13 +283,12 @@ export class BugService {
             '当前成员不能分诊此缺陷',
           );
         this.requireItem(bug.submissionId, parsed.submissionItemId);
-        const update = this.db
-          .prepare(
-            `UPDATE cooking_bug
+        const update = this.db.run(
+          `UPDATE cooking_bug
              SET submission_item_id = ?, version = version + 1, updated_at = ?
              WHERE id = ? AND version = ? AND report_locked_at IS NULL`,
-          )
-          .run(parsed.submissionItemId, now, bug.id, parsed.expectedVersion);
+          [parsed.submissionItemId, now, bug.id, parsed.expectedVersion],
+        );
         if (update.changes !== 1) throw staleBug();
         return {
           action: 'BUG_ASSIGNED',
@@ -326,14 +324,13 @@ export class BugService {
             'PERMISSION_DENIED',
             '只有测试负责人可以开始自动修复',
           );
-        const update = this.db
-          .prepare(
-            `UPDATE cooking_bug
+        const update = this.db.run(
+          `UPDATE cooking_bug
              SET stage = 'REPAIRING', report_locked_at = COALESCE(report_locked_at, ?),
                  version = version + 1, updated_at = ?
              WHERE id = ? AND version = ? AND stage = 'WAITING_FOR_REPAIR'`,
-          )
-          .run(now, now, bug.id, parsed.expectedVersion);
+          [now, now, bug.id, parsed.expectedVersion],
+        );
         if (update.changes !== 1) throw staleBug();
         this.repairHooks.requested(bug.id);
         return {
@@ -346,54 +343,53 @@ export class BugService {
 
   workspace(userId: string, submissionId: string): BugWorkspaceProjection {
     const access = this.requireAccess(userId, submissionId);
-    const bugs = (
-      this.db
-        .prepare(
-          `SELECT * FROM cooking_bug
+    const bugs = this.db
+      .all<BugRow>(
+        `SELECT * FROM cooking_bug
            WHERE submission_id = ? ORDER BY short_id`,
-        )
-        .all(submissionId) as BugRow[]
-    ).map((row) => {
-      const bug = mapBug(row, this.reportAttachmentIds(row.id));
-      const item = this.requireItem(submissionId, bug.submissionItemId);
-      return {
-        ...bug,
-        report: {
-          title: bug.report.title,
-          ...(bug.report.operationPath
-            ? { operationPath: bug.report.operationPath }
-            : {}),
-          ...(bug.report.actualResult
-            ? { actualResult: bug.report.actualResult }
-            : {}),
-          ...(bug.report.expectedResult
-            ? { expectedResult: bug.report.expectedResult }
-            : {}),
-          actualResultAttachments: this.attachments(row.id, 'ACTUAL_RESULT'),
-          expectedResultAttachments: this.attachments(
-            row.id,
-            'EXPECTED_RESULT',
-          ),
-        },
-        createdBy: this.getUser(bug.createdByUserId),
-        assignment: item
-          ? {
-              submissionItemId: item.id,
-              engineeringName: item.engineering_name,
-              engineeringType: item.engineering_type,
-              engineeringIdentifier: item.engineering_identifier,
-              responsibleUser: itemUser(item),
-            }
-          : null,
-        availableActions: this.availableActions(userId, access, bug, item),
-        presentation: {
-          stageLabel: STAGE_LABELS[bug.stage],
-          assignmentLabel: item
-            ? `${item.engineering_name}（${item.engineering_identifier}）`
-            : '暂未确定工程',
-        },
-      };
-    });
+        submissionId,
+      )
+      .map((row) => {
+        const bug = mapBug(row, this.reportAttachmentIds(row.id));
+        const item = this.requireItem(submissionId, bug.submissionItemId);
+        return {
+          ...bug,
+          report: {
+            title: bug.report.title,
+            ...(bug.report.operationPath
+              ? { operationPath: bug.report.operationPath }
+              : {}),
+            ...(bug.report.actualResult
+              ? { actualResult: bug.report.actualResult }
+              : {}),
+            ...(bug.report.expectedResult
+              ? { expectedResult: bug.report.expectedResult }
+              : {}),
+            actualResultAttachments: this.attachments(row.id, 'ACTUAL_RESULT'),
+            expectedResultAttachments: this.attachments(
+              row.id,
+              'EXPECTED_RESULT',
+            ),
+          },
+          createdBy: this.getUser(bug.createdByUserId),
+          assignment: item
+            ? {
+                submissionItemId: item.id,
+                engineeringName: item.engineering_name,
+                engineeringType: item.engineering_type,
+                engineeringIdentifier: item.engineering_identifier,
+                responsibleUser: itemUser(item),
+              }
+            : null,
+          availableActions: this.availableActions(userId, access, bug, item),
+          presentation: {
+            stageLabel: STAGE_LABELS[bug.stage],
+            assignmentLabel: item
+              ? `${item.engineering_name}（${item.engineering_identifier}）`
+              : '暂未确定工程',
+          },
+        };
+      });
     return BugWorkspaceProjectionSchema.parse({
       availableActions:
         access.submission_status === 'ACTIVE' &&
@@ -405,9 +401,8 @@ export class BugService {
   }
 
   requireAttachmentAccess(userId: string, fileId: string): void {
-    const row = this.db
-      .prepare(
-        `SELECT submission_id FROM (
+    const row = this.db.get(
+      `SELECT submission_id FROM (
            SELECT bug.submission_id
            FROM cooking_bug_attachment attachment
            JOIN cooking_bug bug ON bug.id = attachment.bug_id
@@ -426,8 +421,10 @@ export class BugService {
            JOIN cooking_bug bug ON bug.id = reopen.bug_id
            WHERE attachment.file_id = ?
          ) LIMIT 1`,
-      )
-      .get(fileId, fileId, fileId) as { submission_id: string } | undefined;
+      fileId,
+      fileId,
+      fileId,
+    ) as { submission_id: string } | undefined;
     if (!row) throw new PlatformError('NOT_FOUND', '附件不存在或无权访问');
     try {
       this.requireAccess(userId, row.submission_id);
@@ -493,9 +490,8 @@ export class BugService {
   }
 
   private requireAccess(userId: string, submissionId: string): AccessRow {
-    const row = this.db
-      .prepare(
-        `SELECT submission.id submission_id,
+    const row = this.db.get(
+      `SELECT submission.id submission_id,
                 submission.status submission_status,
                 submission.tester_user_id,
                 submission.project_id,
@@ -505,8 +501,9 @@ export class BugService {
            ON membership.project_id = submission.project_id
           AND membership.user_id = ?
          WHERE submission.id = ?`,
-      )
-      .get(userId, submissionId) as AccessRow | undefined;
+      userId,
+      submissionId,
+    ) as AccessRow | undefined;
     if (!row) throw new PlatformError('NOT_FOUND', '提测单不存在或无权访问');
     return row;
   }
@@ -517,9 +514,8 @@ export class BugService {
   }
 
   private requireBug(bugId: string): Bug {
-    const row = this.db
-      .prepare('SELECT * FROM cooking_bug WHERE id = ?')
-      .get(bugId) as BugRow | undefined;
+    const row = this.db.get('SELECT * FROM cooking_bug WHERE id = ?', bugId) as
+      BugRow | undefined;
     if (!row) throw new PlatformError('NOT_FOUND', '缺陷不存在或无权访问');
     return mapBug(row, this.reportAttachmentIds(row.id));
   }
@@ -529,16 +525,16 @@ export class BugService {
     itemId: string | null,
   ): ItemRow | null {
     if (!itemId) return null;
-    const row = this.db
-      .prepare(
-        `SELECT id, engineering_name, engineering_type,
+    const row = this.db.get(
+      `SELECT id, engineering_name, engineering_type,
                 engineering_identifier, responsible_user_id,
                 responsible_username, responsible_display_name,
                 responsible_user_created_at, binding_id
          FROM cooking_submission_item
          WHERE id = ? AND submission_id = ?`,
-      )
-      .get(itemId, submissionId) as ItemRow | undefined;
+      itemId,
+      submissionId,
+    ) as ItemRow | undefined;
     if (!row)
       throw new PlatformError('VALIDATION_FAILED', '所选工程不属于当前提测单');
     return row;
@@ -546,22 +542,21 @@ export class BugService {
 
   private isAnyResponsible(userId: string, submissionId: string): boolean {
     return Boolean(
-      this.db
-        .prepare(
-          `SELECT 1 FROM cooking_submission_item
+      this.db.get(
+        `SELECT 1 FROM cooking_submission_item
            WHERE submission_id = ? AND responsible_user_id = ? LIMIT 1`,
-        )
-        .get(submissionId, userId),
+        submissionId,
+        userId,
+      ),
     );
   }
 
   private nextShortId(submissionId: string): number {
-    const row = this.db
-      .prepare(
-        `SELECT COALESCE(MAX(short_id), 0) + 1 next_id
+    const row = this.db.get(
+      `SELECT COALESCE(MAX(short_id), 0) + 1 next_id
          FROM cooking_bug WHERE submission_id = ?`,
-      )
-      .get(submissionId) as { next_id: number };
+      submissionId,
+    ) as { next_id: number };
     return row.next_id;
   }
 
@@ -574,53 +569,6 @@ export class BugService {
       );
   }
 
-  private requireBindableFiles(
-    actorUserId: string,
-    fileIds: string[],
-    currentBugId?: string,
-  ): void {
-    for (const fileId of fileIds) {
-      const row = this.db
-        .prepare(
-          `SELECT file.uploaded_by_user_id, attachment.bug_id,
-                  verification_attachment.file_id verification_file_id,
-                  reopen_attachment.file_id reopen_file_id,
-                  report_attachment.file_id report_file_id
-           FROM platform_file file
-           LEFT JOIN cooking_bug_attachment attachment
-             ON attachment.file_id = file.id
-           LEFT JOIN cooking_verification_attachment verification_attachment
-             ON verification_attachment.file_id = file.id
-           LEFT JOIN cooking_reopen_attachment reopen_attachment
-             ON reopen_attachment.file_id = file.id
-           LEFT JOIN cooking_external_deployment_report_attachment report_attachment
-             ON report_attachment.file_id = file.id
-           WHERE file.id = ?`,
-        )
-        .get(fileId) as
-        | {
-            uploaded_by_user_id: string;
-            bug_id: string | null;
-            verification_file_id: string | null;
-            reopen_file_id: string | null;
-            report_file_id: string | null;
-          }
-        | undefined;
-      if (
-        !row ||
-        row.uploaded_by_user_id !== actorUserId ||
-        (row.bug_id && row.bug_id !== currentBugId) ||
-        row.verification_file_id ||
-        row.reopen_file_id ||
-        row.report_file_id
-      )
-        throw new PlatformError(
-          'VALIDATION_FAILED',
-          '附件不存在、已被使用或不属于当前用户',
-        );
-    }
-  }
-
   private bindAttachments(
     bugId: string,
     role: BugAttachmentRole,
@@ -628,13 +576,12 @@ export class BugService {
     now: string,
   ): void {
     fileIds.forEach((fileId, position) =>
-      this.db
-        .prepare(
-          `INSERT INTO cooking_bug_attachment(
+      this.db.run(
+        `INSERT INTO cooking_bug_attachment(
              file_id, bug_id, role, position, created_at
            ) VALUES (?, ?, ?, ?, ?)`,
-        )
-        .run(fileId, bugId, role, position, now),
+        [fileId, bugId, role, position, now],
+      ),
     );
   }
 
@@ -643,9 +590,7 @@ export class BugService {
     attachmentIds: ReportAttachmentIds,
     now: string,
   ): void {
-    this.db
-      .prepare(`DELETE FROM cooking_bug_attachment WHERE bug_id = ?`)
-      .run(bugId);
+    this.db.run(`DELETE FROM cooking_bug_attachment WHERE bug_id = ?`, [bugId]);
     this.bindAttachments(
       bugId,
       'ACTUAL_RESULT',
@@ -661,15 +606,14 @@ export class BugService {
   }
 
   private reportAttachmentIds(bugId: string): ReportAttachmentIds {
-    const rows = this.db
-      .prepare(
-        `SELECT file_id, role FROM cooking_bug_attachment
-         WHERE bug_id = ? ORDER BY role, position`,
-      )
-      .all(bugId) as Array<{
+    const rows = this.db.all<{
       file_id: string;
       role: BugAttachmentRole;
-    }>;
+    }>(
+      `SELECT file_id, role FROM cooking_bug_attachment
+         WHERE bug_id = ? ORDER BY role, position`,
+      bugId,
+    );
     return {
       actualResultAttachmentIds: rows
         .filter(({ role }) => role === 'ACTUAL_RESULT')
@@ -689,17 +633,7 @@ export class BugService {
       'id' | 'originalName' | 'mediaType' | 'sizeBytes' | 'createdAt'
     >
   > {
-    const rows = this.db
-      .prepare(
-        `SELECT file.id, file.storage_key, file.original_name, file.media_type,
-                file.size_bytes, file.sha256, file.uploaded_by_user_id,
-                file.created_at
-         FROM cooking_bug_attachment attachment
-         JOIN platform_file file ON file.id = attachment.file_id
-         WHERE attachment.bug_id = ? AND attachment.role = ?
-         ORDER BY attachment.position`,
-      )
-      .all(bugId, role) as Array<{
+    const rows = this.db.all<{
       id: string;
       storage_key: string;
       original_name: string;
@@ -708,7 +642,17 @@ export class BugService {
       sha256: string;
       uploaded_by_user_id: string;
       created_at: string;
-    }>;
+    }>(
+      `SELECT file.id, file.storage_key, file.original_name, file.media_type,
+                file.size_bytes, file.sha256, file.uploaded_by_user_id,
+                file.created_at
+         FROM cooking_bug_attachment attachment
+         JOIN platform_file file ON file.id = attachment.file_id
+         WHERE attachment.bug_id = ? AND attachment.role = ?
+         ORDER BY attachment.position`,
+      bugId,
+      role,
+    );
     return rows.map((row) => {
       const file = StoredFileSchema.parse({
         id: row.id,
@@ -777,12 +721,11 @@ export class BugService {
   }
 
   private getUser(userId: string): User {
-    const row = this.db
-      .prepare(
-        `SELECT id, username, display_name, created_at
+    const row = this.db.get(
+      `SELECT id, username, display_name, created_at
          FROM platform_user WHERE id = ?`,
-      )
-      .get(userId) as
+      userId,
+    ) as
       | {
           id: string;
           username: string;

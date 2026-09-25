@@ -14,7 +14,8 @@ import { xaptPaths } from '../platform/paths';
 import { CONNECTION_STATE_SCHEMA_VERSION } from '../state/schemas';
 import { LocalStateStore } from '../state/store';
 import { ConnectionCoordinator } from './connection';
-import { RunnerHttpError, type RunnerAuthorizationHttp } from './server-http';
+import { RunnerHttpError } from '@agent-party-time/runner-contract/http-client';
+import type { RunnerAuthorizationHttp } from './server-http';
 
 const homes: string[] = [];
 const now = new Date('2026-08-03T08:00:00.000Z');

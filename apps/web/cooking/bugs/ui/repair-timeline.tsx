@@ -1,13 +1,19 @@
 'use client';
+import {
+  ProgressTimeline,
+  ProgressAttachments,
+  type ProgressHeading,
+} from './progress-timeline';
+import { ValidationResults } from './validation-results';
 
-import { useState } from 'react';
-import { createClientId } from '@/cooking/shared/ui/client-id';
-import type { BugProgressTimelineNode } from '@/cooking/workspace/contract';
 import type { BugRepairView } from '@/cooking/repair/contract';
 import {
   resolveRepairInteractionAction,
   synchronizeRepairSessionAction,
 } from '@/cooking/repair/server/actions';
+import { createClientId } from '@/cooking/shared/ui/client-id';
+import type { BugProgressTimelineNode } from '@/cooking/workspace/contract';
+import { useState } from 'react';
 import type { BugView } from '../contract';
 import type { StoredAttachment } from './attachments';
 import { AttachmentLink } from './attachments';
@@ -15,6 +21,12 @@ import type { WorkspaceActionResult } from './board-model';
 import { formatDateTime, repairStateLabel } from './board-model';
 import { Detail, TimelineList } from './detail-fields';
 import { CookingInteractionRecord } from './interaction-record';
+
+type RunWorkspaceAction = (
+  command: () => Promise<WorkspaceActionResult>,
+  message: string,
+  afterSuccess?: () => void,
+) => void;
 
 export function BugResultDetail({
   attachments,
@@ -43,22 +55,18 @@ export function BugResultDetail({
   );
 }
 
-export function RepairAttemptDetails({
-  bug,
-  pending,
-  repair,
-  run,
-  summaryOnly,
-  timeline,
-}: {
+type RepairProgressContext = {
   bug: BugView;
   pending: boolean;
   repair: BugRepairView | null;
-  run: (
-    command: () => Promise<WorkspaceActionResult>,
-    message: string,
-    afterSuccess?: () => void,
-  ) => void;
+  run: RunWorkspaceAction;
+};
+
+export function RepairAttemptDetails({
+  timeline,
+  summaryOnly,
+  ...context
+}: RepairProgressContext & {
   summaryOnly: boolean;
   timeline: BugProgressTimelineNode[];
 }) {
@@ -69,37 +77,18 @@ export function RepairAttemptDetails({
     (node) => node.kind === 'UPDATE_BATCH',
   );
   return (
-    <section
-      className="collab-bug-detail-section collab-progress-timeline"
-      data-summary-only={summaryOnly ? 'true' : undefined}
+    <ProgressTimeline
+      nodes={timeline}
+      title={isUpdateTimeline ? '更新进展' : '修复进展'}
+      description={
+        isUpdateTimeline
+          ? '按批次从旧到新记录。'
+          : '按修复生命周期从旧到新记录。'
+      }
+      summaryOnly={summaryOnly}
     >
-      <header>
-        <div>
-          <h3>{isUpdateTimeline ? '更新进展' : '修复进展'}</h3>
-          <p>
-            {isUpdateTimeline
-              ? '按批次从旧到新记录。'
-              : '按修复生命周期从旧到新记录。'}
-          </p>
-        </div>
-      </header>
-      <ol className="collab-repair-timeline">
-        {timeline.map((node) => (
-          <li data-node-kind={node.kind} key={node.id}>
-            <span aria-hidden="true" className="collab-repair-timeline__mark" />
-            <BugProgressNode
-              bug={bug}
-              latestRepairAttemptId={latestRepairAttemptId}
-              node={node}
-              pending={pending}
-              repair={repair}
-              run={run}
-              summaryOnly={summaryOnly}
-            />
-          </li>
-        ))}
-      </ol>
-    </section>
+      {(node) => describeBugProgress(node, context, latestRepairAttemptId)}
+    </ProgressTimeline>
   );
 }
 
@@ -135,154 +124,95 @@ function SynchronizationCorrection({
   );
 }
 
-function BugProgressNode({
-  bug,
-  latestRepairAttemptId,
-  node,
-  pending,
-  repair,
-  run,
-  summaryOnly,
-}: {
-  bug: BugView;
-  latestRepairAttemptId: string | undefined;
-  node: BugProgressTimelineNode;
-  pending: boolean;
-  repair: BugRepairView | null;
-  run: (
-    command: () => Promise<WorkspaceActionResult>,
-    message: string,
-    afterSuccess?: () => void,
-  ) => void;
-  summaryOnly: boolean;
-}) {
-  if (summaryOnly) return <BugProgressSummaryNode node={node} />;
-  if (node.kind === 'BUG_REGISTERED')
-    return (
-      <article>
-        <header>
-          <strong>缺陷已登记</strong>
-          <time>{formatDateTime(node.occurredAt)}</time>
-        </header>
-        <p>原始报告已进入待修复阶段。</p>
-      </article>
-    );
-  if (node.kind === 'UPDATE_BATCH')
-    return (
-      <article>
-        <header>
-          <strong>已进入统一更新批次</strong>
-          <time>{formatDateTime(node.occurredAt)}</time>
-        </header>
-        <p>
-          {node.statusLabel} · 共 {node.bugCount} 条缺陷
-        </p>
-        <span
-          aria-label={node.visual.label}
-          className="collab-current-visual collab-progress-visual"
-          data-visual-state={node.visual.state}
-        >
-          <span aria-hidden="true">{node.visual.symbol}</span>
-          {node.visual.label}
-        </span>
-      </article>
-    );
-  if (node.kind === 'VERIFICATION')
-    return (
-      <article>
-        <header>
-          <strong>
-            第 {node.round} 轮验证
-            {node.result === 'PASSED' ? '已通过' : '未通过'}
-          </strong>
-          <time>{formatDateTime(node.createdAt)}</time>
-        </header>
-        {node.comment ? <p>{node.comment}</p> : <p>测试负责人未补充说明。</p>}
-        {node.result === 'FAILED' && node.repairAttempt ? (
-          <strong>已进入第 {node.repairAttempt} 轮修复</strong>
-        ) : null}
-        <ProgressAttachments attachments={node.attachments} />
-      </article>
-    );
-  if (node.kind === 'REOPEN')
-    return (
-      <article>
-        <header>
-          <strong>第 {node.round} 次重新打开</strong>
-          <time>{formatDateTime(node.createdAt)}</time>
-        </header>
-        <p>{node.feedback}</p>
-        <strong>已进入第 {node.repairAttempt} 轮修复</strong>
-        <ProgressAttachments attachments={node.attachments} />
-      </article>
-    );
-  if (node.kind === 'CANCELLED' || node.kind === 'RESTORED')
-    return (
-      <article>
-        <header>
-          <strong>
-            {node.kind === 'CANCELLED' ? '缺陷已取消' : '缺陷已恢复到待修复'}
-          </strong>
-          <time>{formatDateTime(node.createdAt)}</time>
-        </header>
-        <p>
-          {node.kind === 'CANCELLED'
-            ? '缺陷已移出主看板，可从已取消缺陷中恢复。'
-            : '原始资料已重新开放编辑，尚未自动开始修复。'}
-        </p>
-      </article>
-    );
-  if (node.kind !== 'REPAIR_ATTEMPT') return null;
-  return (
-    <RepairAttemptTimelineArticle
-      bug={bug}
-      isLatestRepairAttempt={node.id === latestRepairAttemptId}
-      node={node}
-      pending={pending}
-      repair={repair}
-      run={run}
-    />
-  );
-}
-
-function BugProgressSummaryNode({ node }: { node: BugProgressTimelineNode }) {
-  let title: string;
-  let occurredAt: string;
-  if (node.kind === 'BUG_REGISTERED') {
-    title = '缺陷已登记';
-    occurredAt = node.occurredAt;
-  } else if (node.kind === 'REPAIR_ATTEMPT') {
-    title = `第 ${node.attempt} 轮修复${
-      node.result?.outcome === 'COMPLETED'
-        ? '已完成'
-        : node.result?.outcome === 'FAILED'
-          ? '未完成'
-          : '进行中'
-    }`;
-    occurredAt = node.finishedAt ?? node.startedAt ?? node.queuedAt;
-  } else if (node.kind === 'UPDATE_BATCH') {
-    title = `统一更新 · ${node.visual.label}`;
-    occurredAt = node.occurredAt;
-  } else if (node.kind === 'VERIFICATION') {
-    title = `第 ${node.round} 轮验证${
-      node.result === 'PASSED' ? '已通过' : '未通过，已返修'
-    }`;
-    occurredAt = node.createdAt;
-  } else if (node.kind === 'REOPEN') {
-    title = `第 ${node.round} 次重新打开，已返修`;
-    occurredAt = node.createdAt;
-  } else {
-    title = node.kind === 'CANCELLED' ? '缺陷已取消' : '缺陷已恢复到待修复';
-    occurredAt = node.createdAt;
+function describeBugProgress(
+  node: BugProgressTimelineNode,
+  context: RepairProgressContext,
+  latestRepairAttemptId: string | undefined,
+): ProgressHeading {
+  switch (node.kind) {
+    case 'BUG_REGISTERED':
+      return {
+        title: '缺陷已登记',
+        occurredAt: node.occurredAt,
+        content: <p>原始报告已进入待修复阶段。</p>,
+      };
+    case 'UPDATE_BATCH':
+      return {
+        title: '已进入统一更新批次',
+        summaryTitle: `统一更新 · ${node.visual.label}`,
+        occurredAt: node.occurredAt,
+        content: (
+          <>
+            <p>
+              {node.statusLabel} · 共 {node.bugCount} 条缺陷
+            </p>
+            <span
+              aria-label={node.visual.label}
+              className="collab-current-visual collab-progress-visual"
+              data-visual-state={node.visual.state}
+            >
+              <span aria-hidden="true">{node.visual.symbol}</span>
+              {node.visual.label}
+            </span>
+          </>
+        ),
+      };
+    case 'VERIFICATION': {
+      const title = `第 ${node.round} 轮验证${node.result === 'PASSED' ? '已通过' : '未通过'}`;
+      return {
+        title,
+        summaryTitle: title + (node.result === 'FAILED' ? '，已返修' : ''),
+        occurredAt: node.createdAt,
+        content: (
+          <>
+            <p>{node.comment || '测试负责人未补充说明。'}</p>
+            {node.result === 'FAILED' && node.repairAttempt ? (
+              <strong>已进入第 {node.repairAttempt} 轮修复</strong>
+            ) : null}
+            <ProgressAttachments attachments={node.attachments} />
+          </>
+        ),
+      };
+    }
+    case 'REOPEN':
+      return {
+        title: `第 ${node.round} 次重新打开`,
+        summaryTitle: `第 ${node.round} 次重新打开，已返修`,
+        occurredAt: node.createdAt,
+        content: (
+          <>
+            <p>{node.feedback}</p>
+            <strong>已进入第 {node.repairAttempt} 轮修复</strong>
+            <ProgressAttachments attachments={node.attachments} />
+          </>
+        ),
+      };
+    case 'CANCELLED':
+    case 'RESTORED':
+      return {
+        title: node.kind === 'CANCELLED' ? '缺陷已取消' : '缺陷已恢复到待修复',
+        occurredAt: node.createdAt,
+        content: (
+          <p>
+            {node.kind === 'CANCELLED'
+              ? '缺陷已移出主看板，可从已取消缺陷中恢复。'
+              : '原始资料已重新开放编辑，尚未自动开始修复。'}
+          </p>
+        ),
+      };
+    case 'REPAIR_ATTEMPT':
+      return {
+        title: `第 ${node.attempt} 轮修复${node.result?.outcome === 'COMPLETED' ? '已完成' : node.result?.outcome === 'FAILED' ? '未完成' : '进行中'}`,
+        occurredAt: node.finishedAt ?? node.startedAt ?? node.queuedAt,
+        content: (
+          <RepairAttemptTimelineArticle
+            {...context}
+            isLatestRepairAttempt={node.id === latestRepairAttemptId}
+            node={node}
+          />
+        ),
+      };
   }
-  return (
-    <article className="collab-progress-summary">
-      <header>
-        <strong>{title}</strong>
-        <time>{formatDateTime(occurredAt)}</time>
-      </header>
-    </article>
-  );
 }
 
 function RepairAttemptTimelineArticle({
@@ -292,33 +222,12 @@ function RepairAttemptTimelineArticle({
   pending,
   repair,
   run,
-}: {
-  bug: BugView;
+}: RepairProgressContext & {
   isLatestRepairAttempt: boolean;
   node: Extract<BugProgressTimelineNode, { kind: 'REPAIR_ATTEMPT' }>;
-  pending: boolean;
-  repair: BugRepairView | null;
-  run: (
-    command: () => Promise<WorkspaceActionResult>,
-    message: string,
-    afterSuccess?: () => void,
-  ) => void;
 }) {
   return (
-    <article>
-      <header>
-        <strong>
-          第 {node.attempt} 轮修复
-          {node.result?.outcome === 'COMPLETED'
-            ? '已完成'
-            : node.result?.outcome === 'FAILED'
-              ? '未完成'
-              : '进行中'}
-        </strong>
-        <time>
-          {formatDateTime(node.finishedAt ?? node.startedAt ?? node.queuedAt)}
-        </time>
-      </header>
+    <>
       <dl className="collab-bug-detail-list collab-session-facts">
         {node.sessionId ? (
           <Detail label="修复会话 ID">{node.sessionId}</Detail>
@@ -360,27 +269,12 @@ function RepairAttemptTimelineArticle({
             items={node.result.changes}
             title="修改内容"
           />
-          <div className="collab-repair-validations">
-            <h4>检查结果</h4>
-            {node.result.validations.length ? (
-              <ul>
-                {node.result.validations.map((validation) => (
-                  <li
-                    data-validation-status={validation.status}
-                    key={`${validation.name}:${validation.status}`}
-                  >
-                    <strong>{validationStatusLabel(validation.status)}</strong>
-                    <span>{validation.name}</span>
-                    {validation.detail ? (
-                      <small>{validation.detail}</small>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p>Codex 未报告检查项</p>
-            )}
-          </div>
+          <ValidationResults
+            statusLabel={validationStatusLabel}
+            items={node.result.validations}
+            title="检查结果"
+            emptyLabel="Codex 未报告检查项"
+          />
           {node.result.warnings.length ? (
             <TimelineList items={node.result.warnings} title="警告" />
           ) : null}
@@ -421,9 +315,7 @@ function RepairAttemptTimelineArticle({
           {node.result.failureCode ? (
             <details>
               <summary>技术详情</summary>
-              {node.result.failureCode ? (
-                <code>{node.result.failureCode}</code>
-              ) : null}
+              <code>{node.result.failureCode}</code>
             </details>
           ) : null}
           {isLatestRepairAttempt &&
@@ -457,24 +349,7 @@ function RepairAttemptTimelineArticle({
           ) : null}
         </>
       )}
-    </article>
-  );
-}
-
-function ProgressAttachments({
-  attachments,
-}: {
-  attachments: StoredAttachment[];
-}) {
-  if (!attachments.length) return null;
-  return (
-    <ul className="collab-attachments collab-bug-attachments">
-      {attachments.map((attachment) => (
-        <li key={attachment.id}>
-          <AttachmentLink attachment={attachment} />
-        </li>
-      ))}
-    </ul>
+    </>
   );
 }
 

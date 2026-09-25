@@ -1,13 +1,19 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 import type { DaemonSnapshot } from '../daemon/status';
 import {
   EXIT_FAILURE,
   EXIT_SUCCESS,
   EXIT_USAGE,
-  runCli,
+  runCli as executeCli,
   type BugsDeleteInput,
   type CliRuntime,
 } from './run';
+
+const runCli = (
+  args: readonly string[],
+  runtime = fakeRuntime(runningSnapshot('CONNECTED')),
+  progress?: Parameters<typeof executeCli>[2],
+) => executeCli(args, runtime, progress);
 
 describe('runCli', () => {
   test('renders only the confirmed public command tree', async () => {
@@ -38,28 +44,27 @@ describe('runCli', () => {
   );
 
   test.each([
-    [['daemon', 'start']],
-    [['daemon', 'connect', 'https://apt.example.com']],
-    [['daemon', 'stop']],
-    [['daemon', 'stop', '--force']],
-    [['daemon', 'status']],
-    [['update']],
-    [['uninstall']],
-    [['uninstall', '--force']],
-    [['bugs', 'delete', '944d519c-1ed0-4711-a3b1-325bec5bbe56']],
-    [['skills', 'update']],
-    [['internal-daemon']],
-    [['internal-render-install-state', '-', '2026-08-01T00:00:00.000Z']],
-  ] as const)(
-    'recognized but unimplemented command %j fails explicitly',
-    async (args) => {
-      const result = await runCli(args);
-
-      expect(result.exitCode).toBe(EXIT_FAILURE);
-      expect(result.stderr).toContain('尚未实现');
-      expect(result.stdout).toBeUndefined();
-    },
-  );
+    [['daemon', 'start'], 'daemonStart'],
+    [['daemon', 'connect', 'https://apt.example.com'], 'daemonConnect'],
+    [['daemon', 'stop'], 'daemonStop'],
+    [['daemon', 'stop', '--force'], 'daemonStop'],
+    [['daemon', 'status'], 'daemonStatus'],
+    [['update'], 'update'],
+    [['uninstall'], 'uninstall'],
+    [['uninstall', '--force'], 'uninstall'],
+    [['bugs', 'delete', '944d519c-1ed0-4711-a3b1-325bec5bbe56'], 'bugsDelete'],
+    [['skills', 'update'], 'skillsUpdate'],
+    [['internal-daemon'], 'internalDaemon'],
+    [
+      ['internal-render-install-state', '-', '2026-08-01T00:00:00.000Z'],
+      'renderInstallState',
+    ],
+  ] as const)('command %j invokes %s', async (args, method) => {
+    const runtime = fakeRuntime(runningSnapshot('CONNECTED'));
+    const action = spyOn(runtime, method);
+    expect((await runCli(args, runtime)).exitCode).toBe(EXIT_SUCCESS);
+    expect(action).toHaveBeenCalledTimes(1);
+  });
 
   test.each([
     [['unknown']],

@@ -1,0 +1,284 @@
+/* Attachment assets stay visually unified across forms, details and timelines. */
+.collab-attachment-picker {
+  border-style: solid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.collab-attachment-picker__prompt {
+  border-left: 3px solid var(--accent);
+  padding-left: 10px;
+}
+
+.collab-attachment-picker__files {
+  display: grid;
+  gap: 7px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding-top: 10px;
+}
+
+.collab-attachment-picker__files li {
+  align-items: center;
+  background: color-mix(in srgb, var(--panel) 78%, transparent);
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+  padding: 7px;
+}
+
+.collab-attachment-picker__files li[data-source='new'] {
+  border-left: 3px solid var(--success);
+}
+
+.collab-attachment-picker__files li > button {
+  align-self: start;
+  background: transparent;
+  border: 0;
+  color: var(--accent-dark);
+  font-size: 8px;
+  min-height: 0;
+  padding: 3px;
+}
+
+.collab-attachment-picker__files li > button:hover,
+.collab-attachment-picker__files li > button:focus-visible {
+  background: var(--accent);
+  color: white;
+}
+
+.collab-attachment-picker__removed {
+  border-top: 1px dashed var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding-top: 8px;
+}
+
+.collab-attachment-picker__removed > span {
+  align-items: center;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 8px;
+  gap: 5px;
+}
+
+.collab-attachment-picker__removed button {
+  background: transparent;
+  border: 0;
+  color: var(--accent-dark);
+  font-size: 8px;
+  min-height: 0;
+  padding: 2px;
+}
+
+.collab-attachment-file {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 48px minmax(0, 1fr);
+  min-width: 0;
+  width: 100%;
+}
+
+.collab-attachment-file > button.collab-attachment-file__thumb {
+  background: var(--paper);
+  border: 1px solid var(--strong-line);
+  height: 42px;
+  min-height: 42px;
+  overflow: hidden;
+  padding: 0;
+  width: 48px;
+}
+
+.collab-attachment-file > button.collab-attachment-file__thumb:hover,
+.collab-attachment-file > button.collab-attachment-file__thumb:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 2px 2px 0 var(--accent);
+  transform: translate(-1px, -1px);
+}
+
+.collab-attachment-file__thumb img {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.collab-attachment-file__kind {
+  align-items: center;
+  background: color-mix(in srgb, var(--ink) 5%, var(--paper));
+  border: 1px solid var(--line);
+  color: var(--muted);
+  display: flex;
+  font-size: 7px;
+  font-weight: 900;
+  height: 42px;
+  justify-content: center;
+  letter-spacing: 0.08em;
+  width: 48px;
+}
+
+.collab-attachment-file__meta {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.collab-attachment-file__meta > :where(a, strong),
+.collab-attachment-file__meta > button.collab-attachment-file__name {
+  background: transparent;
+  border: 0;
+  color: var(--ink);
+  display: block;
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1.35;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+  text-align: left;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collab-attachment-file__meta > :where(a, button):hover,
+.collab-attachment-file__meta > :where(a, button):focus-visible {
+  color: var(--accent-dark);
+  text-decoration: underline;
+}
+
+.collab-attachment-file__meta > small {
+  color: var(--muted);
+  font-size: 7px;
+}
+
+.collab-attachments,
+.collab-bug-detail-attachments {
+  gap: 7px;
+}
+
+.collab-attachments li,
+.collab-bug-detail-attachments li {
+  align-items: center;
+  background: color-mix(in srgb, var(--panel) 72%, transparent);
+  border: 1px solid var(--line);
+  display: block;
+  min-width: 0;
+  padding: 6px;
+}
+
+.collab-bug-detail-attachments {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.collab-bug-form {
+  align-content: start;
+}
+
+.collab-bug-form .collab-attachment-picker {
+  background: color-mix(in srgb, var(--panel) 64%, transparent);
+  border-color: var(--line);
+  margin: 0;
+}
+
+.collab-bug-form__grid {
+  align-items: start;
+}
+
+.collab-bug-result-field {
+  background: color-mix(in srgb, var(--panel) 58%, transparent);
+  border: 1px solid var(--strong-line);
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  min-width: 0;
+  padding: 12px;
+}
+
+.collab-bug-result-field legend {
+  background: var(--paper);
+  color: var(--accent-dark);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  padding: 0 6px;
+}
+
+.collab-image-preview {
+  align-items: center;
+  background: color-mix(in srgb, var(--ink) 82%, transparent);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 28px;
+  position: fixed;
+  z-index: 120;
+}
+
+.collab-image-preview figure {
+  background: var(--paper);
+  border: 1px solid var(--strong-line);
+  display: grid;
+  margin: 0;
+  max-height: calc(100vh - 56px);
+  max-width: calc(100vw - 56px);
+  min-width: 520px;
+  overflow: auto;
+}
+
+.collab-image-preview figcaption {
+  align-items: center;
+  border-bottom: 1px solid var(--strong-line);
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  padding: 10px 12px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.collab-image-preview figcaption > strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collab-image-preview figcaption > span {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 7px;
+}
+
+.collab-image-preview :where(a, button) {
+  background: transparent;
+  border: 1px solid var(--ink);
+  color: var(--ink);
+  font-size: 9px;
+  min-height: 30px;
+  padding: 6px 9px;
+  text-decoration: none;
+}
+
+.collab-image-preview :where(a, button):hover,
+.collab-image-preview :where(a, button):focus-visible {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+  outline: none;
+}
+
+.collab-image-preview figure > img {
+  display: block;
+  height: auto;
+  margin: auto;
+  max-height: calc(100vh - 130px);
+  max-width: calc(100vw - 90px);
+  object-fit: contain;
+  width: auto;
+}

@@ -136,12 +136,11 @@ export class RunnerService {
     const codeHash = hashSecret(parsedCode.data);
 
     return this.db.transaction(() => {
-      const pairing = this.db
-        .prepare(
-          `SELECT id, owner_user_id, code_hash, expires_at, used_at, created_at
+      const pairing = this.db.get(
+        `SELECT id, owner_user_id, code_hash, expires_at, used_at, created_at
            FROM platform_runner_pairing_code WHERE code_hash = ?`,
-        )
-        .get(codeHash) as PairingCodeRow | undefined;
+        codeHash,
+      ) as PairingCodeRow | undefined;
       const now = this.now();
       if (
         !pairing ||
@@ -199,25 +198,24 @@ export class RunnerService {
       throw new PlatformError('VALIDATION_FAILED', '授权请求有效期无效');
     const now = this.now();
     const recentSince = new Date(now.getTime() - 60_000).toISOString();
-    const recent = this.db
-      .prepare(
-        `SELECT COUNT(*) count
+    const recent = this.db.get(
+      `SELECT COUNT(*) count
          FROM platform_runner_authorization_request
          WHERE created_at >= ?`,
-      )
-      .get(recentSince) as { count: number };
+      recentSince,
+    ) as { count: number };
     if (recent.count >= 100)
       throw new PlatformError(
         'RESOURCE_CONFLICT',
         '授权请求过于频繁，请稍后重试',
       );
-    const duplicate = this.db
-      .prepare(
-        `SELECT COUNT(*) count
+    const duplicate = this.db.get(
+      `SELECT COUNT(*) count
          FROM platform_runner_authorization_request
          WHERE installation_id = ? AND state = 'PENDING' AND expires_at > ?`,
-      )
-      .get(input.installationId, now.toISOString()) as { count: number };
+      input.installationId,
+      now.toISOString(),
+    ) as { count: number };
     if (duplicate.count >= 3)
       throw new PlatformError(
         'RESOURCE_CONFLICT',
@@ -385,14 +383,14 @@ export class RunnerService {
       const credential = RunnerCredentialSchema.parse(
         this.secrets.credential(),
       );
-      const existing = this.db
-        .prepare(
-          `SELECT id, owner_user_id, name, credential_hash, version,
+      const existing = this.db.get(
+        `SELECT id, owner_user_id, name, credential_hash, version,
                   last_seen_at, revoked_at, created_at
            FROM platform_runner
            WHERE owner_user_id = ? AND installation_id = ?`,
-        )
-        .get(row.owner_user_id, row.installation_id) as RunnerRow | undefined;
+        row.owner_user_id,
+        row.installation_id,
+      ) as RunnerRow | undefined;
       const runnerId = existing?.id ?? this.createId();
       const version = existing ? existing.version + 1 : 1;
       if (existing) {
@@ -457,13 +455,12 @@ export class RunnerService {
   authenticateCredential(credentialInput: string | undefined): Runner {
     const parsed = RunnerCredentialSchema.safeParse(credentialInput);
     if (!parsed.success) throw invalidCredential();
-    const row = this.db
-      .prepare(
-        `SELECT id, owner_user_id, name, credential_hash, version,
+    const row = this.db.get(
+      `SELECT id, owner_user_id, name, credential_hash, version,
                 last_seen_at, revoked_at, created_at
          FROM platform_runner WHERE credential_hash = ?`,
-      )
-      .get(hashSecret(parsed.data)) as RunnerRow | undefined;
+      hashSecret(parsed.data),
+    ) as RunnerRow | undefined;
     if (!row || row.revoked_at) throw invalidCredential();
     return mapRunner(row);
   }
@@ -489,14 +486,14 @@ export class RunnerService {
   listRunners(ownerUserId: string): RunnerStatus[] {
     const now = this.now().getTime();
     return this.db
-      .prepare(
+      .all(
         `SELECT id, owner_user_id, name, credential_hash, version,
                 last_seen_at, revoked_at, created_at
          FROM platform_runner
          WHERE owner_user_id = ?
          ORDER BY revoked_at IS NOT NULL, created_at DESC, id`,
+        ownerUserId,
       )
-      .all(ownerUserId)
       .map((row) => {
         const runner = mapRunner(row as RunnerRow);
         const online = Boolean(
@@ -514,14 +511,14 @@ export class RunnerService {
     expectedVersion: number,
   ): Runner {
     return this.db.transaction(() => {
-      const row = this.db
-        .prepare(
-          `SELECT id, owner_user_id, name, credential_hash, version,
+      const row = this.db.get(
+        `SELECT id, owner_user_id, name, credential_hash, version,
                   last_seen_at, revoked_at, created_at
            FROM platform_runner
            WHERE id = ? AND owner_user_id = ?`,
-        )
-        .get(runnerId, ownerUserId) as RunnerRow | undefined;
+        runnerId,
+        ownerUserId,
+      ) as RunnerRow | undefined;
       if (!row) throw new PlatformError('NOT_FOUND', 'Agent 不存在或无权访问');
       if (row.revoked_at) return mapRunner(row);
       if (row.version !== expectedVersion)
@@ -556,14 +553,14 @@ export class RunnerService {
     expectedVersion: number,
   ): Runner {
     return this.db.transaction(() => {
-      const row = this.db
-        .prepare(
-          `SELECT id, owner_user_id, name, credential_hash, version,
+      const row = this.db.get(
+        `SELECT id, owner_user_id, name, credential_hash, version,
                   last_seen_at, revoked_at, created_at
            FROM platform_runner
            WHERE id = ? AND owner_user_id = ?`,
-        )
-        .get(runnerId, ownerUserId) as RunnerRow | undefined;
+        runnerId,
+        ownerUserId,
+      ) as RunnerRow | undefined;
       if (!row) throw new PlatformError('NOT_FOUND', 'Agent 不存在或无权访问');
       if (!row.revoked_at) return mapRunner(row);
       if (row.version !== expectedVersion)
@@ -588,14 +585,13 @@ export class RunnerService {
   }
 
   private authorizationRequest(requestId: string): AuthorizationRequestRow {
-    const row = this.db
-      .prepare(
-        `SELECT id, installation_id, verifier_hash, fingerprint, suggested_name, approved_name,
+    const row = this.db.get(
+      `SELECT id, installation_id, verifier_hash, fingerprint, suggested_name, approved_name,
                 owner_user_id, state, approval_token_hash, expires_at,
                 approved_at, consumed_at, last_polled_at, poll_count, created_at
          FROM platform_runner_authorization_request WHERE id = ?`,
-      )
-      .get(requestId) as AuthorizationRequestRow | undefined;
+      requestId,
+    ) as AuthorizationRequestRow | undefined;
     if (!row)
       throw new PlatformError('NOT_FOUND', 'Agent 授权请求不存在或已失效');
     return row;
