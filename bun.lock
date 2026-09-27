@@ -75,6 +75,7 @@
       "name": "@agent-party-time/runner-contract",
       "version": "0.1.0",
       "dependencies": {
+        "@agent-party-time/execution-contract": "workspace:*",
         "zod": "^4.4.3",
       },
       "devDependencies": {

@@ -10,7 +10,6 @@ test('Cooking execution projection 同时按 namespace 与 kind 路由', () => {
   const projected: CookingExecutionProjectionEvent[] = [];
   const hooks = cookingExecutionProjection({} as AppDatabase, {
     BUG_REPAIR: { projectExecution: (event) => projected.push(event) },
-    SESSION_SYNC: { projectExecution: () => {} },
     UPDATE_BATCH: { projectExecution: () => {} },
     CLEANUP: { projectExecution: () => {} },
   });
@@ -18,7 +17,7 @@ test('Cooking execution projection 同时按 namespace 与 kind 路由', () => {
     owner: { namespace: 'external', kind: 'BUG_REPAIR', id: 'task-one' },
   } as Execution;
 
-  hooks.applyStarted(execution);
+  hooks({ phase: 'APPLY', kind: 'STARTED', execution });
   expect(projected).toEqual([]);
 
   execution.owner = {
@@ -26,11 +25,11 @@ test('Cooking execution projection 同时按 namespace 与 kind 路由', () => {
     kind: 'BUG_REPAIR',
     id: 'attempt-one',
   };
-  hooks.applyStarted(execution);
+  hooks({ phase: 'APPLY', kind: 'STARTED', execution });
   expect(projected).toEqual([{ phase: 'APPLY', kind: 'STARTED', execution }]);
 
-  hooks.applyResumed(execution);
-  hooks.afterResumed(execution);
+  hooks({ phase: 'APPLY', kind: 'RESUMED', execution });
+  hooks({ phase: 'AFTER', kind: 'RESUMED', execution });
   expect(projected.slice(-2)).toEqual([
     { phase: 'APPLY', kind: 'RESUMED', execution },
     { phase: 'AFTER', kind: 'RESUMED', execution },

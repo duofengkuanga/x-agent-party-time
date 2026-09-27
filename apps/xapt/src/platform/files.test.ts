@@ -1,16 +1,11 @@
-import { afterEach, expect, test } from 'bun:test';
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { testDirectories } from '../testing/directories';
+import { expect, test } from 'bun:test';
+import { readFile, stat } from 'node:fs/promises';
+
 import { join } from 'node:path';
 import { NodeLocalFileSystem } from './files';
 
-const homes: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    homes.splice(0).map((home) => rm(home, { recursive: true, force: true })),
-  );
-});
+const temporaryHome = testDirectories('xapt-files-');
 
 test('原子写入在切换前中断时保留旧完整版本并清理临时文件', async () => {
   const home = await temporaryHome();
@@ -47,9 +42,3 @@ test('原子文件 Adapter 强制真实文件与目录 mode', async () => {
   expect((await stat(executablePath)).mode & 0o777).toBe(0o755);
   expect((await stat(plistPath)).mode & 0o777).toBe(0o644);
 });
-
-async function temporaryHome(): Promise<string> {
-  const home = await mkdtemp(join(tmpdir(), 'xapt-files-'));
-  homes.push(home);
-  return home;
-}

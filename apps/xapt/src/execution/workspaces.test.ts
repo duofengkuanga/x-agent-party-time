@@ -1,31 +1,16 @@
-import { afterEach, describe, expect, test } from 'bun:test';
-import {
-  mkdir,
-  mkdtemp,
-  readFile,
-  readlink,
-  rm,
-  writeFile,
-} from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { testDirectories } from '../testing/directories';
+import { describe, expect, test } from 'bun:test';
+import { mkdir, readFile, readlink, rm, writeFile } from 'node:fs/promises';
+
 import { join } from 'node:path';
 import { xaptPaths } from '../platform/paths';
 import { GitExecutionWorkspaceManager } from './workspaces';
 
-const directories: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    directories
-      .splice(0)
-      .map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
+const createTestDirectory = testDirectories('apt-workspaces-');
 
 describe('GitExecutionWorkspaceManager', () => {
   test('Repair 使用唯一分支，Update 使用 Detached HEAD 且目录互不串扰', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'apt-workspaces-'));
-    directories.push(root);
+    const root = await createTestDirectory();
     const remote = join(root, 'remote.git');
     const source = join(root, 'source');
     const binding = join(root, 'binding');
@@ -190,8 +175,7 @@ describe('GitExecutionWorkspaceManager', () => {
   });
 
   test('新 worktree 镜像主工程被忽略内容，复用不覆盖已存在项', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'apt-workspaces-'));
-    directories.push(root);
+    const root = await createTestDirectory();
     const remote = join(root, 'remote.git');
     const source = join(root, 'source');
     const binding = join(root, 'binding');
@@ -269,8 +253,7 @@ describe('GitExecutionWorkspaceManager', () => {
   });
 
   test('removeWorkspaces 先全量校验再删除，force 覆盖未提交修改', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'apt-workspaces-'));
-    directories.push(root);
+    const root = await createTestDirectory();
     const remote = join(root, 'remote.git');
     const source = join(root, 'source');
     const binding = join(root, 'binding');

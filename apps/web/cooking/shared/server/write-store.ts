@@ -46,12 +46,11 @@ export class CookingWriteStore {
   runTracked<T>(input: CookingWriteInput<T>): TrackedCookingWriteResult<T> {
     const mutationId = CookingMutationIdSchema.parse(input.mutationId);
     return this.db.transaction(() => {
-      const previous = this.db
-        .prepare(
-          `SELECT actor_user_id, operation, result_json
+      const previous = this.db.get(
+        `SELECT actor_user_id, operation, result_json
            FROM cooking_mutation WHERE id = ?`,
-        )
-        .get(mutationId) as
+        mutationId,
+      ) as
         | { actor_user_id: string; operation: string; result_json: string }
         | undefined;
       if (previous) {

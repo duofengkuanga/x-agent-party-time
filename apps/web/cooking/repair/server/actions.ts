@@ -4,7 +4,7 @@ import {
   runInteractiveMutation,
   type InteractiveActionResult,
 } from '@/cooking/shared/server/action-transport';
-import { repairService } from '../../runtime/repair';
+import { repairService } from '../../runtime/services';
 import type {
   ContinueRepairInput,
   RepairMutationResult,

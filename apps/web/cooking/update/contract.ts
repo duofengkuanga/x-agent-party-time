@@ -1,8 +1,3 @@
-import { z } from 'zod';
-import {
-  ExecutionStateSchema,
-  type JsonObject,
-} from '@agent-party-time/execution-contract';
 import { BugIdSchema } from '@/cooking/bugs/contract';
 import { CommitShaSchema } from '@/cooking/repair/contract';
 import {
@@ -10,10 +5,13 @@ import {
   CookingMutationIdSchema,
   CookingVisualPresentationSchema,
 } from '@/cooking/shared/contract';
+import { outputJsonSchema } from '@/cooking/shared/output-schema';
 import {
   SubmissionIdSchema,
   SubmissionItemIdSchema,
 } from '@/cooking/submissions/contract';
+import { ExecutionStateSchema } from '@agent-party-time/execution-contract';
+import { z } from 'zod';
 
 export const UpdateBatchIdSchema = z.uuid();
 export const UpdateAttemptIdSchema = z.uuid();
@@ -80,14 +78,12 @@ export const CiCdUpdateExecutionResultSchema = z
   })
   .strict();
 
-export const LocalScriptUpdateOutputJsonSchema = updateOutputJsonSchema([
-  'COMPLETED',
-  'FAILED',
-]);
-export const CiCdUpdateOutputJsonSchema = updateOutputJsonSchema([
-  'PUSHED',
-  'FAILED',
-]);
+export const LocalScriptUpdateOutputJsonSchema = outputJsonSchema(
+  LocalScriptUpdateExecutionResultSchema,
+);
+export const CiCdUpdateOutputJsonSchema = outputJsonSchema(
+  CiCdUpdateExecutionResultSchema,
+);
 
 export const PendingDeliveryViewSchema = z.object({
   submissionItemId: SubmissionItemIdSchema,
@@ -271,103 +267,3 @@ export type ResolveUpdateInteractionInput = z.infer<
   typeof ResolveUpdateInteractionInputSchema
 >;
 export type UpdateMutationResult = z.infer<typeof UpdateMutationResultSchema>;
-
-function updateOutputJsonSchema(
-  outcomes: ['COMPLETED' | 'PUSHED', 'FAILED'],
-): JsonObject {
-  return {
-    type: 'object',
-    properties: {
-      result: {
-        anyOf: [
-          updateSuccessOutputSchema(outcomes[0]),
-          updateFailedOutputSchema(),
-        ],
-      },
-    },
-    required: ['result'],
-    additionalProperties: false,
-  };
-}
-
-function updateSuccessOutputSchema(
-  outcome: 'COMPLETED' | 'PUSHED',
-): JsonObject {
-  return {
-    type: 'object',
-    properties: {
-      outcome: { type: 'string', enum: [outcome] },
-      completedActions: {
-        type: 'array',
-        items: { type: 'string', minLength: 1, maxLength: 300 },
-        maxItems: 5,
-      },
-      validations: {
-        type: 'array',
-        items: updateValidationOutputSchema(),
-        maxItems: 5,
-      },
-      warnings: {
-        type: 'array',
-        items: { type: 'string', minLength: 1, maxLength: 300 },
-        maxItems: 3,
-      },
-    },
-    required: ['outcome', 'completedActions', 'validations', 'warnings'],
-    additionalProperties: false,
-  };
-}
-
-function updateFailedOutputSchema(): JsonObject {
-  return {
-    type: 'object',
-    properties: {
-      outcome: { type: 'string', enum: ['FAILED'] },
-      failedStep: { type: 'string', minLength: 1, maxLength: 240 },
-      reason: { type: 'string', minLength: 1, maxLength: 500 },
-      completedActions: {
-        type: 'array',
-        items: { type: 'string', minLength: 1, maxLength: 300 },
-        maxItems: 5,
-      },
-      validations: {
-        type: 'array',
-        items: updateValidationOutputSchema(),
-        maxItems: 5,
-      },
-      warnings: {
-        type: 'array',
-        items: { type: 'string', minLength: 1, maxLength: 300 },
-        maxItems: 3,
-      },
-      pendingActions: {
-        type: 'array',
-        items: { type: 'string', minLength: 1, maxLength: 300 },
-        maxItems: 5,
-      },
-    },
-    required: [
-      'outcome',
-      'failedStep',
-      'reason',
-      'completedActions',
-      'validations',
-      'warnings',
-      'pendingActions',
-    ],
-    additionalProperties: false,
-  };
-}
-
-function updateValidationOutputSchema(): JsonObject {
-  return {
-    type: 'object',
-    properties: {
-      name: { type: 'string', minLength: 1, maxLength: 240 },
-      status: { type: 'string', enum: ['PASSED', 'FAILED', 'SKIPPED'] },
-      detail: { type: 'string', maxLength: 300 },
-    },
-    required: ['name', 'status', 'detail'],
-    additionalProperties: false,
-  };
-}

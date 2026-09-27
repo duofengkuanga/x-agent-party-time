@@ -1,13 +1,7 @@
-import { afterEach, describe, expect, test } from 'bun:test';
-import {
-  chmod,
-  mkdtemp,
-  readFile,
-  rm,
-  stat,
-  writeFile,
-} from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { testDirectories } from '../testing/directories';
+import { describe, expect, test } from 'bun:test';
+import { chmod, readFile, rm, stat, writeFile } from 'node:fs/promises';
+
 import { join } from 'node:path';
 import type { ClaimedExecution } from '@agent-party-time/execution-contract';
 import { NodeLocalFileSystem, type LocalFileSystem } from '../platform/files';
@@ -23,17 +17,11 @@ import {
 } from './schemas';
 import { BindingStateError, LocalStateError, LocalStateStore } from './store';
 
-const homes: string[] = [];
+const temporaryHome = testDirectories('xapt-state-');
 const runnerId = '00000000-0000-4000-8000-000000000001';
 const bindingId = '00000000-0000-4000-8000-000000000002';
 const executionId = '00000000-0000-4000-8000-000000000003';
 const outboxId = '00000000-0000-4000-8000-000000000004';
-
-afterEach(async () => {
-  await Promise.all(
-    homes.splice(0).map((home) => rm(home, { recursive: true, force: true })),
-  );
-});
 
 test('各类持久化状态独立演进 Schema', () => {
   expect(CONNECTION_STATE_SCHEMA_VERSION).toBe(1);
@@ -418,12 +406,6 @@ function recoveryExecution(now: string): ClaimedExecution {
     finishedAt: null,
     recoveredInteraction: null,
   };
-}
-
-async function temporaryHome(): Promise<string> {
-  const home = await mkdtemp(join(tmpdir(), 'xapt-state-'));
-  homes.push(home);
-  return home;
 }
 
 async function captureError(run: () => Promise<unknown>): Promise<Error> {

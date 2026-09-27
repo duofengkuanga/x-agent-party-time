@@ -1,0 +1,551 @@
+/* Engineering directory: four equal task entry points. */
+.engineering-list .engineering-card {
+  align-items: center;
+  background: transparent;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  padding: 16px 4px;
+}
+
+.engineering-list .engineering-card:hover {
+  background: transparent;
+  color: var(--ink);
+  padding-inline: 4px;
+}
+
+.engineering-card__copy {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.engineering-card__copy > strong {
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 18px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.engineering-card__copy > small {
+  color: var(--muted);
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.engineering-card__actions {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+}
+
+.engineering-catalog-dialog .engineering-card__actions > a {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 700;
+  height: 34px;
+  justify-content: center;
+  padding: 0 10px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.engineering-catalog-dialog .engineering-card__actions > a:hover,
+.engineering-catalog-dialog .engineering-card__actions > a:focus-visible {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.engineering-task {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.engineering-task__heading {
+  align-items: end;
+  border-bottom: 1px solid var(--strong-line);
+  display: flex;
+  justify-content: space-between;
+  padding: 20px 22px 16px;
+}
+
+.engineering-task__heading > div {
+  display: grid;
+  gap: 4px;
+}
+
+.engineering-task__heading span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.engineering-task__heading h3 {
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 24px;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.engineering-task__heading > a {
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 10px;
+  padding-bottom: 2px;
+  text-decoration: none;
+}
+
+.engineering-task__heading > a:hover {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.engineering-task__section {
+  padding: 20px 22px;
+}
+
+.engineering-task__section + .engineering-task__section {
+  border-top: 1px solid var(--line);
+}
+
+.engineering-task__section-title {
+  align-items: baseline;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.engineering-task__section-title > strong {
+  font-size: 12px;
+}
+
+.engineering-task__section-title > small {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.engineering-member-list {
+  border-top: 1px solid var(--line);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.engineering-member-list > li {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  min-height: 56px;
+  padding: 9px 4px;
+}
+
+.engineering-member-list > li > span {
+  display: grid;
+  gap: 2px;
+}
+
+.engineering-member-list strong {
+  font-size: 12px;
+}
+
+.engineering-member-list small {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.bug-dialog .engineering-member-list form {
+  display: block;
+  padding: 0;
+}
+
+.bug-dialog .engineering-member-list button,
+.bug-dialog .engineering-member-add button,
+.bug-dialog .engineering-information-form button,
+.bug-dialog .engineering-task__form-actions button,
+.bug-dialog .engineering-task__archive button {
+  background: transparent;
+  border: 1px solid var(--strong-line);
+  color: var(--ink);
+  font: inherit;
+  font-size: 10px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+.bug-dialog .engineering-member-list button:hover,
+.bug-dialog .engineering-member-add button:hover,
+.bug-dialog .engineering-information-form button:hover,
+.bug-dialog .engineering-task__form-actions button:hover,
+.bug-dialog .engineering-task__archive button:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.bug-dialog .engineering-member-add form {
+  align-items: end;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 0;
+}
+
+.bug-dialog .engineering-information-form {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr);
+  padding: 0;
+}
+
+.engineering-information-form__header {
+  align-items: start;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+  padding-bottom: 14px;
+}
+
+.engineering-information-form__header > div {
+  display: grid;
+  gap: 4px;
+}
+
+.engineering-information-form__header strong {
+  font-size: 12px;
+}
+
+.engineering-information-form__header small,
+.engineering-information-form label > small {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.engineering-information-form__fields {
+  align-items: start;
+  display: grid;
+  gap: clamp(16px, 2vw, 28px);
+  grid-template-columns:
+    minmax(240px, 1.4fr) minmax(140px, 0.65fr)
+    minmax(240px, 1fr);
+}
+
+.engineering-information-form__fields label {
+  align-content: start;
+  min-width: 0;
+}
+
+@media (max-width: 980px) {
+  .engineering-information-form__fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .engineering-information-form__name {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 620px) {
+  .engineering-information-form__header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .engineering-information-form__header > button {
+    align-self: start;
+  }
+
+  .engineering-information-form__fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .engineering-information-form__name {
+    grid-column: auto;
+  }
+}
+
+.engineering-task__empty {
+  background: var(--paper-deep);
+  border-left: 2px solid var(--line);
+  color: var(--muted);
+  font-size: 10px;
+  margin: 0 22px 20px;
+  padding: 12px 14px;
+}
+
+.engineering-environment-list {
+  border-top: 1px solid var(--line);
+}
+
+.engineering-environment-row {
+  border-bottom: 1px solid var(--line);
+}
+
+.engineering-environment-row > summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  list-style: none;
+  min-height: 56px;
+  padding: 9px 4px;
+}
+
+.engineering-environment-row > summary::-webkit-details-marker {
+  display: none;
+}
+
+.engineering-environment-row > summary > span {
+  display: grid;
+  gap: 3px;
+}
+
+.engineering-environment-row > summary strong {
+  font-size: 12px;
+}
+
+.engineering-environment-row > summary small {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.engineering-environment-row[open] > summary {
+  border-bottom: 1px dashed var(--line);
+}
+
+.bug-dialog .engineering-environment-row > form,
+.bug-dialog .engineering-environment-create > form {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 18px 4px 20px;
+}
+
+.engineering-task__form-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+}
+
+.bug-dialog .engineering-task__form-actions button.engineering-task__danger {
+  border-color: var(--line);
+  color: var(--muted);
+  margin-right: auto;
+}
+
+.engineering-environment-create {
+  border-top: 1px solid var(--strong-line);
+  margin: 0 22px 22px;
+  padding-top: 14px;
+}
+
+.bug-dialog
+  .engineering-environment-create
+  > form.engineering-environment-batch-form {
+  display: block;
+  padding: 0;
+}
+
+.engineering-environment-batch-form .engineering-environments {
+  border-top: 0;
+  padding: 0;
+}
+
+.engineering-environments__submit {
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+  padding-top: 14px;
+}
+
+.engineering-environments__submit > button {
+  background: transparent;
+  border: 1px solid var(--strong-line);
+  color: var(--ink);
+  font: inherit;
+  font-size: 10px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 12px;
+}
+
+.engineering-environments__submit > button:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.engineering-environment-create > summary {
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 800;
+  list-style: none;
+  width: fit-content;
+}
+
+.engineering-environment-create > summary::before {
+  content: '＋';
+  margin-right: 6px;
+}
+
+.engineering-environment-create[open] > summary::before {
+  content: '−';
+}
+
+.engineering-task__archive {
+  border-top: 1px solid var(--line);
+  margin: 18px 22px 22px;
+  padding-top: 12px;
+}
+
+.engineering-task__archive > summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 10px;
+  list-style: none;
+  width: fit-content;
+}
+
+.engineering-task__archive > summary::before {
+  content: '＋';
+  margin-right: 6px;
+}
+
+.engineering-task__archive[open] > summary::before {
+  content: '−';
+}
+
+.bug-dialog .engineering-task__archive > form {
+  align-items: center;
+  background: var(--paper-deep);
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  margin-top: 10px;
+  padding: 12px;
+}
+
+.engineering-task__archive p {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.engineering-detail > .engineering-task__heading {
+  margin: -22px -22px 0;
+}
+
+.panel h2 {
+  margin: 0.25rem 0;
+}
+
+.panel {
+  min-width: 0;
+  padding: clamp(1rem, 3vw, 2rem);
+  background: color-mix(in srgb, var(--paper) 92%, white);
+  border: 1px solid var(--line);
+  box-shadow: 0 0.75rem 2rem var(--shadow);
+}
+
+.button-link {
+  display: inline-grid;
+  min-height: 2.6rem;
+  padding: 0.6rem 1rem;
+  color: var(--ink);
+  text-decoration: none;
+  place-items: center;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 0.25rem;
+  transition:
+    color 140ms ease,
+    background 140ms ease,
+    border-color 140ms ease;
+}
+
+.button-link:hover,
+.button-link:focus-visible {
+  color: white;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.button-link:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  outline-offset: 2px;
+}
+
+.notice {
+  padding: 0.8rem 1rem;
+  margin: 0;
+  border: 1px solid currentColor;
+}
+
+.notice-error {
+  color: #9f2f21;
+  background: color-mix(in srgb, #e05d43 10%, var(--paper));
+}
+
+.notice-success {
+  color: #285f3d;
+  background: color-mix(in srgb, #4d9c68 10%, var(--paper));
+}
+
+@media (prefers-color-scheme: dark) {
+  .panel {
+    background: color-mix(in srgb, var(--paper) 92%, black);
+  }
+
+  .notice-error {
+    color: #ffb6a8;
+  }
+
+  .notice-success {
+    color: #a7ddb8;
+  }
+}
+
+.pairing-card,
+.pairing-result {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.pairing-result {
+  padding: 1rem;
+  border: 1px solid var(--line);
+}
+
+.pairing-result strong {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: clamp(1.5rem, 5vw, 2.4rem);
+  letter-spacing: 0.15em;
+  overflow-wrap: anywhere;
+}
+
+.pairing-result p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}

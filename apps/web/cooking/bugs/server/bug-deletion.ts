@@ -19,11 +19,11 @@ export class BugDeletion {
   deleteBugs(input: BugDeleteRequest): BugDeleteResponse {
     const parsed = BugDeleteRequestSchema.parse(input);
     const bugIds = parsed.all
-      ? (
-          this.db
-            .prepare('SELECT id FROM cooking_bug ORDER BY id')
-            .all() as Array<{ id: string }>
-        ).map(({ id }) => id)
+      ? this.db
+          .all<{
+            id: string;
+          }>('SELECT id FROM cooking_bug ORDER BY id')
+          .map(({ id }) => id)
       : [...new Set(parsed.bugIds!)];
     if (bugIds.length === 0)
       throw new PlatformError('NOT_FOUND', '没有可删除的缺陷');
@@ -31,16 +31,15 @@ export class BugDeletion {
     const batchIds = this.updateBatchIds(bugIds);
     const executionIds = this.bugExecutionIds(bugIds, batchIds);
     if (!parsed.force && executionIds.length > 0) {
-      const active = this.db
-        .prepare(
-          `SELECT id FROM platform_execution
+      const active = this.db.all<{ id: string }>(
+        `SELECT id FROM platform_execution
            WHERE id IN (${placeholders(executionIds.length)})
              AND state IN (
                'QUEUED', 'CLAIMED', 'RUNNING',
                'WAITING_FOR_INTERACTION', 'WAITING_TO_RESUME', 'CANCEL_REQUESTED'
              )`,
-        )
-        .all(...executionIds) as Array<{ id: string }>;
+        ...executionIds,
+      );
       if (active.length > 0)
         throw new PlatformError(
           'RESOURCE_CONFLICT',
@@ -60,44 +59,44 @@ export class BugDeletion {
   }
 
   private updateBatchIds(bugIds: string[]): string[] {
-    return (
-      this.db
-        .prepare(
-          `SELECT DISTINCT batch_id FROM cooking_update_batch_entry
+    return this.db
+      .all<{ batch_id: string }>(
+        `SELECT DISTINCT batch_id FROM cooking_update_batch_entry
            WHERE bug_id IN (${placeholders(bugIds.length)})`,
-        )
-        .all(...bugIds) as Array<{ batch_id: string }>
-    ).map(({ batch_id }) => batch_id);
+        ...bugIds,
+      )
+      .map(({ batch_id }) => batch_id);
   }
 
   private bugExecutionIds(bugIds: string[], batchIds: string[]): string[] {
     const ids = new Set<string>();
-    for (const { execution_id } of this.db
-      .prepare(
-        `SELECT execution_id FROM cooking_repair_attempt
+    for (const { execution_id } of this.db.all<{ execution_id: string }>(
+      `SELECT execution_id FROM cooking_repair_attempt
          WHERE bug_id IN (${placeholders(bugIds.length)})
          UNION SELECT execution_id FROM cooking_repair_session_sync
          WHERE bug_id IN (${placeholders(bugIds.length)})`,
-      )
-      .all(...bugIds, ...bugIds) as Array<{ execution_id: string }>)
+      ...bugIds,
+      ...bugIds,
+    ))
       ids.add(execution_id);
     if (batchIds.length > 0) {
-      for (const { execution_id } of this.db
-        .prepare(
-          `SELECT execution_id FROM cooking_update_attempt
+      for (const { execution_id } of this.db.all<{ execution_id: string }>(
+        `SELECT execution_id FROM cooking_update_attempt
            WHERE batch_id IN (${placeholders(batchIds.length)})
            UNION SELECT execution_id FROM cooking_update_session_sync
            WHERE batch_id IN (${placeholders(batchIds.length)})`,
-        )
-        .all(...batchIds, ...batchIds) as Array<{ execution_id: string }>)
+        ...batchIds,
+        ...batchIds,
+      ))
         ids.add(execution_id);
-      for (const { active_execution_id } of this.db
-        .prepare(
-          `SELECT active_execution_id FROM cooking_update_batch
+      for (const { active_execution_id } of this.db.all<{
+        active_execution_id: string;
+      }>(
+        `SELECT active_execution_id FROM cooking_update_batch
            WHERE id IN (${placeholders(batchIds.length)})
              AND active_execution_id IS NOT NULL`,
-        )
-        .all(...batchIds) as Array<{ active_execution_id: string }>)
+        ...batchIds,
+      ))
         ids.add(active_execution_id);
     }
     return [...ids];
@@ -186,13 +185,13 @@ export class BugDeletion {
 
   private deleteExecutions(executionIds: string[]): string[] {
     if (executionIds.length === 0) return [];
-    const outsideSuccessor = this.db
-      .prepare(
-        `SELECT id FROM platform_execution
+    const outsideSuccessor = this.db.get(
+      `SELECT id FROM platform_execution
        WHERE previous_execution_id IN (${placeholders(executionIds.length)})
          AND id NOT IN (${placeholders(executionIds.length)}) LIMIT 1`,
-      )
-      .get(...executionIds, ...executionIds);
+      ...executionIds,
+      ...executionIds,
+    );
     if (outsideSuccessor)
       throw new PlatformError(
         'RESOURCE_CONFLICT',
@@ -217,12 +216,11 @@ export class BugDeletion {
           'RESOURCE_CONFLICT',
           '存在无法删除的执行链，请先清理后继执行',
         );
-      const stillPresent = this.db
-        .prepare(
-          `SELECT id FROM platform_execution
+      const stillPresent = this.db.all<{ id: string }>(
+        `SELECT id FROM platform_execution
            WHERE id IN (${placeholders(remaining.length)})`,
-        )
-        .all(...remaining) as Array<{ id: string }>;
+        ...remaining,
+      );
       const present = new Set(stillPresent.map(({ id }) => id));
       deleted.push(...remaining.filter((id) => !present.has(id)));
       remaining = stillPresent.map(({ id }) => id);

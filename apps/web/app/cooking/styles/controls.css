@@ -1,0 +1,66 @@
+/* Global button interaction contract. Persistent semantic states are excluded. */
+.collab-shell
+  button:not(:disabled):not(.collab-bug-card__open):not(.is-active):not(
+    [aria-current]
+  ):not([aria-pressed='true']):not([aria-expanded='true']),
+.collab-shell
+  :where(
+    a.repair-primary,
+    a.repair-secondary,
+    a.primary-button,
+    a.secondary-button,
+    a.collab-primary,
+    a.collab-quiet-button,
+    .scene-links a:not([aria-current]),
+    .project-settings__row-actions a,
+    .collab-form__blocked a,
+    .collab-empty-stage__actions a
+  ) {
+  background: transparent !important;
+  border-color: var(--strong-line) !important;
+  color: var(--ink) !important;
+}
+
+.collab-shell
+  button:not(:disabled):not(.collab-bug-card__open):not(.is-active):not(
+    [aria-current]
+  ):not([aria-pressed='true']):not([aria-expanded='true']):hover,
+.collab-shell
+  :where(
+    a.repair-primary,
+    a.repair-secondary,
+    a.primary-button,
+    a.secondary-button,
+    a.collab-primary,
+    a.collab-quiet-button,
+    .scene-links a:not([aria-current]),
+    .project-settings__row-actions a,
+    .collab-form__blocked a,
+    .collab-empty-stage__actions a
+  ):hover {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: #fffaf0 !important;
+}
+
+.collab-shell
+  button:not(:disabled):not(.is-active):not([aria-current]):not(
+    [aria-pressed='true']
+  ):not([aria-expanded='true']):hover
+  :where(span, strong, small, b, i, em, kbd),
+.collab-shell
+  :where(
+    a.repair-primary,
+    a.repair-secondary,
+    a.primary-button,
+    a.secondary-button,
+    a.collab-primary,
+    a.collab-quiet-button,
+    .scene-links a:not([aria-current]),
+    .project-settings__row-actions a,
+    .collab-form__blocked a,
+    .collab-empty-stage__actions a
+  ):hover
+  :where(span, strong, small, b, i, em, kbd) {
+  color: inherit !important;
+}

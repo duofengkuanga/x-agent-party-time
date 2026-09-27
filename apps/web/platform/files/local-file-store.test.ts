@@ -53,11 +53,9 @@ describe('LocalFileStore', () => {
     expect(await store.deleteUnbound(stored.id, user.id)).toBe(true);
     expect(store.get(stored.id)).toBeNull();
     expect(
-      database
-        .query<{ count: number }, []>(
-          'SELECT COUNT(*) count FROM platform_file',
-        )
-        .get()?.count,
+      database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM platform_file',
+      )?.count,
     ).toBe(0);
   });
 
@@ -73,11 +71,9 @@ describe('LocalFileStore', () => {
       }),
     ).rejects.toThrow();
     expect(
-      database
-        .query<{ count: number }, []>(
-          'SELECT COUNT(*) count FROM platform_file',
-        )
-        .get()?.count,
+      database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM platform_file',
+      )?.count,
     ).toBe(0);
     expect(await listFiles(root)).toEqual([]);
   });

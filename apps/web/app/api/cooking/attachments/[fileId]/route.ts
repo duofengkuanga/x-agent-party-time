@@ -1,7 +1,7 @@
 import { currentUser } from '@/platform/auth/server';
 import { PlatformError, publicError } from '@/platform/errors';
 import { bugService, cookingFileStore } from '@/cooking/runtime/services';
-import { updateService } from '@/cooking/runtime/update';
+import { updateService } from '@/cooking/runtime/services';
 
 export async function GET(
   _request: Request,

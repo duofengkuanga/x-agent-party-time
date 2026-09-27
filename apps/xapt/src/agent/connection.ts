@@ -9,7 +9,8 @@ import { keychainAccount } from '../platform/macos/keychain';
 import { CONNECTION_STATE_SCHEMA_VERSION } from '../state/schemas';
 import type { LocalStateStore } from '../state/store';
 import type { ConnectionStatus } from '../daemon/status';
-import { RunnerHttpError, type RunnerAuthorizationHttp } from './server-http';
+import { RunnerHttpError } from '@agent-party-time/runner-contract/http-client';
+import type { RunnerAuthorizationHttp } from './server-http';
 
 export interface ConnectionProjection {
   status: ConnectionStatus;

@@ -1,33 +1,25 @@
-import { afterEach, describe, expect, test } from 'bun:test';
-import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { ProtocolAgent } from '@agent-party-time/runner-conformance';
+import { cookingRunnerFetch } from '@/cooking/runtime/runner-http';
+import { createCooking } from '@/cooking/runtime/create-cooking';
+import { SubmissionService } from '@/cooking/submissions/server/submission-service';
+import {
+  deliveryProject,
+  mutableClock,
+  mutation,
+} from '@/cooking/testing/project';
+import { CookingWorkspaceService } from '@/cooking/workspace/server/workspace-service';
 import { AuthService } from '@/platform/auth/service';
 import type { AppDatabase } from '@/platform/database';
-import { openDatabase } from '@/platform/database';
-import { LocalFileStore } from '@/platform/files/local-file-store';
-import {
-  handleExecutionClaim,
-  handleExecutionComplete,
-  handleExecutionStart,
-} from '@/platform/execution/http';
+import { handleExecutionClaim } from '@/platform/execution/http';
 import { ExecutionService } from '@/platform/execution/service';
-import { cookingExecutionProjection } from '@/cooking/runtime/execution-projection';
-import { RunnerService } from '@/platform/runner/service';
-import { handleRunnerHeartbeat } from '@/platform/runner/http';
-import { BindingService } from '@/cooking/bindings/server/binding-service';
-import { BugService } from '@/cooking/bugs/server/bug-service';
-import { EngineeringService } from '@/cooking/engineering/server/engineering-service';
-import { ProjectService } from '@/cooking/projects/server/project-service';
-import { RepairService } from '@/cooking/repair/server/repair-service';
-import { SubmissionService } from '@/cooking/submissions/server/submission-service';
-import { CookingWorkspaceService } from '@/cooking/workspace/server/workspace-service';
+import { LocalFileStore } from '@/platform/files/local-file-store';
+import { testDatabases } from '@/testing/database';
+import { ProtocolAgent } from '@agent-party-time/runner-conformance';
+import { describe, expect, test } from 'bun:test';
+import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
 import { UpdateService } from './update-service';
 
-const directories: string[] = [];
-const databases: AppDatabase[] = [];
+const createDatabase = testDatabases();
 
 async function setup(
   options: {
@@ -36,187 +28,57 @@ async function setup(
     deploymentKind?: 'LOCAL_SCRIPT' | 'CI_CD';
   } = {},
 ) {
-  const directory = await mkdtemp(join(tmpdir(), 'agent-party-update-'));
-  directories.push(directory);
-  const database = openDatabase(join(directory, 'server.sqlite'));
-  databases.push(database);
+  const { directory, database } = await createDatabase();
   const clock = mutableClock('2026-07-27T10:00:00.000Z');
-  const auth = new AuthService(database);
-  const users = {
-    owner: await auth.seedUser(user('update-owner', '项目所有者')),
-    tester: await auth.seedUser(user('update-tester', '测试负责人')),
-    developer: await auth.seedUser(user('update-developer', '工程负责人')),
-  };
-  const projects = new ProjectService(database);
-  const project = projects.createProject(users.owner.id, {
-    mutationId: randomUUID(),
-    name: 'Update 项目',
-  }).project;
-  for (const invited of [users.tester, users.developer]) {
-    const invitation = projects.inviteUser(users.owner.id, project.id, {
-      mutationId: randomUUID(),
-      username: invited.username,
-    });
-    projects.respondToInvitation(invited.id, invitation.id, {
-      mutationId: randomUUID(),
-      expectedVersion: invitation.version,
-      decision: 'ACCEPT',
-    });
-  }
-  const engineering = new EngineeringService(database);
-  const source = engineering.createEngineering(users.owner.id, project.id, {
-    mutationId: randomUUID(),
-    name: '支付工程',
-    type: 'BACKEND',
-    identifier: 'payment-api',
-  });
-  engineering.addMember(users.owner.id, source.id, users.developer.id, {
-    mutationId: randomUUID(),
-  });
-  const environment = engineering.createEnvironment(users.owner.id, source.id, {
-    mutationId: randomUUID(),
-    name: '支付测试环境',
-    deployment:
-      options.deploymentKind === 'CI_CD'
-        ? { kind: 'CI_CD' as const }
-        : { kind: 'LOCAL_SCRIPT' as const, command: 'bun run deploy:test' },
-  });
-  const runners = new RunnerService(database);
-  const pairedRunner = runners.pair(
-    runners.issuePairingCode(users.developer.id).code,
-    'Update Runner',
-  );
-  const runner = pairedRunner.runner;
-  const bindings = new BindingService(database);
-  const binding = bindings.createBinding(
-    users.developer.id,
-    source.id,
-    runner.id,
-    randomUUID(),
-  );
-  bindings.confirmRepository(
-    runner.id,
-    binding.id,
-    'https://example.com/payment.git',
-  );
-  let secondBinding: { id: string } | null = null;
-  let secondEnvironment: { id: string } | null = null;
-  let secondSource: { id: string } | null = null;
-  if (options.secondItem) {
-    secondSource = engineering.createEngineering(users.owner.id, project.id, {
-      mutationId: randomUUID(),
-      name: '订单工程',
-      type: 'BACKEND',
-      identifier: 'order-api',
-    });
-    engineering.addMember(users.owner.id, secondSource.id, users.developer.id, {
-      mutationId: randomUUID(),
-    });
-    secondEnvironment = engineering.createEnvironment(
-      users.owner.id,
-      secondSource.id,
-      {
-        mutationId: randomUUID(),
-        name: '订单测试环境',
-        deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:order' },
-      },
-    );
-    secondBinding = bindings.createBinding(
-      users.developer.id,
-      secondSource.id,
-      runner.id,
-      randomUUID(),
-    );
-    bindings.confirmRepository(
-      runner.id,
-      secondBinding.id,
-      'https://example.com/order.git',
-    );
-  }
-  const submission = new SubmissionService(database).createSubmission(
-    users.owner.id,
-    project.id,
-    {
-      mutationId: randomUUID(),
+  const { users, runners, pairedRunner, runner, submission, sources, items } =
+    await deliveryProject(database, {
+      name: 'Update 项目',
+      prefix: 'update',
       title: '支付功能提测',
-      requirementDescription: '验证统一更新链路',
-      testerUserId: users.tester.id,
-      items: [
+      description: '验证统一更新链路',
+      sources: [
         {
-          engineeringId: source.id,
-          responsibleUserId: users.developer.id,
-          bindingId: binding.id,
-          targetBranch: 'main',
-          environmentId: environment.id,
+          name: '支付工程',
+          type: 'BACKEND',
+          identifier: 'payment-api',
+          environment: '支付测试环境',
+          deployment:
+            options.deploymentKind === 'CI_CD'
+              ? { kind: 'CI_CD' }
+              : { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' },
+          repository: 'https://example.com/payment.git',
+          branch: 'main',
         },
-        ...(secondSource && secondEnvironment && secondBinding
+        ...(options.secondItem
           ? [
               {
-                engineeringId: secondSource.id,
-                responsibleUserId: users.developer.id,
-                bindingId: secondBinding.id,
-                targetBranch: 'main',
-                environmentId: secondEnvironment.id,
+                name: '订单工程',
+                type: 'BACKEND' as const,
+                identifier: 'order-api',
+                environment: '订单测试环境',
+                deployment: {
+                  kind: 'LOCAL_SCRIPT' as const,
+                  command: 'bun run deploy:order',
+                },
+                repository: 'https://example.com/order.git',
+                branch: 'main',
               },
             ]
           : []),
       ],
-    },
-  );
-  const items = database
-    .prepare(
-      'SELECT id FROM cooking_submission_item WHERE submission_id = ? ORDER BY position',
-    )
-    .all(submission.id) as Array<{ id: string }>;
+    });
+  const { binding } = sources[0]!;
+  const secondBinding = sources[1]?.binding ?? null;
   const item = items[0]!;
   const secondItem = items[1] ?? null;
   const events: Array<{ submissionId: string; revision: number }> = [];
-  const updates = new UpdateService(
+  const { repairs, updates, lifecycle, bugs, executions } = createCooking(
     database,
-    new ExecutionService(database, clock.now),
-    clock.now,
-    options.updateCreateId,
-    (submissionId, revision) => events.push({ submissionId, revision }),
-  );
-  const repairs = new RepairService(
-    database,
-    new ExecutionService(database, clock.now),
-    clock.now,
-    undefined,
-    (submissionId, revision) => events.push({ submissionId, revision }),
     {
-      candidateAvailable: (bugId, candidateAt) =>
-        updates.recordCandidateAvailable(bugId, candidateAt),
-      candidateReconsidered: (bugId) =>
-        updates.recalculatePendingDeliveryForBug(bugId),
-    },
-  );
-  let leaseIndex = 0;
-  const executions = new ExecutionService(
-    database,
-    clock.now,
-    undefined,
-    () => `update-lease-${++leaseIndex}`.padEnd(40, 'x'),
-    15_000,
-    cookingExecutionProjection(database, {
-      BUG_REPAIR: repairs,
-      SESSION_SYNC: {
-        projectExecution: (event) => {
-          repairs.projectExecution(event);
-          updates.projectExecution(event);
-        },
-      },
-      UPDATE_BATCH: updates,
-      CLEANUP: { projectExecution: () => {} },
-    }),
-  );
-  const bugs = new BugService(
-    database,
-    clock.now,
-    undefined,
-    (submissionId, revision) => events.push({ submissionId, revision }),
-    {
-      requested: (bugId) => repairs.createInitialExecution(bugId),
+      now: clock.now,
+      publish: (submissionId, revision) =>
+        events.push({ submissionId, revision }),
+      ids: { update: options.updateCreateId },
     },
   );
 
@@ -261,15 +123,6 @@ async function setup(
     users,
   };
 }
-
-afterEach(async () => {
-  for (const database of databases.splice(0)) database.close();
-  await Promise.all(
-    directories
-      .splice(0)
-      .map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
 
 describe('UpdateService', () => {
   test('冻结 Repair 候选中的数据库人工操作并向工作台暴露标识', async () => {
@@ -462,9 +315,12 @@ describe('UpdateService', () => {
     fixture.createBug('无权访问时到期的候选');
     await completeNextRepair(fixture, 'repair-one', ['aaaaaaa']);
     fixture.clock.set('2026-07-27T10:02:00.000Z');
-    const outsider = await new AuthService(fixture.database).seedUser(
-      user('update-outsider', '项目外用户'),
-    );
+    const outsider = await new AuthService(fixture.database).seedUser({
+      id: randomUUID(),
+      username: 'update-outsider',
+      displayName: '项目外用户',
+      password: 'password',
+    });
     const workspace = new CookingWorkspaceService(
       new SubmissionService(fixture.database),
       fixture.bugs,
@@ -475,11 +331,10 @@ describe('UpdateService', () => {
       workspace.getWorkspace(outsider.id, fixture.submission.id),
     ).toThrow(expect.objectContaining({ code: 'NOT_FOUND' }));
     expect(
-      fixture.database
-        .prepare(
-          'SELECT COUNT(*) count FROM cooking_update_batch WHERE submission_id = ?',
-        )
-        .get(fixture.submission.id),
+      fixture.database.get(
+        'SELECT COUNT(*) count FROM cooking_update_batch WHERE submission_id = ?',
+        fixture.submission.id,
+      ),
     ).toEqual({ count: 0 });
     expect(pending(fixture.database, fixture.item.id)).not.toBeNull();
   });
@@ -827,12 +682,11 @@ describe('UpdateService', () => {
       'repositoryUrl',
     );
     expect(
-      fixture.database
-        .prepare(
-          `SELECT file_id FROM platform_execution_attachment
+      fixture.database.all(
+        `SELECT file_id FROM platform_execution_attachment
            WHERE execution_id = ?`,
-        )
-        .all(continued.executionId!),
+        continued.executionId!,
+      ),
     ).toEqual([{ file_id: evidence.id }]);
     const second = await startExecution(
       fixture,
@@ -967,11 +821,10 @@ describe('UpdateService', () => {
       ),
     });
     expect(
-      fixture.database
-        .prepare(
-          'SELECT COUNT(*) count FROM cooking_update_attempt WHERE batch_id = ?',
-        )
-        .get(latestBatch(fixture.database, fixture.item.id).id),
+      fixture.database.get(
+        'SELECT COUNT(*) count FROM cooking_update_attempt WHERE batch_id = ?',
+        latestBatch(fixture.database, fixture.item.id).id,
+      ),
     ).toEqual({ count: 1 });
   });
 
@@ -1220,11 +1073,10 @@ describe('UpdateService', () => {
       },
     );
     expect(
-      fixture.database
-        .prepare(
-          'SELECT state FROM platform_execution_interaction WHERE id = ?',
-        )
-        .get(interaction.id),
+      fixture.database.get(
+        'SELECT state FROM platform_execution_interaction WHERE id = ?',
+        interaction.id,
+      ),
     ).toEqual({ state: 'RESOLVED' });
     const resolvedAttempt = fixture.updates
       .workspace(fixture.users.developer.id, fixture.submission.id)
@@ -1309,6 +1161,60 @@ describe('UpdateService', () => {
       'COMPLETED',
     );
   });
+});
+
+test('统一装配只向 Update 投影更新会话同步，保留原失败尝试', async () => {
+  const fixture = await setup();
+  const { users, updates, executions, runner, item, database } = fixture;
+  fixture.createBug('平台外完成更新');
+  await completeNextRepair(fixture, 'repair-before-sync', ['aaaaaaa']);
+  const frozen = updates.freezeNow(users.developer.id, item.id, {
+    mutationId: randomUUID(),
+  });
+  const started = await startExecution(
+    fixture,
+    frozen.executionId,
+    'update-to-sync',
+  );
+  executions.complete(runner.id, started.executionId, {
+    leaseToken: started.leaseToken,
+    sessionId: started.sessionId,
+    outcome: { kind: 'SUCCEEDED', result: failedUpdate('部署失败') },
+  });
+  const batch = latestBatch(database, item.id);
+  const sync = updates.synchronizeSession(
+    users.developer.id,
+    batch.id,
+    mutation(batch.version),
+  );
+  const [claimed] = await executions.claim(runner.id, 1, 0);
+  expect(claimed?.id).toBe(sync.executionId);
+  expect(claimed?.codexTurn?.kind).toBe('READ_SESSION');
+  executions.start(runner.id, claimed!.id, {
+    kind: 'STARTED',
+    leaseToken: claimed!.lease.token,
+    sessionId: started.sessionId,
+  });
+  const synchronized = executions.complete(runner.id, claimed!.id, {
+    leaseToken: claimed!.lease.token,
+    sessionId: started.sessionId,
+    outcome: {
+      kind: 'SUCCEEDED',
+      result: {
+        turnId: 'external-update-turn',
+        result: completedUpdate('外部更新已完成'),
+      },
+    },
+  });
+  expect(synchronized.state).toBe('SUCCEEDED');
+  expect(latestBatch(database, item.id).state).toBe('COMPLETED');
+  const attempts = updates
+    .batchView(users.developer.id, batch.id)
+    .timeline.filter((entry) => entry.kind === 'UPDATE_ATTEMPT');
+  expect(attempts.map((attempt) => attempt.result?.outcome)).toEqual([
+    'FAILED',
+    'COMPLETED',
+  ]);
 });
 
 function completedUpdate(_summary: string) {
@@ -1415,23 +1321,20 @@ async function startExecution(
 }
 
 function pending(database: AppDatabase, submissionItemId: string) {
-  return database
-    .prepare(
-      `SELECT last_candidate_at, eligible_at FROM cooking_pending_delivery
+  return database.get(
+    `SELECT last_candidate_at, eligible_at FROM cooking_pending_delivery
        WHERE submission_item_id = ?`,
-    )
-    .get(submissionItemId) as
-    { last_candidate_at: string; eligible_at: string } | undefined;
+    submissionItemId,
+  ) as { last_candidate_at: string; eligible_at: string } | undefined;
 }
 
 function latestBatch(database: AppDatabase, submissionItemId: string) {
-  return database
-    .prepare(
-      `SELECT id, state, version, active_execution_id
+  return database.get(
+    `SELECT id, state, version, active_execution_id
        FROM cooking_update_batch WHERE submission_item_id = ?
        ORDER BY created_at DESC, rowid DESC LIMIT 1`,
-    )
-    .get(submissionItemId) as {
+    submissionItemId,
+  ) as {
     id: string;
     state: string;
     version: number;
@@ -1441,12 +1344,11 @@ function latestBatch(database: AppDatabase, submissionItemId: string) {
 
 function batchEntries(database: AppDatabase, batchId: string) {
   return (
-    database
-      .prepare(
-        `SELECT bug_id, commits_json FROM cooking_update_batch_entry
+    database.all(
+      `SELECT bug_id, commits_json FROM cooking_update_batch_entry
          WHERE batch_id = ? ORDER BY position`,
-      )
-      .all(batchId) as Array<{ bug_id: string; commits_json: string }>
+      batchId,
+    ) as Array<{ bug_id: string; commits_json: string }>
   ).map((row) => ({
     bug_id: row.bug_id,
     commits: JSON.parse(row.commits_json),
@@ -1454,76 +1356,32 @@ function batchEntries(database: AppDatabase, batchId: string) {
 }
 
 function currentBug(database: AppDatabase, bugId: string) {
-  return database
-    .prepare('SELECT stage, version FROM cooking_bug WHERE id = ?')
-    .get(bugId) as { stage: string; version: number };
+  return database.get(
+    'SELECT stage, version FROM cooking_bug WHERE id = ?',
+    bugId,
+  ) as { stage: string; version: number };
 }
 
 function pendingCommits(database: AppDatabase, bugId: string): string[] {
-  const row = database
-    .prepare(
-      'SELECT pending_commits_json FROM cooking_bug_repair_context WHERE bug_id = ?',
-    )
-    .get(bugId) as { pending_commits_json: string };
+  const row = database.get(
+    'SELECT pending_commits_json FROM cooking_bug_repair_context WHERE bug_id = ?',
+    bugId,
+  ) as { pending_commits_json: string };
   return JSON.parse(row.pending_commits_json) as string[];
 }
 
 function updateProtocolFetch(
   fixture: Awaited<ReturnType<typeof setup>>,
-): typeof fetch {
-  return async (inputValue, init) => {
-    const request =
-      inputValue instanceof Request
-        ? inputValue
-        : new Request(String(inputValue), init);
-    const path = new URL(request.url).pathname;
-    if (path === '/api/runner/heartbeat')
-      return handleRunnerHeartbeat(request, fixture.runners);
-    if (path === '/api/runner/executions/claim')
-      return handleExecutionClaim(request, fixture.runners, fixture.executions);
-    const match = /^\/api\/runner\/executions\/([^/]+)\/([^/]+)$/u.exec(path);
-    if (match?.[2] === 'start')
-      return handleExecutionStart(
-        request,
-        match[1]!,
-        fixture.runners,
-        fixture.executions,
-      );
-    if (match?.[2] === 'complete')
-      return handleExecutionComplete(
-        request,
-        match[1]!,
-        fixture.runners,
-        fixture.executions,
-      );
-    return Response.json(
-      { error: { code: 'NOT_FOUND', message: '未找到' } },
-      { status: 404 },
-    );
-  };
-}
-
-function mutableClock(initial: string) {
-  let value = new Date(initial);
-  return {
-    now: () => new Date(value),
-    set: (next: string) => {
-      value = new Date(next);
-    },
-  };
-}
-
-function mutation(expectedVersion: number) {
-  return { mutationId: randomUUID(), expectedVersion };
-}
-
-function user(username: string, displayName: string) {
-  return {
-    id: randomUUID(),
-    username,
-    displayName,
-    password: 'password',
-  };
+): ReturnType<typeof cookingRunnerFetch> {
+  return cookingRunnerFetch(fixture.database, {
+    runners: fixture.runners,
+    executions: fixture.executions,
+    files: new LocalFileStore(
+      fixture.database,
+      join(fixture.directory, 'files'),
+    ),
+    prepare: () => {},
+  });
 }
 
 describe('更新遵守环境使用权', () => {

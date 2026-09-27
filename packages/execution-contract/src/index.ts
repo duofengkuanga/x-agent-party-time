@@ -473,7 +473,7 @@ export function sanitizeExecutionInteractionPayload(
   );
 }
 
-function isJsonSubset(candidate: unknown, requested: unknown): boolean {
+export function isJsonSubset(candidate: unknown, requested: unknown): boolean {
   if (
     candidate === null ||
     typeof candidate === 'string' ||

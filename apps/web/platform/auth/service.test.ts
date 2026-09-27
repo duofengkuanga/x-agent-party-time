@@ -53,17 +53,14 @@ describe('AuthService', () => {
 
     expect(repeated).toEqual(first);
     expect(
-      database
-        .query<{ count: number }, []>(
-          'SELECT COUNT(*) count FROM platform_user',
-        )
-        .get()?.count,
+      database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM platform_user',
+      )?.count,
     ).toBe(1);
-    const row = database
-      .query<{ password_hash: string }, []>(
-        'SELECT password_hash FROM platform_user WHERE id = ?',
-      )
-      .get('user-one');
+    const row = database.get<{ password_hash: string }>(
+      'SELECT password_hash FROM platform_user WHERE id = ?',
+      'user-one',
+    );
     expect(row?.password_hash).toStartWith('scrypt$1$');
     expect(row?.password_hash).not.toContain('first-password');
     expect(await auth.authenticate('USER.ONE', 'first-password')).toEqual(
@@ -87,11 +84,9 @@ describe('AuthService', () => {
     });
     const session = auth.createSession(user.id, 60_000);
 
-    const stored = database
-      .query<{ token_hash: string }, []>(
-        'SELECT token_hash FROM platform_session',
-      )
-      .get();
+    const stored = database.get<{ token_hash: string }>(
+      'SELECT token_hash FROM platform_session',
+    );
     expect(stored?.token_hash).not.toBe(session.token);
     expect(session.token.length).toBeGreaterThan(30);
     expect(auth.currentUser(session.token)).toEqual(user);
@@ -121,11 +116,9 @@ describe('AuthService', () => {
 
     expect(auth.currentUser(session.token)).toBeNull();
     expect(
-      database
-        .query<{ count: number }, []>(
-          'SELECT COUNT(*) count FROM platform_session',
-        )
-        .get()?.count,
+      database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM platform_session',
+      )?.count,
     ).toBe(0);
   });
 });

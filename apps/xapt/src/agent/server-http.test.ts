@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
-import { RunnerHttpClient, RunnerHttpError } from './server-http';
+import { RunnerHttpError } from '@agent-party-time/runner-contract/http-client';
+import { RunnerHttpClient } from './server-http';
 
 const credential = 'credential-secret-at-least-thirty-two-characters';
 

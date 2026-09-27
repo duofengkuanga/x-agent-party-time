@@ -1,23 +1,16 @@
-import { afterEach, expect, test } from 'bun:test';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { testDirectories } from '../testing/directories';
+import { expect, test } from 'bun:test';
+import { writeFile } from 'node:fs/promises';
+
 import { join } from 'node:path';
 import type { ExecutionResultAssertion } from '@agent-party-time/execution-contract';
 import { NodeCommandRunner } from '../platform/system';
 import { GitExecutionResultVerifier } from './result-verification';
 
-const directories: string[] = [];
+const createTestDirectory = testDirectories('xapt-result-verification-');
 const assertions: ExecutionResultAssertion[] = [
   { kind: 'GIT_COMMITS_CREATED', resultPath: ['result', 'commits'] },
 ];
-
-afterEach(async () => {
-  await Promise.all(
-    directories
-      .splice(0)
-      .map((path) => rm(path, { recursive: true, force: true })),
-  );
-});
 
 test('只接受本次 Execution 创建且按顺序返回的真实 Commit', async () => {
   const repository = await gitRepository();
@@ -97,8 +90,7 @@ test('不声明提交的有效业务失败结果不要求 Commit 基线', async 
 });
 
 async function gitRepository(): Promise<string> {
-  const repository = await mkdtemp(join(tmpdir(), 'xapt-result-verification-'));
-  directories.push(repository);
+  const repository = await createTestDirectory();
   await git(repository, ['init', '-b', 'main']);
   await git(repository, ['config', 'user.name', 'xapt test']);
   await git(repository, ['config', 'user.email', 'xapt@example.com']);

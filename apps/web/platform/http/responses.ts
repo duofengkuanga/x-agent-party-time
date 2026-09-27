@@ -1,4 +1,4 @@
-import { ZodError } from 'zod';
+import { ZodError, type ZodType } from 'zod';
 import { PlatformError, publicError } from '@/platform/errors';
 
 export function normalizeRequestError(error: unknown): unknown {
@@ -22,4 +22,16 @@ export function errorResponse(error: unknown, operation?: string): Response {
     { error: { code: visible.code, message: visible.message } },
     visible.status,
   );
+}
+
+export async function jsonOperation<T>(
+  schema: ZodType<T>,
+  perform: () => unknown | Promise<unknown>,
+  options: { status?: number; operation?: string } = {},
+): Promise<Response> {
+  try {
+    return jsonResponse(schema.parse(await perform()), options.status);
+  } catch (error) {
+    return errorResponse(normalizeRequestError(error), options.operation);
+  }
 }

@@ -1,0 +1,617 @@
+.collaboration-member {
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 34px minmax(0, 1fr) auto auto;
+  padding: 9px;
+}
+
+.collaboration-member > span {
+  align-items: center;
+  background: var(--ink);
+  color: var(--paper);
+  display: flex;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 17px;
+  font-style: italic;
+  height: 34px;
+  justify-content: center;
+}
+
+.collaboration-member > div,
+.collaboration-invitation-list article > div,
+.project-inbox-list article > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.collaboration-member strong,
+.collaboration-invitation-list strong {
+  font-size: 10px;
+}
+
+.collaboration-member small,
+.collaboration-invitation-list small {
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.collaboration-member em {
+  border: 1px solid var(--strong-line);
+  font-size: 7px;
+  font-style: normal;
+  font-weight: 900;
+  padding: 4px 5px;
+}
+
+.collaboration-member button,
+.collaboration-invitation-list button,
+.project-inbox-list article > div:last-child > button:first-child {
+  background: transparent;
+  border: 1px solid var(--strong-line);
+  color: var(--ink);
+  font-size: 8px;
+  padding: 6px;
+}
+
+.collaboration-member button:hover,
+.collaboration-invitation-list button:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.bug-dialog .collaboration-member form,
+.bug-dialog .collaboration-invitation-list form {
+  display: block;
+  padding: 0;
+}
+
+.project-inbox-list {
+  padding: 22px;
+}
+
+.project-inbox-list article {
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--strong-line);
+  box-shadow: 3px 3px 0 color-mix(in srgb, var(--ink), transparent 82%);
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  padding: 15px;
+}
+
+.project-inbox-list article small,
+.project-inbox-list article span {
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.project-inbox-list article strong {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 19px;
+  font-style: italic;
+}
+
+.project-inbox-list article > em {
+  color: var(--warning);
+  font-size: 8px;
+  font-style: normal;
+}
+
+.project-inbox-list article > div:last-child {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.bug-dialog .project-inbox-list form {
+  display: block;
+  padding: 0;
+}
+
+.project-inbox-list form button {
+  background: transparent;
+  border: 1px solid var(--strong-line);
+  color: var(--ink);
+  min-height: 36px;
+  padding: 0 12px;
+}
+
+.project-inbox-list form button:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.bug-dialog .collaboration-invite-form {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 0;
+}
+
+.collaboration-invite-form select {
+  background: var(--panel);
+  border: 1px solid var(--strong-line);
+  color: inherit;
+  font: inherit;
+  min-height: 42px;
+  padding: 0 12px;
+}
+
+.collaboration-invite-form .repair-primary {
+  min-height: 42px;
+}
+
+.collaboration-invitation-list article {
+  align-items: center;
+  border: 1px dashed var(--line);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  padding: 10px;
+}
+
+.collaboration-invitation-list article > span {
+  color: var(--warning);
+  font-size: 8px;
+}
+.project-settings-shell {
+  overflow-x: hidden;
+}
+
+.collab-shell[data-theme='paper'] .project-settings-shell {
+  --muted: #696965;
+}
+
+.collab-shell[data-theme='night'] .project-settings-shell {
+  --muted: #9da1a2;
+}
+
+.project-settings {
+  margin: 0 auto;
+  max-width: 1160px;
+  padding: 0 clamp(22px, 4vw, 56px) 72px;
+}
+
+.project-settings__hero {
+  align-items: end;
+  border-bottom: 1px solid var(--strong-line);
+  display: grid;
+  gap: 32px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: clamp(54px, 7vw, 80px) 0 28px;
+}
+
+.project-settings__intro {
+  min-width: 0;
+}
+
+.project-settings__hero h1 {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(44px, 5vw, 64px);
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: -0.045em;
+  line-height: 0.96;
+  margin: 0;
+}
+
+.project-settings__intro p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.75;
+  margin: 18px 0 0;
+  max-width: 600px;
+}
+
+.project-settings__content {
+  padding-top: 24px;
+}
+
+.project-settings__toolbar-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.project-settings .project-settings__primary-action {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 14px;
+}
+
+.project-settings .project-settings__primary-action {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--strong-line);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 900;
+  min-width: 104px;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+
+.project-settings .project-settings__primary-action:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fffaf0;
+}
+
+.project-settings .project-settings__primary-action[aria-expanded='true'] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+
+.project-settings
+  .project-settings__primary-action[aria-expanded='true']:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.project-settings .project-settings__create > button,
+.project-settings .project-settings__empty button {
+  background: var(--ink);
+  border: 1px solid var(--ink);
+  color: var(--paper);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.project-settings .project-settings__create > button:hover,
+.project-settings .project-settings__empty button:hover {
+  background: var(--accent-dark);
+  border-color: var(--accent-dark);
+  color: var(--paper);
+}
+
+.project-settings button:focus-visible,
+.project-settings a:focus-visible,
+.project-settings input:focus-visible {
+  outline: 2px solid var(--accent-dark);
+  outline-offset: 3px;
+}
+
+.project-settings__create {
+  align-items: end;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 16px;
+  margin: 0 0 24px;
+  padding: 0 0 24px;
+}
+
+.project-settings__create > div {
+  grid-column: 1 / -1;
+}
+
+.project-settings__create > div > span {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 22px;
+  font-style: italic;
+}
+
+.project-settings__create > div > p {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.6;
+  margin: 6px 0 0;
+}
+
+.project-settings__create label {
+  display: grid;
+  gap: 7px;
+}
+
+.project-settings__create label > span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.project-settings__create input {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 0;
+  font-size: 12px;
+  min-height: 42px;
+  padding: 0 12px;
+  width: 100%;
+}
+
+.project-settings__create input:focus {
+  border-color: var(--strong-line);
+}
+
+.project-settings .project-settings__create > button {
+  min-height: 42px;
+  padding: 0 16px;
+}
+
+.project-settings__create > button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.project-settings__invitees label:has(input:checked) {
+  border-color: var(--strong-line);
+  box-shadow: inset 3px 0 0 var(--accent-dark);
+}
+
+.project-settings__error {
+  border-left: 2px solid var(--accent-dark);
+  color: var(--accent-dark);
+  font-size: 11px;
+  margin: 0 0 20px;
+  padding: 8px 12px;
+}
+
+.project-settings__list {
+  border-top: 1px solid var(--strong-line);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.project-settings__list > li {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 24px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 108px;
+  padding: 18px 0;
+  transition: background-color 140ms ease;
+}
+
+.project-settings__list > li:hover {
+  background: color-mix(in srgb, var(--panel), transparent 58%);
+}
+
+.project-settings__project-copy {
+  min-width: 0;
+}
+
+.project-settings__project-copy > span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.project-settings__project-copy h2 {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(24px, 2.6vw, 30px);
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  margin: 5px 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-settings__project-copy p {
+  color: var(--muted);
+  font-size: 11px;
+  margin: 0;
+}
+
+.project-settings__row-actions {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.project-settings .project-settings__row-actions button,
+.project-settings .project-settings__row-actions a {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 700;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 12px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.project-settings .project-settings__row-actions button:hover,
+.project-settings .project-settings__row-actions a:hover {
+  color: var(--ink);
+}
+
+.project-settings .project-settings__row-actions button:first-child:hover,
+.project-settings .project-settings__row-actions a:hover {
+  background: var(--paper-deep);
+}
+
+.project-settings
+  .project-settings__row-actions
+  .project-settings__row-primary {
+  background: transparent;
+  border-color: var(--strong-line);
+  color: var(--ink);
+  padding-inline: 14px;
+}
+
+.project-settings
+  .project-settings__row-actions
+  .project-settings__row-primary:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fffaf0;
+}
+
+.project-settings__empty {
+  align-content: center;
+  border-bottom: 1px solid var(--line);
+  border-top: 1px solid var(--strong-line);
+  display: grid;
+  justify-items: start;
+  min-height: 300px;
+  padding: 44px 0;
+}
+
+.project-settings__empty > span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.project-settings__empty h2 {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 36px;
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  margin: 12px 0 4px;
+}
+
+.project-settings__empty p {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.7;
+  margin: 8px 0 18px;
+}
+
+.project-settings .project-settings__empty button {
+  min-height: 40px;
+  padding: 0 15px;
+}
+
+.collab-form__blocked {
+  align-items: center;
+  background: var(--paper-deep);
+  border-left: 2px solid var(--accent-dark);
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  padding: 13px 14px;
+}
+
+.collab-form__blocked strong {
+  font-size: 10px;
+}
+
+.collab-form__blocked p {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.6;
+  margin: 4px 0 0;
+}
+
+.collab-form__blocked a {
+  border-bottom: 1px solid currentColor;
+  color: var(--accent-dark);
+  flex: 0 0 auto;
+  font-size: 9px;
+  font-weight: 900;
+  padding-bottom: 2px;
+  text-decoration: none;
+}
+
+.collab-empty-stage__actions {
+  align-items: center;
+  display: flex;
+  gap: 18px;
+  margin-top: 12px;
+}
+
+.collab-empty-stage__actions button {
+  margin-top: 0;
+}
+
+.collab-empty-stage__actions a {
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 9px;
+  padding: 4px 0;
+  text-decoration: none;
+}
+
+.collab-empty-stage__actions a:hover {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+@media (max-width: 900px) {
+  .project-settings__hero {
+    align-items: start;
+    gap: 28px;
+    grid-template-columns: 1fr;
+  }
+
+  .project-settings__toolbar-actions {
+    justify-content: flex-start;
+  }
+
+  .project-settings__create {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .project-settings__create > button {
+    grid-column: 1 / -1;
+  }
+
+  .project-settings__list > li {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .project-settings__row-actions {
+    grid-column: 1;
+  }
+}
+
+@media (max-width: 620px) {
+  .project-inbox-list article {
+    align-items: start;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .project-inbox-list article > div:last-child {
+    justify-content: flex-start;
+  }
+
+  .project-settings {
+    padding-inline: 16px;
+  }
+
+  .project-settings__hero {
+    gap: 22px;
+    padding: 42px 0 24px;
+  }
+
+  .project-settings__create {
+    grid-template-columns: 1fr;
+  }
+
+  .project-settings__create > button {
+    grid-column: auto;
+  }
+
+  .project-settings__list > li {
+    gap: 16px;
+    min-height: 0;
+    padding: 20px 0;
+  }
+
+  .project-settings__row-actions {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+}

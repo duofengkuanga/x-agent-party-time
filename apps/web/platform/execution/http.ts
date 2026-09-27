@@ -1,3 +1,12 @@
+import { PlatformError } from '@/platform/errors';
+import type { LocalFileStore } from '@/platform/files/local-file-store';
+import {
+  errorResponse,
+  jsonOperation,
+  normalizeRequestError,
+} from '@/platform/http/responses';
+import { bearerCredential } from '@/platform/runner/http';
+import type { RunnerService } from '@/platform/runner/service';
 import {
   CompleteExecutionRequestSchema,
   ExecutionClaimRequestSchema,
@@ -11,11 +20,6 @@ import {
   WaitInteractionRequestSchema,
   WaitInteractionResponseSchema,
 } from '@agent-party-time/execution-contract';
-import { ZodError } from 'zod';
-import { publicError, PlatformError } from '@/platform/errors';
-import type { LocalFileStore } from '@/platform/files/local-file-store';
-import { bearerCredential } from '@/platform/runner/http';
-import type { RunnerService } from '@/platform/runner/service';
 import type { ExecutionService } from './service';
 
 type RunnerAuthenticator = Pick<RunnerService, 'authenticateCredential'>;
@@ -26,22 +30,18 @@ export async function handleExecutionClaim(
   executions: Pick<ExecutionService, 'claim'>,
   prepare: () => void = () => {},
 ): Promise<Response> {
-  try {
+  return jsonOperation(ExecutionClaimResponseSchema, async () => {
     const runner = runners.authenticateCredential(bearerCredential(request));
     const body = ExecutionClaimRequestSchema.parse(await request.json());
     prepare();
-    return jsonResponse(
-      ExecutionClaimResponseSchema.parse({
-        executions: await executions.claim(
-          runner.id,
-          body.availableSlots,
-          body.waitMs,
-        ),
-      }),
-    );
-  } catch (error) {
-    return errorResponse(normalizeRequestError(error));
-  }
+    return {
+      executions: await executions.claim(
+        runner.id,
+        body.availableSlots,
+        body.waitMs,
+      ),
+    };
+  });
 }
 
 export async function handleExecutionStart(
@@ -50,17 +50,13 @@ export async function handleExecutionStart(
   runners: RunnerAuthenticator,
   executions: Pick<ExecutionService, 'start'>,
 ): Promise<Response> {
-  try {
+  return jsonOperation(ExecutionMutationResponseSchema, async () => {
     const runner = runners.authenticateCredential(bearerCredential(request));
     const body = ExecutionStartRequestSchema.parse(await request.json());
-    return jsonResponse(
-      ExecutionMutationResponseSchema.parse({
-        execution: executions.start(runner.id, executionId, body),
-      }),
-    );
-  } catch (error) {
-    return errorResponse(normalizeRequestError(error));
-  }
+    return {
+      execution: executions.start(runner.id, executionId, body),
+    };
+  });
 }
 
 export async function handleExecutionRenew(
@@ -69,17 +65,11 @@ export async function handleExecutionRenew(
   runners: RunnerAuthenticator,
   executions: Pick<ExecutionService, 'renew'>,
 ): Promise<Response> {
-  try {
+  return jsonOperation(ExecutionRenewResponseSchema, async () => {
     const runner = runners.authenticateCredential(bearerCredential(request));
     const body = ExecutionRenewRequestSchema.parse(await request.json());
-    return jsonResponse(
-      ExecutionRenewResponseSchema.parse(
-        executions.renew(runner.id, executionId, body.leaseToken),
-      ),
-    );
-  } catch (error) {
-    return errorResponse(normalizeRequestError(error));
-  }
+    return executions.renew(runner.id, executionId, body.leaseToken);
+  });
 }
 
 export async function handleOpenInteraction(
@@ -88,17 +78,13 @@ export async function handleOpenInteraction(
   runners: RunnerAuthenticator,
   executions: Pick<ExecutionService, 'openInteraction'>,
 ): Promise<Response> {
-  try {
+  return jsonOperation(OpenInteractionResponseSchema, async () => {
     const runner = runners.authenticateCredential(bearerCredential(request));
     const body = OpenInteractionRequestSchema.parse(await request.json());
-    return jsonResponse(
-      OpenInteractionResponseSchema.parse({
-        interaction: executions.openInteraction(runner.id, executionId, body),
-      }),
-    );
-  } catch (error) {
-    return errorResponse(normalizeRequestError(error));
-  }
+    return {
+      interaction: executions.openInteraction(runner.id, executionId, body),
+    };
+  });
 }
 
 export async function handleWaitInteraction(
@@ -107,23 +93,17 @@ export async function handleWaitInteraction(
   runners: RunnerAuthenticator,
   executions: Pick<ExecutionService, 'waitInteraction'>,
 ): Promise<Response> {
-  try {
+  return jsonOperation(WaitInteractionResponseSchema, async () => {
     const runner = runners.authenticateCredential(bearerCredential(request));
     const body = WaitInteractionRequestSchema.parse(await request.json());
-    return jsonResponse(
-      WaitInteractionResponseSchema.parse(
-        await executions.waitInteraction(
-          runner.id,
-          body.executionId,
-          interactionId,
-          body.leaseToken,
-          body.waitMs,
-        ),
-      ),
+    return await executions.waitInteraction(
+      runner.id,
+      body.executionId,
+      interactionId,
+      body.leaseToken,
+      body.waitMs,
     );
-  } catch (error) {
-    return errorResponse(normalizeRequestError(error));
-  }
+  });
 }
 
 export async function handleExecutionComplete(
@@ -132,17 +112,13 @@ export async function handleExecutionComplete(
   runners: RunnerAuthenticator,
   executions: Pick<ExecutionService, 'complete'>,
 ): Promise<Response> {
-  try {
+  return jsonOperation(ExecutionMutationResponseSchema, async () => {
     const runner = runners.authenticateCredential(bearerCredential(request));
     const body = CompleteExecutionRequestSchema.parse(await request.json());
-    return jsonResponse(
-      ExecutionMutationResponseSchema.parse({
-        execution: executions.complete(runner.id, executionId, body),
-      }),
-    );
-  } catch (error) {
-    return errorResponse(normalizeRequestError(error));
-  }
+    return {
+      execution: executions.complete(runner.id, executionId, body),
+    };
+  });
 }
 
 export async function handleExecutionFile(
@@ -184,27 +160,4 @@ export async function handleExecutionFile(
   } catch (error) {
     return errorResponse(normalizeRequestError(error));
   }
-}
-
-function normalizeRequestError(error: unknown): unknown {
-  if (error instanceof SyntaxError || error instanceof ZodError)
-    return new PlatformError('VALIDATION_FAILED', '请求内容无效', {
-      cause: error,
-    });
-  return error;
-}
-
-function jsonResponse(value: unknown, status = 200): Response {
-  return Response.json(value, {
-    status,
-    headers: { 'cache-control': 'no-store' },
-  });
-}
-
-function errorResponse(error: unknown): Response {
-  const visible = publicError(error);
-  return jsonResponse(
-    { error: { code: visible.code, message: visible.message } },
-    visible.status,
-  );
 }

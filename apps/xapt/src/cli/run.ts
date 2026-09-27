@@ -1,13 +1,8 @@
-import type { DaemonSnapshot } from '../daemon/status';
 import type { ConnectionProgress } from '../agent/connection';
+import type { DaemonSnapshot } from '../daemon/status';
 import { isDaemonHealthy } from '../daemon/status';
 import { CliUsageError, parseCommand } from './command';
-import {
-  HELP_TEXT,
-  renderNotImplemented,
-  renderUsageError,
-  renderVersion,
-} from './render';
+import { HELP_TEXT, renderUsageError, renderVersion } from './render';
 
 export const EXIT_SUCCESS = 0;
 export const EXIT_FAILURE = 1;
@@ -65,7 +60,7 @@ export interface CliRuntime {
 
 export async function runCli(
   args: readonly string[],
-  runtime?: CliRuntime,
+  runtime: CliRuntime,
   progressOutput: (line: string) => void = () => undefined,
 ): Promise<CliResult> {
   try {
@@ -76,8 +71,6 @@ export async function runCli(
       case 'version':
         return { exitCode: EXIT_SUCCESS, stdout: renderVersion() };
       case 'daemon-connect':
-        if (!runtime)
-          return notImplemented(`daemon connect ${command.serverUrl}`);
         await runtime.daemonConnect(command.serverUrl, (progress) => {
           progressOutput(
             [
@@ -94,7 +87,6 @@ export async function runCli(
           stdout: 'Agent 已获授权并连接到服务。',
         };
       case 'daemon-start': {
-        if (!runtime) return notImplemented('daemon start');
         const result = await runtime.daemonStart();
         const message = result.alreadyRunning
           ? 'xapt 本机服务已在运行。'
@@ -107,7 +99,6 @@ export async function runCli(
         };
       }
       case 'daemon-stop': {
-        if (!runtime) return notImplemented('daemon stop');
         const result = await runtime.daemonStop(command.force);
         return {
           exitCode: EXIT_SUCCESS,
@@ -117,7 +108,6 @@ export async function runCli(
         };
       }
       case 'daemon-status': {
-        if (!runtime) return notImplemented('daemon status');
         const snapshot = await runtime.daemonStatus();
         return {
           exitCode: isDaemonHealthy(snapshot) ? EXIT_SUCCESS : EXIT_FAILURE,
@@ -125,7 +115,6 @@ export async function runCli(
         };
       }
       case 'bugs-delete': {
-        if (!runtime) return notImplemented('bugs delete');
         const result = await runtime.bugsDelete({
           bugIds: command.bugIds,
           all: command.all,
@@ -137,7 +126,6 @@ export async function runCli(
         };
       }
       case 'skills-update': {
-        if (!runtime) return notImplemented('skills update');
         const result = await runtime.skillsUpdate();
         return {
           exitCode: EXIT_SUCCESS,
@@ -146,39 +134,33 @@ export async function runCli(
             : `Agent Party Time 规则包已是当前版本（${result.sourceRevision}）。`,
         };
       }
-      case 'uninstall':
-        if (!runtime) return notImplemented('uninstall');
-        {
-          progressOutput(
-            '将删除 xapt 程序、版本、本机服务、授权凭据、本机状态、缓存与日志；不会修改 Codex 或 ~/.codex。',
-          );
-          const result = await runtime.uninstall(command.force);
-          return {
-            exitCode: EXIT_SUCCESS,
-            stdout: [
-              'xapt 已卸载；Codex 与 ~/.codex 未被修改。',
-              ...result.warnings.map((warning) => `警告：${warning}`),
-            ].join('\n'),
-          };
-        }
-      case 'update':
-        if (!runtime) return notImplemented('update');
-        {
-          const result = await runtime.update();
-          return {
-            exitCode: EXIT_SUCCESS,
-            stdout: result.updated
-              ? `xapt 已更新到 ${result.version}${result.daemonRestarted ? '，本机服务已恢复运行' : ''}。`
-              : `xapt ${result.version} 已是最新稳定版本。`,
-          };
-        }
+      case 'uninstall': {
+        progressOutput(
+          '将删除 xapt 程序、版本、本机服务、授权凭据、本机状态、缓存与日志；不会修改 Codex 或 ~/.codex。',
+        );
+        const result = await runtime.uninstall(command.force);
+        return {
+          exitCode: EXIT_SUCCESS,
+          stdout: [
+            'xapt 已卸载；Codex 与 ~/.codex 未被修改。',
+            ...result.warnings.map((warning) => `警告：${warning}`),
+          ].join('\n'),
+        };
+      }
+      case 'update': {
+        const result = await runtime.update();
+        return {
+          exitCode: EXIT_SUCCESS,
+          stdout: result.updated
+            ? `xapt 已更新到 ${result.version}${result.daemonRestarted ? '，本机服务已恢复运行' : ''}。`
+            : `xapt ${result.version} 已是最新稳定版本。`,
+        };
+      }
       case 'internal-daemon': {
-        if (!runtime) return notImplemented('内部 daemon 入口');
         await runtime.internalDaemon();
         return { exitCode: EXIT_SUCCESS };
       }
       case 'internal-render-install-state':
-        if (!runtime) return notImplemented('internal-render-install-state');
         return {
           exitCode: EXIT_SUCCESS,
           stdout: await runtime.renderInstallState(
@@ -192,13 +174,6 @@ export async function runCli(
       return { exitCode: EXIT_USAGE, stderr: renderUsageError(error.message) };
     return { exitCode: EXIT_FAILURE, stderr: safeRuntimeError(error) };
   }
-}
-
-function notImplemented(command: string): CliResult {
-  return {
-    exitCode: EXIT_FAILURE,
-    stderr: renderNotImplemented(command),
-  };
 }
 
 function renderBugsDeleteResult(result: BugsDeleteResult): string {

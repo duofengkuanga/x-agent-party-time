@@ -1,97 +1,37 @@
-import { afterEach, describe, expect, test } from 'bun:test';
-import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { AuthService } from '@/platform/auth/service';
+import {
+  projectScenario,
+  engineeringScenario,
+} from '@/cooking/testing/scenario';
+import { RepairService } from '@/cooking/repair/server/repair-service';
+import { SubmissionService } from '@/cooking/submissions/server/submission-service';
 import type { AppDatabase } from '@/platform/database';
-import { openDatabase } from '@/platform/database';
 import { LocalFileStore } from '@/platform/files/local-file-store';
 import { RunnerService } from '@/platform/runner/service';
-import { BindingService } from '@/cooking/bindings/server/binding-service';
-import { EngineeringService } from '@/cooking/engineering/server/engineering-service';
-import { ProjectService } from '@/cooking/projects/server/project-service';
-import { SubmissionService } from '@/cooking/submissions/server/submission-service';
-import { RepairService } from '@/cooking/repair/server/repair-service';
+import { testDatabases } from '@/testing/database';
+import { describe, expect, test } from 'bun:test';
+import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
 import { ZodError } from 'zod';
 import { BugService } from './bug-service';
 import { BugRepairContextService } from './repair-context';
 
-const directories: string[] = [];
-const databases: AppDatabase[] = [];
+const createDatabase = testDatabases();
 
 async function setup() {
-  const directory = await mkdtemp(join(tmpdir(), 'agent-party-time-bugs-'));
-  directories.push(directory);
-  const database = openDatabase(join(directory, 'server.sqlite'));
-  databases.push(database);
-  const auth = new AuthService(database);
-  const users = {
-    owner: await auth.seedUser(user('bug-owner', '项目所有者')),
-    tester: await auth.seedUser(user('bug-tester', '测试负责人')),
-    developerA: await auth.seedUser(user('bug-dev-a', '开发甲')),
-    developerB: await auth.seedUser(user('bug-dev-b', '开发乙')),
-    member: await auth.seedUser(user('bug-member', '普通成员')),
-    outsider: await auth.seedUser(user('bug-outsider', '项目外用户')),
-  };
-  const projects = new ProjectService(database);
-  const project = projects.createProject(users.owner.id, {
-    mutationId: randomUUID(),
+  const { directory, database } = await createDatabase();
+  const { users, project } = await projectScenario(database, {
     name: '缺陷协作项目',
-  }).project;
-  for (const invited of [
-    users.tester,
-    users.developerA,
-    users.developerB,
-    users.member,
-  ]) {
-    const invitation = projects.inviteUser(users.owner.id, project.id, {
-      mutationId: randomUUID(),
-      username: invited.username,
-    });
-    projects.respondToInvitation(invited.id, invitation.id, {
-      mutationId: randomUUID(),
-      expectedVersion: invitation.version,
-      decision: 'ACCEPT',
-    });
-  }
-  const engineering = new EngineeringService(database);
-  const front = engineering.createEngineering(users.owner.id, project.id, {
-    mutationId: randomUUID(),
-    name: '前端工程',
-    type: 'FRONTEND',
-    identifier: 'web',
-  });
-  const back = engineering.createEngineering(users.owner.id, project.id, {
-    mutationId: randomUUID(),
-    name: '后端工程',
-    type: 'BACKEND',
-    identifier: 'api',
-  });
-  engineering.addMember(users.owner.id, front.id, users.developerA.id, {
-    mutationId: randomUUID(),
-  });
-  engineering.addMember(users.owner.id, back.id, users.developerB.id, {
-    mutationId: randomUUID(),
-  });
-  const frontEnvironment = engineering.createEnvironment(
-    users.owner.id,
-    front.id,
-    {
-      mutationId: randomUUID(),
-      name: '前端测试环境',
-      deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' },
+    owner: 'owner',
+    members: ['tester', 'developerA', 'developerB', 'member'],
+    people: {
+      owner: ['bug-owner', '项目所有者'],
+      tester: ['bug-tester', '测试负责人'],
+      developerA: ['bug-dev-a', '开发甲'],
+      developerB: ['bug-dev-b', '开发乙'],
+      member: ['bug-member', '普通成员'],
+      outsider: ['bug-outsider', '项目外用户'],
     },
-  );
-  const backEnvironment = engineering.createEnvironment(
-    users.owner.id,
-    back.id,
-    {
-      mutationId: randomUUID(),
-      name: '后端测试环境',
-      deployment: { kind: 'CI_CD' },
-    },
-  );
+  });
   const runners = new RunnerService(database);
   const runnerA = runners.pair(
     runners.issuePairingCode(users.developerA.id).code,
@@ -101,29 +41,28 @@ async function setup() {
     runners.issuePairingCode(users.developerB.id).code,
     '开发乙 Runner',
   );
-  const bindings = new BindingService(database);
-  const frontBinding = bindings.createBinding(
-    users.developerA.id,
-    front.id,
-    runnerA.runner.id,
-    randomUUID(),
-  );
-  const backBinding = bindings.createBinding(
-    users.developerB.id,
-    back.id,
-    runnerB.runner.id,
-    randomUUID(),
-  );
-  bindings.confirmRepository(
-    runnerA.runner.id,
-    frontBinding.id,
-    'https://example.com/front.git',
-  );
-  bindings.confirmRepository(
-    runnerB.runner.id,
-    backBinding.id,
-    'https://example.com/back.git',
-  );
+  const front = engineeringScenario(database, users.owner.id, project.id, {
+    name: '前端工程',
+    type: 'FRONTEND',
+    identifier: 'web',
+    environment: '前端测试环境',
+    deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' },
+    repository: 'https://example.com/front.git',
+    developers: {
+      developer: { userId: users.developerA.id, runnerId: runnerA.runner.id },
+    },
+  });
+  const back = engineeringScenario(database, users.owner.id, project.id, {
+    name: '后端工程',
+    type: 'BACKEND',
+    identifier: 'api',
+    environment: '后端测试环境',
+    deployment: { kind: 'CI_CD' },
+    repository: 'https://example.com/back.git',
+    developers: {
+      developer: { userId: users.developerB.id, runnerId: runnerB.runner.id },
+    },
+  });
   const submission = new SubmissionService(database).createSubmission(
     users.owner.id,
     project.id,
@@ -134,28 +73,27 @@ async function setup() {
       testerUserId: users.tester.id,
       items: [
         {
-          engineeringId: front.id,
+          engineeringId: front.source.id,
           responsibleUserId: users.developerA.id,
-          bindingId: frontBinding.id,
+          bindingId: front.bindings.developer.id,
           targetBranch: 'feature/front',
-          environmentId: frontEnvironment.id,
+          environmentId: front.environment.id,
         },
         {
-          engineeringId: back.id,
+          engineeringId: back.source.id,
           responsibleUserId: users.developerB.id,
-          bindingId: backBinding.id,
+          bindingId: back.bindings.developer.id,
           targetBranch: 'feature/back',
-          environmentId: backEnvironment.id,
+          environmentId: back.environment.id,
         },
       ],
     },
   );
-  const items = database
-    .prepare(
-      `SELECT id, engineering_id FROM cooking_submission_item
+  const items = database.all(
+    `SELECT id, engineering_id FROM cooking_submission_item
        WHERE submission_id = ? ORDER BY position`,
-    )
-    .all(submission.id) as Array<{ id: string; engineering_id: string }>;
+    submission.id,
+  ) as Array<{ id: string; engineering_id: string }>;
   const events: Array<{ submissionId: string; revision: number }> = [];
   const service = new BugService(
     database,
@@ -175,15 +113,6 @@ async function setup() {
     users,
   };
 }
-
-afterEach(async () => {
-  for (const database of databases.splice(0)) database.close();
-  await Promise.all(
-    directories
-      .splice(0)
-      .map((directory) => rm(directory, { force: true, recursive: true })),
-  );
-});
 
 describe('BugService', () => {
   test('Repair Context 按报告角色投影附件与执行来源', async () => {
@@ -392,8 +321,7 @@ describe('BugService', () => {
     expect(assignedView?.presentation.assignmentLabel).toBe('前端工程（web）');
     expect(
       fixture.database
-        .query<{ name: string }, []>('PRAGMA table_info(cooking_bug)')
-        .all()
+        .all<{ name: string }>('PRAGMA table_info(cooking_bug)')
         .map(({ name }) => name)
         .filter((name) => name.startsWith('engineering_')),
     ).toEqual([]);
@@ -520,12 +448,11 @@ describe('BugService', () => {
       { submissionId: fixture.submission.id, revision: first.revision },
     ]);
     expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          `SELECT COUNT(*) count FROM cooking_audit_event
+      fixture.database.get<{ count: number }>(
+        `SELECT COUNT(*) count FROM cooking_audit_event
            WHERE target_id = ? AND action = 'BUG_CREATED'`,
-        )
-        .get(first.bug.id)?.count,
+        first.bug.id,
+      )?.count,
     ).toBe(1);
     expect(
       fixture.service.workspace(fixture.users.tester.id, fixture.submission.id)
@@ -568,27 +495,24 @@ describe('BugService', () => {
     expect(result.deletedBugIds).toEqual([first.bug.id, second.bug.id]);
     expect(result.deletedExecutionIds).toEqual([]);
     expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          'SELECT COUNT(*) count FROM cooking_bug WHERE id = ?',
-        )
-        .get(first.bug.id)?.count,
+      fixture.database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM cooking_bug WHERE id = ?',
+        first.bug.id,
+      )?.count,
     ).toBe(0);
     expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          `SELECT COUNT(*) count FROM cooking_mutation
+      fixture.database.get<{ count: number }>(
+        `SELECT COUNT(*) count FROM cooking_mutation
            WHERE resource_type = 'BUG' AND resource_id = ?`,
-        )
-        .get(first.bug.id)?.count,
+        first.bug.id,
+      )?.count,
     ).toBe(0);
     expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          `SELECT COUNT(*) count FROM cooking_audit_event
+      fixture.database.get<{ count: number }>(
+        `SELECT COUNT(*) count FROM cooking_audit_event
            WHERE target_type = 'BUG' AND target_id = ?`,
-        )
-        .get(second.bug.id)?.count,
+        second.bug.id,
+      )?.count,
     ).toBe(0);
     expect(fixture.events.at(-1)).toEqual({
       submissionId: fixture.submission.id,
@@ -604,11 +528,10 @@ describe('BugService', () => {
       expect.objectContaining({ code: 'RESOURCE_CONFLICT' }),
     );
     expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          'SELECT COUNT(*) count FROM cooking_bug WHERE id = ?',
-        )
-        .get(bug.id)?.count,
+      fixture.database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM cooking_bug WHERE id = ?',
+        bug.id,
+      )?.count,
     ).toBe(1);
   });
 
@@ -630,11 +553,12 @@ describe('BugService', () => {
          SET state = 'SUCCEEDED', finished_at = ? WHERE id = ?`,
       )
       .run('2026-07-27T04:00:00.000Z', second);
-    const previous = fixture.database
-      .query<{ previous_execution_id: string | null }, [string]>(
-        'SELECT previous_execution_id FROM platform_execution WHERE id = ?',
-      )
-      .get(second)?.previous_execution_id;
+    const previous = fixture.database.get<{
+      previous_execution_id: string | null;
+    }>(
+      'SELECT previous_execution_id FROM platform_execution WHERE id = ?',
+      second,
+    )?.previous_execution_id;
     expect(previous).toBe(first);
 
     const result = fixture.service.deleteBugs({
@@ -645,32 +569,28 @@ describe('BugService', () => {
       new Set([first, second]),
     );
     expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          'SELECT COUNT(*) count FROM platform_execution WHERE id = ?',
-        )
-        .get(first)?.count,
+      fixture.database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM platform_execution WHERE id = ?',
+        first,
+      )?.count,
     ).toBe(0);
     expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          'SELECT COUNT(*) count FROM cooking_repair_attempt WHERE bug_id = ?',
-        )
-        .get(bug.id)?.count,
+      fixture.database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM cooking_repair_attempt WHERE bug_id = ?',
+        bug.id,
+      )?.count,
     ).toBe(0);
     expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          'SELECT COUNT(*) count FROM cooking_bug_repair_context WHERE bug_id = ?',
-        )
-        .get(bug.id)?.count,
+      fixture.database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM cooking_bug_repair_context WHERE bug_id = ?',
+        bug.id,
+      )?.count,
     ).toBe(0);
     expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          'SELECT COUNT(*) count FROM cooking_bug WHERE id = ?',
-        )
-        .get(bug.id)?.count,
+      fixture.database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM cooking_bug WHERE id = ?',
+        bug.id,
+      )?.count,
     ).toBe(0);
   });
 
@@ -729,37 +649,31 @@ describe('BugService', () => {
       new Set([executionId, sync]),
     );
     expect(
-      fixture.database
-        .query('SELECT id FROM cooking_update_session_sync')
-        .all(),
+      fixture.database.all('SELECT id FROM cooking_update_session_sync'),
     ).toEqual([]);
     expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          `SELECT COUNT(*) count FROM cooking_update_batch_entry WHERE bug_id = ?`,
-        )
-        .get(bug.id)?.count,
+      fixture.database.get<{ count: number }>(
+        `SELECT COUNT(*) count FROM cooking_update_batch_entry WHERE bug_id = ?`,
+        bug.id,
+      )?.count,
     ).toBe(0);
     expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          `SELECT COUNT(*) count FROM cooking_update_attempt WHERE execution_id = ?`,
-        )
-        .get(executionId)?.count,
+      fixture.database.get<{ count: number }>(
+        `SELECT COUNT(*) count FROM cooking_update_attempt WHERE execution_id = ?`,
+        executionId,
+      )?.count,
     ).toBe(0);
     expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          'SELECT COUNT(*) count FROM cooking_update_batch WHERE id = ?',
-        )
-        .get(batchId)?.count,
+      fixture.database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM cooking_update_batch WHERE id = ?',
+        batchId,
+      )?.count,
     ).toBe(0);
     expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          'SELECT COUNT(*) count FROM platform_execution WHERE id = ?',
-        )
-        .get(executionId)?.count,
+      fixture.database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM platform_execution WHERE id = ?',
+        executionId,
+      )?.count,
     ).toBe(0);
   });
 
@@ -796,13 +710,9 @@ describe('BugService', () => {
         new Set([parent, sync]),
       );
       expect(
-        fixture.database
-          .query('SELECT id FROM cooking_repair_session_sync')
-          .all(),
+        fixture.database.all('SELECT id FROM cooking_repair_session_sync'),
       ).toEqual([]);
-      expect(fixture.database.query('PRAGMA foreign_key_check').all()).toEqual(
-        [],
-      );
+      expect(fixture.database.all('PRAGMA foreign_key_check')).toEqual([]);
     },
   );
 
@@ -822,19 +732,19 @@ describe('BugService', () => {
       }),
     );
     expect(
-      fixture.database
-        .query('SELECT id FROM cooking_bug WHERE id = ?')
-        .get(bug.id),
+      fixture.database.get('SELECT id FROM cooking_bug WHERE id = ?', bug.id),
     ).not.toBeNull();
     expect(
-      fixture.database
-        .query('SELECT id FROM cooking_repair_attempt WHERE execution_id = ?')
-        .get(parent),
+      fixture.database.get(
+        'SELECT id FROM cooking_repair_attempt WHERE execution_id = ?',
+        parent,
+      ),
     ).not.toBeNull();
     expect(
-      fixture.database
-        .query('SELECT id FROM platform_execution WHERE id = ?')
-        .get(successor),
+      fixture.database.get(
+        'SELECT id FROM platform_execution WHERE id = ?',
+        successor,
+      ),
     ).not.toBeNull();
   });
 
@@ -845,11 +755,10 @@ describe('BugService', () => {
     const result = fixture.service.deleteBugs({ all: true });
     expect(result.deletedBugIds).toHaveLength(2);
     expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          'SELECT COUNT(*) count FROM cooking_bug WHERE submission_id = ?',
-        )
-        .get(fixture.submission.id)?.count,
+      fixture.database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM cooking_bug WHERE submission_id = ?',
+        fixture.submission.id,
+      )?.count,
     ).toBe(0);
   });
 });
@@ -894,15 +803,6 @@ function createAssignedBug(
 
 function mutation(expectedVersion: number) {
   return { mutationId: randomUUID(), expectedVersion };
-}
-
-function user(id: string, displayName: string) {
-  return {
-    id,
-    username: id,
-    displayName,
-    password: 'password',
-  };
 }
 
 function addSessionSync(

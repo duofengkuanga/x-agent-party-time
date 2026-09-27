@@ -1,6 +1,7 @@
-import { afterEach, expect, test } from 'bun:test';
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { testDirectories } from '../testing/directories';
+import { expect, test } from 'bun:test';
+import { mkdir, symlink, writeFile } from 'node:fs/promises';
+
 import { join } from 'node:path';
 import type { Keychain, UserEnvironment } from '../platform/contracts';
 import { NodeLocalFileSystem } from '../platform/files';
@@ -13,13 +14,7 @@ import { LocalStateStore } from '../state/store';
 import { stoppedSnapshot, type DaemonSnapshot } from '../daemon/status';
 import { UninstallManager } from './uninstall';
 
-const homes: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    homes.splice(0).map((home) => rm(home, { recursive: true, force: true })),
-  );
-});
+const createTestDirectory = testDirectories('xapt-uninstall-');
 
 test('安全卸载先撤销远程 Credential，并只删除 xapt 自有资源', async () => {
   const fixture = await createFixture();
@@ -141,8 +136,7 @@ test('强制离线卸载仍删除可定位的本机 Keychain Credential', async 
 async function createFixture(
   options: { terminal?: boolean; confirmed?: boolean } = {},
 ) {
-  const home = await mkdtemp(join(tmpdir(), 'xapt-uninstall-'));
-  homes.push(home);
+  const home = await createTestDirectory();
   const paths = xaptPaths(home);
   const files = new NodeLocalFileSystem();
   const state = new LocalStateStore(paths, files);

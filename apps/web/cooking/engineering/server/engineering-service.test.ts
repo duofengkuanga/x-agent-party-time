@@ -1,66 +1,27 @@
-import { afterEach, describe, expect, test } from 'bun:test';
+import { projectScenario } from '@/cooking/testing/scenario';
+import { testDatabases } from '@/testing/database';
+import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { AuthService } from '@/platform/auth/service';
-import type { AppDatabase } from '@/platform/database';
-import { openDatabase } from '@/platform/database';
-import { ProjectService } from '@/cooking/projects/server/project-service';
 import {
   EngineeringService,
   type EngineeringGuards,
 } from './engineering-service';
 
-const directories: string[] = [];
-const databases: AppDatabase[] = [];
+const createDatabase = testDatabases();
 
 async function setup() {
-  const directory = await mkdtemp(
-    join(tmpdir(), 'agent-party-time-engineering-'),
-  );
-  directories.push(directory);
-  const database = openDatabase(join(directory, 'server.sqlite'));
-  databases.push(database);
-  const auth = new AuthService(
-    database,
-    () => new Date('2026-07-26T09:00:00Z'),
-  );
-  const users = {
-    owner: await auth.seedUser({
-      id: 'engineering-owner',
-      username: 'engineering-owner',
-      displayName: '工程所有者',
-      password: 'password',
-    }),
-    member: await auth.seedUser({
-      id: 'engineering-member',
-      username: 'engineering-member',
-      displayName: '工程成员',
-      password: 'password',
-    }),
-    other: await auth.seedUser({
-      id: 'engineering-other',
-      username: 'engineering-other',
-      displayName: '项目外用户',
-      password: 'password',
-    }),
-  };
-  const projects = new ProjectService(database);
-  const project = projects.createProject(users.owner.id, {
-    mutationId: randomUUID(),
+  const { directory, database } = await createDatabase();
+  const { users, projects, project } = await projectScenario(database, {
     name: '工程测试项目',
-  }).project;
-  const invitation = projects.inviteUser(users.owner.id, project.id, {
-    mutationId: randomUUID(),
-    username: users.member.username,
+    owner: 'owner',
+    members: ['member'],
+    authNow: () => new Date('2026-07-26T09:00:00Z'),
+    people: {
+      owner: ['engineering-owner', '工程所有者'],
+      member: ['engineering-member', '工程成员'],
+      other: ['engineering-other', '项目外用户'],
+    },
   });
-  projects.respondToInvitation(users.member.id, invitation.id, {
-    mutationId: randomUUID(),
-    expectedVersion: invitation.version,
-    decision: 'ACCEPT',
-  });
-
   const references = {
     engineering: new Set<string>(),
     environment: new Set<string>(),
@@ -88,15 +49,6 @@ async function setup() {
     ),
   };
 }
-
-afterEach(async () => {
-  for (const database of databases.splice(0)) database.close();
-  await Promise.all(
-    directories
-      .splice(0)
-      .map((directory) => rm(directory, { force: true, recursive: true })),
-  );
-});
 
 describe('EngineeringService', () => {
   test('工程初始化原子创建创建者成员、额外成员与多个环境', async () => {
@@ -147,11 +99,9 @@ describe('EngineeringService', () => {
 
   test('工程初始化后续步骤失败时回滚工程与 Mutation', async () => {
     const { database, project, service, users } = await setup();
-    const mutationCountBefore = database
-      .query<{ count: number }, []>(
-        'SELECT COUNT(*) count FROM cooking_mutation',
-      )
-      .get()!.count;
+    const mutationCountBefore = database.get<{ count: number }>(
+      'SELECT COUNT(*) count FROM cooking_mutation',
+    )!.count;
     expect(() =>
       service.createEngineeringSetup(users.owner.id, project.id, {
         mutationId: randomUUID(),
@@ -176,11 +126,9 @@ describe('EngineeringService', () => {
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
     expect(service.listEngineering(users.owner.id, project.id)).toEqual([]);
     expect(
-      database
-        .query<{ count: number }, []>(
-          'SELECT COUNT(*) count FROM cooking_mutation',
-        )
-        .get()?.count,
+      database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM cooking_mutation',
+      )?.count,
     ).toBe(mutationCountBefore);
   });
 
@@ -261,11 +209,9 @@ describe('EngineeringService', () => {
       }),
     ).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
     expect(
-      database
-        .query<{ count: number }, []>(
-          'SELECT COUNT(*) count FROM cooking_engineering',
-        )
-        .get()?.count,
+      database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM cooking_engineering',
+      )?.count,
     ).toBe(1);
   });
 
@@ -540,11 +486,10 @@ describe('EngineeringService', () => {
     );
     expect(archived.archivedAt).not.toBeNull();
     expect(
-      database
-        .query<{ count: number }, []>(
-          'SELECT COUNT(*) count FROM cooking_engineering WHERE id = ?',
-        )
-        .get(engineering.id)?.count,
+      database.get<{ count: number }>(
+        'SELECT COUNT(*) count FROM cooking_engineering WHERE id = ?',
+        engineering.id,
+      )?.count,
     ).toBe(1);
     expect(
       service.getWorkspace(users.member.id, engineering.id).members,

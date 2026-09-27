@@ -39,38 +39,38 @@ export class TestSubmissionWriteStore {
 
   bumpRevision(submissionId: string, updatedAt: string): number {
     return (
-      this.db
-        .prepare(
-          `UPDATE cooking_test_submission
+      this.db.get(
+        `UPDATE cooking_test_submission
            SET workspace_revision = workspace_revision + 1, updated_at = ?
            WHERE id = ? RETURNING workspace_revision revision`,
-        )
-        .get(updatedAt, submissionId) as { revision: number }
+        updatedAt,
+        submissionId,
+      ) as { revision: number }
     ).revision;
   }
 
   bumpRevisionForBug(bugId: string, updatedAt: string): number {
     return (
-      this.db
-        .prepare(
-          `UPDATE cooking_test_submission
+      this.db.get(
+        `UPDATE cooking_test_submission
            SET workspace_revision = workspace_revision + 1, updated_at = ?
            WHERE id = (SELECT submission_id FROM cooking_bug WHERE id = ?)
            RETURNING workspace_revision revision`,
-        )
-        .get(updatedAt, bugId) as { revision: number }
+        updatedAt,
+        bugId,
+      ) as { revision: number }
     ).revision;
   }
 
   bumpActiveRevision(submissionId: string, updatedAt: string): number | null {
-    const row = this.db
-      .prepare(
-        `UPDATE cooking_test_submission
+    const row = this.db.get(
+      `UPDATE cooking_test_submission
          SET workspace_revision = workspace_revision + 1, updated_at = ?
          WHERE id = ? AND status = 'ACTIVE'
          RETURNING workspace_revision revision`,
-      )
-      .get(updatedAt, submissionId) as { revision: number } | undefined;
+      updatedAt,
+      submissionId,
+    ) as { revision: number } | undefined;
     return row?.revision ?? null;
   }
 

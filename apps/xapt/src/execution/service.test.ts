@@ -1,7 +1,8 @@
-import { afterEach, expect, test } from 'bun:test';
-import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import { testDirectories } from '../testing/directories';
+import { expect, test } from 'bun:test';
+import { mkdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { tmpdir } from 'node:os';
+
 import { join } from 'node:path';
 import { serializeDeterministicJson } from '@agent-party-time/execution-contract';
 import type {
@@ -35,7 +36,7 @@ import {
 import type { SkillBundleManager } from '../skills/manager';
 import type { ExecutionWorkspaceManager } from './workspaces';
 
-const homes: string[] = [];
+const createTestDirectory = testDirectories('xapt-execution-');
 const executionId = '00000000-0000-4000-8000-000000000301';
 const bindingId = '00000000-0000-4000-8000-000000000302';
 const runnerId = '00000000-0000-4000-8000-000000000303';
@@ -49,12 +50,6 @@ const session: AuthenticatedRunnerSession = {
   serverOrigin: 'https://apt.example.com',
   credential: 'credential-secret-at-least-thirty-two-characters',
 };
-
-afterEach(async () => {
-  await Promise.all(
-    homes.splice(0).map((home) => rm(home, { recursive: true, force: true })),
-  );
-});
 
 test('单槽完成领取、Codex Session、START 与结构化 Outcome happy path', async () => {
   const fixture = await createFixture();
@@ -544,8 +539,7 @@ async function createFixture(
     resultValidationFailure?: ExecutionResultVerificationError;
   } = {},
 ) {
-  const home = await mkdtemp(join(tmpdir(), 'xapt-execution-'));
-  homes.push(home);
+  const home = await createTestDirectory();
   const paths = xaptPaths(home);
   const files = new NodeLocalFileSystem();
   const state = new LocalStateStore(paths, files);

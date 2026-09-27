@@ -1,22 +1,20 @@
-import { createHash, randomUUID } from 'node:crypto';
+import type {
+  ExecutionWorkspace,
+  JsonValue,
+} from '@agent-party-time/execution-contract';
+import { createHash } from 'node:crypto';
 import {
   appendFile,
   chmod,
   mkdir,
   readFile,
   realpath,
-  rename,
-  rm,
   stat,
   symlink,
-  writeFile,
 } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
-import type {
-  ExecutionWorkspace,
-  JsonValue,
-} from '@agent-party-time/execution-contract';
 import { z } from 'zod';
+import { NodeLocalFileSystem } from '../platform/files';
 import type { XaptPaths } from '../platform/paths';
 
 const WorkspaceRecordSchema = z
@@ -532,19 +530,9 @@ async function gitSucceeds(
 }
 
 async function writePrivateJson(path: string, value: unknown): Promise<void> {
-  const directory = dirname(path);
-  await mkdir(directory, { recursive: true, mode: 0o700 });
-  await chmod(directory, 0o700);
-  const temporaryPath = `${path}.${randomUUID()}.tmp`;
-  try {
-    await writeFile(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, {
-      flag: 'wx',
-      mode: 0o600,
-    });
-    await rename(temporaryPath, path);
-    await chmod(path, 0o600);
-  } catch (error) {
-    await rm(temporaryPath, { force: true });
-    throw error;
-  }
+  await new NodeLocalFileSystem().writeAtomic(
+    path,
+    `${JSON.stringify(value, null, 2)}\n`,
+    0o600,
+  );
 }

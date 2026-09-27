@@ -109,13 +109,12 @@ export class LocalFileStore {
   }
 
   get(fileId: string): StoredFile | null {
-    const row = this.db
-      .prepare(
-        `SELECT id, storage_key, original_name, media_type, size_bytes,
+    const row = this.db.get(
+      `SELECT id, storage_key, original_name, media_type, size_bytes,
                 sha256, uploaded_by_user_id, created_at
          FROM platform_file WHERE id = ?`,
-      )
-      .get(fileId) as StoredFileRow | undefined;
+      fileId,
+    ) as StoredFileRow | undefined;
     return row ? mapStoredFile(row) : null;
   }
 

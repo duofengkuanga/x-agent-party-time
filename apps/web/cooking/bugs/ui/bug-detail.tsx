@@ -1,26 +1,26 @@
 'use client';
+import { useWorkspaceMutation } from './use-workspace-mutation';
 
-import { useRef, useState, useTransition } from 'react';
-import { createClientId } from '@/cooking/shared/ui/client-id';
-import type { CookingWorkspaceSnapshot } from '@/cooking/workspace/contract';
 import {
   reopenBugAction,
   restoreBugAction,
   unarchiveBugAction,
 } from '@/cooking/lifecycle/server/actions';
+import { createClientId } from '@/cooking/shared/ui/client-id';
 import { freezeUpdateNowAction } from '@/cooking/update/server/actions';
+import type { CookingWorkspaceSnapshot } from '@/cooking/workspace/contract';
+import { useRef, useState } from 'react';
 import type { BugView } from '../contract';
 import { requestRepairAction } from '../server/actions';
-import { pendingDeliveryFor, messageOf, formatDateTime } from './board-model';
-import type { WorkspaceActionResult } from './board-model';
+import { formatDateTime, pendingDeliveryFor } from './board-model';
 
 import { Detail } from './detail-fields';
 import { BugResultDetail, RepairAttemptDetails } from './repair-timeline';
 
 import { UpdateBatchDetails } from './update-details';
 
-import { UpdateCountdown } from './bug-card';
 import { AttachmentPicker } from './attachments';
+import { UpdateCountdown } from './bug-card';
 
 export function BugDetail({
   bug,
@@ -37,8 +37,7 @@ export function BugDetail({
   const [copied, setCopied] = useState(false);
   const [verificationFeedback, setVerificationFeedback] = useState('');
   const [verificationFiles, setVerificationFiles] = useState<File[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  const { error, setError, pending, run } = useWorkspaceMutation(onChanged);
   const detailBodyRef = useRef<HTMLDivElement>(null);
   const verificationFileInput = useRef<HTMLInputElement>(null);
   const repair = snapshot.repairByBug[bug.id] ?? null;
@@ -92,27 +91,6 @@ export function BugDetail({
       detailBodyRef.current
         .querySelector<HTMLElement>(`[data-progress-kind="${view}"]`)
         ?.scrollIntoView({ block: 'start' });
-    });
-  }
-
-  function run(
-    command: () => Promise<WorkspaceActionResult>,
-    message: string,
-    afterSuccess?: () => void,
-  ) {
-    startTransition(async () => {
-      try {
-        const result = await command();
-        if (!result.ok) {
-          setError(result.error.message);
-          return;
-        }
-        setError(null);
-        afterSuccess?.();
-        onChanged(result.result.revision, message);
-      } catch (actionError) {
-        setError(messageOf(actionError, '操作失败，请稍后重试。'));
-      }
     });
   }
 

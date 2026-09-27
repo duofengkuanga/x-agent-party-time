@@ -1,15 +1,14 @@
-import { afterEach, describe, expect, test } from 'bun:test';
-import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { AuthService } from '@/platform/auth/service';
-import type { AppDatabase } from '@/platform/database';
-import { openDatabase } from '@/platform/database';
-import { RunnerService } from '@/platform/runner/service';
-import { BindingService } from '@/cooking/bindings/server/binding-service';
+import {
+  projectScenario,
+  engineeringScenario,
+} from '@/cooking/testing/scenario';
 import { EngineeringService } from '@/cooking/engineering/server/engineering-service';
 import { ProjectService } from '@/cooking/projects/server/project-service';
+import type { AppDatabase } from '@/platform/database';
+import { RunnerService } from '@/platform/runner/service';
+import { testDatabases } from '@/testing/database';
+import { describe, expect, test } from 'bun:test';
+import { randomUUID } from 'node:crypto';
 import {
   engineeringMemberHasSubmissionResponsibilities,
   projectMemberHasSubmissionResponsibilities,
@@ -18,132 +17,59 @@ import {
 } from './references';
 import { SubmissionService } from './submission-service';
 
-const directories: string[] = [];
-const databases: AppDatabase[] = [];
+const createDatabase = testDatabases();
 
 async function setup(options: { confirmRepositories?: boolean } = {}) {
-  const directory = await mkdtemp(
-    join(tmpdir(), 'agent-party-time-submission-'),
-  );
-  directories.push(directory);
-  const database = openDatabase(join(directory, 'server.sqlite'));
-  databases.push(database);
-  const auth = new AuthService(database);
-  const users = {
-    owner: await auth.seedUser(user('submission-owner', '项目所有者')),
-    creator: await auth.seedUser(user('submission-creator', '提测创建人')),
-    tester: await auth.seedUser(user('submission-tester', '测试负责人')),
-    developerA: await auth.seedUser(user('submission-dev-a', '开发甲')),
-    developerB: await auth.seedUser(user('submission-dev-b', '开发乙')),
-    member: await auth.seedUser(user('submission-member', '普通成员')),
-    outsider: await auth.seedUser(user('submission-outsider', '项目外用户')),
-  };
-  const projects = new ProjectService(database);
-  const project = projects.createProject(users.owner.id, {
-    mutationId: randomUUID(),
+  const { directory, database } = await createDatabase();
+  const { users, project } = await projectScenario(database, {
     name: '提测项目',
-  }).project;
-  for (const invited of [
-    users.creator,
-    users.tester,
-    users.developerA,
-    users.developerB,
-    users.member,
-  ]) {
-    const invitation = projects.inviteUser(users.owner.id, project.id, {
-      mutationId: randomUUID(),
-      username: invited.username,
-    });
-    projects.respondToInvitation(invited.id, invitation.id, {
-      mutationId: randomUUID(),
-      expectedVersion: invitation.version,
-      decision: 'ACCEPT',
-    });
-  }
-
-  const engineeringService = new EngineeringService(database);
-  const front = engineeringService.createEngineering(
-    users.owner.id,
-    project.id,
-    {
-      mutationId: randomUUID(),
-      name: '前端工程',
-      type: 'FRONTEND',
-      identifier: 'web',
+    owner: 'owner',
+    members: ['creator', 'tester', 'developerA', 'developerB', 'member'],
+    people: {
+      owner: ['submission-owner', '项目所有者'],
+      creator: ['submission-creator', '提测创建人'],
+      tester: ['submission-tester', '测试负责人'],
+      developerA: ['submission-dev-a', '开发甲'],
+      developerB: ['submission-dev-b', '开发乙'],
+      member: ['submission-member', '普通成员'],
+      outsider: ['submission-outsider', '项目外用户'],
     },
-  );
-  const back = engineeringService.createEngineering(
-    users.owner.id,
-    project.id,
-    {
-      mutationId: randomUUID(),
-      name: '后端工程',
-      type: 'BACKEND',
-      identifier: 'api',
-    },
-  );
-  for (const [engineeringId, developerId] of [
-    [front.id, users.developerA.id],
-    [back.id, users.developerA.id],
-    [back.id, users.developerB.id],
-  ] as const)
-    engineeringService.addMember(users.owner.id, engineeringId, developerId, {
-      mutationId: randomUUID(),
-    });
-  const environments = {
-    front: engineeringService.createEnvironment(users.owner.id, front.id, {
-      mutationId: randomUUID(),
-      name: '前端测试环境',
-      deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' },
-    }),
-    back: engineeringService.createEnvironment(users.owner.id, back.id, {
-      mutationId: randomUUID(),
-      name: '后端测试环境',
-      deployment: { kind: 'CI_CD' },
-    }),
-  };
-
+  });
   const runners = new RunnerService(database);
   const runnerA = pairRunner(runners, users.developerA.id, '开发甲 Runner');
   const runnerB = pairRunner(runners, users.developerB.id, '开发乙 Runner');
-  const bindings = new BindingService(database);
-  const bindingValues = {
-    frontA: bindings.createBinding(
-      users.developerA.id,
-      front.id,
-      runnerA.runner.id,
-      randomUUID(),
-    ),
-    backA: bindings.createBinding(
-      users.developerA.id,
-      back.id,
-      runnerA.runner.id,
-      randomUUID(),
-    ),
-    backB: bindings.createBinding(
-      users.developerB.id,
-      back.id,
-      runnerB.runner.id,
-      randomUUID(),
-    ),
+  const developerA = {
+    userId: users.developerA.id,
+    runnerId: runnerA.runner.id,
   };
-  if (options.confirmRepositories !== false) {
-    bindings.confirmRepository(
-      runnerA.runner.id,
-      bindingValues.frontA.id,
-      'https://example.com/front.git',
-    );
-    bindings.confirmRepository(
-      runnerA.runner.id,
-      bindingValues.backA.id,
-      'https://example.com/back.git',
-    );
-    bindings.confirmRepository(
-      runnerB.runner.id,
-      bindingValues.backB.id,
-      'https://example.com/back.git',
-    );
-  }
+  const developerB = {
+    userId: users.developerB.id,
+    runnerId: runnerB.runner.id,
+  };
+  const front = engineeringScenario(database, users.owner.id, project.id, {
+    name: '前端工程',
+    type: 'FRONTEND',
+    identifier: 'web',
+    environment: '前端测试环境',
+    deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' },
+    repository:
+      options.confirmRepositories === false
+        ? null
+        : 'https://example.com/front.git',
+    developers: { developerA },
+  });
+  const back = engineeringScenario(database, users.owner.id, project.id, {
+    name: '后端工程',
+    type: 'BACKEND',
+    identifier: 'api',
+    environment: '后端测试环境',
+    deployment: { kind: 'CI_CD' },
+    repository:
+      options.confirmRepositories === false
+        ? null
+        : 'https://example.com/back.git',
+    developers: { developerA, developerB },
+  });
   const events: Array<{ submissionId: string; revision: number }> = [];
   const service = new SubmissionService(
     database,
@@ -153,9 +79,13 @@ async function setup(options: { confirmRepositories?: boolean } = {}) {
   );
   return {
     database,
-    engineering: { front, back },
-    environments,
-    bindings: bindingValues,
+    engineering: { front: front.source, back: back.source },
+    environments: { front: front.environment, back: back.environment },
+    bindings: {
+      frontA: front.bindings.developerA,
+      backA: back.bindings.developerA,
+      backB: back.bindings.developerB,
+    },
     runners: { runnerA, runnerB },
     project,
     service,
@@ -163,15 +93,6 @@ async function setup(options: { confirmRepositories?: boolean } = {}) {
     events,
   };
 }
-
-afterEach(async () => {
-  for (const database of databases.splice(0)) database.close();
-  await Promise.all(
-    directories
-      .splice(0)
-      .map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
 
 describe('SubmissionService create', () => {
   test('首次本机 Binding 尚未确认仓库时不能创建提测', async () => {
@@ -666,12 +587,11 @@ describe('Submission workspace', () => {
     );
     expect(ownerUpdate).toMatchObject({ version: 3, workspaceRevision: 3 });
     expect(
-      fixture.database
-        .query<{ count: number }, []>(
-          `SELECT COUNT(*) count FROM cooking_audit_event
+      fixture.database.get<{ count: number }>(
+        `SELECT COUNT(*) count FROM cooking_audit_event
            WHERE target_id = ? AND action = 'SUBMISSION_DETAILS_UPDATED'`,
-        )
-        .get(submission.id)?.count,
+        submission.id,
+      )?.count,
     ).toBe(2);
   });
 });
@@ -679,15 +599,6 @@ describe('Submission workspace', () => {
 const PlatformErrorLike = expect.objectContaining({
   code: expect.any(String),
 });
-
-function user(id: string, displayName: string) {
-  return {
-    id,
-    username: id,
-    displayName,
-    password: 'password',
-  };
-}
 
 function pairRunner(service: RunnerService, userId: string, name: string) {
   return service.pair(service.issuePairingCode(userId).code, name);
@@ -755,9 +666,8 @@ function insertBug(
 
 function countRows(database: AppDatabase, table: string): number {
   return (
-    database
-      .query<{ count: number }, []>(`SELECT COUNT(*) count FROM ${table}`)
-      .get()?.count ?? 0
+    database.get<{ count: number }>(`SELECT COUNT(*) count FROM ${table}`)
+      ?.count ?? 0
   );
 }
 

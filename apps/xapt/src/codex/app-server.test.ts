@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, test } from 'bun:test';
-import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { testDirectories } from '../testing/directories';
+import { describe, expect, test } from 'bun:test';
+import { chmod, readFile, writeFile } from 'node:fs/promises';
+
 import { join } from 'node:path';
 import { CodexAppServerExecutor } from './app-server';
 import {
@@ -8,19 +9,10 @@ import {
   restorePrivateInteractionResolution,
 } from './interaction';
 
-const directories: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    directories
-      .splice(0)
-      .map((path) => rm(path, { recursive: true, force: true })),
-  );
-});
+const createTestDirectory = testDirectories('xapt-fake-codex-');
 
 test('Fake Codex 完成 thread start/resume、turn/start 与结构化结果', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'xapt-fake-codex-'));
-  directories.push(root);
+  const root = await createTestDirectory();
   const executable = join(root, 'codex');
   const requestLog = join(root, 'requests.jsonl');
   await writeFile(

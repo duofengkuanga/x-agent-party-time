@@ -7,7 +7,7 @@ import {
   runInteractiveMutation,
   type InteractiveActionResult,
 } from '@/cooking/shared/server/action-transport';
-import { lifecycleService } from '../../runtime/lifecycle';
+import { lifecycleService } from '../../runtime/services';
 import type {
   BugLifecycleMutationResult,
   CleanupMutationResult,
