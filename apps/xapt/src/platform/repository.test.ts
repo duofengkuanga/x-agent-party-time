@@ -1,23 +1,13 @@
-import { afterEach, expect, test } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { testDirectories } from '../testing/directories';
+import { expect, test } from 'bun:test';
+
 import { NodeCommandRunner } from './system';
 import { LocalRepositoryInspector } from './repository';
 
-const directories: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    directories
-      .splice(0)
-      .map((path) => rm(path, { recursive: true, force: true })),
-  );
-});
+const createTestDirectory = testDirectories('xapt-repository-');
 
 test('真实临时 Git 仓库读取并规范化 remote origin', async () => {
-  const path = await mkdtemp(join(tmpdir(), 'xapt-repository-'));
-  directories.push(path);
+  const path = await createTestDirectory();
   const commands = new NodeCommandRunner();
   expect((await commands.run('git', ['-C', path, 'init'])).exitCode).toBe(0);
   expect(
@@ -39,8 +29,7 @@ test('真实临时 Git 仓库读取并规范化 remote origin', async () => {
 });
 
 test('非 Git 目录被明确拒绝', async () => {
-  const path = await mkdtemp(join(tmpdir(), 'xapt-not-repository-'));
-  directories.push(path);
+  const path = await createTestDirectory('xapt-not-repository-');
   await expect(
     new LocalRepositoryInspector(new NodeCommandRunner()).origin(path),
   ).rejects.toMatchObject({ code: 'NOT_GIT_REPOSITORY' });

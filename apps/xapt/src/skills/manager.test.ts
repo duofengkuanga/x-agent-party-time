@@ -1,24 +1,12 @@
-import { afterEach, describe, expect, test } from 'bun:test';
-import {
-  mkdtemp,
-  mkdir,
-  readFile,
-  readlink,
-  rm,
-  writeFile,
-} from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { testDirectories } from '../testing/directories';
+import { describe, expect, test } from 'bun:test';
+import { mkdir, readFile, readlink, rm, writeFile } from 'node:fs/promises';
+
 import { join, resolve } from 'node:path';
 import { xaptPaths } from '../platform/paths';
 import { bundleHash, SkillBundleManager, type XaptSkillName } from './manager';
 
-const homes: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    homes.splice(0).map((home) => rm(home, { recursive: true, force: true })),
-  );
-});
+const temporaryHome = testDirectories('xapt-skills-');
 
 describe('SkillBundleManager', () => {
   test('Bundle Hash 不依赖文件顺序并区分内容', () => {
@@ -307,10 +295,4 @@ function openaiYaml(name: XaptSkillName): string {
 
 function bytes(value: string): Uint8Array {
   return new TextEncoder().encode(value);
-}
-
-async function temporaryHome(): Promise<string> {
-  const home = await mkdtemp(join(tmpdir(), 'xapt-skills-'));
-  homes.push(home);
-  return home;
 }

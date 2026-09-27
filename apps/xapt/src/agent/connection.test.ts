@@ -1,7 +1,6 @@
-import { afterEach, expect, test } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { testDirectories } from '../testing/directories';
+import { expect, test } from 'bun:test';
+
 import type {
   Runner,
   RunnerAuthorizationClaimResponse,
@@ -17,17 +16,11 @@ import { ConnectionCoordinator } from './connection';
 import { RunnerHttpError } from '@agent-party-time/runner-contract/http-client';
 import type { RunnerAuthorizationHttp } from './server-http';
 
-const homes: string[] = [];
+const createTestDirectory = testDirectories('xapt-connection-');
 const now = new Date('2026-08-03T08:00:00.000Z');
 const oldRunnerId = '00000000-0000-4000-8000-000000000001';
 const newRunnerId = '00000000-0000-4000-8000-000000000002';
 const credential = 'credential-secret-at-least-thirty-two-characters';
-
-afterEach(async () => {
-  await Promise.all(
-    homes.splice(0).map((home) => rm(home, { recursive: true, force: true })),
-  );
-});
 
 test('授权成功只把 Credential 写入 Keychain 并报告浏览器进度', async () => {
   const fixture = await createFixture();
@@ -205,8 +198,7 @@ async function createFixture(
     authorizationFailureOrigin?: string;
   } = {},
 ) {
-  const home = await mkdtemp(join(tmpdir(), 'xapt-connection-'));
-  homes.push(home);
+  const home = await createTestDirectory();
   const state = new LocalStateStore(xaptPaths(home), new NodeLocalFileSystem());
   await state.initialize();
   const keychain = new MemoryKeychain();

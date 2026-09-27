@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtemp, rm, symlink } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { testDirectories } from '../testing/directories';
+import { describe, expect, test } from 'bun:test';
+import { symlink } from 'node:fs/promises';
+
 import { join } from 'node:path';
 import type {
   CommandResult,
@@ -15,13 +16,7 @@ import {
   type CodexInitializer,
 } from './preflight';
 
-const homes: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    homes.splice(0).map((home) => rm(home, { recursive: true, force: true })),
-  );
-});
+const temporaryHome = testDirectories('xapt-codex-');
 
 describe('Codex daemon 预检', () => {
   test('接受大于等于最低版本并执行登录与 initialize 检查', async () => {
@@ -170,10 +165,4 @@ function environment(home: string): UserEnvironment {
     architecture: () => 'arm64',
     isTerminal: () => false,
   };
-}
-
-async function temporaryHome(): Promise<string> {
-  const home = await mkdtemp(join(tmpdir(), 'xapt-codex-'));
-  homes.push(home);
-  return home;
 }

@@ -1,7 +1,7 @@
-import { afterEach, expect, test } from 'bun:test';
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { testDirectories } from '../testing/directories';
+import { expect, test } from 'bun:test';
+import { readFile, stat } from 'node:fs/promises';
+
 import type { LaunchAgent, UserEnvironment } from '../platform/contracts';
 import { NodeLocalFileSystem } from '../platform/files';
 import { xaptPaths } from '../platform/paths';
@@ -13,13 +13,7 @@ import { DaemonControlClient } from './control';
 import { DaemonManager } from './manager';
 import { DaemonRuntime } from './runtime';
 
-const homes: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    homes.splice(0).map((home) => rm(home, { recursive: true, force: true })),
-  );
-});
+const temporaryHome = testDirectories('xapt-manager-');
 
 test('daemon 首次启动、重复启动、状态、停止和重复停止保持幂等', async () => {
   const home = await temporaryHome();
@@ -190,10 +184,4 @@ function macEnvironment(home: string): UserEnvironment {
     architecture: () => 'arm64',
     isTerminal: () => false,
   };
-}
-
-async function temporaryHome(): Promise<string> {
-  const home = await mkdtemp(join(tmpdir(), 'xapt-manager-'));
-  homes.push(home);
-  return home;
 }

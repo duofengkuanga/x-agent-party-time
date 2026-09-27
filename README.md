@@ -201,7 +201,8 @@ apps/xapt/src/
 ├── state/                  本机持久状态和 Outbox
 ├── platform/               OS Interface 与 macOS Adapter
 ├── install/                安装版本切换、更新与卸载
-└── skills/                 本机 Skill Bundle 管理
+├── skills/                 本机 Skill Bundle 管理
+└── testing/                测试临时目录的创建与生命周期清理
 
 packages/execution-contract/  Web 与 xapt 共享的 Execution 协议
 packages/runner-contract/     Web 与 xapt 共享的 Agent 协议和 HTTP 客户端

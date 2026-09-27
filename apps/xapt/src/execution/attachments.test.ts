@@ -1,24 +1,17 @@
+import { testDirectories } from '../testing/directories';
 import { createHash } from 'node:crypto';
-import { afterEach, expect, test } from 'bun:test';
-import { mkdtemp, rm, stat } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { expect, test } from 'bun:test';
+import { stat } from 'node:fs/promises';
+
 import type { ClaimedExecution } from '@agent-party-time/execution-contract';
 import { xaptPaths } from '../platform/paths';
 import { AttachmentMaterializer, type ExecutionFileHttp } from './attachments';
 
-const homes: string[] = [];
+const createTestDirectory = testDirectories('xapt-attachments-');
 const bytes = new TextEncoder().encode('attachment-content');
 
-afterEach(async () => {
-  await Promise.all(
-    homes.splice(0).map((home) => rm(home, { recursive: true, force: true })),
-  );
-});
-
 test('附件下载后强制校验长度与 SHA，并使用私有缓存文件名', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'xapt-attachments-'));
-  homes.push(home);
+  const home = await createTestDirectory();
   const materializer = new AttachmentMaterializer(
     { downloadExecutionFile: async () => bytes } as ExecutionFileHttp,
     xaptPaths(home),
@@ -41,8 +34,7 @@ test('附件下载后强制校验长度与 SHA，并使用私有缓存文件名'
 });
 
 test('SHA 不匹配时拒绝物化', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'xapt-attachments-'));
-  homes.push(home);
+  const home = await createTestDirectory();
   const materializer = new AttachmentMaterializer(
     { downloadExecutionFile: async () => bytes } as ExecutionFileHttp,
     xaptPaths(home),

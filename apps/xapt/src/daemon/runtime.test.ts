@@ -1,7 +1,6 @@
-import { afterEach, expect, test } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { testDirectories } from '../testing/directories';
+import { expect, test } from 'bun:test';
+
 import type {
   Runner,
   RunnerAuthorizationClaimResponse,
@@ -19,20 +18,13 @@ import { DaemonControlClient } from './control';
 import type { RunnerAuthorizationHttp } from '../agent/server-http';
 import { DaemonRuntime } from './runtime';
 
-const homes: string[] = [];
+const createTestDirectory = testDirectories('xapt-runtime-');
 const runnerId = '00000000-0000-4000-8000-000000000001';
 const credential = 'credential-secret-at-least-thirty-two-characters';
 const now = new Date('2026-08-20T08:00:00.000Z');
 
-afterEach(async () => {
-  await Promise.all(
-    homes.splice(0).map((home) => rm(home, { recursive: true, force: true })),
-  );
-});
-
 test('远程连接恢复阻塞时 control socket 仍先可用', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'xapt-runtime-'));
-  homes.push(home);
+  const home = await createTestDirectory();
   const paths = xaptPaths(home);
   const files = new NodeLocalFileSystem();
   const state = new LocalStateStore(paths, files);
@@ -79,8 +71,7 @@ test('远程连接恢复阻塞时 control socket 仍先可用', async () => {
 });
 
 test('远程连接恢复失败时关闭已启动的 control socket', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'xapt-runtime-'));
-  homes.push(home);
+  const home = await createTestDirectory();
   const paths = xaptPaths(home);
   const files = new NodeLocalFileSystem();
   const state = new LocalStateStore(paths, files);

@@ -1,7 +1,8 @@
-import { afterEach, expect, test } from 'bun:test';
+import { testDirectories } from '../testing/directories';
+import { expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readlink, rm, symlink } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readlink, symlink } from 'node:fs/promises';
+
 import { join } from 'node:path';
 import type { Clock, CommandRunner } from '../platform/contracts';
 import { NodeLocalFileSystem } from '../platform/files';
@@ -11,13 +12,7 @@ import { LocalStateStore } from '../state/store';
 import { stoppedSnapshot, type DaemonSnapshot } from '../daemon/status';
 import { UpdateManager } from './update';
 
-const homes: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    homes.splice(0).map((home) => rm(home, { recursive: true, force: true })),
-  );
-});
+const createTestDirectory = testDirectories('xapt-update-');
 
 test('已是最新版本时不下载、不停止 daemon', async () => {
   const fixture = await createFixture('0.2.0');
@@ -132,8 +127,7 @@ async function createFixture(
   running = false,
   source?: { apiBaseUrl: string; repository: string },
 ) {
-  const home = await mkdtemp(join(tmpdir(), 'xapt-update-'));
-  homes.push(home);
+  const home = await createTestDirectory();
   const paths = xaptPaths(home);
   const files = new NodeLocalFileSystem();
   const state = new LocalStateStore(paths, files);
