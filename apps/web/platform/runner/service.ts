@@ -103,19 +103,18 @@ export class RunnerService {
     const code = PairingCodeSchema.parse(this.secrets.pairingCode());
     const createdAt = this.now();
     const expiresAt = new Date(createdAt.getTime() + durationMs).toISOString();
-    this.db
-      .prepare(
-        `INSERT INTO platform_runner_pairing_code(
+    this.db.run(
+      `INSERT INTO platform_runner_pairing_code(
            id, owner_user_id, code_hash, expires_at, used_at, created_at
          ) VALUES (?, ?, ?, ?, NULL, ?)`,
-      )
-      .run(
+      [
         this.createId(),
         ownerUserId,
         hashSecret(code),
         expiresAt,
         createdAt.toISOString(),
-      );
+      ],
+    );
     return PairingCodeIssueSchema.parse({ code, expiresAt });
   }
 
@@ -140,32 +139,30 @@ export class RunnerService {
         Date.parse(pairing.expires_at) <= now.getTime()
       )
         throw invalidPairingCode();
-      const use = this.db
-        .prepare(
-          `UPDATE platform_runner_pairing_code SET used_at = ?
+      const use = this.db.run(
+        `UPDATE platform_runner_pairing_code SET used_at = ?
            WHERE id = ? AND used_at IS NULL`,
-        )
-        .run(now.toISOString(), pairing.id);
+        [now.toISOString(), pairing.id],
+      );
       if (use.changes !== 1) throw invalidPairingCode();
 
       const credential = RunnerCredentialSchema.parse(
         this.secrets.credential(),
       );
       const runnerId = this.createId();
-      this.db
-        .prepare(
-          `INSERT INTO platform_runner(
+      this.db.run(
+        `INSERT INTO platform_runner(
              id, owner_user_id, name, credential_hash, version,
              last_seen_at, revoked_at, created_at
            ) VALUES (?, ?, ?, ?, 1, NULL, NULL, ?)`,
-        )
-        .run(
+        [
           runnerId,
           pairing.owner_user_id,
           name,
           hashSecret(credential),
           now.toISOString(),
-        );
+        ],
+      );
       return RunnerPairingResultSchema.parse({
         runner: {
           id: runnerId,
@@ -215,15 +212,13 @@ export class RunnerService {
       );
     const requestId = randomBytes(24).toString('base64url');
     const expiresAt = new Date(now.getTime() + durationMs).toISOString();
-    this.db
-      .prepare(
-        `INSERT INTO platform_runner_authorization_request(
+    this.db.run(
+      `INSERT INTO platform_runner_authorization_request(
            id, installation_id, verifier_hash, fingerprint, suggested_name, approved_name,
            owner_user_id, state, approval_token_hash, expires_at,
            approved_at, consumed_at, last_polled_at, poll_count, created_at
          ) VALUES (?, ?, ?, ?, ?, NULL, NULL, 'PENDING', NULL, ?, NULL, NULL, NULL, 0, ?)`,
-      )
-      .run(
+      [
         requestId,
         input.installationId,
         input.verifierHash,
@@ -231,7 +226,8 @@ export class RunnerService {
         input.suggestedName,
         expiresAt,
         now.toISOString(),
-      );
+      ],
+    );
     return RunnerAuthorizationIssueSchema.parse({ requestId, expiresAt });
   }
 
@@ -244,14 +240,13 @@ export class RunnerService {
     const view = authorizationBrowserView(row, this.now());
     if (view.state !== 'PENDING') return { ...view, approvalToken: null };
     const approvalToken = randomBytes(32).toString('base64url');
-    const update = this.db
-      .prepare(
-        `UPDATE platform_runner_authorization_request
+    const update = this.db.run(
+      `UPDATE platform_runner_authorization_request
          SET approval_token_hash = ?, owner_user_id = COALESCE(owner_user_id, ?)
          WHERE id = ? AND state = 'PENDING'
            AND (owner_user_id IS NULL OR owner_user_id = ?)`,
-      )
-      .run(hashSecret(approvalToken), ownerUserId, requestId, ownerUserId);
+      [hashSecret(approvalToken), ownerUserId, requestId, ownerUserId],
+    );
     if (update.changes !== 1)
       throw new PlatformError(
         'PERMISSION_DENIED',
@@ -272,14 +267,13 @@ export class RunnerService {
       const row = this.authorizationRequest(requestId);
       this.requirePendingAuthorization(row, ownerUserId, approvalToken);
       const approvedAt = this.now().toISOString();
-      const update = this.db
-        .prepare(
-          `UPDATE platform_runner_authorization_request
+      const update = this.db.run(
+        `UPDATE platform_runner_authorization_request
            SET state = 'APPROVED', approved_name = ?, approved_at = ?,
                approval_token_hash = NULL
            WHERE id = ? AND state = 'PENDING' AND owner_user_id = ?`,
-        )
-        .run(name, approvedAt, requestId, ownerUserId);
+        [name, approvedAt, requestId, ownerUserId],
+      );
       if (update.changes !== 1)
         throw new PlatformError('STALE_STATE', 'Agent 授权请求已更新');
       return authorizationBrowserView(
@@ -303,13 +297,12 @@ export class RunnerService {
     return this.db.transaction(() => {
       const row = this.authorizationRequest(requestId);
       this.requirePendingAuthorization(row, ownerUserId, approvalToken);
-      const update = this.db
-        .prepare(
-          `UPDATE platform_runner_authorization_request
+      const update = this.db.run(
+        `UPDATE platform_runner_authorization_request
            SET state = 'REJECTED', approval_token_hash = NULL
            WHERE id = ? AND state = 'PENDING' AND owner_user_id = ?`,
-        )
-        .run(requestId, ownerUserId);
+        [requestId, ownerUserId],
+      );
       if (update.changes !== 1)
         throw new PlatformError('STALE_STATE', 'Agent 授权请求已更新');
       return authorizationBrowserView(
@@ -353,13 +346,12 @@ export class RunnerService {
           state: 'WAITING',
           retryAfterMs: MIN_AUTHORIZATION_POLL_MS,
         });
-      this.db
-        .prepare(
-          `UPDATE platform_runner_authorization_request
+      this.db.run(
+        `UPDATE platform_runner_authorization_request
            SET last_polled_at = ?, poll_count = poll_count + 1
            WHERE id = ?`,
-        )
-        .run(now.toISOString(), requestId);
+        [now.toISOString(), requestId],
+      );
       if (row.state === 'PENDING') {
         return RunnerAuthorizationClaimResponseSchema.parse({
           state: 'WAITING',
@@ -386,46 +378,43 @@ export class RunnerService {
       const runnerId = existing?.id ?? this.createId();
       const version = existing ? existing.version + 1 : 1;
       if (existing) {
-        const update = this.db
-          .prepare(
-            `UPDATE platform_runner
+        const update = this.db.run(
+          `UPDATE platform_runner
              SET name = ?, credential_hash = ?, version = ?,
                  available_slots = 3, last_seen_at = NULL, revoked_at = NULL
              WHERE id = ? AND version = ?`,
-          )
-          .run(
+          [
             row.approved_name,
             hashSecret(credential),
             version,
             existing.id,
             existing.version,
-          );
+          ],
+        );
         if (update.changes !== 1)
           throw new PlatformError('STALE_STATE', 'Agent 已更新，请重试授权');
       } else {
-        this.db
-          .prepare(
-            `INSERT INTO platform_runner(
+        this.db.run(
+          `INSERT INTO platform_runner(
                id, owner_user_id, installation_id, name, credential_hash,
                version, last_seen_at, revoked_at, created_at
              ) VALUES (?, ?, ?, ?, ?, 1, NULL, NULL, ?)`,
-          )
-          .run(
+          [
             runnerId,
             row.owner_user_id,
             row.installation_id,
             row.approved_name,
             hashSecret(credential),
             now.toISOString(),
-          );
+          ],
+        );
       }
-      const consumed = this.db
-        .prepare(
-          `UPDATE platform_runner_authorization_request
+      const consumed = this.db.run(
+        `UPDATE platform_runner_authorization_request
            SET state = 'CONSUMED', consumed_at = ?
            WHERE id = ? AND state = 'APPROVED'`,
-        )
-        .run(now.toISOString(), requestId);
+        [now.toISOString(), requestId],
+      );
       if (consumed.changes !== 1)
         throw new PlatformError('STALE_STATE', 'Agent 授权凭据已经领取');
       return RunnerAuthorizationClaimResponseSchema.parse({
@@ -460,13 +449,12 @@ export class RunnerService {
   heartbeat(credential: string | undefined, availableSlots = 3): Runner {
     const runner = this.authenticateCredential(credential);
     const lastSeenAt = this.now().toISOString();
-    this.db
-      .prepare(
-        `UPDATE platform_runner
+    this.db.run(
+      `UPDATE platform_runner
          SET last_seen_at = ?, available_slots = ?
          WHERE id = ? AND revoked_at IS NULL`,
-      )
-      .run(lastSeenAt, availableSlots, runner.id);
+      [lastSeenAt, availableSlots, runner.id],
+    );
     return RunnerSchema.parse({ ...runner, lastSeenAt });
   }
 
@@ -539,22 +527,20 @@ export class RunnerService {
         );
       const revokedAt = revoke ? this.now().toISOString() : null;
       const update = revoke
-        ? this.db
-            .prepare(
-              `UPDATE platform_runner
+        ? this.db.run(
+            `UPDATE platform_runner
                SET revoked_at = ?, version = version + 1
                WHERE id = ? AND owner_user_id = ? AND version = ?
                  AND revoked_at IS NULL`,
-            )
-            .run(revokedAt, runnerId, ownerUserId, expectedVersion)
-        : this.db
-            .prepare(
-              `UPDATE platform_runner
+            [revokedAt, runnerId, ownerUserId, expectedVersion],
+          )
+        : this.db.run(
+            `UPDATE platform_runner
                SET revoked_at = NULL, last_seen_at = NULL, version = version + 1
                WHERE id = ? AND owner_user_id = ? AND version = ?
                  AND revoked_at IS NOT NULL`,
-            )
-            .run(runnerId, ownerUserId, expectedVersion);
+            [runnerId, ownerUserId, expectedVersion],
+          );
       if (update.changes !== 1)
         throw new PlatformError('STALE_STATE', 'Agent 已更新，请刷新后重试');
       const runner = mapRunner(row);

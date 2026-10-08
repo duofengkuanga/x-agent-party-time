@@ -104,83 +104,72 @@ export class BugDeletion {
 
   private deleteEmptyUpdateBatches(batchIds: string[]): void {
     if (batchIds.length === 0) return;
-    this.db
-      .prepare(
-        `DELETE FROM cooking_update_batch
+    this.db.run(
+      `DELETE FROM cooking_update_batch
          WHERE id IN (${placeholders(batchIds.length)})
            AND NOT EXISTS (
              SELECT 1 FROM cooking_update_batch_entry entry
              WHERE entry.batch_id = cooking_update_batch.id
            )`,
-      )
-      .run(...batchIds);
+      batchIds,
+    );
   }
 
   private deleteBugRows(bugIds: string[], executionIds: string[]): void {
     if (executionIds.length > 0) {
-      this.db
-        .prepare(
-          `DELETE FROM cooking_update_session_sync
+      this.db.run(
+        `DELETE FROM cooking_update_session_sync
          WHERE execution_id IN (${placeholders(executionIds.length)})`,
-        )
-        .run(...executionIds);
-      this.db
-        .prepare(
-          `UPDATE cooking_update_batch SET active_execution_id = NULL
+        executionIds,
+      );
+      this.db.run(
+        `UPDATE cooking_update_batch SET active_execution_id = NULL
            WHERE active_execution_id IN (${placeholders(executionIds.length)})`,
-        )
-        .run(...executionIds);
-      this.db
-        .prepare(
-          `UPDATE cooking_cleanup SET active_execution_id = NULL
+        executionIds,
+      );
+      this.db.run(
+        `UPDATE cooking_cleanup SET active_execution_id = NULL
            WHERE active_execution_id IN (${placeholders(executionIds.length)})`,
-        )
-        .run(...executionIds);
-      this.db
-        .prepare(
-          `DELETE FROM cooking_update_attempt
+        executionIds,
+      );
+      this.db.run(
+        `DELETE FROM cooking_update_attempt
            WHERE execution_id IN (${placeholders(executionIds.length)})`,
-        )
-        .run(...executionIds);
-      this.db
-        .prepare(
-          `DELETE FROM cooking_cleanup_attempt
+        executionIds,
+      );
+      this.db.run(
+        `DELETE FROM cooking_cleanup_attempt
            WHERE execution_id IN (${placeholders(executionIds.length)})`,
-        )
-        .run(...executionIds);
+        executionIds,
+      );
     }
-    this.db
-      .prepare(
-        `DELETE FROM cooking_update_batch_entry
+    this.db.run(
+      `DELETE FROM cooking_update_batch_entry
          WHERE bug_id IN (${placeholders(bugIds.length)})`,
-      )
-      .run(...bugIds);
-    this.db
-      .prepare(
-        `DELETE FROM cooking_mutation
+      bugIds,
+    );
+    this.db.run(
+      `DELETE FROM cooking_mutation
          WHERE resource_type = 'BUG'
            AND resource_id IN (${placeholders(bugIds.length)})`,
-      )
-      .run(...bugIds);
-    this.db
-      .prepare(
-        `DELETE FROM cooking_audit_event
+      bugIds,
+    );
+    this.db.run(
+      `DELETE FROM cooking_audit_event
          WHERE target_type = 'BUG'
            AND target_id IN (${placeholders(bugIds.length)})`,
-      )
-      .run(...bugIds);
-    this.db
-      .prepare(
-        `DELETE FROM cooking_repair_attempt
+      bugIds,
+    );
+    this.db.run(
+      `DELETE FROM cooking_repair_attempt
          WHERE bug_id IN (${placeholders(bugIds.length)})`,
-      )
-      .run(...bugIds);
-    this.db
-      .prepare(
-        `DELETE FROM cooking_bug
+      bugIds,
+    );
+    this.db.run(
+      `DELETE FROM cooking_bug
          WHERE id IN (${placeholders(bugIds.length)})`,
-      )
-      .run(...bugIds);
+      bugIds,
+    );
   }
 
   private deleteExecutions(executionIds: string[]): string[] {
@@ -200,17 +189,16 @@ export class BugDeletion {
     const deleted: string[] = [];
     let remaining = [...executionIds];
     while (remaining.length > 0) {
-      const result = this.db
-        .prepare(
-          `DELETE FROM platform_execution
+      const result = this.db.run(
+        `DELETE FROM platform_execution
            WHERE id IN (${placeholders(remaining.length)})
              AND NOT EXISTS (
                SELECT 1 FROM platform_execution successor
                WHERE successor.previous_execution_id = platform_execution.id
                  AND successor.id IN (${placeholders(remaining.length)})
              )`,
-        )
-        .run(...remaining, ...remaining);
+        [...remaining, ...remaining],
+      );
       if (result.changes === 0)
         throw new PlatformError(
           'RESOURCE_CONFLICT',
