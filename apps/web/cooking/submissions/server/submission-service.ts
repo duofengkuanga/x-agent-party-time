@@ -389,13 +389,20 @@ export class SubmissionService {
         }> = [];
         for (const target of targetBranches) {
           const item = this.db.get(
-            `SELECT responsible_user_id, target_branch
-               FROM cooking_submission_item
-               WHERE id = ? AND submission_id = ?`,
+            `SELECT item.responsible_user_id, item.target_branch,
+                    EXISTS(SELECT 1 FROM cooking_bug bug
+                           WHERE bug.submission_item_id = item.id) has_bug
+               FROM cooking_submission_item item
+               WHERE item.id = ? AND item.submission_id = ?`,
             target.submissionItemId,
             submissionId,
           ) as
-            { responsible_user_id: string; target_branch: string } | undefined;
+            | {
+                responsible_user_id: string;
+                target_branch: string;
+                has_bug: number;
+              }
+            | undefined;
           if (!item)
             throw new PlatformError(
               'VALIDATION_FAILED',
@@ -406,13 +413,7 @@ export class SubmissionService {
               'PERMISSION_DENIED',
               '只有对应开发负责人可以修改目标分支',
             );
-          if (
-            this.db.get(
-              `SELECT 1 FROM cooking_bug
-                 WHERE submission_item_id = ? LIMIT 1`,
-              target.submissionItemId,
-            )
-          )
+          if (item.has_bug)
             throw new PlatformError(
               'INVALID_TRANSITION',
               '该工程已有缺陷，不能再修改目标分支',
@@ -441,34 +442,23 @@ export class SubmissionService {
             );
           changedTargetBranches.push(target);
         }
-        const update = this.db.run(
+        const updated = this.db.get<SubmissionRow>(
           `UPDATE cooking_test_submission
              SET title = ?, requirement_description = ?,
                  version = version + 1,
+                 workspace_revision = workspace_revision + 1,
                  updated_at = ?
-             WHERE id = ? AND version = ? AND status = 'ACTIVE'`,
-          [
-            parsed.title,
-            parsed.requirementDescription,
-            updatedAt,
-            submissionId,
-            parsed.expectedVersion,
-          ],
-        );
-        if (update.changes !== 1)
-          throw new PlatformError('STALE_STATE', '提测单已更新，请刷新后重试');
-        const workspaceRevision = this.writes.bumpRevision(
+             WHERE id = ? AND version = ? AND status = 'ACTIVE'
+             RETURNING *`,
+          parsed.title,
+          parsed.requirementDescription,
+          updatedAt,
           submissionId,
-          updatedAt,
+          parsed.expectedVersion,
         );
-        const result = {
-          ...mapSubmission(current),
-          title: parsed.title,
-          requirementDescription: parsed.requirementDescription,
-          version: current.version + 1,
-          workspaceRevision,
-          updatedAt,
-        } satisfies TestSubmission;
+        if (!updated)
+          throw new PlatformError('STALE_STATE', '提测单已更新，请刷新后重试');
+        const result = mapSubmission(updated);
         return {
           result,
           resourceId: submissionId,
