@@ -2,38 +2,44 @@ import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
 import {
   EnqueueExecutionInputSchema,
-  parseExecutionInteractionResolution,
   type ClaimedExecution,
   type CodexTurn,
   type CompleteExecutionRequest,
   type EnqueueExecutionInput,
   type Execution,
-  type ExecutionInteraction,
   type ExecutionOutcome,
   type ExecutionStartRequest,
-  type JsonValue,
-  type OpenInteractionRequest,
   type RunnerActivity,
   type TaskSkillBinding,
-  type WaitInteractionResponse,
 } from '@agent-party-time/execution-contract';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { LEASED_STATES, hashSecret, newLeaseExpiry } from './lease';
+import {
+  LEASED_STATES,
+  hashSecret,
+  newLeaseExpiry,
+  requireLeasedExecution,
+  requireLeasedRow,
+} from './lease';
+import { ExecutionInteractions } from './interactions';
+import { sleepUntilNextPoll } from './polling';
 import { projectTransaction, type ExecutionProjector } from './projection';
 import { ExecutionQueue } from './queue';
-import {
-  ExecutionRecords,
-  mapInteraction,
-  type AttachmentRow,
-  type ExecutionRow,
-  type FileRow,
-} from './records';
+import { ExecutionRecords, type AttachmentRow, type FileRow } from './records';
 const DEFAULT_LEASE_DURATION_MS = 15_000;
-const POLL_INTERVAL_MS = 50;
 
 export class ExecutionService {
   private readonly records: ExecutionRecords;
   private readonly queue: ExecutionQueue;
+  private readonly interactions: ExecutionInteractions;
+  readonly openInteraction: ExecutionInteractions['openInteraction'] = (
+    ...args
+  ) => this.interactions.openInteraction(...args);
+  readonly waitInteraction: ExecutionInteractions['waitInteraction'] = (
+    ...args
+  ) => this.interactions.waitInteraction(...args);
+  readonly resolveInteraction: ExecutionInteractions['resolveInteraction'] = (
+    ...args
+  ) => this.interactions.resolveInteraction(...args);
   get(executionId: string): Execution {
     return this.records.get(executionId);
   }
@@ -63,6 +69,14 @@ export class ExecutionService {
       now,
       createLeaseToken,
       leaseDurationMs,
+      project,
+    );
+    this.interactions = new ExecutionInteractions(
+      db,
+      this.records,
+      this.queue,
+      now,
+      createId,
       project,
     );
   }
@@ -160,9 +174,7 @@ export class ExecutionService {
       const claimed = this.queue.claimAvailable(runnerId, availableSlots);
       if (claimed.length || availableSlots === 0 || Date.now() >= deadline)
         return claimed;
-      await sleep(
-        Math.min(POLL_INTERVAL_MS, Math.max(0, deadline - Date.now())),
-      );
+      await sleepUntilNextPoll(deadline);
     } while (Date.now() <= deadline);
     return [];
   }
@@ -174,7 +186,9 @@ export class ExecutionService {
   ): Execution {
     const kind = request.kind === 'START_FAILED' ? 'TERMINAL' : 'STARTED';
     return projectTransaction(this.db, this.project, (emit) => {
-      const row = this.requireLeasedExecution(
+      const row = requireLeasedExecution(
+        this.records,
+        this.now,
         runnerId,
         executionId,
         request.leaseToken,
@@ -231,7 +245,9 @@ export class ExecutionService {
     leaseToken: string,
   ): { expiresAt: string; cancellationRequested: boolean } {
     return this.db.transaction(() => {
-      const row = this.requireLeasedExecution(
+      const row = requireLeasedExecution(
+        this.records,
+        this.now,
         runnerId,
         executionId,
         leaseToken,
@@ -246,136 +262,6 @@ export class ExecutionService {
         expiresAt,
         cancellationRequested: Boolean(row.cancellation_requested),
       };
-    })();
-  }
-
-  openInteraction(
-    runnerId: string,
-    executionId: string,
-    request: OpenInteractionRequest,
-  ): ExecutionInteraction {
-    return projectTransaction(this.db, this.project, (emit) => {
-      this.requireLeasedExecution(runnerId, executionId, request.leaseToken, [
-        'RUNNING',
-        'CANCEL_REQUESTED',
-      ]);
-      const existing = this.records.findPendingInteraction(executionId);
-      if (existing) {
-        if (
-          existing.kind === request.kind &&
-          existing.method === request.method &&
-          existing.payload_json === JSON.stringify(request.payload)
-        )
-          return mapInteraction(existing);
-        throw new PlatformError(
-          'RESOURCE_CONFLICT',
-          '该任务已有待处理的操作请求',
-        );
-      }
-      const id = this.createId();
-      const createdAt = this.now().toISOString();
-      this.db.run(
-        `INSERT INTO platform_execution_interaction(
-             id, execution_id, kind, method, payload_json, state,
-             resolution_json, created_at, resolved_at
-           ) VALUES (?, ?, ?, ?, ?, 'PENDING', NULL, ?, NULL)`,
-        [
-          id,
-          executionId,
-          request.kind,
-          request.method,
-          JSON.stringify(request.payload),
-          createdAt,
-        ],
-      );
-      this.db.run(
-        `UPDATE platform_execution
-           SET state = 'WAITING_FOR_INTERACTION'
-           WHERE id = ?`,
-        [executionId],
-      );
-      const interaction = this.records.getInteraction(id);
-      emit({ kind: 'INTERACTION_OPENED', interaction });
-      return interaction;
-    });
-  }
-
-  async waitInteraction(
-    runnerId: string,
-    executionId: string,
-    interactionId: string,
-    leaseToken: string,
-    waitMs: number,
-  ): Promise<WaitInteractionResponse> {
-    const deadline = Date.now() + waitMs;
-    do {
-      this.requireLeasedExecution(runnerId, executionId, leaseToken, [
-        'WAITING_FOR_INTERACTION',
-        'WAITING_TO_RESUME',
-        'RUNNING',
-        'CANCEL_REQUESTED',
-      ]);
-      const interaction = this.records.latestInteraction(executionId);
-      if (!interaction || interaction.id !== interactionId)
-        throw new PlatformError('NOT_FOUND', '任务操作请求不存在');
-      if (interaction.state === 'RESOLVED') {
-        const laneAcquired = this.queue.tryAcquireResumeLane(executionId);
-        if (laneAcquired || Date.now() >= deadline)
-          return { interaction: mapInteraction(interaction), laneAcquired };
-      } else if (interaction.state === 'INVALIDATED' || Date.now() >= deadline)
-        return {
-          interaction: mapInteraction(interaction),
-          laneAcquired: false,
-        };
-      await sleep(
-        Math.min(POLL_INTERVAL_MS, Math.max(0, deadline - Date.now())),
-      );
-    } while (Date.now() <= deadline);
-    const interaction = this.records.latestInteraction(executionId);
-    if (!interaction || interaction.id !== interactionId)
-      throw new PlatformError('NOT_FOUND', '任务操作请求不存在');
-    return {
-      interaction: mapInteraction(interaction),
-      laneAcquired:
-        interaction.state === 'RESOLVED' &&
-        this.queue.tryAcquireResumeLane(executionId),
-    };
-  }
-
-  resolveInteraction(
-    interactionId: string,
-    resolution: JsonValue,
-  ): ExecutionInteraction {
-    this.queue.expireLeases();
-    return this.db.transaction(() => {
-      const interaction = this.records.getInteractionRow(interactionId);
-      if (interaction.state !== 'PENDING')
-        throw new PlatformError('STALE_STATE', '任务操作请求已失效或已处理');
-      const execution = this.records.getRow(interaction.execution_id);
-      if (
-        execution.state !== 'WAITING_FOR_INTERACTION' ||
-        execution.cancellation_requested === 1
-      )
-        throw new PlatformError('STALE_STATE', '任务不再等待该操作请求');
-      const parsedResolution = parseExecutionInteractionResolution(
-        interaction.method,
-        JSON.parse(interaction.payload_json) as JsonValue,
-        resolution,
-      );
-      const resolvedAt = this.now().toISOString();
-      this.db.run(
-        `UPDATE platform_execution_interaction
-           SET state = 'RESOLVED', resolution_json = ?, resolved_at = ?
-           WHERE id = ? AND state = 'PENDING'`,
-        [JSON.stringify(parsedResolution), resolvedAt, interactionId],
-      );
-      this.db.run(
-        `UPDATE platform_execution
-           SET state = 'WAITING_TO_RESUME', resume_requested_at = ?
-           WHERE id = ?`,
-        [resolvedAt, interaction.execution_id],
-      );
-      return this.records.getInteraction(interactionId);
     })();
   }
 
@@ -399,7 +285,7 @@ export class ExecutionService {
           return this.records.mapExecution(row);
         throw new PlatformError('OUTCOME_CONFLICT', '任务结果与已保存结果冲突');
       }
-      this.requireLeasedRow(row, request.leaseToken, [
+      requireLeasedRow(this.now, row, request.leaseToken, [
         'RUNNING',
         'WAITING_FOR_INTERACTION',
         'WAITING_TO_RESUME',
@@ -505,9 +391,14 @@ export class ExecutionService {
     leaseToken: string,
     fileId: string,
   ): FileRow {
-    this.requireLeasedExecution(runnerId, executionId, leaseToken, [
-      ...LEASED_STATES,
-    ]);
+    requireLeasedExecution(
+      this.records,
+      this.now,
+      runnerId,
+      executionId,
+      leaseToken,
+      [...LEASED_STATES],
+    );
     const row = this.db.get(
       `SELECT a.file_id, a.original_name, a.media_type, a.size_bytes,
                 a.sha256, f.storage_key
@@ -519,35 +410,6 @@ export class ExecutionService {
     ) as FileRow | undefined;
     if (!row) throw new PlatformError('NOT_FOUND', '处理任务附件不存在');
     return row;
-  }
-
-  private requireLeasedExecution(
-    runnerId: string,
-    executionId: string,
-    leaseToken: string,
-    states: Execution['state'][],
-  ): ExecutionRow {
-    const row = this.records.getRow(executionId);
-    if (row.runner_id !== runnerId)
-      throw new PlatformError('NOT_FOUND', '处理任务不存在');
-    this.requireLeasedRow(row, leaseToken, states);
-    return row;
-  }
-
-  private requireLeasedRow(
-    row: ExecutionRow,
-    leaseToken: string,
-    states: Execution['state'][],
-  ): void {
-    if (
-      !states.includes(row.state) ||
-      !row.lease_token_hash ||
-      row.lease_token_hash !== hashSecret(leaseToken) ||
-      !row.lease_expires_at
-    )
-      throw new PlatformError('LEASE_EXPIRED', '任务领取凭据已失效');
-    if (Date.parse(row.lease_expires_at) <= this.now().getTime())
-      throw new PlatformError('LEASE_EXPIRED', '任务领取凭据已失效');
   }
 }
 
@@ -589,8 +451,4 @@ function isBindingReservationConstraint(error: unknown): boolean {
       `${error.name} ${error.message}`,
     )
   );
-}
-
-function sleep(durationMs: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, durationMs));
 }
