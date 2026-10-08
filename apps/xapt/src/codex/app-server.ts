@@ -3,6 +3,7 @@ import { createWriteStream, type WriteStream } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { type JsonValue } from '@agent-party-time/execution-contract';
+import { XAPT_VERSION } from '../version';
 import type {
   CodexExecutionInput,
   CodexExecutor,
@@ -72,6 +73,25 @@ export class CodexAppServerExecutor implements CodexExecutor {
     private readonly executable = 'codex',
     private readonly spawnProcess: typeof spawn = spawn,
   ) {}
+
+  static async probe(executable: string, timeoutMs = 5_000): Promise<void> {
+    const executor = new CodexAppServerExecutor(executable);
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        executor.ensureStarted(),
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(
+            () => reject(new Error('initialize timeout')),
+            timeoutMs,
+          );
+        }),
+      ]);
+    } finally {
+      if (timeout) clearTimeout(timeout);
+      await executor.close();
+    }
+  }
 
   async begin(
     input: CodexExecutionInput,
@@ -263,7 +283,7 @@ export class CodexAppServerExecutor implements CodexExecutor {
       clientInfo: {
         name: 'xapt',
         title: 'xapt',
-        version: '0.1.0',
+        version: XAPT_VERSION,
       },
       capabilities: { experimentalApi: true, requestAttestation: false },
     });

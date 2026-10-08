@@ -3,7 +3,9 @@ import { describe, expect, test } from 'bun:test';
 import { chmod, readFile, writeFile } from 'node:fs/promises';
 
 import { join } from 'node:path';
+import { XAPT_VERSION } from '../version';
 import { CodexAppServerExecutor } from './app-server';
+import { AppServerInitializer } from './preflight';
 import {
   publicInteractionPayload,
   restorePrivateInteractionResolution,
@@ -161,6 +163,16 @@ rl.on('line', (line) => {
     ],
   );
   await executor.close();
+
+  await new AppServerInitializer().initialize(executable);
+  const probeRequests = (await readFile(requestLog, 'utf8'))
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+  expect(probeRequests.at(-1)).toMatchObject({
+    method: 'initialize',
+    params: { clientInfo: { version: XAPT_VERSION } },
+  });
 });
 
 describe('Codex Interaction 安全投影', () => {
