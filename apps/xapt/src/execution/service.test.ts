@@ -14,6 +14,16 @@ import {
   skillBinding,
 } from './service-fixture';
 
+const branchWorkspace = {
+  key: 'bug-repair:bug-1',
+  isolation: 'BRANCH_WORKTREE' as const,
+  baseRef: 'origin/main',
+  branch: 'apt/repair/bug-1',
+};
+const commitAssertions = [
+  { kind: 'GIT_COMMITS_CREATED' as const, resultPath: ['result', 'commits'] },
+];
+
 test('单槽完成领取、Codex Session、START 与结构化 Outcome happy path', async () => {
   const fixture = await createFixture();
 
@@ -74,16 +84,9 @@ test('同步会话使用原执行基线和断言校验结果', async () => {
   const previousExecutionId = '00000000-0000-4000-8000-000000000399';
   const fixture = await createFixture({
     readSessionId: 'manual-session',
-    readResultAssertions: [
-      { kind: 'GIT_COMMITS_CREATED', resultPath: ['result', 'commits'] },
-    ],
+    readResultAssertions: commitAssertions,
     previousExecutionId,
-    workspace: {
-      key: 'bug-repair:bug-1',
-      isolation: 'BRANCH_WORKTREE',
-      baseRef: 'origin/main',
-      branch: 'apt/repair/bug-1',
-    },
+    workspace: branchWorkspace,
   });
   await fixture.state.saveExecutionResultBaseline(previousExecutionId, {
     gitHead: 'baseline-commit',
@@ -130,16 +133,9 @@ test('同步会话保留原结果证据校验失败原因', async () => {
   const previousExecutionId = '00000000-0000-4000-8000-000000000398';
   const fixture = await createFixture({
     readSessionId: 'manual-session',
-    readResultAssertions: [
-      { kind: 'GIT_COMMITS_CREATED', resultPath: ['result', 'commits'] },
-    ],
+    readResultAssertions: commitAssertions,
     previousExecutionId,
-    workspace: {
-      key: 'bug-repair:bug-1',
-      isolation: 'BRANCH_WORKTREE',
-      baseRef: 'origin/main',
-      branch: 'apt/repair/bug-1',
-    },
+    workspace: branchWorkspace,
     resultValidationFailure: new ExecutionResultVerificationError(
       '本机 Commit 结果校验缺少执行前基线',
     ),
@@ -161,16 +157,9 @@ test('同步会话保留原结果证据校验失败原因', async () => {
 test('同步会话接受不声明提交的有效业务失败结果', async () => {
   const fixture = await createFixture({
     readSessionId: 'manual-session',
-    readResultAssertions: [
-      { kind: 'GIT_COMMITS_CREATED', resultPath: ['result', 'commits'] },
-    ],
+    readResultAssertions: commitAssertions,
     previousExecutionId: '00000000-0000-4000-8000-000000000397',
-    workspace: {
-      key: 'bug-repair:bug-1',
-      isolation: 'BRANCH_WORKTREE',
-      baseRef: 'origin/main',
-      branch: 'apt/repair/bug-1',
-    },
+    workspace: branchWorkspace,
     readOutputJsonSchema: {
       type: 'object',
       properties: {
@@ -205,16 +194,9 @@ test('同步会话接受不声明提交的有效业务失败结果', async () =>
 test('同步会话不泄露原工作区解析错误', async () => {
   const fixture = await createFixture({
     readSessionId: 'manual-session',
-    readResultAssertions: [
-      { kind: 'GIT_COMMITS_CREATED', resultPath: ['result', 'commits'] },
-    ],
+    readResultAssertions: commitAssertions,
     previousExecutionId: '00000000-0000-4000-8000-000000000396',
-    workspace: {
-      key: 'bug-repair:bug-1',
-      isolation: 'BRANCH_WORKTREE',
-      baseRef: 'origin/main',
-      branch: 'apt/repair/bug-1',
-    },
+    workspace: branchWorkspace,
     workspaceResolveFailure: new Error(
       '/Users/example/private-worktree 不可读取',
     ),
