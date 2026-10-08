@@ -7,7 +7,6 @@ import { TestSubmissionWriteStore } from '@/cooking/submissions/server/test-subm
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
 import { ExecutionService } from '@/platform/execution/service';
-import { type Execution } from '@agent-party-time/execution-contract';
 import { randomUUID } from 'node:crypto';
 import {
   BugLifecycleMutationResultSchema,
@@ -28,7 +27,6 @@ import { CleanupService } from './cleanup-service';
 import { SubmissionClosure } from './submission-closure';
 import { LifecycleQueries } from './lifecycle-queries';
 import type { BugSourceRow } from './records';
-import { isTerminal } from '@/cooking/shared/server/execution-state';
 import { staleLifecycle } from './results';
 
 export class LifecycleService {
@@ -40,7 +38,7 @@ export class LifecycleService {
   constructor(
     private readonly db: AppDatabase,
     private readonly repairs: RepairService,
-    private readonly executions: ExecutionService = new ExecutionService(db),
+    executions: ExecutionService = new ExecutionService(db),
     private readonly now: () => Date = () => new Date(),
     private readonly createId: () => string = randomUUID,
     onInvalidated: (submissionId: string, revision: number) => void = () => {},
@@ -609,17 +607,6 @@ export class LifecycleService {
         bugId,
       ) as { attempt: number }
     ).attempt;
-  }
-
-  private hasActiveRepair(bugId: string): boolean {
-    const row = this.db.get(
-      `SELECT execution.state
-         FROM cooking_repair_attempt attempt
-         JOIN platform_execution execution ON execution.id = attempt.execution_id
-         WHERE attempt.bug_id = ? ORDER BY attempt.attempt DESC LIMIT 1`,
-      bugId,
-    ) as { state: Execution['state'] } | undefined;
-    return Boolean(row && !isTerminal(row.state));
   }
 
   private audit(source: BugSourceRow, action: string, details: unknown) {

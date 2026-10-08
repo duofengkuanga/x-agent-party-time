@@ -37,7 +37,7 @@ export function BugDetail({
   const [copied, setCopied] = useState(false);
   const [verificationFeedback, setVerificationFeedback] = useState('');
   const [verificationFiles, setVerificationFiles] = useState<File[]>([]);
-  const { error, setError, pending, run } = useWorkspaceMutation(onChanged);
+  const { error, pending, run } = useWorkspaceMutation(onChanged);
   const detailBodyRef = useRef<HTMLDivElement>(null);
   const verificationFileInput = useRef<HTMLInputElement>(null);
   const repair = snapshot.repairByBug[bug.id] ?? null;

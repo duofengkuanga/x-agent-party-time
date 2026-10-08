@@ -20,7 +20,7 @@ async function setup(
   createDatabase: ReturnType<typeof testDatabases>,
   options: FixtureOptions = {},
 ) {
-  const { directory, database } = await createDatabase();
+  const { database } = await createDatabase();
   const people = {
     owner: ['submission-owner', '项目所有者'],
     creator: ['submission-creator', '提测创建人'],

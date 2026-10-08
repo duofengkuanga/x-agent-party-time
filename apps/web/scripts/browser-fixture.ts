@@ -118,7 +118,7 @@ export async function seedBrowserFixture(
       submission.id,
     ) as { id: string };
 
-    const { repairs, executions, bugs } = createCooking(db);
+    const { executions, bugs } = createCooking(db);
 
     const createBug = (title: string) =>
       bugs.createBug(tester.id, submission.id, {

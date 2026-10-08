@@ -43,7 +43,7 @@ export function UpdateBatchDetails({
   >('SUCCEEDED');
   const [externalSummary, setExternalSummary] = useState('');
   const [externalFiles, setExternalFiles] = useState<File[]>([]);
-  const { error, setError, pending, run } = useWorkspaceMutation(onChanged);
+  const { error, pending, run } = useWorkspaceMutation(onChanged);
   const externalFileInput = useRef<HTMLInputElement>(null);
 
   const batchFacts = (

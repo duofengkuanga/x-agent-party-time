@@ -76,15 +76,12 @@ async function setup(
   const item = items[0]!;
   const secondItem = items[1] ?? null;
   const events: Array<{ submissionId: string; revision: number }> = [];
-  const { repairs, updates, lifecycle, bugs, executions } = createCooking(
-    database,
-    {
-      now: clock.now,
-      publish: (submissionId, revision) =>
-        events.push({ submissionId, revision }),
-      ids: { update: options.updateCreateId },
-    },
-  );
+  const { repairs, updates, bugs, executions } = createCooking(database, {
+    now: clock.now,
+    publish: (submissionId, revision) =>
+      events.push({ submissionId, revision }),
+    ids: { update: options.updateCreateId },
+  });
 
   function createBugFor(submissionItemId: string, title: string) {
     const created = bugs.createBug(users.tester.id, submission.id, {

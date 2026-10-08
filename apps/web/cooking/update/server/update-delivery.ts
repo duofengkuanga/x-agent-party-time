@@ -227,10 +227,6 @@ export class UpdateDelivery {
     this.recordPendingDelivery(submissionItemId, latest.last_candidate_at);
   }
 
-  private resetPendingDelivery(submissionItemId: string, now: string): void {
-    this.recordPendingDelivery(submissionItemId, now);
-  }
-
   private recordPendingDelivery(
     submissionItemId: string,
     candidateAt: string,

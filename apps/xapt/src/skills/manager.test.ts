@@ -78,8 +78,7 @@ describe('SkillBundleManager', () => {
   });
 
   test('更新后当前解析使用新 Bundle，已有 Task 仍解析原 Bundle', async () => {
-    const { paths, manager, original, current, snapshot } =
-      await updatedRepairBundle();
+    const { paths, original, current, snapshot } = await updatedRepairBundle();
     const restarted = new SkillBundleManager(
       paths,
       githubFixture(() => snapshot),

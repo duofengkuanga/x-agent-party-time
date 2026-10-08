@@ -90,9 +90,6 @@ export class UpdateQueries {
     const attempts = this.attempts(batchId);
     const latest = attempts.at(-1);
     const entries = this.batchEntries(batchId);
-    const active = batch.active_execution_id
-      ? this.executions.get(batch.active_execution_id)
-      : null;
     const deployment = DeploymentMethodSchema.parse(
       JSON.parse(batch.deployment_json),
     );

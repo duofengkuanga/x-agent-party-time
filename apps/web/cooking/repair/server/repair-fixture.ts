@@ -50,15 +50,12 @@ async function setup(
   ).runner;
   const now = () => new Date('2026-07-27T10:00:00.000Z');
   const events: Array<{ submissionId: string; revision: number }> = [];
-  const { repairs, updates, lifecycle, bugs, executions } = createCooking(
-    database,
-    {
-      now: now,
-      publish: (submissionId, revision) =>
-        events.push({ submissionId, revision }),
-      ids: { repair: options.repairCreateId },
-    },
-  );
+  const { repairs, bugs, executions } = createCooking(database, {
+    now: now,
+    publish: (submissionId, revision) =>
+      events.push({ submissionId, revision }),
+    ids: { repair: options.repairCreateId },
+  });
   const files = new LocalFileStore(database, join(directory, 'files'));
   const actualResultAttachment = await files.put({
     bytes: new TextEncoder().encode('实际结果截图'),

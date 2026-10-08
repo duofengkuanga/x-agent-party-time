@@ -151,7 +151,7 @@ describe('GitExecutionWorkspaceManager', () => {
   });
 
   test('新 worktree 镜像主工程被忽略内容，复用不覆盖已存在项', async () => {
-    const { root, source, binding } = await createRepository({
+    const { root, binding } = await createRepository({
       ignoreLocalFiles: true,
     });
 
