@@ -32,3 +32,44 @@ export function completeSuccessfulExecution(
     result,
   });
 }
+
+export function testSkillBinding(skillName: string) {
+  return {
+    skillName,
+    bundleHash: 'a'.repeat(64),
+    sourceRevision: 'b'.repeat(40),
+  };
+}
+
+export function completeRepairExecution(
+  scenario: ExecutionScenario & {
+    executions: Pick<ExecutionService, 'start' | 'complete'>;
+  },
+  executionId: string,
+  leaseToken: string,
+  sessionId: string,
+  commits: string[],
+  manualOperations: Array<{ kind: 'DATABASE_SQL'; paths: string[] }> = [],
+) {
+  scenario.executions.start(scenario.runner.id, executionId, {
+    kind: 'STARTED',
+    leaseToken,
+    sessionId,
+    taskSkillBinding: testSkillBinding('agent-party-time-repair-bug'),
+  });
+  return completeSuccessfulExecution(
+    scenario,
+    { executionId, leaseToken, sessionId },
+    {
+      result: {
+        outcome: 'COMPLETED',
+        completionKind: 'CHANGES_COMMITTED',
+        changes: ['完成缺陷修复'],
+        validations: [{ name: '定向测试', status: 'PASSED', detail: '' }],
+        warnings: [],
+        commits,
+        manualOperations,
+      },
+    },
+  );
+}

@@ -1,6 +1,10 @@
 import { cookingRunnerFetch } from '@/cooking/runtime/runner-http';
 import { createCooking } from '@/cooking/runtime/create-cooking';
-import { completeSuccessfulExecution } from '@/cooking/testing/execution';
+import {
+  completeRepairExecution,
+  completeSuccessfulExecution,
+  testSkillBinding,
+} from '@/cooking/testing/execution';
 import { SubmissionService } from '@/cooking/submissions/server/submission-service';
 import {
   deliveryProject,
@@ -1156,30 +1160,14 @@ async function completeNextRepair(
   manualOperations: Array<{ kind: 'DATABASE_SQL'; paths: string[] }> = [],
 ): Promise<void> {
   const claimed = (await fixture.executions.claim(fixture.runner.id, 1, 0))[0]!;
-  fixture.executions.start(fixture.runner.id, claimed.id, {
-    kind: 'STARTED',
-    leaseToken: claimed.lease.token,
+  completeRepairExecution(
+    fixture,
+    claimed.id,
+    claimed.lease.token,
     sessionId,
-    taskSkillBinding: testSkillBinding('agent-party-time-repair-bug'),
-  });
-  fixture.executions.complete(fixture.runner.id, claimed.id, {
-    leaseToken: claimed.lease.token,
-    sessionId,
-    outcome: {
-      kind: 'SUCCEEDED',
-      result: {
-        result: {
-          outcome: 'COMPLETED',
-          completionKind: 'CHANGES_COMMITTED',
-          changes: ['完成缺陷修复'],
-          validations: [{ name: '定向测试', status: 'PASSED', detail: '' }],
-          warnings: [],
-          commits,
-          manualOperations,
-        },
-      },
-    },
-  });
+    commits,
+    manualOperations,
+  );
 }
 
 function freezeUpdate(
@@ -1210,14 +1198,6 @@ async function startCandidateUpdate(
     updateSessionId,
   );
   return { bug, started };
-}
-
-function testSkillBinding(skillName: string) {
-  return {
-    skillName,
-    bundleHash: 'a'.repeat(64),
-    sourceRevision: 'b'.repeat(40),
-  };
 }
 
 async function startExecution(

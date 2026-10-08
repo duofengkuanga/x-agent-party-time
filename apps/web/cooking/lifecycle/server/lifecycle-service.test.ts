@@ -1,5 +1,9 @@
 import { createCooking } from '@/cooking/runtime/create-cooking';
 import {
+  completeRepairExecution,
+  testSkillBinding,
+} from '@/cooking/testing/execution';
+import {
   deliveryProject,
   mutableClock,
   mutation,
@@ -762,30 +766,7 @@ async function completeClaimedRepair(
       ({ id }) => id === executionId,
     )?.lease.token;
   if (!leaseToken) throw new Error('未领取到指定修复执行');
-  fixture.executions.start(fixture.runner.id, executionId, {
-    kind: 'STARTED',
-    leaseToken,
-    sessionId,
-    taskSkillBinding: testSkillBinding('agent-party-time-repair-bug'),
-  });
-  fixture.executions.complete(fixture.runner.id, executionId, {
-    leaseToken,
-    sessionId,
-    outcome: {
-      kind: 'SUCCEEDED',
-      result: {
-        result: {
-          outcome: 'COMPLETED',
-          completionKind: 'CHANGES_COMMITTED',
-          changes: ['完成缺陷修复'],
-          validations: [{ name: '定向测试', status: 'PASSED', detail: '' }],
-          warnings: [],
-          commits,
-          manualOperations: [],
-        },
-      },
-    },
-  });
+  completeRepairExecution(fixture, executionId, leaseToken, sessionId, commits);
 }
 
 async function completeUpdate(
@@ -854,14 +835,6 @@ async function completeCleanup(
        WHERE attempt.execution_id = ?`,
     executionId,
   ) as { cleanupId: string; state: string };
-}
-
-function testSkillBinding(skillName: string) {
-  return {
-    skillName,
-    bundleHash: 'a'.repeat(64),
-    sourceRevision: 'b'.repeat(40),
-  };
 }
 
 function latestBatch(database: AppDatabase, submissionItemId: string) {

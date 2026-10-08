@@ -1,7 +1,10 @@
 import { cookingRunnerFetch } from '@/cooking/runtime/runner-http';
 import { createCooking } from '@/cooking/runtime/create-cooking';
-import { completeSuccessfulExecution } from '@/cooking/testing/execution';
-import { completeClaimedExecution } from '@/cooking/testing/execution';
+import {
+  completeClaimedExecution,
+  completeSuccessfulExecution,
+  testSkillBinding,
+} from '@/cooking/testing/execution';
 import { deliveryProject, mutation } from '@/cooking/testing/project';
 import type { AppDatabase } from '@/platform/database';
 
@@ -1094,14 +1097,6 @@ async function startLatest(
     executionId: claimed.id,
     leaseToken: claimed.lease.token,
     sessionId,
-  };
-}
-
-function testSkillBinding(skillName: string) {
-  return {
-    skillName,
-    bundleHash: 'a'.repeat(64),
-    sourceRevision: 'b'.repeat(40),
   };
 }
 
