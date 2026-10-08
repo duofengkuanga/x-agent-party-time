@@ -3,7 +3,10 @@ import { existsSync, readlinkSync, realpathSync } from 'node:fs';
 import { dirname, normalize, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DaemonControlClient } from '../apps/xapt/src/daemon/control.js';
-import type { DaemonSnapshot } from '../apps/xapt/src/daemon/status.js';
+import {
+  stoppedSnapshot,
+  type DaemonSnapshot,
+} from '../apps/xapt/src/daemon/status.js';
 import { xaptPaths } from '../apps/xapt/src/platform/paths.js';
 
 export type ServiceKey = 'app' | 'agent';
@@ -345,13 +348,13 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
   let agent: DaemonSnapshot;
   const controlSocket = xaptPaths(developmentHome).controlSocket;
   if (!existsSync(controlSocket)) {
-    agent = stoppedSnapshotForDevelopment();
+    agent = stoppedSnapshot('development');
   } else {
     try {
       agent = await control.status();
     } catch {
       agent = {
-        ...stoppedSnapshotForDevelopment(),
+        ...stoppedSnapshot('development'),
         service: 'UNRESPONSIVE',
       };
     }
@@ -364,25 +367,6 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
   return stopServices(rows, processes, agent, async () => {
     await control.stop(false);
   });
-}
-
-function stoppedSnapshotForDevelopment(): DaemonSnapshot {
-  return {
-    service: 'STOPPED',
-    connection: 'UNCONFIGURED',
-    activity: 'IDLE',
-    version: 'development',
-    codexVersion: null,
-    serverOrigin: null,
-    agentName: null,
-    lastHeartbeatAt: null,
-    activeSlots: 0,
-    totalSlots: 3,
-    waitingInteractions: 0,
-    outboxCount: 0,
-    bindingCount: 0,
-    bindingActive: false,
-  };
 }
 
 const invokedPath = process.argv[1] ? resolve(process.argv[1]) : '';
