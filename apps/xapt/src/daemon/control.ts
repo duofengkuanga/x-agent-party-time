@@ -13,29 +13,12 @@ import type { DaemonSnapshot } from './status';
 const CONTROL_PROTOCOL_VERSION = 1;
 const MAX_CONTROL_MESSAGE_BYTES = 64 * 1024;
 
-type ControlRequest =
-  | {
-      protocolVersion: 1;
-      id: string;
-      method: 'status';
-    }
-  | {
-      protocolVersion: 1;
-      id: string;
-      method: 'revoke';
-    }
-  | {
-      protocolVersion: 1;
-      id: string;
-      method: 'stop';
-      force: boolean;
-    }
-  | {
-      protocolVersion: 1;
-      id: string;
-      method: 'connect';
-      serverUrl: string;
-    };
+type ControlRequest = { protocolVersion: 1; id: string } & (
+  | { method: 'status' }
+  | { method: 'revoke' }
+  | { method: 'stop'; force: boolean }
+  | { method: 'connect'; serverUrl: string }
+);
 
 type ControlResponse =
   | { id: string; ok: true; result: DaemonSnapshot }
