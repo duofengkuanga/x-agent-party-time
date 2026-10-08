@@ -7,8 +7,8 @@ import { CookingMutationIdSchema } from '../contract';
 export type CookingAuditInput = {
   projectId: string;
   action: string;
-  targetType: string;
-  targetId: string;
+  /** Defaults to resourceId; targetType is always the mutation's resourceType. */
+  targetId?: string;
   details?: unknown;
 };
 
@@ -84,8 +84,8 @@ export class CookingWriteStore {
             audit.projectId,
             input.actorUserId,
             audit.action,
-            audit.targetType,
-            audit.targetId,
+            input.resourceType,
+            audit.targetId ?? outcome.resourceId,
             JSON.stringify(audit.details ?? {}),
             createdAt,
           );

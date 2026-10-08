@@ -109,8 +109,6 @@ export class CleanupService {
             {
               projectId: cleanup.project_id,
               action: 'CLEANUP_RETRIED',
-              targetType: 'CLEANUP',
-              targetId: cleanupId,
               details: {
                 executionId: execution.id,
                 attempt: latest.attempt + 1,
@@ -176,8 +174,6 @@ export class CleanupService {
             {
               projectId: cleanup.project_id,
               action: 'CLEANUP_INTERACTION_RESOLVED',
-              targetType: 'EXECUTION_INTERACTION',
-              targetId: interactionId,
               details: {
                 cleanupId: cleanup.id,
                 executionId: source.execution_id,

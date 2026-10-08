@@ -187,8 +187,6 @@ export class SubmissionService {
             {
               projectId,
               action: 'SUBMISSION_CREATED',
-              targetType: 'TEST_SUBMISSION',
-              targetId: submissionId,
               details: {
                 testerUserId: parsed.testerUserId,
                 itemIds: itemSnapshots.map(({ id }) => id),
@@ -346,8 +344,6 @@ export class SubmissionService {
                 input.action === 'ACQUIRE'
                   ? 'SUBMISSION_ENVIRONMENT_ACQUIRED'
                   : 'SUBMISSION_DEPLOYMENT_CONFIRMED',
-              targetType: 'TEST_SUBMISSION',
-              targetId: submission.id,
               details: {
                 submissionItemId: itemId,
                 takeover: input.takeover ?? null,
@@ -503,8 +499,6 @@ export class SubmissionService {
             {
               projectId: current.project_id,
               action: 'SUBMISSION_DETAILS_UPDATED',
-              targetType: 'TEST_SUBMISSION',
-              targetId: submissionId,
               details: {
                 title: parsed.title,
                 requirementDescription: parsed.requirementDescription,

@@ -134,8 +134,6 @@ export class SubmissionClosure {
             {
               projectId: submission.project_id,
               action: 'SUBMISSION_CLOSED',
-              targetType: 'TEST_SUBMISSION',
-              targetId: submissionId,
               details: { cleanupCount: cleanupExecutionIds.length },
             },
           ],

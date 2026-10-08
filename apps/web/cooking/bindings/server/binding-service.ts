@@ -138,8 +138,6 @@ export class BindingService {
             {
               projectId: engineering.project_id,
               action: 'ENGINEERING_BINDING_CREATED',
-              targetType: 'ENGINEERING_BINDING',
-              targetId: id,
               details: { engineeringId, runnerId },
             },
           ],
@@ -207,8 +205,6 @@ export class BindingService {
             {
               projectId: row.project_id,
               action: 'ENGINEERING_BINDING_DELETED',
-              targetType: 'ENGINEERING_BINDING',
-              targetId: id,
             },
           ],
         };

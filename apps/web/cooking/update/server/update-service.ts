@@ -136,8 +136,6 @@ export class UpdateService {
             {
               projectId: source.project_id,
               action: 'UPDATE_BATCH_FROZEN',
-              targetType: 'UPDATE_BATCH',
-              targetId: frozen.batchId,
               details: { submissionItemId, mode: 'IMMEDIATE' },
             },
           ],
@@ -265,8 +263,6 @@ export class UpdateService {
               projectId: this.queries.itemSource(batch.submission_item_id)
                 .project_id,
               action: 'UPDATE_BATCH_RETRIED',
-              targetType: 'UPDATE_BATCH',
-              targetId: batchId,
               details: { executionId: execution.id },
             },
           ],
@@ -353,8 +349,6 @@ export class UpdateService {
             {
               projectId: source.project_id,
               action: 'UPDATE_SESSION_SYNC_REQUESTED',
-              targetType: 'UPDATE_BATCH',
-              targetId: batchId,
               details: { executionId: execution.id },
             },
           ],
@@ -450,8 +444,6 @@ export class UpdateService {
                 input.outcome === 'SUCCEEDED'
                   ? 'EXTERNAL_DEPLOYMENT_SUCCEEDED'
                   : 'EXTERNAL_DEPLOYMENT_FAILED',
-              targetType: 'UPDATE_BATCH',
-              targetId: batchId,
               details: {
                 reportId,
                 round: reportRound,
@@ -513,8 +505,6 @@ export class UpdateService {
               projectId: this.queries.itemSource(batch.submission_item_id)
                 .project_id,
               action: 'UPDATE_INTERACTION_RESOLVED',
-              targetType: 'EXECUTION_INTERACTION',
-              targetId: interactionId,
               details: { batchId: batch.id, executionId: source.execution_id },
             },
           ],

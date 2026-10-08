@@ -41,8 +41,6 @@ test('CookingWriteStore 在同一事务中完成业务写入、Audit 与幂等�
             {
               projectId: project.id,
               action: 'TEST_WRITTEN',
-              targetType: 'TEST_RESOURCE',
-              targetId: 'resource-one',
             },
           ],
         };
@@ -55,6 +53,12 @@ test('CookingWriteStore 在同一事务中完成业务写入、Audit 与幂等�
   expect(
     countRows(database, 'cooking_audit_event', { action: 'TEST_WRITTEN' }),
   ).toBe(1);
+  expect(
+    database.get<{ target_type: string; target_id: string }>(
+      `SELECT target_type, target_id FROM cooking_audit_event
+       WHERE action = 'TEST_WRITTEN'`,
+    ),
+  ).toEqual({ target_type: 'TEST_RESOURCE', target_id: 'resource-one' });
 });
 
 describe('CookingWriteStore 冲突保护', () => {
@@ -137,8 +141,6 @@ test('TestSubmissionWriteStore 只在首次成功提交后发布 Revision', asyn
             {
               projectId: project.id,
               action: 'TEST_SUBMISSION_WRITTEN',
-              targetType: 'TEST_SUBMISSION',
-              targetId: submissionId,
             },
           ],
         };

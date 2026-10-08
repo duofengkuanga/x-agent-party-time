@@ -121,8 +121,6 @@ export class BugService {
             {
               projectId: access.project_id,
               action: 'BUG_CREATED',
-              targetType: 'BUG',
-              targetId: bugId,
               details: {
                 shortId,
                 submissionItemId: parsed.submissionItemId,
@@ -330,8 +328,6 @@ export class BugService {
             {
               projectId: access.project_id,
               action: audit.action,
-              targetType: 'BUG',
-              targetId: bugId,
               details: audit.details,
             },
           ],

@@ -167,8 +167,6 @@ export class EngineeringService {
             {
               projectId,
               action: 'ENGINEERING_CREATED',
-              targetType: 'ENGINEERING',
-              targetId: id,
               details: { name, type, identifier },
             },
           ],
@@ -243,8 +241,6 @@ export class EngineeringService {
             {
               projectId: current.projectId,
               action: 'ENGINEERING_UPDATED',
-              targetType: 'ENGINEERING',
-              targetId: engineeringId,
               details: { name, type, identifier },
             },
           ],
@@ -297,8 +293,6 @@ export class EngineeringService {
             {
               projectId: current.projectId,
               action: 'ENGINEERING_ARCHIVED',
-              targetType: 'ENGINEERING',
-              targetId: engineeringId,
             },
           ],
         };
@@ -357,7 +351,6 @@ export class EngineeringService {
             {
               projectId: engineering.projectId,
               action: 'ENGINEERING_MEMBER_ADDED',
-              targetType: 'ENGINEERING_MEMBERSHIP',
               targetId: targetUserId,
             },
           ],
@@ -419,7 +412,6 @@ export class EngineeringService {
             {
               projectId: engineering.projectId,
               action: 'ENGINEERING_MEMBER_REMOVED',
-              targetType: 'ENGINEERING_MEMBERSHIP',
               targetId: targetUserId,
             },
           ],

@@ -95,8 +95,6 @@ export class EnvironmentService {
             {
               projectId: engineering.projectId,
               action: 'ENVIRONMENT_CREATED',
-              targetType: 'ENVIRONMENT',
-              targetId: id,
               details: { name, deployment },
             },
           ],
@@ -165,8 +163,6 @@ export class EnvironmentService {
             {
               projectId: engineering.projectId,
               action: 'ENVIRONMENT_UPDATED',
-              targetType: 'ENVIRONMENT',
-              targetId: environmentId,
               details: { name, deployment },
             },
           ],
@@ -220,8 +216,6 @@ export class EnvironmentService {
             {
               projectId: engineering.projectId,
               action: 'ENVIRONMENT_DELETED',
-              targetType: 'ENVIRONMENT',
-              targetId: environmentId,
             },
           ],
         };

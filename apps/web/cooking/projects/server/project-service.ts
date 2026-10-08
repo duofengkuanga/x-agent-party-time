@@ -111,8 +111,6 @@ export class ProjectService {
             {
               projectId: projectId,
               action: 'PROJECT_CREATED',
-              targetType: 'PROJECT',
-              targetId: projectId,
               details: {
                 name,
               },
@@ -231,8 +229,6 @@ export class ProjectService {
             {
               projectId: projectId,
               action: 'PROJECT_USER_INVITED',
-              targetType: 'PROJECT_INVITATION',
-              targetId: invitation.id,
               details: { invitedUserId: user.id },
             },
           ],
@@ -370,8 +366,6 @@ export class ProjectService {
                 targetStatus === 'ACCEPTED'
                   ? 'PROJECT_INVITATION_ACCEPTED'
                   : 'PROJECT_INVITATION_REJECTED',
-              targetType: 'PROJECT_INVITATION',
-              targetId: invitationId,
               details: {},
             },
           ],
@@ -428,8 +422,6 @@ export class ProjectService {
             {
               projectId: row.project_id,
               action: 'PROJECT_INVITATION_REVOKED',
-              targetType: 'PROJECT_INVITATION',
-              targetId: invitationId,
               details: {},
             },
           ],
@@ -476,8 +468,6 @@ export class ProjectService {
             {
               projectId: projectId,
               action: 'PROJECT_UPDATED',
-              targetType: 'PROJECT',
-              targetId: projectId,
               details: {
                 name,
               },
@@ -549,8 +539,6 @@ export class ProjectService {
             {
               projectId: projectId,
               action: 'PROJECT_MEMBER_REMOVED',
-              targetType: 'PROJECT_MEMBERSHIP',
-              targetId: targetUserId,
               details: {},
             },
           ],

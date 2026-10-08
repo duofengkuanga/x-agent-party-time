@@ -299,8 +299,6 @@ export class RepairService {
             {
               projectId: source.project_id,
               action: 'REPAIR_CONTINUED',
-              targetType: 'BUG',
-              targetId: bugId,
               details: { executionId },
             },
           ],
@@ -390,8 +388,6 @@ export class RepairService {
             {
               projectId: source.project_id,
               action: 'REPAIR_SESSION_SYNC_REQUESTED',
-              targetType: 'BUG',
-              targetId: bugId,
               details: { executionId: execution.id },
             },
           ],
@@ -443,8 +439,6 @@ export class RepairService {
             {
               projectId: source.project_id,
               action: 'REPAIR_INTERACTION_RESOLVED',
-              targetType: 'EXECUTION_INTERACTION',
-              targetId: interactionId,
               details: { executionId: row.execution_id, bugId: row.bug_id },
             },
           ],

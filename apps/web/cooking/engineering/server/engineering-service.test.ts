@@ -293,7 +293,7 @@ describe('EngineeringService', () => {
   });
 
   test('工程成员必须先属于项目，添加幂等且活动职责阻止移除', async () => {
-    const { project, references, service, users } = await setup();
+    const { database, project, references, service, users } = await setup();
     const engineering = service.createEngineering(users.owner.id, project.id, {
       mutationId: randomUUID(),
       name: '成员工程',
@@ -334,6 +334,25 @@ describe('EngineeringService', () => {
         expectedVersion: membership.version,
       }),
     ).toEqual({ removed: true, userId: users.member.id });
+    expect(
+      database.all<{ action: string; target_type: string; target_id: string }>(
+        `SELECT action, target_type, target_id FROM cooking_audit_event
+         WHERE action IN ('ENGINEERING_MEMBER_ADDED', 'ENGINEERING_MEMBER_REMOVED')
+           AND target_id = ? ORDER BY action`,
+        users.member.id,
+      ),
+    ).toEqual([
+      {
+        action: 'ENGINEERING_MEMBER_ADDED',
+        target_type: 'ENGINEERING_MEMBERSHIP',
+        target_id: users.member.id,
+      },
+      {
+        action: 'ENGINEERING_MEMBER_REMOVED',
+        target_type: 'ENGINEERING_MEMBERSHIP',
+        target_id: users.member.id,
+      },
+    ]);
   });
 
   test('环境名称在工程内唯一，Version 和 Deployment 判别联合受保护', async () => {

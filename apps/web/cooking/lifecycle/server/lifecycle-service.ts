@@ -625,8 +625,6 @@ export class LifecycleService {
     return {
       projectId: source.project_id,
       action,
-      targetType: 'BUG',
-      targetId: source.id,
       details,
     };
   }

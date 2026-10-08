@@ -147,8 +147,6 @@ export class BindingRequestService {
             {
               projectId: engineering.project_id,
               action: 'ENGINEERING_BINDING_REQUESTED',
-              targetType: 'ENGINEERING_BINDING_REQUEST',
-              targetId: id,
               details: { engineeringId, runnerId },
             },
           ],
