@@ -203,10 +203,6 @@
   .project-settings__create {
     grid-template-columns: 1fr;
   }
-
-  .project-settings__create > button {
-    grid-column: auto;
-  }
 }
 
 .project-name-dialog label > small {

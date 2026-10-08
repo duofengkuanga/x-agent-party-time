@@ -295,6 +295,12 @@
   font: inherit;
   min-height: 38px;
   padding: 0 2px;
+
+  &:focus-visible {
+    border-bottom-color: var(--accent);
+    box-shadow: 0 1px 0 var(--accent);
+    outline: 0;
+  }
 }
 
 .engineering-catalog-dialog select {
@@ -311,17 +317,6 @@
 
 .engineering-catalog-dialog textarea {
   padding-block: 9px;
-}
-
-.engineering-catalog-dialog
-  :where(
-    input:not([type='hidden']):not([type='checkbox']):not([type='radio']),
-    select,
-    textarea
-  ):focus-visible {
-  border-bottom-color: var(--accent);
-  box-shadow: 0 1px 0 var(--accent);
-  outline: 0;
 }
 
 .engineering-catalog-dialog :where(input, textarea)::placeholder {
