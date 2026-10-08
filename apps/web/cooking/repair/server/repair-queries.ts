@@ -20,6 +20,16 @@ import {
   projectAttemptResult,
   repairVisual,
 } from './results';
+
+const REPAIR_ATTEMPT_SELECT = `SELECT attempt.id, attempt.bug_id, attempt.execution_id,
+       attempt.attempt, attempt.outcome_json, attempt.created_at,
+       execution.started_at, attempt.finished_at, execution.state,
+       execution.session_id, execution.outcome_json outcome,
+       runner.name runner_name
+  FROM cooking_repair_attempt attempt
+  JOIN platform_execution execution ON execution.id = attempt.execution_id
+  JOIN platform_runner runner ON runner.id = execution.runner_id`;
+
 export class RepairQueries {
   constructor(
     private readonly db: AppDatabase,
@@ -246,30 +256,14 @@ export class RepairQueries {
 
   attemptForExecution(executionId: string): AttemptRow | undefined {
     return this.db.get(
-      `SELECT attempt.id, attempt.bug_id, attempt.execution_id,
-                attempt.attempt, attempt.outcome_json, attempt.created_at,
-                execution.started_at, attempt.finished_at, execution.state,
-                execution.session_id, execution.outcome_json outcome,
-                runner.name runner_name
-         FROM cooking_repair_attempt attempt
-         JOIN platform_execution execution ON execution.id = attempt.execution_id
-         JOIN platform_runner runner ON runner.id = execution.runner_id
-         WHERE attempt.execution_id = ?`,
+      `${REPAIR_ATTEMPT_SELECT} WHERE attempt.execution_id = ?`,
       executionId,
     ) as AttemptRow | undefined;
   }
 
   attempts(bugId: string): AttemptRow[] {
     return this.db.all<AttemptRow>(
-      `SELECT attempt.id, attempt.bug_id, attempt.execution_id,
-                attempt.attempt, attempt.outcome_json, attempt.created_at,
-                execution.started_at, attempt.finished_at, execution.state,
-                execution.session_id, execution.outcome_json outcome,
-                runner.name runner_name
-         FROM cooking_repair_attempt attempt
-         JOIN platform_execution execution ON execution.id = attempt.execution_id
-         JOIN platform_runner runner ON runner.id = execution.runner_id
-         WHERE attempt.bug_id = ? ORDER BY attempt.attempt`,
+      `${REPAIR_ATTEMPT_SELECT} WHERE attempt.bug_id = ? ORDER BY attempt.attempt`,
       bugId,
     );
   }
