@@ -461,13 +461,6 @@
     border-color 140ms ease;
 }
 
-.button-link:hover,
-.button-link:focus-visible {
-  color: white;
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
 .button-link:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--accent) 35%, transparent);
   outline-offset: 2px;

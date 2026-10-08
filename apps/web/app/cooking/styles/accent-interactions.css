@@ -1,4 +1,4 @@
-/* Shared accent hover and focus treatment. */
+/* Shared accent treatment for hover, focus, and expanded controls. */
 .engineering-catalog-dialog .engineering-card__actions > a:hover,
 .engineering-catalog-dialog .engineering-card__actions > a:focus-visible,
 .bug-dialog .engineering-member-list button:hover,
@@ -24,8 +24,31 @@
 .agent-connect button:hover:not(:disabled),
 .agent-empty button:hover:not(:disabled),
 .agent-connect__result a:hover,
-.agent-connect__back:hover {
+.agent-connect__back:hover,
+.button-link:hover,
+.button-link:focus-visible {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
+}
+
+.collab-account-menu > .account-badge:hover,
+.collab-account-menu--open > .account-badge,
+.project-settings .project-settings__primary-action:hover,
+.project-settings
+  .project-settings__row-actions
+  .project-settings__row-primary:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fffaf0;
+}
+
+.collab-account-menu__invitation-list
+  article
+  .collab-account-menu__accept:hover,
+.project-settings .project-settings__create > button:hover,
+.project-settings .project-settings__empty button:hover {
+  background: var(--accent-dark);
+  border-color: var(--accent-dark);
+  color: var(--paper);
 }

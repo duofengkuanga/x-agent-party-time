@@ -76,12 +76,6 @@
     color 140ms ease;
 }
 
-.project-settings .project-settings__primary-action:hover {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fffaf0;
-}
-
 .project-settings .project-settings__primary-action[aria-expanded='true'] {
   background: var(--ink);
   border-color: var(--ink);
@@ -95,13 +89,6 @@
   color: var(--paper);
   font-size: 11px;
   font-weight: 900;
-}
-
-.project-settings .project-settings__create > button:hover,
-.project-settings .project-settings__empty button:hover {
-  background: var(--accent-dark);
-  border-color: var(--accent-dark);
-  color: var(--paper);
 }
 
 .project-settings button:focus-visible,
@@ -269,14 +256,6 @@
   border-color: var(--strong-line);
   color: var(--ink);
   padding-inline: 14px;
-}
-
-.project-settings
-  .project-settings__row-actions
-  .project-settings__row-primary:hover {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fffaf0;
 }
 
 .project-settings__empty {

@@ -14,13 +14,6 @@
   user-select: none;
 }
 
-.collab-account-menu > .account-badge:hover,
-.collab-account-menu--open > .account-badge {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fffaf0;
-}
-
 .collab-account-menu > .account-badge:hover .account-badge__copy small,
 .collab-account-menu--open > .account-badge .account-badge__copy small {
   color: inherit;
@@ -140,14 +133,6 @@
 .collab-account-menu__invitation-list article .collab-account-menu__accept {
   background: var(--ink);
   border-color: var(--ink);
-  color: var(--paper);
-}
-
-.collab-account-menu__invitation-list
-  article
-  .collab-account-menu__accept:hover {
-  background: var(--accent-dark);
-  border-color: var(--accent-dark);
   color: var(--paper);
 }
 
