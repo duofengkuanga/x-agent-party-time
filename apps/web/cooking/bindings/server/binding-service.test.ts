@@ -64,6 +64,18 @@ async function setup() {
   };
 }
 
+async function onlineRequest() {
+  const fixture = await setup();
+  fixture.runnerService.heartbeat(fixture.runners.member.credential);
+  const request = fixture.requestService.createRequest(
+    fixture.users.member.id,
+    fixture.engineering.id,
+    fixture.runners.member.runner.id,
+    randomUUID(),
+  );
+  return { ...fixture, request };
+}
+
 describe('BindingService', () => {
   test('工程成员只能用自己的有效 Runner 建立稳定 Binding', async () => {
     const { engineering, runnerService, runners, service, users } =
@@ -208,19 +220,12 @@ describe('Web 驱动工程绑定', () => {
     const {
       database,
       engineering,
+      request,
       requestService,
-      runnerService,
       runners,
       service,
       users,
-    } = await setup();
-    runnerService.heartbeat(runners.member.credential);
-    const request = requestService.createRequest(
-      users.member.id,
-      engineering.id,
-      runners.member.runner.id,
-      randomUUID(),
-    );
+    } = await onlineRequest();
     expect(countRows(database, 'cooking_engineering_binding')).toBe(0);
     expect(requestService.claimNext(runners.other.runner.id)).toBeNull();
     const work = requestService.claimNext(runners.member.runner.id);
@@ -257,21 +262,8 @@ describe('Web 驱动工程绑定', () => {
   });
 
   test('取消目录选择或请求过期不会留下页面可见绑定', async () => {
-    const {
-      engineering,
-      requestService,
-      runnerService,
-      runners,
-      service,
-      users,
-    } = await setup();
-    runnerService.heartbeat(runners.member.credential);
-    const request = requestService.createRequest(
-      users.member.id,
-      engineering.id,
-      runners.member.runner.id,
-      randomUUID(),
-    );
+    const { engineering, request, requestService, runners, service, users } =
+      await onlineRequest();
     requestService.claimNext(runners.member.runner.id);
     expect(
       requestService.complete(runners.member.runner.id, request.id, {
