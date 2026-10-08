@@ -28,27 +28,27 @@ export const UpdateBatchStateSchema = z.enum([
 
 export const UpdateValidationSchema = CookingValidationSchema;
 
-const CompletedUpdateExecutionResultSchema = z.strictObject({
-  outcome: z.literal('COMPLETED'),
+const UpdateResultFields = {
   completedActions: z.array(z.string().trim().min(1).max(300)).max(5),
   validations: z.array(UpdateValidationSchema).max(5),
   warnings: z.array(z.string().trim().min(1).max(300)).max(3),
+};
+
+const CompletedUpdateExecutionResultSchema = z.strictObject({
+  outcome: z.literal('COMPLETED'),
+  ...UpdateResultFields,
 });
 
 const PushedUpdateExecutionResultSchema = z.strictObject({
   outcome: z.literal('PUSHED'),
-  completedActions: z.array(z.string().trim().min(1).max(300)).max(5),
-  validations: z.array(UpdateValidationSchema).max(5),
-  warnings: z.array(z.string().trim().min(1).max(300)).max(3),
+  ...UpdateResultFields,
 });
 
 const FailedUpdateExecutionResultSchema = z.strictObject({
   outcome: z.literal('FAILED'),
   failedStep: z.string().trim().min(1).max(240),
   reason: z.string().trim().min(1).max(500),
-  completedActions: z.array(z.string().trim().min(1).max(300)).max(5),
-  validations: z.array(UpdateValidationSchema).max(5),
-  warnings: z.array(z.string().trim().min(1).max(300)).max(3),
+  ...UpdateResultFields,
   pendingActions: z.array(z.string().trim().min(1).max(300)).max(5),
 });
 
@@ -199,16 +199,12 @@ export const ExternalDeploymentReportInputSchema = z.discriminatedUnion(
   ],
 );
 
-export const UpdateBatchCommandInputSchema = z.object({
-  mutationId: CookingMutationIdSchema,
-  expectedVersion: z.number().int().positive(),
-});
+export const UpdateBatchCommandInputSchema = RetryUpdateInputSchema;
 
-export const ResolveUpdateInteractionInputSchema = z.object({
-  mutationId: CookingMutationIdSchema,
-  expectedVersion: z.number().int().positive(),
-  resolution: z.json(),
-});
+export const ResolveUpdateInteractionInputSchema =
+  RetryUpdateInputSchema.extend({
+    resolution: z.json(),
+  });
 
 export const UpdateMutationResultSchema = z.object({
   batchId: UpdateBatchIdSchema,
