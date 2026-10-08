@@ -97,18 +97,7 @@ export class UpdateService {
       bugId,
     ) as { submission_item_id: string | null } | undefined;
     if (!row?.submission_item_id) return;
-    const eligibleAt = new Date(
-      Date.parse(candidateAt) + QUIET_WINDOW_MS,
-    ).toISOString();
-    this.db.run(
-      `INSERT INTO cooking_pending_delivery(
-           submission_item_id, last_candidate_at, eligible_at
-         ) VALUES (?, ?, ?)
-         ON CONFLICT(submission_item_id) DO UPDATE SET
-           last_candidate_at = excluded.last_candidate_at,
-           eligible_at = excluded.eligible_at`,
-      [row.submission_item_id, candidateAt, eligibleAt],
-    );
+    this.recordPendingDelivery(row.submission_item_id, candidateAt);
   }
 
   recalculatePendingDeliveryForBug(bugId: string): void {
