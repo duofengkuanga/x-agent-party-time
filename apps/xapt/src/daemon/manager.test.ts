@@ -99,7 +99,7 @@ test('未知 socket 文件、无响应状态与不支持平台有确定结果', 
   const state = new LocalStateStore(paths, files);
   await files.writeAtomic(paths.currentExecutable, 'executable', 0o755);
   await files.writeAtomic(paths.controlSocket, 'unknown', 0o600);
-  const manager = new DaemonManager({
+  const options = {
     paths,
     files,
     state,
@@ -112,7 +112,8 @@ test('未知 socket 文件、无响应状态与不支持平台有确定结果', 
     clock: new SystemClock(),
     environment: macEnvironment(home),
     stableExecutable: paths.currentExecutable,
-  });
+  };
+  const manager = new DaemonManager(options);
 
   expect(await manager.status()).toMatchObject({ service: 'UNRESPONSIVE' });
   await expect(manager.stop(true)).rejects.toMatchObject({
@@ -124,18 +125,8 @@ test('未知 socket 文件、无响应状态与不支持平台有确定结果', 
   await files.remove(paths.controlSocket);
 
   const unsupported = new DaemonManager({
-    paths,
-    files,
-    state,
-    launchAgent: new RuntimeLaunchAgent(() => {
-      throw new Error('must not start');
-    }),
-    codex: healthyCodex(),
-    control: new DaemonControlClient(paths.controlSocket, 20),
-    confirmation: { confirm: async () => true },
-    clock: new SystemClock(),
+    ...options,
     environment: { ...macEnvironment(home), architecture: () => 'x64' },
-    stableExecutable: paths.currentExecutable,
   });
   await expect(unsupported.start()).rejects.toMatchObject({
     code: 'UNSUPPORTED_PLATFORM',
