@@ -37,7 +37,8 @@ import {
 import type { RepairSourceRow } from './records';
 import { RepairProjection } from './repair-projection';
 import { RepairQueries } from './repair-queries';
-import { isFailedAttemptOutcome, parseCommits, staleRepair } from './results';
+import { parseCommits } from '@/cooking/shared/server/result-data';
+import { isFailedAttemptOutcome, staleRepair } from './results';
 
 const REPAIR_RESULT_ASSERTIONS: ExecutionResultAssertion[] = [
   {

@@ -12,7 +12,7 @@ import {
   LocalScriptUpdateOutputJsonSchema,
 } from '../contract';
 import type { FrozenBatch } from './records';
-import { parseCommits } from './results';
+import { parseCommits } from '@/cooking/shared/server/result-data';
 import type { UpdateQueries } from './update-queries';
 
 const QUIET_WINDOW_MS = 2 * 60 * 1_000;

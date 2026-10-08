@@ -2,6 +2,7 @@ import { TestSubmissionWriteStore } from '@/cooking/submissions/server/test-subm
 import { asDetails } from '@/cooking/shared/server/execution-state';
 import { insertAuditEvent } from '@/cooking/shared/server/audit-event';
 import { markInvalidExecutionResult } from '@/cooking/shared/server/invalid-execution-result';
+import { parseCommits } from '@/cooking/shared/server/result-data';
 import type { AppDatabase } from '@/platform/database';
 import { executionProjector } from '@/platform/execution/projection';
 import type {
@@ -16,7 +17,6 @@ import {
   formatRepairContractIssues,
   isFailedAttemptOutcome,
   isRepairExecution,
-  parseCommits,
   parseManualOperations,
 } from './results';
 const INVALID_RESULT_MESSAGE = 'Codex 返回的结构化结果无效';

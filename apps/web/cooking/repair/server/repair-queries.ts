@@ -1,5 +1,6 @@
 import { requireSubmissionAccess } from '@/cooking/shared/server/access';
 import { repairStateLabel } from '@/cooking/shared/execution-labels';
+import { parseCommits } from '@/cooking/shared/server/result-data';
 import {
   projectCookingInteraction,
   type CookingInteractionRow,
@@ -16,7 +17,6 @@ import {
 import type { AttemptRow, ContextRow, RepairSourceRow } from './records';
 import {
   isFailedAttemptOutcome,
-  parseCommits,
   projectAttemptResult,
   repairVisual,
 } from './results';

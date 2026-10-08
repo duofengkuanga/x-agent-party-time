@@ -1,6 +1,6 @@
 import type { Execution } from '@agent-party-time/execution-contract';
 import { PlatformError } from '@/platform/errors';
-import { ManualOperationsSchema } from '@/cooking/repair/contract';
+import { parseStoredManualOperations } from '@/cooking/shared/server/result-data';
 import type {
   CookingInteractionView,
   CookingVisualPresentation,
@@ -11,19 +11,8 @@ import {
 } from '@/cooking/shared/server/execution-visual';
 import type { BatchRow, AttemptRow } from './records';
 
-export function parseCommits(value: string): string[] {
-  const parsed = JSON.parse(value);
-  if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== 'string'))
-    throw new PlatformError('INTERNAL_ERROR', '待提交记录无效');
-  return parsed;
-}
-
 export function parseManualOperations(value: string) {
-  try {
-    return ManualOperationsSchema.parse(JSON.parse(value));
-  } catch {
-    throw new PlatformError('INTERNAL_ERROR', '更新批次的人工操作记录无效');
-  }
+  return parseStoredManualOperations(value, '更新批次的人工操作记录无效');
 }
 
 export function projectUpdateAttemptResult(

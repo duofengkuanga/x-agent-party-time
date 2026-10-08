@@ -1,5 +1,6 @@
 import { DeploymentMethodSchema } from '@/cooking/engineering/contract';
 import { requireSubmissionAccess } from '@/cooking/shared/server/access';
+import { parseCommits } from '@/cooking/shared/server/result-data';
 import {
   projectCookingInteraction,
   type CookingInteractionRow,
@@ -25,7 +26,6 @@ import type {
 } from './records';
 import {
   batchStateLabel,
-  parseCommits,
   parseManualOperations,
   projectUpdateAttemptResult,
   updateVisual,

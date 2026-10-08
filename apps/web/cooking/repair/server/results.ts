@@ -1,5 +1,6 @@
 import type { Execution } from '@agent-party-time/execution-contract';
 import { PlatformError } from '@/platform/errors';
+import { parseStoredManualOperations } from '@/cooking/shared/server/result-data';
 import type {
   CookingInteractionView,
   CookingVisualPresentation,
@@ -8,10 +9,7 @@ import {
   interactionVisual,
   queueVisual,
 } from '@/cooking/shared/server/execution-visual';
-import {
-  ManualOperationsSchema,
-  RepairExecutionResultSchema,
-} from '../contract';
+import { RepairExecutionResultSchema } from '../contract';
 import type { AttemptRow } from './records';
 
 export function formatRepairContractIssues(
@@ -100,22 +98,11 @@ export function isFailedAttemptOutcome(outcomeJson: string): boolean {
   return raw.outcome === 'FAILED';
 }
 
-export function parseCommits(value: string): string[] {
-  const parsed = JSON.parse(value);
-  if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== 'string'))
-    throw new PlatformError('INTERNAL_ERROR', '待提交记录无效');
-  return parsed;
-}
-
 export function parseManualOperations(value: string): Array<{
   kind: 'DATABASE_SQL';
   paths: string[];
 }> {
-  try {
-    return ManualOperationsSchema.parse(JSON.parse(value));
-  } catch {
-    throw new PlatformError('INTERNAL_ERROR', '待执行的人工操作记录无效');
-  }
+  return parseStoredManualOperations(value, '待执行的人工操作记录无效');
 }
 
 export function isRepairExecution(execution: Execution): boolean {
