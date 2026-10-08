@@ -4,24 +4,16 @@ import type {
 } from '@agent-party-time/execution-contract';
 import type { AppDatabase } from '@/platform/database';
 
-/** APPLY runs within the state transaction; AFTER runs after a successful commit. */
-export type ExecutionProjectionEvent =
-  | {
-      phase: 'APPLY' | 'AFTER';
-      kind: 'STARTED' | 'RESUMED' | 'TERMINAL';
-      execution: Execution;
-    }
-  | {
-      phase: 'APPLY' | 'AFTER';
-      kind: 'INTERACTION_OPENED';
-      interaction: ExecutionInteraction;
-    };
-
-export type ExecutionProjector = (event: ExecutionProjectionEvent) => void;
-
 type ProjectionFact =
   | { kind: 'STARTED' | 'RESUMED' | 'TERMINAL'; execution: Execution }
   | { kind: 'INTERACTION_OPENED'; interaction: ExecutionInteraction };
+
+/** APPLY runs within the state transaction; AFTER runs after a successful commit. */
+export type ExecutionProjectionEvent = ProjectionFact & {
+  phase: 'APPLY' | 'AFTER';
+};
+
+export type ExecutionProjector = (event: ExecutionProjectionEvent) => void;
 
 /** APPLY is transactional; AFTER only runs after the transaction commits. */
 export function projectTransaction<T>(
