@@ -119,26 +119,15 @@ export class UpdateManager {
       };
     } catch (error) {
       const rollbackErrors: unknown[] = [];
+      const rollbackSteps: Array<() => Promise<unknown>> = [];
       if (targetDaemonStarted)
+        rollbackSteps.push(() => this.daemon.stop(false));
+      rollbackSteps.push(() => this.switchCurrent(previousVersion));
+      if (install) rollbackSteps.push(() => this.state.saveInstall(install));
+      if (wasRunning) rollbackSteps.push(() => this.daemon.start());
+      for (const rollback of rollbackSteps)
         try {
-          await this.daemon.stop(false);
-        } catch (rollbackError) {
-          rollbackErrors.push(rollbackError);
-        }
-      try {
-        await this.switchCurrent(previousVersion);
-      } catch (rollbackError) {
-        rollbackErrors.push(rollbackError);
-      }
-      if (install)
-        try {
-          await this.state.saveInstall(install);
-        } catch (rollbackError) {
-          rollbackErrors.push(rollbackError);
-        }
-      if (wasRunning)
-        try {
-          await this.daemon.start();
+          await rollback();
         } catch (rollbackError) {
           rollbackErrors.push(rollbackError);
         }
