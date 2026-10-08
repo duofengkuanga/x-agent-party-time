@@ -1,5 +1,6 @@
 import { cookingRunnerFetch } from '@/cooking/runtime/runner-http';
 import { createCooking } from '@/cooking/runtime/create-cooking';
+import { completeSuccessfulExecution } from '@/cooking/testing/execution';
 import { SubmissionService } from '@/cooking/submissions/server/submission-service';
 import {
   deliveryProject,
@@ -144,14 +145,11 @@ describe('UpdateService', () => {
       frozen.executionId,
       'update-with-sql',
     );
-    fixture.executions.complete(fixture.runner.id, started.executionId, {
-      leaseToken: started.leaseToken,
-      sessionId: started.sessionId,
-      outcome: {
-        kind: 'SUCCEEDED',
-        result: completedUpdate('统一更新完成，SQL 交由人工执行'),
-      },
-    });
+    completeSuccessfulExecution(
+      fixture,
+      started,
+      completedUpdate('统一更新完成，SQL 交由人工执行'),
+    );
 
     const batch = latestBatch(fixture.database, fixture.item.id);
     expect(
@@ -174,11 +172,11 @@ describe('UpdateService', () => {
       frozen.executionId,
       'update-without-changes',
     );
-    fixture.executions.complete(fixture.runner.id, started.executionId, {
-      leaseToken: started.leaseToken,
-      sessionId: started.sessionId,
-      outcome: { kind: 'SUCCEEDED', result: completedUpdate('统一更新完成') },
-    });
+    completeSuccessfulExecution(
+      fixture,
+      started,
+      completedUpdate('统一更新完成'),
+    );
 
     const batch = latestBatch(fixture.database, fixture.item.id);
     expect(batch.state).toBe('COMPLETED');
@@ -433,14 +431,11 @@ describe('UpdateService', () => {
       frozen.executionId,
       'update-session',
     );
-    fixture.executions.complete(fixture.runner.id, failed.executionId, {
-      leaseToken: failed.leaseToken,
-      sessionId: failed.sessionId,
-      outcome: {
-        kind: 'SUCCEEDED',
-        result: failedUpdate('部署脚本返回非零状态'),
-      },
-    });
+    completeSuccessfulExecution(
+      fixture,
+      failed,
+      failedUpdate('部署脚本返回非零状态'),
+    );
     let batch = latestBatch(fixture.database, fixture.item.id);
     expect(batch.state).toBe('FAILED');
     expect(currentBug(fixture.database, first.id).stage).toBe('UPDATING');
@@ -487,14 +482,11 @@ describe('UpdateService', () => {
       continuation.id,
       'update-session',
     );
-    fixture.executions.complete(fixture.runner.id, resumed.executionId, {
-      leaseToken: resumed.leaseToken,
-      sessionId: resumed.sessionId,
-      outcome: {
-        kind: 'SUCCEEDED',
-        result: completedUpdate('统一更新和部署完成'),
-      },
-    });
+    completeSuccessfulExecution(
+      fixture,
+      resumed,
+      completedUpdate('统一更新和部署完成'),
+    );
     batch = latestBatch(fixture.database, fixture.item.id);
     expect(batch.state).toBe('COMPLETED');
     expect(currentBug(fixture.database, first.id).stage).toBe(
@@ -560,14 +552,11 @@ describe('UpdateService', () => {
       frozen.executionId!,
       'update-ci-session',
     );
-    fixture.executions.complete(fixture.runner.id, first.executionId, {
-      leaseToken: first.leaseToken,
-      sessionId: first.sessionId,
-      outcome: {
-        kind: 'SUCCEEDED',
-        result: pushedUpdate('代码已普通 Push'),
-      },
-    });
+    completeSuccessfulExecution(
+      fixture,
+      first,
+      pushedUpdate('代码已普通 Push'),
+    );
     const waiting = latestBatch(fixture.database, fixture.item.id);
     expect(waiting.state).toBe('WAITING_EXTERNAL');
     expect(currentBug(fixture.database, bug.id).stage).toBe('UPDATING');
@@ -693,14 +682,11 @@ describe('UpdateService', () => {
       continued.executionId!,
       'update-ci-session',
     );
-    fixture.executions.complete(fixture.runner.id, second.executionId, {
-      leaseToken: second.leaseToken,
-      sessionId: second.sessionId,
-      outcome: {
-        kind: 'SUCCEEDED',
-        result: pushedUpdate('修复后已重新 Push'),
-      },
-    });
+    completeSuccessfulExecution(
+      fixture,
+      second,
+      pushedUpdate('修复后已重新 Push'),
+    );
     const waitingAgain = latestBatch(fixture.database, fixture.item.id);
     expect(waitingAgain.id).toBe(waiting.id);
     expect(waitingAgain.state).toBe('WAITING_EXTERNAL');
@@ -738,14 +724,11 @@ describe('UpdateService', () => {
       frozen.executionId,
       'first-batch-session',
     );
-    fixture.executions.complete(fixture.runner.id, running.executionId, {
-      leaseToken: running.leaseToken,
-      sessionId: running.sessionId,
-      outcome: {
-        kind: 'SUCCEEDED',
-        result: failedUpdate('等待负责人处理冲突'),
-      },
-    });
+    completeSuccessfulExecution(
+      fixture,
+      running,
+      failedUpdate('等待负责人处理冲突'),
+    );
     const firstBatch = latestBatch(fixture.database, fixture.item.id);
 
     fixture.clock.set('2026-07-27T10:01:00.000Z');
@@ -773,14 +756,7 @@ describe('UpdateService', () => {
       continued.executionId,
       'first-batch-session',
     );
-    fixture.executions.complete(fixture.runner.id, resumed.executionId, {
-      leaseToken: resumed.leaseToken,
-      sessionId: resumed.sessionId,
-      outcome: {
-        kind: 'SUCCEEDED',
-        result: completedUpdate('首批完成'),
-      },
-    });
+    completeSuccessfulExecution(fixture, resumed, completedUpdate('首批完成'));
     expect(fixture.updates.prepareDueExecutions()).toHaveLength(1);
     const secondBatch = latestBatch(fixture.database, fixture.item.id);
     expect(secondBatch.id).not.toBe(firstBatch.id);
@@ -881,28 +857,21 @@ describe('UpdateService', () => {
       frozen.executionId,
       'failed-update-session',
     );
-    fixture.executions.complete(fixture.runner.id, running.executionId, {
-      leaseToken: running.leaseToken,
-      sessionId: running.sessionId,
-      outcome: {
-        kind: 'SUCCEEDED',
-        result: {
-          result: {
-            outcome: 'FAILED',
-            failedStep: '质量门：pnpm run tsc',
-            reason: '仓库不存在 tsconfig.json',
-            completedActions: ['完成候选提交集成'],
-            validations: [
-              {
-                name: 'TypeScript 静态检查',
-                status: 'FAILED',
-                detail: 'pnpm run tsc 退出码为 1',
-              },
-            ],
-            warnings: ['该失败不直接证明候选修改存在类型错误'],
-            pendingActions: ['修复质量门后重新执行'],
+    completeSuccessfulExecution(fixture, running, {
+      result: {
+        outcome: 'FAILED',
+        failedStep: '质量门：pnpm run tsc',
+        reason: '仓库不存在 tsconfig.json',
+        completedActions: ['完成候选提交集成'],
+        validations: [
+          {
+            name: 'TypeScript 静态检查',
+            status: 'FAILED',
+            detail: 'pnpm run tsc 退出码为 1',
           },
-        },
+        ],
+        warnings: ['该失败不直接证明候选修改存在类型错误'],
+        pendingActions: ['修复质量门后重新执行'],
       },
     });
 
@@ -958,14 +927,11 @@ describe('UpdateService', () => {
     const beforeBug = currentBug(fixture.database, bug.id);
 
     expect(() =>
-      fixture.executions.complete(fixture.runner.id, running.executionId, {
-        leaseToken: running.leaseToken,
-        sessionId: running.sessionId,
-        outcome: {
-          kind: 'SUCCEEDED',
-          result: completedUpdate('应整体回滚'),
-        },
-      }),
+      completeSuccessfulExecution(
+        fixture,
+        running,
+        completedUpdate('应整体回滚'),
+      ),
     ).toThrow();
     expect(fixture.executions.get(running.executionId).state).toBe('RUNNING');
     expect(latestBatch(fixture.database, fixture.item.id)).toEqual(beforeBatch);
@@ -1482,11 +1448,7 @@ test('外部部署等待期间禁止切换；失败后允许切换但原批次�
     frozen.executionId,
     'external-lock-update',
   );
-  fixture.executions.complete(fixture.runner.id, running.executionId, {
-    leaseToken: running.leaseToken,
-    sessionId: running.sessionId,
-    outcome: { kind: 'SUCCEEDED', result: pushedUpdate('等待外部部署') },
-  });
+  completeSuccessfulExecution(fixture, running, pushedUpdate('等待外部部署'));
   const submissions = new SubmissionService(
     fixture.database,
     fixture.clock.now,

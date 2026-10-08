@@ -1,5 +1,7 @@
 import { cookingRunnerFetch } from '@/cooking/runtime/runner-http';
 import { createCooking } from '@/cooking/runtime/create-cooking';
+import { completeSuccessfulExecution } from '@/cooking/testing/execution';
+import { completeClaimedExecution } from '@/cooking/testing/execution';
 import { deliveryProject, mutation } from '@/cooking/testing/project';
 import type { AppDatabase } from '@/platform/database';
 
@@ -323,28 +325,21 @@ describe('RepairService', () => {
     const started = await startLatest(fixture, 'already-fixed-session');
 
     expect(
-      fixture.executions.complete(fixture.runner.id, started.executionId, {
-        leaseToken: started.leaseToken,
-        sessionId: started.sessionId,
-        outcome: {
-          kind: 'SUCCEEDED',
-          result: {
-            result: {
-              outcome: 'COMPLETED',
-              completionKind: 'TARGET_ALREADY_FIXED',
-              changes: [],
-              validations: [
-                {
-                  name: '目标分支检查',
-                  status: 'PASSED',
-                  detail: '当前工作区与目标分支没有 Commit 差异',
-                },
-              ],
-              warnings: [],
-              commits: [],
-              manualOperations: [],
+      completeSuccessfulExecution(fixture, started, {
+        result: {
+          outcome: 'COMPLETED',
+          completionKind: 'TARGET_ALREADY_FIXED',
+          changes: [],
+          validations: [
+            {
+              name: '目标分支检查',
+              status: 'PASSED',
+              detail: '当前工作区与目标分支没有 Commit 差异',
             },
-          },
+          ],
+          warnings: [],
+          commits: [],
+          manualOperations: [],
         },
       }).state,
     ).toBe('SUCCEEDED');
@@ -462,16 +457,12 @@ describe('RepairService', () => {
   test('同步状态把手动 Session 的有效结果追加为新 Repair 尝试', async () => {
     const fixture = await setup();
     const started = await startLatest(fixture, 'manual-repair-session');
-    fixture.executions.complete(fixture.runner.id, started.executionId, {
-      leaseToken: started.leaseToken,
-      sessionId: started.sessionId,
-      outcome: {
-        kind: 'FAILED',
-        failure: {
-          code: 'CODEX_EXECUTION_FAILED',
-          message: '首次失败',
-          retryable: true,
-        },
+    completeClaimedExecution(fixture, started, {
+      kind: 'FAILED',
+      failure: {
+        code: 'CODEX_EXECUTION_FAILED',
+        message: '首次失败',
+        retryable: true,
       },
     });
     const synced = fixture.repairs.synchronizeSession(
@@ -539,16 +530,12 @@ describe('RepairService', () => {
   test('同步无法确认最新 Turn 时只向负责人显示可操作错误', async () => {
     const fixture = await setup();
     const started = await startLatest(fixture, 'manual-repair-session');
-    fixture.executions.complete(fixture.runner.id, started.executionId, {
-      leaseToken: started.leaseToken,
-      sessionId: started.sessionId,
-      outcome: {
-        kind: 'FAILED',
-        failure: {
-          code: 'CODEX_EXECUTION_FAILED',
-          message: '首次失败',
-          retryable: true,
-        },
+    completeClaimedExecution(fixture, started, {
+      kind: 'FAILED',
+      failure: {
+        code: 'CODEX_EXECUTION_FAILED',
+        message: '首次失败',
+        retryable: true,
       },
     });
     const synced = fixture.repairs.synchronizeSession(
@@ -640,16 +627,12 @@ describe('RepairService', () => {
     const started = await startLatest(fixture, 'failed-session');
     const failureSummary =
       'Codex 请求过多：429 Too Many Requests，已超过重试次数。';
-    fixture.executions.complete(fixture.runner.id, started.executionId, {
-      leaseToken: started.leaseToken,
-      sessionId: started.sessionId,
-      outcome: {
-        kind: 'FAILED',
-        failure: {
-          code: 'CODEX_EXECUTION_FAILED',
-          message: failureSummary,
-          retryable: true,
-        },
+    completeClaimedExecution(fixture, started, {
+      kind: 'FAILED',
+      failure: {
+        code: 'CODEX_EXECUTION_FAILED',
+        message: failureSummary,
+        retryable: true,
       },
     });
     const testerAttempt = fixture.repairs
@@ -739,17 +722,13 @@ describe('RepairService', () => {
          SET pending_commits_json = ? WHERE bug_id = ?`,
       )
       .run(JSON.stringify(['aaaaaaa']), fixture.requested.bug.id);
-    fixture.executions.complete(fixture.runner.id, started.executionId, {
-      leaseToken: started.leaseToken,
-      sessionId: started.sessionId,
-      outcome: {
-        kind: 'FAILED',
-        failure: {
-          code: 'CODEX_START_FAILED',
-          message:
-            'failed to load configuration: Model provider `custom` not found',
-          retryable: true,
-        },
+    completeClaimedExecution(fixture, started, {
+      kind: 'FAILED',
+      failure: {
+        code: 'CODEX_START_FAILED',
+        message:
+          'failed to load configuration: Model provider `custom` not found',
+        retryable: true,
       },
     });
 
@@ -915,22 +894,15 @@ describe('RepairService', () => {
     );
 
     expect(() =>
-      fixture.executions.complete(fixture.runner.id, started.executionId, {
-        leaseToken: started.leaseToken,
-        sessionId: started.sessionId,
-        outcome: {
-          kind: 'SUCCEEDED',
-          result: {
-            result: {
-              outcome: 'COMPLETED',
-              completionKind: 'CHANGES_COMMITTED',
-              changes: ['修改支付按钮'],
-              validations: [],
-              warnings: [],
-              commits: ['ddddddd'],
-              manualOperations: [],
-            },
-          },
+      completeSuccessfulExecution(fixture, started, {
+        result: {
+          outcome: 'COMPLETED',
+          completionKind: 'CHANGES_COMMITTED',
+          changes: ['修改支付按钮'],
+          validations: [],
+          warnings: [],
+          commits: ['ddddddd'],
+          manualOperations: [],
         },
       }),
     ).toThrow();
