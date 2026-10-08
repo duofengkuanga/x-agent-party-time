@@ -225,9 +225,6 @@
   justify-content: center;
   min-height: 40px;
   padding: 0 14px;
-}
-
-.project-settings .project-settings__primary-action {
   appearance: none;
   background: transparent;
   border: 1px solid var(--strong-line);

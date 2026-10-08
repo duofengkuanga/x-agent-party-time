@@ -158,9 +158,6 @@
   font-size: 9px;
   line-height: 1.6;
   margin: 0;
-}
-
-.collab-form__error {
   background: color-mix(in srgb, var(--accent), transparent 90%);
   border-left: 3px solid var(--accent);
   color: var(--accent-dark);

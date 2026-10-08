@@ -23,9 +23,6 @@
   inset: 0;
   position: fixed;
   z-index: 30;
-}
-
-.repair-overlay {
   display: grid;
   overflow-y: auto;
   padding: 24px;
