@@ -24,37 +24,11 @@ const credential = 'credential-secret-at-least-thirty-two-characters';
 const now = new Date('2026-08-20T08:00:00.000Z');
 
 test('远程连接恢复阻塞时 control socket 仍先可用', async () => {
-  const home = await createTestDirectory();
-  const paths = xaptPaths(home);
-  const files = new NodeLocalFileSystem();
-  const state = new LocalStateStore(paths, files);
-  await state.initialize();
-  await state.saveConnection({
-    schemaVersion: CONNECTION_STATE_SCHEMA_VERSION,
-    serverUrl: 'http://10.10.96.169:3000',
-    runnerId,
-  });
+  const serverUrl = 'http://10.10.96.169:3000';
   const keychain = new MemoryKeychain();
-  await keychain.save(
-    keychainAccount('http://10.10.96.169:3000', runnerId),
-    credential,
-  );
+  await keychain.save(keychainAccount(serverUrl, runnerId), credential);
   const http = new BlockingAuthorizationHttp();
-  const connection = new ConnectionCoordinator(
-    state,
-    keychain,
-    new NoopBrowser(),
-    http,
-    new FixedClock(),
-  );
-  const runtime = new DaemonRuntime({
-    paths,
-    files,
-    state,
-    codex: { executable: '/opt/bin/codex', version: '0.146.0' },
-    connection,
-  });
-  const control = new DaemonControlClient(paths.controlSocket, 200);
+  const { runtime, control } = await runtimeFixture(serverUrl, keychain, http);
   const runtimeTask = runtime.run();
   await http.heartbeatStarted;
 
@@ -71,6 +45,25 @@ test('远程连接恢复阻塞时 control socket 仍先可用', async () => {
 });
 
 test('远程连接恢复失败时关闭已启动的 control socket', async () => {
+  const { paths, files, runtime, control } = await runtimeFixture(
+    'https://apt.example.com',
+    new RejectingKeychain(),
+    new BlockingAuthorizationHttp(),
+  );
+
+  await expect(runtime.run()).rejects.toThrow('keychain unavailable');
+  try {
+    expect(await files.info(paths.controlSocket)).toBeNull();
+  } finally {
+    if (await files.info(paths.controlSocket)) await control.stop();
+  }
+});
+
+async function runtimeFixture(
+  serverUrl: string,
+  keychain: Keychain,
+  http: RunnerAuthorizationHttp,
+) {
   const home = await createTestDirectory();
   const paths = xaptPaths(home);
   const files = new NodeLocalFileSystem();
@@ -78,14 +71,14 @@ test('远程连接恢复失败时关闭已启动的 control socket', async () =>
   await state.initialize();
   await state.saveConnection({
     schemaVersion: CONNECTION_STATE_SCHEMA_VERSION,
-    serverUrl: 'https://apt.example.com',
+    serverUrl,
     runnerId,
   });
   const connection = new ConnectionCoordinator(
     state,
-    new RejectingKeychain(),
+    keychain,
     new NoopBrowser(),
-    new BlockingAuthorizationHttp(),
+    http,
     new FixedClock(),
   );
   const runtime = new DaemonRuntime({
@@ -96,14 +89,8 @@ test('远程连接恢复失败时关闭已启动的 control socket', async () =>
     connection,
   });
   const control = new DaemonControlClient(paths.controlSocket, 200);
-
-  await expect(runtime.run()).rejects.toThrow('keychain unavailable');
-  try {
-    expect(await files.info(paths.controlSocket)).toBeNull();
-  } finally {
-    if (await files.info(paths.controlSocket)) await control.stop();
-  }
-});
+  return { paths, files, runtime, control };
+}
 
 class MemoryKeychain implements Keychain {
   private readonly values = new Map<string, string>();
