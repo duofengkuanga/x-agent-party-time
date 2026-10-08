@@ -71,6 +71,10 @@ export class ExecutionService {
     const input = EnqueueExecutionInputSchema.parse(inputValue);
     const executionId = input.id ?? this.createId();
     const createdAt = this.now().toISOString();
+    const taskSkillBinding =
+      input.codexTurn?.kind === 'CONTINUATION'
+        ? input.codexTurn.taskSkillBinding
+        : null;
     const attachments = input.attachmentIds.map((fileId) => {
       const row = this.db.get(
         `SELECT id file_id, original_name, media_type, size_bytes, sha256
@@ -109,15 +113,9 @@ export class ExecutionService {
             input.priority,
             input.approvalPolicy,
             input.codexTurn ? JSON.stringify(input.codexTurn) : null,
-            input.codexTurn?.kind === 'CONTINUATION'
-              ? input.codexTurn.taskSkillBinding.skillName
-              : null,
-            input.codexTurn?.kind === 'CONTINUATION'
-              ? input.codexTurn.taskSkillBinding.bundleHash
-              : null,
-            input.codexTurn?.kind === 'CONTINUATION'
-              ? input.codexTurn.taskSkillBinding.sourceRevision
-              : null,
+            taskSkillBinding?.skillName ?? null,
+            taskSkillBinding?.bundleHash ?? null,
+            taskSkillBinding?.sourceRevision ?? null,
             input.workspace ? JSON.stringify(input.workspace) : null,
             createdAt,
           ],
@@ -174,6 +172,7 @@ export class ExecutionService {
     executionId: string,
     request: ExecutionStartRequest,
   ): Execution {
+    const kind = request.kind === 'START_FAILED' ? 'TERMINAL' : 'STARTED';
     const result = this.db.transaction(() => {
       const row = this.requireLeasedExecution(
         runnerId,
@@ -221,19 +220,10 @@ export class ExecutionService {
         );
       }
       const execution = this.records.get(executionId);
-      if (request.kind === 'START_FAILED')
-        this.project({
-          phase: 'APPLY',
-          kind: 'TERMINAL',
-          execution: execution,
-        });
-      else
-        this.project({ phase: 'APPLY', kind: 'STARTED', execution: execution });
+      this.project({ phase: 'APPLY', kind, execution });
       return execution;
     })();
-    if (request.kind === 'START_FAILED')
-      this.project({ phase: 'AFTER', kind: 'TERMINAL', execution: result });
-    else this.project({ phase: 'AFTER', kind: 'STARTED', execution: result });
+    this.project({ phase: 'AFTER', kind, execution: result });
     return result;
   }
 
@@ -607,9 +597,7 @@ function validateStartedSkillBinding(
   const expectedName =
     turn.kind === 'INITIAL'
       ? turn.requiredSkillName
-      : turn.kind === 'CONTINUATION'
-        ? turn.taskSkillBinding.skillName
-        : null;
+      : turn.taskSkillBinding.skillName;
   if (
     actual.skillName !== expectedName ||
     (turn.kind === 'CONTINUATION' &&
