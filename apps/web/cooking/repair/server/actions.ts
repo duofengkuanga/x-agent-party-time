@@ -6,12 +6,22 @@ import {
 } from '@/cooking/shared/server/action-transport';
 import { repairService } from '../../runtime/services';
 import type {
+  ContinueRepairInput,
   RepairMutationResult,
   ResolveRepairInteractionInput,
   SynchronizeRepairSessionInput,
 } from '../contract';
 
 export type RepairActionResult = InteractiveActionResult<RepairMutationResult>;
+
+export async function continueRepairAction(
+  bugId: string,
+  input: ContinueRepairInput,
+): Promise<RepairActionResult> {
+  return runRepairAction((userId) =>
+    repairService().continueRepair(userId, bugId, input),
+  );
+}
 
 export async function synchronizeRepairSessionAction(
   bugId: string,
