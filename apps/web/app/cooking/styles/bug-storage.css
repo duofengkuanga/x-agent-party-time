@@ -1,0 +1,157 @@
+/* Lifecycle storage drop targets. */
+.collab-shell .collab-storage-button--icon {
+  align-self: center;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  display: grid;
+  flex: 0 0 34px;
+  font-size: 16px;
+  height: 34px;
+  line-height: 1;
+  min-width: 34px;
+  outline: 0 !important;
+  padding: 0;
+  place-items: center;
+  position: relative;
+  width: 34px;
+}
+
+.collab-storage-button--icon > sup {
+  align-items: center;
+  background: var(--paper) !important;
+  border: 0;
+  color: var(--ink) !important;
+  display: flex;
+  font-size: 8px;
+  font-weight: 900;
+  height: 16px;
+  justify-content: center;
+  min-width: 16px;
+  padding: 0 3px;
+  position: absolute;
+  right: -6px;
+  top: -6px;
+}
+
+.collab-shell .collab-storage-button--icon:hover > sup,
+.collab-shell .collab-storage-button--icon:focus-visible > sup,
+.collab-shell .collab-storage-button--icon[data-drop-eligible='true'] > sup,
+.collab-shell .collab-storage-button--icon[data-drop-target='true'] > sup {
+  background: var(--paper) !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: var(--ink) !important;
+  filter: none !important;
+  transform: none !important;
+}
+
+.collab-storage-button__glyph {
+  font-family: system-ui, sans-serif;
+  font-size: 17px;
+  line-height: 1;
+  transform-origin: center;
+  transition: transform 120ms ease;
+}
+
+.collab-storage-button__drop-label {
+  display: none;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.collab-bug-drag-preview {
+  align-items: center;
+  color: var(--ink);
+  display: flex;
+  font-family: system-ui, sans-serif;
+  font-size: 24px;
+  height: 32px;
+  justify-content: center;
+  left: -100px;
+  pointer-events: none;
+  position: fixed;
+  text-shadow: 0 1px 0 color-mix(in srgb, var(--paper), transparent 12%);
+  top: -100px;
+  width: 32px;
+}
+
+.collab-shell .collab-storage-button--icon:hover,
+.collab-shell .collab-storage-button--icon:focus-visible {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  outline: 0 !important;
+  transform: none;
+}
+
+.collab-shell .collab-storage-button--icon:hover .collab-storage-button__glyph,
+.collab-shell
+  .collab-storage-button--icon:focus-visible
+  .collab-storage-button__glyph {
+  filter: drop-shadow(0 1px 0 var(--accent));
+  transform: translateY(-1px) scale(1.06);
+}
+
+.collab-storage-button[data-drop-target='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  transform: translateY(-2px);
+}
+
+.collab-shell .collab-storage-button--icon[data-drop-eligible='true'] {
+  background: color-mix(in srgb, var(--accent), transparent 90%) !important;
+  border: 0 !important;
+  color: var(--ink) !important;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 7px;
+  min-width: 128px;
+  padding: 0 10px;
+  width: auto;
+}
+
+.collab-storage-button--icon[data-drop-eligible='true']
+  .collab-storage-button__drop-label {
+  display: inline;
+}
+
+.collab-shell .collab-storage-button--icon[data-drop-target='true'] {
+  background: var(--accent) !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: #fff !important;
+  outline: 0 !important;
+  transform: none;
+}
+
+.collab-shell
+  .collab-storage-button--icon[data-drop-target='true']
+  .collab-storage-button__glyph {
+  filter: drop-shadow(0 1px 0 var(--accent));
+  transform: translateY(-2px) scale(1.1);
+}
+
+.collab-stored-bug-list {
+  display: grid;
+  gap: 0.65rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.collab-stored-bug-list button {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.8rem;
+  text-align: left;
+  width: 100%;
+}
+
+.collab-stored-bug-list small {
+  color: var(--muted);
+}

@@ -11,7 +11,9 @@
 @import './styles/controls.css';
 @import './styles/project-dialogs.css';
 @import './styles/engineering-management.css';
+@import './styles/collaboration-directory.css';
 @import './styles/project-directory.css';
+@import './styles/bug-storage.css';
 @import './styles/bug-details.css';
 @import './styles/project-controls.css';
 @import './styles/agents.css';
