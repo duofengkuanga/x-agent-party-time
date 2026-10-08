@@ -89,7 +89,6 @@ export const InstallStateSchema = z.strictObject({
 });
 
 export type ConnectionState = z.infer<typeof ConnectionStateSchema>;
-export type IdentityState = z.infer<typeof IdentityStateSchema>;
 export type BindingState = z.infer<typeof BindingStateSchema>;
 export type ExecutionRecoveryState = z.infer<
   typeof ExecutionRecoveryStateSchema

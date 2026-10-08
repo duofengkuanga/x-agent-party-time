@@ -77,7 +77,6 @@ export const EngineeringWorkspaceSchema = z.object({
 
 export type DeploymentMethod = z.infer<typeof DeploymentMethodSchema>;
 export type Engineering = z.infer<typeof EngineeringSchema>;
-export type EngineeringType = z.infer<typeof EngineeringTypeSchema>;
 export type EngineeringMembership = z.infer<typeof EngineeringMembershipSchema>;
 export type TestEnvironment = z.infer<typeof TestEnvironmentSchema>;
 export type EngineeringMember = z.infer<typeof EngineeringMemberSchema>;

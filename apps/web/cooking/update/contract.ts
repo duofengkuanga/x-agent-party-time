@@ -199,8 +199,6 @@ export const ExternalDeploymentReportInputSchema = z.discriminatedUnion(
   ],
 );
 
-export const UpdateBatchCommandInputSchema = RetryUpdateInputSchema;
-
 export const ResolveUpdateInteractionInputSchema =
   RetryUpdateInputSchema.extend({
     resolution: z.json(),
@@ -213,27 +211,16 @@ export const UpdateMutationResultSchema = z.object({
   revision: z.number().int().positive(),
 });
 
-export type LocalScriptUpdateExecutionResult = z.infer<
-  typeof LocalScriptUpdateExecutionResultSchema
->;
-export type CiCdUpdateExecutionResult = z.infer<
-  typeof CiCdUpdateExecutionResultSchema
->;
-export type PendingDeliveryView = z.infer<typeof PendingDeliveryViewSchema>;
 export type UpdateBatchView = z.infer<typeof UpdateBatchViewSchema>;
 export type UpdateWorkspaceProjection = z.infer<
   typeof UpdateWorkspaceProjectionSchema
 >;
-export type FreezeUpdateInput = z.infer<typeof FreezeUpdateInputSchema>;
 export type RetryUpdateInput = z.infer<typeof RetryUpdateInputSchema>;
 export type SynchronizeUpdateSessionInput = z.infer<
   typeof SynchronizeUpdateSessionInputSchema
 >;
 export type ExternalDeploymentReportInput = z.infer<
   typeof ExternalDeploymentReportInputSchema
->;
-export type UpdateBatchCommandInput = z.infer<
-  typeof UpdateBatchCommandInputSchema
 >;
 export type ResolveUpdateInteractionInput = z.infer<
   typeof ResolveUpdateInteractionInputSchema

@@ -186,7 +186,6 @@ export const RepairMutationResultSchema = z.object({
   revision: z.number().int().positive(),
 });
 
-export type RepairExecutionResult = z.infer<typeof RepairExecutionResultSchema>;
 export type BugRepairView = z.infer<typeof BugRepairViewSchema>;
 export type ContinueRepairInput = z.infer<typeof ContinueRepairInputSchema>;
 export type SynchronizeRepairSessionInput = z.infer<

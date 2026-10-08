@@ -2,7 +2,6 @@ import { z } from 'zod';
 import {
   ExecutionInteractionSchema,
   ExecutionStateSchema,
-  type JsonObject,
 } from '@agent-party-time/execution-contract';
 import { BugAttachmentViewSchema, BugIdSchema } from '@/cooking/bugs/contract';
 import { CookingMutationIdSchema } from '@/cooking/shared/contract';
@@ -179,16 +178,6 @@ export const CleanupExecutionResultSchema = z.discriminatedUnion('outcome', [
     summary: z.string().trim().min(1).max(4_000),
   }),
 ]);
-export const CleanupOutputJsonSchema: JsonObject = {
-  type: 'object',
-  properties: {
-    outcome: { type: 'string', enum: ['COMPLETED', 'FAILED'] },
-    summary: { type: 'string', minLength: 1, maxLength: 4_000 },
-  },
-  required: ['outcome', 'summary'],
-  additionalProperties: false,
-};
-
 export type VerifyBugInput = z.infer<typeof VerifyBugInputSchema>;
 export type ReopenBugInput = z.infer<typeof ReopenBugInputSchema>;
 export type LifecycleCommandInput = z.infer<typeof LifecycleCommandInputSchema>;

@@ -281,8 +281,6 @@ export type ExecutionState = z.infer<typeof ExecutionStateSchema>;
 export type ExecutionApprovalPolicy = z.infer<
   typeof ExecutionApprovalPolicySchema
 >;
-export type ExecutionOwnerRef = z.infer<typeof ExecutionOwnerRefSchema>;
-export type ExecutionAttachment = z.infer<typeof ExecutionAttachmentSchema>;
 export type ExecutionWorkspace = z.infer<typeof ExecutionWorkspaceSchema>;
 export type TaskSkillBinding = z.infer<typeof TaskSkillBindingSchema>;
 export type ExecutionResultAssertion = z.infer<
@@ -293,21 +291,13 @@ export type ExecutionFailure = z.infer<typeof ExecutionFailureSchema>;
 export type ExecutionOutcome = z.infer<typeof ExecutionOutcomeSchema>;
 export type EnqueueExecutionInput = z.infer<typeof EnqueueExecutionInputSchema>;
 export type ClaimedExecution = z.infer<typeof ClaimedExecutionSchema>;
-export type ExecutionClaimRequest = z.infer<typeof ExecutionClaimRequestSchema>;
-export type ExecutionClaimResponse = z.infer<
-  typeof ExecutionClaimResponseSchema
->;
 export type ExecutionStartRequest = z.infer<typeof ExecutionStartRequestSchema>;
-export type ExecutionRenewRequest = z.infer<typeof ExecutionRenewRequestSchema>;
 export type ExecutionRenewResponse = z.infer<
   typeof ExecutionRenewResponseSchema
 >;
 export type ExecutionInteraction = z.infer<typeof ExecutionInteractionSchema>;
 export type OpenInteractionRequest = z.infer<
   typeof OpenInteractionRequestSchema
->;
-export type WaitInteractionRequest = z.infer<
-  typeof WaitInteractionRequestSchema
 >;
 export type WaitInteractionResponse = z.infer<
   typeof WaitInteractionResponseSchema

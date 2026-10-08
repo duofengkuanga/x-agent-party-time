@@ -205,7 +205,6 @@ export type SubmissionItem = z.infer<typeof SubmissionItemSchema>;
 export type CreateSubmissionInput = z.infer<typeof CreateSubmissionInputSchema>;
 export type SubmissionSummary = z.infer<typeof SubmissionSummarySchema>;
 export type SubmissionItemView = z.infer<typeof SubmissionItemViewSchema>;
-export type SubmissionView = z.infer<typeof SubmissionViewSchema>;
 export type CookingWorkspaceSnapshot = z.infer<
   typeof CookingWorkspaceSnapshotSchema
 >;

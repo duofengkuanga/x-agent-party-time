@@ -208,7 +208,6 @@ export const RunnerBindingWorkCompletionResponseSchema = z.object({
 export type Runner = z.infer<typeof RunnerSchema>;
 export type RunnerStatus = z.infer<typeof RunnerStatusSchema>;
 export type PairingCodeIssue = z.infer<typeof PairingCodeIssueSchema>;
-export type RunnerPairRequest = z.infer<typeof RunnerPairRequestSchema>;
 export type RunnerPairingResult = z.infer<typeof RunnerPairingResultSchema>;
 export type RunnerAuthorizationCreateRequest = z.infer<
   typeof RunnerAuthorizationCreateRequestSchema
@@ -219,19 +218,7 @@ export type RunnerAuthorizationIssue = z.infer<
 export type RunnerAuthorizationClaimResponse = z.infer<
   typeof RunnerAuthorizationClaimResponseSchema
 >;
-export type RunnerHeartbeatResponse = z.infer<
-  typeof RunnerHeartbeatResponseSchema
->;
-export type RunnerHeartbeatRequest = z.infer<
-  typeof RunnerHeartbeatRequestSchema
->;
 export type RunnerBindingRef = z.infer<typeof RunnerBindingRefSchema>;
-export type RunnerBindingConfirmationRequest = z.infer<
-  typeof RunnerBindingConfirmationRequestSchema
->;
-export type RunnerBindingsResponse = z.infer<
-  typeof RunnerBindingsResponseSchema
->;
 export type RunnerBindingWork = z.infer<typeof RunnerBindingWorkSchema>;
 export type RunnerBindingWorkCompletion = z.infer<
   typeof RunnerBindingWorkCompletionSchema
