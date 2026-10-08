@@ -1,5 +1,6 @@
 import { TestSubmissionWriteStore } from '@/cooking/submissions/server/test-submission-write-store';
 import { asDetails } from '@/cooking/shared/server/execution-state';
+import { markInvalidExecutionResult } from '@/cooking/shared/server/invalid-execution-result';
 import type { AppDatabase } from '@/platform/database';
 import { executionProjector } from '@/platform/execution/projection';
 import type {
@@ -7,7 +8,7 @@ import type {
   JsonValue,
 } from '@agent-party-time/execution-contract';
 import { RepairExecutionResultSchema } from '../contract';
-import type { AttemptRow, ContextRow } from './records';
+import type { ContextRow } from './records';
 import { RepairQueries } from './repair-queries';
 import type { RepairDeliveryHooks } from './repair-service';
 import {
@@ -17,6 +18,7 @@ import {
   parseCommits,
   parseManualOperations,
 } from './results';
+const INVALID_RESULT_MESSAGE = 'Codex 返回的结构化结果无效';
 export class RepairProjection {
   constructor(
     private readonly db: AppDatabase,
@@ -52,18 +54,7 @@ export class RepairProjection {
       !['BUG_REPAIR', 'SESSION_SYNC'].includes(execution.owner.kind)
     )
       return;
-    const attempt = this.db.get(
-      `SELECT attempt.id, attempt.bug_id, attempt.execution_id,
-                attempt.attempt, attempt.outcome_json, attempt.created_at,
-                execution.started_at, attempt.finished_at, execution.state,
-                execution.session_id, execution.outcome_json outcome,
-                runner.name runner_name
-         FROM cooking_repair_attempt attempt
-         JOIN platform_execution execution ON execution.id = attempt.execution_id
-         JOIN platform_runner runner ON runner.id = execution.runner_id
-         WHERE attempt.execution_id = ?`,
-      execution.id,
-    ) as AttemptRow | undefined;
+    const attempt = this.queries.attemptForExecution(execution.id);
     if (!attempt || attempt.outcome_json) return;
     const context = this.queries.requireContext(attempt.bug_id);
     const now = this.now().toISOString();
@@ -213,7 +204,7 @@ export class RepairProjection {
     if (!turnId) return;
     const parsed = RepairExecutionResultSchema.safeParse(result);
     if (!parsed.success) {
-      this.markExecutionResultInvalid(execution.id);
+      markInvalidExecutionResult(this.db, execution.id, INVALID_RESULT_MESSAGE);
       return;
     }
     const duplicate = this.db.get(
@@ -317,7 +308,7 @@ export class RepairProjection {
       const invalidReason = parsed.success
         ? 'Codex 返回的候选本地提交记录无效。'
         : `Codex 返回的修复结果格式不符合要求。具体问题：${formatRepairContractIssues(parsed.error.issues)}`;
-      this.markExecutionResultInvalid(execution.id);
+      markInvalidExecutionResult(this.db, execution.id, INVALID_RESULT_MESSAGE);
       return {
         kind: 'FAILED',
         attemptOutcome: {
@@ -349,25 +340,6 @@ export class RepairProjection {
         technicalFailure: failure?.code ?? (cancelled ? 'CANCELLED' : null),
       },
     };
-  }
-
-  private markExecutionResultInvalid(executionId: string): void {
-    this.db.run(
-      `UPDATE platform_execution
-         SET state = 'FAILED', outcome_json = ?
-         WHERE id = ?`,
-      [
-        JSON.stringify({
-          kind: 'FAILED',
-          failure: {
-            code: 'CODEX_EXECUTION_FAILED',
-            message: 'Codex 返回的结构化结果无效',
-            retryable: true,
-          },
-        }),
-        executionId,
-      ],
-    );
   }
 
   private auditForBug(

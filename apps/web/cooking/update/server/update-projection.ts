@@ -1,6 +1,7 @@
 import { DeploymentMethodSchema } from '@/cooking/engineering/contract';
 import { TestSubmissionWriteStore } from '@/cooking/submissions/server/test-submission-write-store';
 import { asDetails, isTerminal } from '@/cooking/shared/server/execution-state';
+import { markInvalidExecutionResult } from '@/cooking/shared/server/invalid-execution-result';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
 import { executionProjector } from '@/platform/execution/projection';
@@ -15,6 +16,7 @@ import {
 import type { BatchRow } from './records';
 import { isUpdateExecution, staleBatch } from './results';
 import { UpdateQueries } from './update-queries';
+const INVALID_RESULT_MESSAGE = 'Codex 返回的更新结果无效';
 export class UpdateProjection {
   constructor(
     private readonly db: AppDatabase,
@@ -147,7 +149,7 @@ export class UpdateProjection {
         ? LocalScriptUpdateExecutionResultSchema.safeParse(result)
         : CiCdUpdateExecutionResultSchema.safeParse(result);
     if (!parsed.success) {
-      this.markExecutionResultInvalid(execution.id);
+      markInvalidExecutionResult(this.db, execution.id, INVALID_RESULT_MESSAGE);
       return;
     }
     const latest = this.queries.latestAttempt(batch.id);
@@ -242,7 +244,7 @@ export class UpdateProjection {
       if (result?.outcome === 'PUSHED')
         return { kind: 'PUSHED', attemptOutcome: result };
       if (parsed.success) return { kind: 'FAILED', attemptOutcome: result };
-      this.markExecutionResultInvalid(execution.id);
+      markInvalidExecutionResult(this.db, execution.id, INVALID_RESULT_MESSAGE);
       return {
         kind: 'FAILED',
         attemptOutcome: {
@@ -279,24 +281,6 @@ export class UpdateProjection {
             : execution.outcome?.kind,
       },
     };
-  }
-
-  private markExecutionResultInvalid(executionId: string): void {
-    this.db.run(
-      `UPDATE platform_execution
-         SET state = 'FAILED', outcome_json = ? WHERE id = ?`,
-      [
-        JSON.stringify({
-          kind: 'FAILED',
-          failure: {
-            code: 'CODEX_EXECUTION_FAILED',
-            message: 'Codex 返回的更新结果无效',
-            retryable: true,
-          },
-        }),
-        executionId,
-      ],
-    );
   }
 
   completeBatchBugs(batchId: string, now: string): void {
