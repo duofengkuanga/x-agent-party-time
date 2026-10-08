@@ -7,18 +7,14 @@ import {
   useReducer,
   useRef,
   useState,
-  useSyncExternalStore,
   useTransition,
   type CSSProperties,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
 } from 'react';
 import type { User } from '@/platform/auth/contract';
 import { createClientId } from '@/cooking/shared/ui/client-id';
 import {
   SIDEBAR_MAX_WIDTH,
   SIDEBAR_MIN_WIDTH,
-  clampSidebarWidth,
 } from '@/cooking/shared/ui/sidebar-width';
 import {
   CookingWorkspaceSnapshotSchema,
@@ -41,13 +37,7 @@ import {
 import { EnvironmentStatus } from './environment-status';
 import { SubmissionComposer } from './submission-composer';
 import { workspaceReducer, parseInvalidation } from './workspace-state';
-import {
-  subscribeSidebarWidth,
-  getSidebarWidthSnapshot,
-  SIDEBAR_STORAGE_KEY,
-  writeSidebarWidthCookie,
-  SIDEBAR_CHANGE_EVENT,
-} from './sidebar-preference';
+import { useSidebarWidth } from './sidebar-preference';
 
 import {
   messageOf,
@@ -88,16 +78,8 @@ export function SubmissionWorkspace({
     useState<SubmissionCreationCatalog | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const storedSidebarWidth = useSyncExternalStore(
-    subscribeSidebarWidth,
-    () => getSidebarWidthSnapshot(initialSidebarWidth),
-    () => initialSidebarWidth,
-  );
-  const [sidebarWidthOverride, setSidebarWidthOverride] = useState<
-    number | null
-  >(null);
-  const sidebarWidth = sidebarWidthOverride ?? storedSidebarWidth;
-  const [sidebarResizing, setSidebarResizing] = useState(false);
+  const { sidebarWidth, sidebarResizing, resizerHandlers } =
+    useSidebarWidth(initialSidebarWidth);
   const [includeClosed, setIncludeClosed] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -106,20 +88,6 @@ export function SubmissionWorkspace({
   const snapshotRef = useRef(initialSnapshot);
   const refreshInFlight = useRef<Promise<void> | null>(null);
   const requestedRevision = useRef(initialSnapshot?.revision ?? 0);
-  const sidebarDrag = useRef<{
-    currentWidth: number;
-    startWidth: number;
-    startX: number;
-  } | null>(null);
-
-  useEffect(() => {
-    const stored = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
-    if (!stored) return;
-    const storedWidth = Number(stored);
-    if (!(Number.isFinite(storedWidth) && storedWidth > 0)) return;
-    writeSidebarWidthCookie(clampSidebarWidth(storedWidth));
-  }, []);
-
   const selectedId = snapshot?.submission.submission.id ?? null;
 
   const refreshSnapshot = useCallback(
@@ -248,75 +216,6 @@ export function SubmissionWorkspace({
     });
   }
 
-  function saveSidebarWidth(width: number) {
-    window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(width));
-    writeSidebarWidthCookie(width);
-    window.dispatchEvent(new Event(SIDEBAR_CHANGE_EVENT));
-  }
-
-  function beginSidebarResize(event: ReactPointerEvent<HTMLDivElement>) {
-    if (event.button !== 0 || window.matchMedia('(max-width: 760px)').matches)
-      return;
-    sidebarDrag.current = {
-      currentWidth: sidebarWidth,
-      startWidth: sidebarWidth,
-      startX: event.clientX,
-    };
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setSidebarResizing(true);
-  }
-
-  function resizeSidebar(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!sidebarDrag.current) return;
-    const nextWidth = clampSidebarWidth(
-      sidebarDrag.current.startWidth +
-        event.clientX -
-        sidebarDrag.current.startX,
-    );
-    sidebarDrag.current.currentWidth = nextWidth;
-    setSidebarWidthOverride(nextWidth);
-  }
-
-  function finishSidebarResize(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!sidebarDrag.current) return;
-    const finalWidth = sidebarDrag.current.currentWidth;
-    sidebarDrag.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId))
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    setSidebarWidthOverride(null);
-    setSidebarResizing(false);
-    saveSidebarWidth(finalWidth);
-  }
-
-  function cancelSidebarResize(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!sidebarDrag.current) return;
-    sidebarDrag.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId))
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    setSidebarWidthOverride(null);
-    setSidebarResizing(false);
-  }
-
-  function resizeSidebarWithKeyboard(
-    event: ReactKeyboardEvent<HTMLDivElement>,
-  ) {
-    const step = event.shiftKey ? 32 : 16;
-    const nextWidth =
-      event.key === 'Home'
-        ? SIDEBAR_MIN_WIDTH
-        : event.key === 'End'
-          ? clampSidebarWidth(SIDEBAR_MAX_WIDTH)
-          : event.key === 'ArrowLeft'
-            ? clampSidebarWidth(sidebarWidth - step)
-            : event.key === 'ArrowRight'
-              ? clampSidebarWidth(sidebarWidth + step)
-              : null;
-    if (nextWidth === null) return;
-    event.preventDefault();
-    saveSidebarWidth(nextWidth);
-    setSidebarWidthOverride(null);
-  }
-
   const visibleSubmissions = includeClosed
     ? submissions
     : submissions.filter(({ submission }) => submission.status === 'ACTIVE');
@@ -437,12 +336,7 @@ export function SubmissionWorkspace({
           aria-valuemin={SIDEBAR_MIN_WIDTH}
           aria-valuenow={sidebarWidth}
           className="collab-rail-resizer"
-          onKeyDown={resizeSidebarWithKeyboard}
-          onLostPointerCapture={finishSidebarResize}
-          onPointerCancel={cancelSidebarResize}
-          onPointerDown={beginSidebarResize}
-          onPointerMove={resizeSidebar}
-          onPointerUp={finishSidebarResize}
+          {...resizerHandlers}
           role="separator"
           tabIndex={sidebarCollapsed ? -1 : 0}
         />
