@@ -1,56 +1,20 @@
 /* Accepted login experience, preserved while authentication runs on the new Server. */
 .auth-shell {
-  --paper: #f1eee5;
-  --paper-deep: #e8e3d8;
   --panel: #f7f4ec;
-  --ink: #1a1b1c;
-  --muted: #6d6d69;
-  --faint: #a6a297;
-  --line: #b8b2a5;
-  --strong-line: #1f2020;
-  --accent: #ef604f;
-  --accent-dark: #b33f34;
-  --shadow: 5px 5px 0 rgba(26, 27, 28, 0.18);
-  background: var(--paper);
-  color: var(--ink);
   display: grid;
-  font-family:
-    'Berkeley Mono', 'JetBrains Mono', 'SFMono-Regular', 'Cascadia Code',
-    monospace;
-  font-synthesis: none;
   grid-template-rows: 64px minmax(680px, 1fr);
   min-height: 100dvh;
   min-width: 980px;
   overflow: auto;
-  position: relative;
-  transition:
-    background-color 180ms ease,
-    color 180ms ease;
 }
 
 .auth-shell::before {
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.17'/%3E%3C/svg%3E");
-  content: '';
-  inset: 0;
   opacity: 0.09;
-  pointer-events: none;
-  position: fixed;
   z-index: 20;
 }
 
 .auth-shell[data-theme='night'] {
-  --paper: #0d0f10;
-  --paper-deep: #151819;
-  --panel: #111415;
-  --ink: #e4e2dc;
-  --muted: #94999b;
-  --faint: #5b6163;
-  --line: #363c3e;
-  --strong-line: #c7c9c6;
-  --accent: #ef6858;
   --accent-dark: #9d4037;
-  --shadow: 5px 5px 0 rgba(0, 0, 0, 0.48);
-  color-scheme: dark;
 }
 
 .auth-shell button {
@@ -81,45 +45,6 @@
   font-size: 20px;
   font-weight: 900;
   letter-spacing: -1.2px;
-}
-
-.auth-stamp {
-  background: var(--accent);
-  border: 1px solid var(--strong-line);
-  box-shadow: 2px 2px 0 var(--strong-line);
-  color: #fff7ec;
-  display: inline-block;
-  font-family: Georgia, 'Times New Roman', serif;
-  font-size: 20px;
-  font-style: italic;
-  font-weight: 800;
-  letter-spacing: -0.6px;
-  line-height: 1;
-  margin-left: 7px;
-  padding: 5px 8px 4px;
-  transform: rotate(-2deg);
-}
-
-.auth-brand-note {
-  align-items: center;
-  color: var(--muted);
-  display: inline-flex;
-  font-size: 10px;
-  font-weight: 700;
-  gap: 3px;
-  letter-spacing: 0.025em;
-  white-space: nowrap;
-}
-
-.auth-brand-note strong {
-  color: color-mix(in srgb, var(--ink), transparent 26%);
-  font-weight: 750;
-}
-
-.auth-brand-note b {
-  color: var(--accent-dark);
-  font-style: normal;
-  font-weight: 900;
 }
 
 .auth-theme-toggle {
