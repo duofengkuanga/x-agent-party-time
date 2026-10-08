@@ -14,7 +14,7 @@ import {
   hashSecret,
   newLeaseExpiry,
 } from './lease';
-import type { ExecutionProjector } from './projection';
+import { projectTransaction, type ExecutionProjector } from './projection';
 import { ExecutionRecords, type ExecutionRow } from './records';
 export class ExecutionQueue {
   constructor(
@@ -109,18 +109,12 @@ export class ExecutionQueue {
 
   tryAcquireResumeLane(executionId: string): boolean {
     this.expireLeases();
-    const result = this.db.transaction(
-      (): {
-        laneAcquired: boolean;
-        resumedExecution: Execution | null;
-      } => {
-        const execution = this.records.getRow(executionId);
-        if (execution.state === 'RUNNING')
-          return { laneAcquired: true, resumedExecution: null };
-        if (execution.state !== 'WAITING_TO_RESUME')
-          return { laneAcquired: false, resumedExecution: null };
-        const update = this.db.run(
-          `UPDATE platform_execution AS candidate
+    return projectTransaction(this.db, this.project, (emit) => {
+      const execution = this.records.getRow(executionId);
+      if (execution.state === 'RUNNING') return true;
+      if (execution.state !== 'WAITING_TO_RESUME') return false;
+      const update = this.db.run(
+        `UPDATE platform_execution AS candidate
            SET state = 'RUNNING', resume_requested_at = NULL
            WHERE candidate.id = ?
              AND candidate.state = 'WAITING_TO_RESUME'
@@ -140,26 +134,13 @@ export class ExecutionQueue {
                  AND (COALESCE(earlier.resume_requested_at, earlier.created_at), earlier.rowid)
                    < (COALESCE(candidate.resume_requested_at, candidate.created_at), candidate.rowid)
              )`,
-          [executionId, this.now().toISOString()],
-        );
-        if (update.changes !== 1)
-          return { laneAcquired: false, resumedExecution: null };
-        const resumedExecution = this.records.get(executionId);
-        this.project({
-          phase: 'APPLY',
-          kind: 'RESUMED',
-          execution: resumedExecution,
-        });
-        return { laneAcquired: true, resumedExecution };
-      },
-    )();
-    if (result.resumedExecution)
-      this.project({
-        phase: 'AFTER',
-        kind: 'RESUMED',
-        execution: result.resumedExecution,
-      });
-    return result.laneAcquired;
+        [executionId, this.now().toISOString()],
+      );
+      if (update.changes !== 1) return false;
+      const resumedExecution = this.records.get(executionId);
+      emit({ kind: 'RESUMED', execution: resumedExecution });
+      return true;
+    });
   }
 
   claimAvailable(runnerId: string, availableSlots: number): ClaimedExecution[] {
@@ -233,7 +214,7 @@ export class ExecutionQueue {
 
   expireLeases(): void {
     const now = this.now().toISOString();
-    const terminal = this.db.transaction(() => {
+    projectTransaction(this.db, this.project, (emit) => {
       const expired = this.db.all<{
         id: string;
         state: Execution['state'];
@@ -269,7 +250,6 @@ export class ExecutionQueue {
              lease_token_hash = NULL, lease_expires_at = NULL
          WHERE id = ?`,
       );
-      const completed: Execution[] = [];
       for (const row of expired) {
         if (row.cancellation_requested === 1) {
           const outcome: ExecutionOutcome = {
@@ -279,20 +259,12 @@ export class ExecutionQueue {
           invalidate.run(now, row.id);
           cancelled.run(JSON.stringify(outcome), now, row.id);
           const execution = this.records.get(row.id);
-          this.project({
-            phase: 'APPLY',
-            kind: 'TERMINAL',
-            execution: execution,
-          });
-          completed.push(execution);
+          emit({ kind: 'TERMINAL', execution });
           continue;
         }
         release.run(row.id);
       }
-      return completed;
-    })();
-    for (const execution of terminal)
-      this.project({ phase: 'AFTER', kind: 'TERMINAL', execution: execution });
+    });
   }
 }
 function codexTurnForClaim(execution: Execution): CodexTurn | null {

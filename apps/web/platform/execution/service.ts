@@ -19,7 +19,7 @@ import {
 } from '@agent-party-time/execution-contract';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { LEASED_STATES, hashSecret, newLeaseExpiry } from './lease';
-import type { ExecutionProjector } from './projection';
+import { projectTransaction, type ExecutionProjector } from './projection';
 import { ExecutionQueue } from './queue';
 import {
   ExecutionRecords,
@@ -173,7 +173,7 @@ export class ExecutionService {
     request: ExecutionStartRequest,
   ): Execution {
     const kind = request.kind === 'START_FAILED' ? 'TERMINAL' : 'STARTED';
-    const result = this.db.transaction(() => {
+    return projectTransaction(this.db, this.project, (emit) => {
       const row = this.requireLeasedExecution(
         runnerId,
         executionId,
@@ -220,11 +220,9 @@ export class ExecutionService {
         );
       }
       const execution = this.records.get(executionId);
-      this.project({ phase: 'APPLY', kind, execution });
+      emit({ kind, execution });
       return execution;
-    })();
-    this.project({ phase: 'AFTER', kind, execution: result });
-    return result;
+    });
   }
 
   renew(
@@ -256,8 +254,7 @@ export class ExecutionService {
     executionId: string,
     request: OpenInteractionRequest,
   ): ExecutionInteraction {
-    let opened = false;
-    const result = this.db.transaction(() => {
+    return projectTransaction(this.db, this.project, (emit) => {
       this.requireLeasedExecution(runnerId, executionId, request.leaseToken, [
         'RUNNING',
         'CANCEL_REQUESTED',
@@ -298,21 +295,9 @@ export class ExecutionService {
         [executionId],
       );
       const interaction = this.records.getInteraction(id);
-      this.project({
-        phase: 'APPLY',
-        kind: 'INTERACTION_OPENED',
-        interaction: interaction,
-      });
-      opened = true;
+      emit({ kind: 'INTERACTION_OPENED', interaction });
       return interaction;
-    })();
-    if (opened)
-      this.project({
-        phase: 'AFTER',
-        kind: 'INTERACTION_OPENED',
-        interaction: result,
-      });
-    return result;
+    });
   }
 
   async waitInteraction(
@@ -478,8 +463,7 @@ export class ExecutionService {
   }
 
   requestCancellation(executionId: string): Execution {
-    let newlyTerminal = false;
-    const result = this.db.transaction(() => {
+    return projectTransaction(this.db, this.project, (emit) => {
       const row = this.records.getRow(executionId);
       if (isTerminal(row.state)) return this.records.mapExecution(row);
       const cancelledAt = this.now().toISOString();
@@ -502,12 +486,7 @@ export class ExecutionService {
         );
         this.records.invalidatePendingInteractions(executionId, cancelledAt);
         const execution = this.records.get(executionId);
-        this.project({
-          phase: 'APPLY',
-          kind: 'TERMINAL',
-          execution: execution,
-        });
-        newlyTerminal = true;
+        emit({ kind: 'TERMINAL', execution });
         return execution;
       }
       this.db.run(
@@ -517,10 +496,7 @@ export class ExecutionService {
         [executionId],
       );
       return this.records.get(executionId);
-    })();
-    if (newlyTerminal)
-      this.project({ phase: 'AFTER', kind: 'TERMINAL', execution: result });
-    return result;
+    });
   }
 
   authorizeFile(
