@@ -507,26 +507,19 @@ export class RunnerService {
           'Agent 仍有活动执行，暂时不能停用',
         );
       const revokedAt = revoke ? this.now().toISOString() : null;
-      const updated = revoke
-        ? this.db.get<RunnerRow>(
-            `UPDATE platform_runner
-               SET revoked_at = ?, version = version + 1
-               WHERE id = ? AND owner_user_id = ? AND version = ?
-                 AND revoked_at IS NULL RETURNING *`,
-            revokedAt,
-            runnerId,
-            ownerUserId,
-            expectedVersion,
-          )
-        : this.db.get<RunnerRow>(
-            `UPDATE platform_runner
-               SET revoked_at = NULL, last_seen_at = NULL, version = version + 1
-               WHERE id = ? AND owner_user_id = ? AND version = ?
-                 AND revoked_at IS NOT NULL RETURNING *`,
-            runnerId,
-            ownerUserId,
-            expectedVersion,
-          );
+      const updated = this.db.get<RunnerRow>(
+        `UPDATE platform_runner
+           SET revoked_at = ?,
+               last_seen_at = CASE WHEN ? = 1 THEN last_seen_at ELSE NULL END,
+               version = version + 1
+           WHERE id = ? AND owner_user_id = ? AND version = ?
+             AND revoked_at IS ${revoke ? 'NULL' : 'NOT NULL'} RETURNING *`,
+        revokedAt,
+        Number(revoke),
+        runnerId,
+        ownerUserId,
+        expectedVersion,
+      );
       if (!updated)
         throw new PlatformError('STALE_STATE', 'Agent 已更新，请刷新后重试');
       return mapRunner(updated);

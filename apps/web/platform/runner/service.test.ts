@@ -303,12 +303,13 @@ describe('Runner credential and heartbeat', () => {
       service.issuePairingCode(users.owner.id).code,
       '可恢复 Agent',
     );
-    service.heartbeat(paired.credential);
+    const heartbeat = service.heartbeat(paired.credential);
     const revoked = service.revokeRunner(
       users.owner.id,
       paired.runner.id,
       paired.runner.version,
     );
+    expect(revoked.lastSeenAt).toBe(heartbeat.lastSeenAt);
 
     expect(() =>
       service.reactivateRunner(users.other.id, revoked.id, revoked.version),
