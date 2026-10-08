@@ -213,7 +213,7 @@ packages/runner-conformance/  协议验收 Adapter
 
 `runtime/` 是跨业务装配的集中入口，负责把修复候选、更新、善后与执行投影连接起来。通用 `platform/` 不引用 Cooking；路由在两者之间选择并装配所需能力。缺陷删除 HTTP 处理属于 `cooking/bugs/server/http.ts`，共享响应转换属于 `platform/http/responses.ts`。
 
-大文件按职责拆分：缺陷看板协调状态，附件、报告编辑、修复时间线、更新详情与交互记录分别实现；提测工作区把同步状态、侧栏偏好、详情和清理交互分开。时间线通过 `bugs/ui/progress-timeline.tsx` 统一列表结构、标题、时间与摘要显示，各业务记录只定义内容。
+大文件按职责拆分：缺陷看板协调状态，附件、报告编辑、修复时间线、更新详情与交互记录分别实现；提测工作区把同步状态、侧栏偏好、详情和清理交互分开。时间线通过 `bugs/ui/progress-timeline.tsx` 统一列表结构、标题、时间与摘要显示，Repair 执行状态文案由 `shared/execution-labels.ts` 同时供 Server 与 UI 使用，各业务记录只定义内容。
 
 修复与更新的命令、执行投影、查询分别位于 `server/*-service.ts`、`server/*-projection.ts`、`server/*-queries.ts`；更新候选计时与 Batch 冻结集中在 `update-delivery.ts`。生命周期将 Cleanup 独立到 `cleanup-service.ts`，提测关闭及后续 Cleanup 编排集中在 `submission-closure.ts`。工程服务保留统一调用入口，内部由 `engineering-queries.ts` 集中读取与权限检查、`environment-service.ts` 管理环境写入，写入结果复用查询侧的记录映射。结果解释与行类型仍位于 `results.ts`、`records.ts`。
 

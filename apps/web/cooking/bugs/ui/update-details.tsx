@@ -8,6 +8,7 @@ import {
 import { ValidationResults } from './validation-results';
 
 import { createClientId } from '@/cooking/shared/ui/client-id';
+import { repairStateLabel } from '@/cooking/shared/execution-labels';
 import type { UpdateBatchView } from '@/cooking/update/contract';
 import {
   reportExternalDeploymentAction,
@@ -18,7 +19,6 @@ import { useRef, useState } from 'react';
 import {
   deploymentLabel,
   formatDateTime,
-  repairStateLabel,
   updateAttemptLabel,
 } from './board-model';
 import { Detail, DetailList } from './detail-fields';

@@ -167,20 +167,6 @@ export function isRepairExecution(execution: Execution): boolean {
   );
 }
 
-export function repairStateLabel(state: Execution['state']): string {
-  return {
-    QUEUED: '等待 Agent',
-    CLAIMED: '正在准备修复',
-    RUNNING: '正在修复',
-    WAITING_FOR_INTERACTION: '等待工程负责人处理',
-    WAITING_TO_RESUME: '等待继续',
-    CANCEL_REQUESTED: '正在停止',
-    SUCCEEDED: '修复已完成',
-    FAILED: '修复未完成',
-    CANCELLED: '修复已停止',
-  }[state];
-}
-
 export function staleRepair(): PlatformError {
   return new PlatformError('STALE_STATE', '缺陷已更新，请刷新后重试');
 }

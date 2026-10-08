@@ -1,4 +1,5 @@
 import { requireSubmissionAccess } from '@/cooking/shared/server/access';
+import { repairStateLabel } from '@/cooking/shared/execution-labels';
 import {
   projectCookingInteraction,
   type CookingInteractionRow,
@@ -17,7 +18,6 @@ import {
   isFailedAttemptOutcome,
   parseCommits,
   projectAttemptResult,
-  repairStateLabel,
   repairVisual,
 } from './results';
 export class RepairQueries {

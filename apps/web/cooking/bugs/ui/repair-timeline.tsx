@@ -12,13 +12,14 @@ import {
   synchronizeRepairSessionAction,
 } from '@/cooking/repair/server/actions';
 import { createClientId } from '@/cooking/shared/ui/client-id';
+import { repairStateLabel } from '@/cooking/shared/execution-labels';
 import type { BugProgressTimelineNode } from '@/cooking/workspace/contract';
 import { useState } from 'react';
 import type { BugView } from '../contract';
 import type { StoredAttachment } from './attachments';
 import { AttachmentLink } from './attachments';
 import type { WorkspaceActionResult } from './board-model';
-import { formatDateTime, repairStateLabel } from './board-model';
+import { formatDateTime } from './board-model';
 import { Detail, TimelineList } from './detail-fields';
 import { CookingInteractionRecord } from './interaction-record';
 
