@@ -132,9 +132,10 @@ export function releaseEnvironmentForTakeover(
     throw new PlatformError('STALE_STATE', '环境使用情况已变化，请重新确认');
   if (conflict.blockedReason)
     throw new PlatformError('RESOURCE_CONFLICT', conflict.blockedReason);
-  db.prepare(
+  db.run(
     'DELETE FROM cooking_submission_environment_lock WHERE environment_id = ? AND submission_item_id = ?',
-  ).run(environmentId, conflict.submissionItemId);
+    [environmentId, conflict.submissionItemId],
+  );
   return conflict;
 }
 

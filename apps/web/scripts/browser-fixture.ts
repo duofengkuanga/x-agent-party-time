@@ -101,10 +101,7 @@ export async function seedBrowserFixture(
           },
         },
       });
-      db.prepare('UPDATE cooking_bug SET stage = ? WHERE id = ?').run(
-        stage,
-        bug.id,
-      );
+      db.run('UPDATE cooking_bug SET stage = ? WHERE id = ?', [stage, bug.id]);
       return bug;
     };
 

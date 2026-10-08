@@ -77,14 +77,12 @@ export class LocalFileStore {
 
     try {
       await rename(temporaryPath, finalPath);
-      this.db
-        .prepare(
-          `INSERT INTO platform_file(
+      this.db.run(
+        `INSERT INTO platform_file(
              id, storage_key, original_name, media_type, size_bytes,
              sha256, uploaded_by_user_id, created_at
            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
+        [
           storedFile.id,
           storedFile.storageKey,
           storedFile.originalName,
@@ -93,7 +91,8 @@ export class LocalFileStore {
           storedFile.sha256,
           storedFile.uploadedByUserId,
           storedFile.createdAt,
-        );
+        ],
+      );
       return storedFile;
     } catch (error) {
       await rm(temporaryPath, { force: true });
@@ -124,12 +123,11 @@ export class LocalFileStore {
   ): Promise<boolean> {
     const file = this.get(fileId);
     if (!file || file.uploadedByUserId !== uploadedByUserId) return false;
-    const deletion = this.db
-      .prepare(
-        `DELETE FROM platform_file
+    const deletion = this.db.run(
+      `DELETE FROM platform_file
          WHERE id = ? AND uploaded_by_user_id = ?`,
-      )
-      .run(fileId, uploadedByUserId);
+      [fileId, uploadedByUserId],
+    );
     if (deletion.changes !== 1) return false;
     await rm(this.contentPath(file.storageKey), { force: true });
     return true;

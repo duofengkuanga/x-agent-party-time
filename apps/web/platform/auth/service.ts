@@ -61,12 +61,11 @@ export class AuthService {
 
     const createdAt = this.now().toISOString();
     const passwordHash = await hashPassword(input.password);
-    this.db
-      .prepare(
-        `INSERT INTO platform_user(id, username, display_name, password_hash, created_at)
+    this.db.run(
+      `INSERT INTO platform_user(id, username, display_name, password_hash, created_at)
          VALUES (?, ?, ?, ?, ?)`,
-      )
-      .run(id, username, displayName, passwordHash, createdAt);
+      [id, username, displayName, passwordHash, createdAt],
+    );
     return UserSchema.parse({ id, username, displayName, createdAt });
   }
 
@@ -96,15 +95,14 @@ export class AuthService {
     const createdAt = this.now();
     const expiresAt = new Date(createdAt.getTime() + durationMs).toISOString();
     this.db.transaction(() => {
-      this.db
-        .prepare('DELETE FROM platform_session WHERE expires_at <= ?')
-        .run(createdAt.toISOString());
-      this.db
-        .prepare(
-          `INSERT INTO platform_session(token_hash, user_id, expires_at, created_at)
+      this.db.run('DELETE FROM platform_session WHERE expires_at <= ?', [
+        createdAt.toISOString(),
+      ]);
+      this.db.run(
+        `INSERT INTO platform_session(token_hash, user_id, expires_at, created_at)
            VALUES (?, ?, ?, ?)`,
-        )
-        .run(tokenHash, userId, expiresAt, createdAt.toISOString());
+        [tokenHash, userId, expiresAt, createdAt.toISOString()],
+      );
     })();
     return { token, expiresAt };
   }
@@ -122,9 +120,9 @@ export class AuthService {
     if (!row) return null;
 
     if (Date.parse(row.expires_at) <= this.now().getTime()) {
-      this.db
-        .prepare('DELETE FROM platform_session WHERE token_hash = ?')
-        .run(hashToken(token));
+      this.db.run('DELETE FROM platform_session WHERE token_hash = ?', [
+        hashToken(token),
+      ]);
       return null;
     }
     return mapUser(row);
@@ -132,9 +130,9 @@ export class AuthService {
 
   revokeSession(token: string | undefined): void {
     if (!token) return;
-    this.db
-      .prepare('DELETE FROM platform_session WHERE token_hash = ?')
-      .run(hashToken(token));
+    this.db.run('DELETE FROM platform_session WHERE token_hash = ?', [
+      hashToken(token),
+    ]);
   }
 }
 
