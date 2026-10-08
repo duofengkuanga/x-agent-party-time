@@ -10,7 +10,6 @@ import {
 } from '@/cooking/shared/server/action-transport';
 import { updateService } from '../../runtime/services';
 import type {
-  RetryUpdateInput,
   SynchronizeUpdateSessionInput,
   ResolveUpdateInteractionInput,
   UpdateMutationResult,
@@ -24,15 +23,6 @@ export async function freezeUpdateNowAction(
 ): Promise<UpdateActionResult> {
   return runUpdateAction((userId) =>
     updateService().freezeNow(userId, submissionItemId, input),
-  );
-}
-
-export async function retryUpdateAction(
-  batchId: string,
-  input: RetryUpdateInput,
-): Promise<UpdateActionResult> {
-  return runUpdateAction((userId) =>
-    updateService().retryUpdate(userId, batchId, input),
   );
 }
 
