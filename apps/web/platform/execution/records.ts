@@ -93,35 +93,23 @@ export class ExecutionRecords {
           sha256: value.sha256,
         };
       });
-    return ExecutionSchema.parse({
-      id: current.id,
+    return parseRow(ExecutionSchema, {
+      ...current,
       owner: {
         namespace: current.owner_namespace,
         kind: current.owner_kind,
         id: current.owner_id,
       },
-      attempt: current.attempt,
-      previousExecutionId: current.previous_execution_id,
-      runnerId: current.runner_id,
-      bindingId: current.binding_id,
-      priority: current.priority,
-      approvalPolicy: current.approval_policy,
-      state: current.state,
-      codexTurn: mapCodexTurn(current),
+      codex_turn: mapCodexTurn(current),
       workspace: current.workspace_json
         ? JSON.parse(current.workspace_json)
         : null,
       attachments,
-      sessionId: current.session_id,
       lease: current.lease_expires_at
         ? { expiresAt: current.lease_expires_at }
         : null,
       outcome: current.outcome_json ? JSON.parse(current.outcome_json) : null,
-      cancellationRequested: Boolean(current.cancellation_requested),
-      createdAt: current.created_at,
-      claimedAt: current.claimed_at,
-      startedAt: current.started_at,
-      finishedAt: current.finished_at,
+      cancellation_requested: Boolean(current.cancellation_requested),
     });
   }
 
