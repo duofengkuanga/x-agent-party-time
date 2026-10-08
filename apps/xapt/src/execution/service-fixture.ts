@@ -108,6 +108,10 @@ export async function createFixture(
   let now = new Date('2026-08-03T08:00:00.000Z');
   let nextId = 400;
   const verifiedBaselines: Array<{ gitHead: string } | null> = [];
+  const skillAt = (identity: typeof skillBinding) => ({
+    ...identity,
+    path: join(home, 'skills', identity.bundleHash),
+  });
   const build = () =>
     new ExecutionService(
       http,
@@ -127,14 +131,9 @@ export async function createFixture(
       } as ExecutionWorkspaceManager,
       executor,
       {
-        resolveCurrent: async () => ({
-          ...skillBinding,
-          path: join(home, 'skills', skillBinding.bundleHash),
-        }),
-        resolveBound: async (identity: typeof skillBinding) => ({
-          ...identity,
-          path: join(home, 'skills', identity.bundleHash),
-        }),
+        resolveCurrent: async () => skillAt(skillBinding),
+        resolveBound: async (identity: typeof skillBinding) =>
+          skillAt(identity),
       } as unknown as SkillBundleManager,
       {
         capture: async () => options.capturedBaseline ?? null,
@@ -321,11 +320,7 @@ class FakeCodexExecutor implements CodexExecutor {
   }
 
   resolveAll(): void {
-    for (;;) {
-      const resolve = this.resolvers.shift();
-      if (!resolve) return;
-      resolve({ summary: 'done' });
-    }
+    while (this.resolvers.length) this.resolveNext();
   }
 }
 
