@@ -1,0 +1,251 @@
+import { DeploymentMethodSchema } from '@/cooking/engineering/contract';
+import { environmentOwned } from '@/cooking/submissions/server/environment-access';
+import type { TestSubmissionWriteStore } from '@/cooking/submissions/server/test-submission-write-store';
+import type { AppDatabase } from '@/platform/database';
+import { PlatformError } from '@/platform/errors';
+import { createInitialCodexTurn } from '@/platform/execution/codex-turn';
+import type { ExecutionService } from '@/platform/execution/service';
+import type { JsonObject } from '@agent-party-time/execution-contract';
+import { buildInitialUpdateBrief } from '../brief';
+import {
+  CiCdUpdateOutputJsonSchema,
+  LocalScriptUpdateOutputJsonSchema,
+} from '../contract';
+import type { FrozenBatch } from './records';
+import { parseCommits } from './results';
+import type { UpdateQueries } from './update-queries';
+
+const QUIET_WINDOW_MS = 2 * 60 * 1_000;
+
+export class UpdateDelivery {
+  constructor(
+    private readonly db: AppDatabase,
+    private readonly executions: ExecutionService,
+    private readonly queries: UpdateQueries,
+    private readonly writes: TestSubmissionWriteStore,
+    private readonly now: () => Date,
+    private readonly createId: () => string,
+  ) {}
+
+  recordCandidateAvailable(bugId: string, candidateAt: string): void {
+    const row = this.db.get(
+      `SELECT submission_item_id FROM cooking_bug
+         WHERE id = ? AND stage = 'WAITING_FOR_UPDATE'`,
+      bugId,
+    ) as { submission_item_id: string | null } | undefined;
+    if (!row?.submission_item_id) return;
+    this.recordPendingDelivery(row.submission_item_id, candidateAt);
+  }
+
+  recalculatePendingDeliveryForBug(bugId: string): void {
+    const row = this.db.get(
+      'SELECT submission_item_id FROM cooking_bug WHERE id = ?',
+      bugId,
+    ) as { submission_item_id: string | null } | undefined;
+    if (!row?.submission_item_id) return;
+    this.recalculatePendingDelivery(row.submission_item_id);
+  }
+
+  prepareDueExecutions(nowValue: Date = this.now()): string[] {
+    const now = nowValue.toISOString();
+    const due = this.db.all<{ submission_item_id: string }>(
+      `SELECT pending.submission_item_id
+         FROM cooking_pending_delivery pending
+         JOIN cooking_submission_item item
+           ON item.id = pending.submission_item_id
+         JOIN cooking_test_submission submission
+           ON submission.id = item.submission_id
+         WHERE pending.eligible_at <= ?
+           AND submission.status = 'ACTIVE'
+         ORDER BY pending.eligible_at, pending.submission_item_id`,
+      now,
+    );
+    const prepared: Array<FrozenBatch & { submissionId: string }> = [];
+    for (const { submission_item_id } of due) {
+      const frozen = this.db.transaction(() =>
+        this.freezeItem(submission_item_id, now, true),
+      )();
+      if (frozen)
+        prepared.push({
+          ...frozen,
+          submissionId:
+            this.queries.itemSource(submission_item_id).submission_id,
+        });
+    }
+    for (const item of prepared)
+      this.writes.publishInvalidation(item.submissionId, item.revision);
+    return prepared.map(({ executionId }) => executionId);
+  }
+
+  freezeItem(
+    submissionItemId: string,
+    now: string,
+    requireDue: boolean,
+  ): FrozenBatch | undefined {
+    const source = this.queries.itemSource(submissionItemId);
+    if (
+      source.submission_status !== 'ACTIVE' ||
+      !environmentOwned(this.db, submissionItemId)
+    )
+      return undefined;
+    const deployment = DeploymentMethodSchema.parse(
+      JSON.parse(source.deployment_json),
+    );
+    const pending = this.db.get(
+      `SELECT last_candidate_at, eligible_at
+         FROM cooking_pending_delivery WHERE submission_item_id = ?`,
+      submissionItemId,
+    ) as { last_candidate_at: string; eligible_at: string } | undefined;
+    if (!pending || (requireDue && pending.eligible_at > now)) return undefined;
+    if (this.queries.activeBatch(submissionItemId)) return undefined;
+    const candidates = this.queries.candidates(submissionItemId);
+    if (!candidates.length) {
+      this.db.run(
+        'DELETE FROM cooking_pending_delivery WHERE submission_item_id = ?',
+        [submissionItemId],
+      );
+      return undefined;
+    }
+    const batchId = this.createId();
+    const attemptId = this.createId();
+    const executionId = this.createId();
+    const workspaceKey = `update-batch:${batchId}`;
+    const executionBrief = buildInitialUpdateBrief({
+      targetBranch: source.target_branch,
+      environmentName: source.environment_name,
+      entries: candidates.map((candidate) => ({
+        bugTitle: candidate.title,
+        commits: parseCommits(candidate.pending_commits_json),
+      })),
+      deployment:
+        deployment.kind === 'LOCAL_SCRIPT'
+          ? { mode: 'LOCAL_SCRIPT', command: deployment.command }
+          : { mode: 'CI_CD' },
+    });
+    this.db.run(
+      `INSERT INTO cooking_update_batch(
+           id, submission_id, submission_item_id, state, version,
+           active_execution_id, session_id, deployment_json, frozen_at,
+           created_at, updated_at
+         ) VALUES (?, ?, ?, 'READY', 1, NULL, NULL, ?, ?, ?, ?)`,
+      [
+        batchId,
+        source.submission_id,
+        submissionItemId,
+        source.deployment_json,
+        now,
+        now,
+        now,
+      ],
+    );
+    const insertEntry = this.db.prepare(
+      `INSERT INTO cooking_update_batch_entry(
+         batch_id, bug_id, position, commits_json, manual_operations_json
+       ) VALUES (?, ?, ?, ?, ?)`,
+    );
+    candidates.forEach((candidate, position) =>
+      insertEntry.run(
+        batchId,
+        candidate.bug_id,
+        position,
+        candidate.pending_commits_json,
+        candidate.pending_manual_operations_json,
+      ),
+    );
+    const execution = this.executions.enqueue({
+      id: executionId,
+      owner: { namespace: 'cooking', kind: 'UPDATE_BATCH', id: attemptId },
+      attempt: 1,
+      previousExecutionId: null,
+      runnerId: source.runner_id,
+      bindingId: source.binding_id,
+      priority: 0,
+      approvalPolicy: 'never',
+      codexTurn: createInitialCodexTurn({
+        requiredSkillName: 'agent-party-time-integrate-update-batch',
+        executionBrief,
+        outputJsonSchema:
+          deployment.kind === 'LOCAL_SCRIPT'
+            ? (LocalScriptUpdateOutputJsonSchema as JsonObject)
+            : (CiCdUpdateOutputJsonSchema as JsonObject),
+      }),
+      workspace: {
+        key: workspaceKey,
+        isolation: 'DETACHED_WORKTREE',
+        baseRef: `origin/${source.target_branch}`,
+      },
+      attachmentIds: [],
+    });
+    this.db.run(
+      `INSERT INTO cooking_update_attempt(
+           id, batch_id, execution_id, continuation_report_id, attempt,
+           outcome_json, created_at, finished_at
+         ) VALUES (?, ?, ?, NULL, 1, NULL, ?, NULL)`,
+      [attemptId, batchId, execution.id, now],
+    );
+    this.db.run(
+      `UPDATE cooking_update_batch SET active_execution_id = ? WHERE id = ?`,
+      [execution.id, batchId],
+    );
+    const bugUpdate = this.db.run(
+      `UPDATE cooking_bug
+         SET stage = 'UPDATING', version = version + 1, updated_at = ?
+         WHERE submission_item_id = ? AND stage = 'WAITING_FOR_UPDATE'
+           AND id IN (
+             SELECT bug_id FROM cooking_update_batch_entry WHERE batch_id = ?
+           )`,
+      [now, submissionItemId, batchId],
+    );
+    if (bugUpdate.changes !== candidates.length)
+      throw new PlatformError('STALE_STATE', '待更新缺陷集合已变化');
+    this.db.run(
+      'DELETE FROM cooking_pending_delivery WHERE submission_item_id = ?',
+      [submissionItemId],
+    );
+    const revision = this.writes.bumpRevision(source.submission_id, now);
+    return { batchId, executionId: execution.id, revision };
+  }
+
+  private recalculatePendingDelivery(submissionItemId: string): void {
+    const latest = this.db.get(
+      `SELECT MAX(context.last_candidate_at) last_candidate_at
+         FROM cooking_bug bug
+         JOIN cooking_bug_repair_context context ON context.bug_id = bug.id
+         WHERE bug.submission_item_id = ?
+           AND bug.stage = 'WAITING_FOR_UPDATE'
+           AND context.last_candidate_at IS NOT NULL
+           AND context.pending_commits_json <> '[]'`,
+      submissionItemId,
+    ) as { last_candidate_at: string | null };
+    if (!latest.last_candidate_at) {
+      this.db.run(
+        'DELETE FROM cooking_pending_delivery WHERE submission_item_id = ?',
+        [submissionItemId],
+      );
+      return;
+    }
+    this.recordPendingDelivery(submissionItemId, latest.last_candidate_at);
+  }
+
+  private resetPendingDelivery(submissionItemId: string, now: string): void {
+    this.recordPendingDelivery(submissionItemId, now);
+  }
+
+  private recordPendingDelivery(
+    submissionItemId: string,
+    candidateAt: string,
+  ): void {
+    const eligibleAt = new Date(
+      Date.parse(candidateAt) + QUIET_WINDOW_MS,
+    ).toISOString();
+    this.db.run(
+      `INSERT INTO cooking_pending_delivery(
+           submission_item_id, last_candidate_at, eligible_at
+         ) VALUES (?, ?, ?)
+         ON CONFLICT(submission_item_id) DO UPDATE SET
+           last_candidate_at = excluded.last_candidate_at,
+           eligible_at = excluded.eligible_at`,
+      [submissionItemId, candidateAt, eligibleAt],
+    );
+  }
+}
