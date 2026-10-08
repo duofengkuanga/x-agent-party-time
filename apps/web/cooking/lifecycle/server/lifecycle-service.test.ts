@@ -908,6 +908,46 @@ function bindingForItem(
   ).binding_id;
 }
 
+function createTakeoverSubmission(
+  fixture: Awaited<ReturnType<typeof setup>>,
+  title: string,
+  requirementDescription: string,
+) {
+  const view = fixture.submissions.getWorkspace(
+    fixture.users.developer.id,
+    fixture.submission.id,
+  );
+  const item = view.submission.items[0]!;
+  const input = {
+    mutationId: randomUUID(),
+    title,
+    requirementDescription,
+    testerUserId: fixture.users.tester.id,
+    items: [
+      {
+        engineeringId: item.engineering.id,
+        responsibleUserId: item.responsibleUser.id,
+        bindingId: item.technical!.bindingId,
+        targetBranch: item.targetBranch,
+        environmentId: item.environment.id,
+      },
+    ],
+  };
+  const next = fixture.submissions.createSubmission(
+    fixture.users.owner.id,
+    fixture.project.id,
+    {
+      ...input,
+      environmentTakeovers: fixture.submissions.environmentConflicts(
+        fixture.users.owner.id,
+        fixture.project.id,
+        input,
+      ),
+    },
+  );
+  return { next, item };
+}
+
 describe('环境切换与验证、关闭', () => {
   test('暂停和重新取得环境后都不能误验证，确认部署后恢复；关闭暂停单不释放别人的环境', async () => {
     const fixture = await setup();
@@ -918,38 +958,7 @@ describe('环境切换与验证、关闭', () => {
       outcome: 'COMPLETED',
       summary: '部署完成',
     });
-    const view = fixture.submissions.getWorkspace(
-      fixture.users.developer.id,
-      fixture.submission.id,
-    );
-    const item = view.submission.items[0]!;
-    const input = {
-      mutationId: randomUUID(),
-      title: '优先提测',
-      requirementDescription: '切换验证',
-      testerUserId: fixture.users.tester.id,
-      items: [
-        {
-          engineeringId: item.engineering.id,
-          responsibleUserId: item.responsibleUser.id,
-          bindingId: item.technical!.bindingId,
-          targetBranch: item.targetBranch,
-          environmentId: item.environment.id,
-        },
-      ],
-    };
-    const next = fixture.submissions.createSubmission(
-      fixture.users.owner.id,
-      fixture.project.id,
-      {
-        ...input,
-        environmentTakeovers: fixture.submissions.environmentConflicts(
-          fixture.users.owner.id,
-          fixture.project.id,
-          input,
-        ),
-      },
-    );
+    const { next } = createTakeoverSubmission(fixture, '优先提测', '切换验证');
     const verify = () =>
       fixture.lifecycle.verifyBug(fixture.users.tester.id, bug.id, {
         mutationId: randomUUID(),
@@ -1003,37 +1012,10 @@ describe('环境切换与验证、关闭', () => {
 
 test('占用单关闭后暂停单收到新版本，可重新取得空闲环境且仍需确认部署', async () => {
   const fixture = await setup();
-  const original = fixture.submissions.getWorkspace(
-    fixture.users.developer.id,
-    fixture.submission.id,
-  );
-  const item = original.submission.items[0]!;
-  const input = {
-    mutationId: randomUUID(),
-    title: '短期占用环境',
-    requirementDescription: '关闭后重新取得',
-    testerUserId: fixture.users.tester.id,
-    items: [
-      {
-        engineeringId: item.engineering.id,
-        responsibleUserId: item.responsibleUser.id,
-        bindingId: item.technical!.bindingId,
-        targetBranch: item.targetBranch,
-        environmentId: item.environment.id,
-      },
-    ],
-  };
-  const next = fixture.submissions.createSubmission(
-    fixture.users.owner.id,
-    fixture.project.id,
-    {
-      ...input,
-      environmentTakeovers: fixture.submissions.environmentConflicts(
-        fixture.users.owner.id,
-        fixture.project.id,
-        input,
-      ),
-    },
+  const { next, item } = createTakeoverSubmission(
+    fixture,
+    '短期占用环境',
+    '关闭后重新取得',
   );
   const pausedRevision = fixture.submissions.getWorkspace(
     fixture.users.owner.id,
