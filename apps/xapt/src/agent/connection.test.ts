@@ -1,4 +1,5 @@
 import { testDirectories } from '../testing/directories';
+import { MemoryKeychain } from '../testing/memory-keychain';
 import { expect, test } from 'bun:test';
 
 import type {
@@ -6,7 +7,7 @@ import type {
   RunnerAuthorizationClaimResponse,
   RunnerAuthorizationCreateRequest,
 } from '@agent-party-time/runner-contract';
-import type { Browser, Clock, Keychain } from '../platform/contracts';
+import type { Browser, Clock } from '../platform/contracts';
 import { NodeLocalFileSystem } from '../platform/files';
 import { keychainAccount } from '../platform/macos/keychain';
 import { xaptPaths } from '../platform/paths';
@@ -226,22 +227,6 @@ async function createFixture(
       () => '测试 Agent',
     ),
   };
-}
-
-class MemoryKeychain implements Keychain {
-  private readonly values = new Map<string, string>();
-
-  async save(account: string, value: string): Promise<void> {
-    this.values.set(account, value);
-  }
-
-  async read(account: string): Promise<string | null> {
-    return this.values.get(account) ?? null;
-  }
-
-  async delete(account: string): Promise<void> {
-    this.values.delete(account);
-  }
 }
 
 class FakeBrowser implements Browser {

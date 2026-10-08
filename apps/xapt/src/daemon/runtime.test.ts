@@ -1,4 +1,5 @@
 import { testDirectories } from '../testing/directories';
+import { MemoryKeychain } from '../testing/memory-keychain';
 import { expect, test } from 'bun:test';
 
 import type {
@@ -90,22 +91,6 @@ async function runtimeFixture(
   });
   const control = new DaemonControlClient(paths.controlSocket, 200);
   return { paths, files, runtime, control };
-}
-
-class MemoryKeychain implements Keychain {
-  private readonly values = new Map<string, string>();
-
-  async save(account: string, value: string): Promise<void> {
-    this.values.set(account, value);
-  }
-
-  async read(account: string): Promise<string | null> {
-    return this.values.get(account) ?? null;
-  }
-
-  async delete(account: string): Promise<void> {
-    this.values.delete(account);
-  }
 }
 
 class RejectingKeychain implements Keychain {
