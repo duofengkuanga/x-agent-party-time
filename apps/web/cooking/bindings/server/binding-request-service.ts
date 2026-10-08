@@ -4,7 +4,6 @@ import type { AppDatabase } from '@/platform/database';
 import { PlatformError, publicError } from '@/platform/errors';
 import {
   RunnerBindingWorkCompletionSchema,
-  RunnerBindingWorkCompletionResponseSchema,
   RunnerBindingWorkResponseSchema,
   type RunnerBindingWork,
   type RunnerBindingWorkCompletion,
@@ -94,10 +93,7 @@ export class BindingRequestService {
             '你已经为这个工程建立绑定',
           );
         const active = this.db.get(
-          `SELECT id, engineering_id, user_id, runner_id, state,
-                    error_message, repository_url, binding_id, expires_at,
-                    claimed_at, completed_at, created_at
-             FROM cooking_binding_request
+          `SELECT * FROM cooking_binding_request
              WHERE engineering_id = ? AND user_id = ?
                AND state IN ('PENDING', 'PROCESSING')`,
           engineeringId,
@@ -144,10 +140,7 @@ export class BindingRequestService {
     const requestId = BindingRequestIdSchema.parse(requestIdInput);
     this.failExpired();
     const row = this.db.get(
-      `SELECT id, engineering_id, user_id, runner_id, state,
-                error_message, repository_url, binding_id, expires_at,
-                claimed_at, completed_at, created_at
-         FROM cooking_binding_request
+      `SELECT * FROM cooking_binding_request
          WHERE id = ? AND user_id = ?`,
       requestId,
       userId,
@@ -163,10 +156,7 @@ export class BindingRequestService {
     ).toISOString();
     return this.db.transaction(() => {
       const row = this.db.get(
-        `SELECT id, engineering_id, user_id, runner_id, state,
-                  error_message, repository_url, binding_id, expires_at,
-                  claimed_at, completed_at, created_at
-           FROM cooking_binding_request
+        `SELECT * FROM cooking_binding_request
            WHERE runner_id = ? AND expires_at > ?
              AND (
                state = 'PENDING' OR
@@ -212,9 +202,7 @@ export class BindingRequestService {
       throw new PlatformError('INVALID_TRANSITION', '绑定请求当前不能完成');
     if (completion.outcome === 'FAILED') {
       this.failRequest(row.id, completion.message);
-      return RunnerBindingWorkCompletionResponseSchema.shape.state.parse(
-        'FAILED',
-      );
+      return 'FAILED';
     }
 
     try {
@@ -242,14 +230,10 @@ export class BindingRequestService {
         if (update.changes !== 1)
           throw new PlatformError('STALE_STATE', '绑定请求已更新');
       })();
-      return RunnerBindingWorkCompletionResponseSchema.shape.state.parse(
-        'SUCCEEDED',
-      );
+      return 'SUCCEEDED';
     } catch (error) {
       this.failRequest(row.id, publicError(error).message);
-      return RunnerBindingWorkCompletionResponseSchema.shape.state.parse(
-        'FAILED',
-      );
+      return 'FAILED';
     }
   }
 
@@ -259,10 +243,7 @@ export class BindingRequestService {
   ): BindingRequestRow {
     this.failExpired();
     const row = this.db.get(
-      `SELECT id, engineering_id, user_id, runner_id, state,
-                error_message, repository_url, binding_id, expires_at,
-                claimed_at, completed_at, created_at
-         FROM cooking_binding_request
+      `SELECT * FROM cooking_binding_request
          WHERE id = ? AND runner_id = ?`,
       requestId,
       runnerId,
