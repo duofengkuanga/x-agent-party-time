@@ -1,6 +1,7 @@
 import { DeploymentMethodSchema } from '@/cooking/engineering/contract';
 import { TestSubmissionWriteStore } from '@/cooking/submissions/server/test-submission-write-store';
 import { asDetails, isTerminal } from '@/cooking/shared/server/execution-state';
+import { insertAuditEvent } from '@/cooking/shared/server/audit-event';
 import { markInvalidExecutionResult } from '@/cooking/shared/server/invalid-execution-result';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
@@ -317,21 +318,16 @@ export class UpdateProjection {
     createdAt: string,
   ): void {
     const source = this.queries.itemSource(batch.submission_item_id);
-    this.db.run(
-      `INSERT INTO cooking_audit_event(
-           id, project_id, actor_user_id, action, target_type, target_id,
-           details_json, created_at
-         ) VALUES (?, ?, ?, ?, 'UPDATE_BATCH', ?, ?, ?)`,
-      [
-        this.createId(),
-        source.project_id,
-        source.responsible_user_id,
-        action,
-        batch.id,
-        JSON.stringify({ source: 'EXECUTION', ...asDetails(details) }),
-        createdAt,
-      ],
-    );
+    insertAuditEvent(this.db, {
+      id: this.createId(),
+      projectId: source.project_id,
+      actorUserId: source.responsible_user_id,
+      action,
+      targetType: 'UPDATE_BATCH',
+      targetId: batch.id,
+      details: { source: 'EXECUTION', ...asDetails(details) },
+      createdAt,
+    });
   }
 
   private publishExecution(executionId: string): void {

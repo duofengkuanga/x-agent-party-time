@@ -1,5 +1,6 @@
 import { TestSubmissionWriteStore } from '@/cooking/submissions/server/test-submission-write-store';
 import { asDetails } from '@/cooking/shared/server/execution-state';
+import { insertAuditEvent } from '@/cooking/shared/server/audit-event';
 import { markInvalidExecutionResult } from '@/cooking/shared/server/invalid-execution-result';
 import type { AppDatabase } from '@/platform/database';
 import { executionProjector } from '@/platform/execution/projection';
@@ -349,20 +350,15 @@ export class RepairProjection {
     createdAt: string,
   ): void {
     const source = this.queries.source(bugId);
-    this.db.run(
-      `INSERT INTO cooking_audit_event(
-           id, project_id, actor_user_id, action, target_type, target_id,
-           details_json, created_at
-         ) VALUES (?, ?, ?, ?, 'BUG', ?, ?, ?)`,
-      [
-        this.createId(),
-        source.project_id,
-        source.responsible_user_id,
-        action,
-        bugId,
-        JSON.stringify({ source: 'EXECUTION', ...asDetails(details) }),
-        createdAt,
-      ],
-    );
+    insertAuditEvent(this.db, {
+      id: this.createId(),
+      projectId: source.project_id,
+      actorUserId: source.responsible_user_id,
+      action,
+      targetType: 'BUG',
+      targetId: bugId,
+      details: { source: 'EXECUTION', ...asDetails(details) },
+      createdAt,
+    });
   }
 }

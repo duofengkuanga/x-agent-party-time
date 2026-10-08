@@ -112,15 +112,13 @@ export class BindingRequestService {
         const expiresAt = new Date(
           createdAt.getTime() + durationMs,
         ).toISOString();
-        this.db
-          .prepare(
-            `INSERT INTO cooking_binding_request(
+        this.db.run(
+          `INSERT INTO cooking_binding_request(
                id, engineering_id, user_id, runner_id, state, error_message,
                repository_url, binding_id, expires_at, claimed_at,
                completed_at, created_at
              ) VALUES (?, ?, ?, ?, 'PENDING', NULL, NULL, ?, ?, NULL, NULL, ?)`,
-          )
-          .run(
+          [
             id,
             engineeringId,
             actorUserId,
@@ -128,7 +126,8 @@ export class BindingRequestService {
             bindingId,
             expiresAt,
             createdAt.toISOString(),
-          );
+          ],
+        );
         const result = {
           id,
           engineeringId,
@@ -193,16 +192,15 @@ export class BindingRequestService {
       ) as BindingRequestRow | undefined;
       if (!row) return null;
       const claimedAt = this.now().toISOString();
-      const claimed = this.db
-        .prepare(
-          `UPDATE cooking_binding_request
+      const claimed = this.db.run(
+        `UPDATE cooking_binding_request
            SET state = 'PROCESSING', claimed_at = ?
            WHERE id = ? AND (
              state = 'PENDING' OR
              (state = 'PROCESSING' AND claimed_at < ?)
            )`,
-        )
-        .run(claimedAt, row.id, reclaimBefore);
+        [claimedAt, row.id, reclaimBefore],
+      );
       if (claimed.changes !== 1) return null;
       return RunnerBindingWorkResponseSchema.shape.request.unwrap().parse({
         requestId: row.id,
@@ -246,14 +244,13 @@ export class BindingRequestService {
           completion.repositoryUrl,
         );
         const completedAt = this.now().toISOString();
-        const update = this.db
-          .prepare(
-            `UPDATE cooking_binding_request
+        const update = this.db.run(
+          `UPDATE cooking_binding_request
              SET state = 'SUCCEEDED', repository_url = ?, completed_at = ?,
                  error_message = NULL
              WHERE id = ? AND state = 'PROCESSING'`,
-          )
-          .run(repositoryUrl, completedAt, row.id);
+          [repositoryUrl, completedAt, row.id],
+        );
         if (update.changes !== 1)
           throw new PlatformError('STALE_STATE', '绑定请求已更新');
       })();
@@ -288,25 +285,23 @@ export class BindingRequestService {
   }
 
   private failRequest(requestId: string, message: string): void {
-    this.db
-      .prepare(
-        `UPDATE cooking_binding_request
+    this.db.run(
+      `UPDATE cooking_binding_request
          SET state = 'FAILED', error_message = ?, completed_at = ?
          WHERE id = ? AND state IN ('PENDING', 'PROCESSING')`,
-      )
-      .run(message.slice(0, 240), this.now().toISOString(), requestId);
+      [message.slice(0, 240), this.now().toISOString(), requestId],
+    );
   }
 
   private failExpired(): void {
     const now = this.now().toISOString();
-    this.db
-      .prepare(
-        `UPDATE cooking_binding_request
+    this.db.run(
+      `UPDATE cooking_binding_request
          SET state = 'FAILED', error_message = '绑定请求已过期',
              completed_at = ?
          WHERE state IN ('PENDING', 'PROCESSING') AND expires_at <= ?`,
-      )
-      .run(now, now);
+      [now, now],
+    );
   }
 }
 

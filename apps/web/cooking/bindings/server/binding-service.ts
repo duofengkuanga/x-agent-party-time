@@ -1,4 +1,5 @@
 import { parseRow, type DatabaseRow } from '@/platform/database/row-mapper';
+import { insertAuditEvent } from '@/cooking/shared/server/audit-event';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { AppDatabase } from '@/platform/database';
@@ -117,13 +118,12 @@ export class BindingService {
           );
         const id = reservedId ?? this.createId();
         const createdAt = this.now().toISOString();
-        this.db
-          .prepare(
-            `INSERT INTO cooking_engineering_binding(
+        this.db.run(
+          `INSERT INTO cooking_engineering_binding(
                id, engineering_id, user_id, runner_id, created_at
              ) VALUES (?, ?, ?, ?, ?)`,
-          )
-          .run(id, engineeringId, actorUserId, runnerId, createdAt);
+          [id, engineeringId, actorUserId, runnerId, createdAt],
+        );
         const result = {
           id,
           engineeringId,
@@ -188,12 +188,11 @@ export class BindingService {
             'RESOURCE_CONFLICT',
             '这个绑定已经用于提测或任务，不能删除',
           );
-        const deleted = this.db
-          .prepare(
-            `DELETE FROM cooking_engineering_binding
+        const deleted = this.db.run(
+          `DELETE FROM cooking_engineering_binding
              WHERE id = ? AND user_id = ?`,
-          )
-          .run(id, actorUserId);
+          [id, actorUserId],
+        );
         if (deleted.changes !== 1)
           throw new PlatformError('STALE_STATE', '工程绑定已更新');
         return {
@@ -222,35 +221,27 @@ export class BindingService {
         return requireMatchingRepository(row.repository_url, repositoryUrl);
 
       const confirmedAt = this.now().toISOString();
-      const update = this.db
-        .prepare(
-          `UPDATE cooking_engineering
+      const update = this.db.run(
+        `UPDATE cooking_engineering
            SET repository_state = 'CONFIRMED', repository_url = ?,
                version = version + 1, updated_at = ?
            WHERE id = ? AND repository_state = 'PENDING'`,
-        )
-        .run(repositoryUrl, confirmedAt, row.engineering_id);
+        [repositoryUrl, confirmedAt, row.engineering_id],
+      );
       if (update.changes !== 1) {
         const current = this.repositoryConfirmationTarget(runnerId, bindingId);
         return requireMatchingRepository(current.repository_url, repositoryUrl);
       }
-      this.db
-        .prepare(
-          `INSERT INTO cooking_audit_event(
-             id, project_id, actor_user_id, action, target_type, target_id,
-             details_json, created_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          this.createId(),
-          row.project_id,
-          row.user_id,
-          'ENGINEERING_REPOSITORY_CONFIRMED',
-          'ENGINEERING',
-          row.engineering_id,
-          JSON.stringify({ repositoryUrl }),
-          confirmedAt,
-        );
+      insertAuditEvent(this.db, {
+        id: this.createId(),
+        projectId: row.project_id,
+        actorUserId: row.user_id,
+        action: 'ENGINEERING_REPOSITORY_CONFIRMED',
+        targetType: 'ENGINEERING',
+        targetId: row.engineering_id,
+        details: { repositoryUrl },
+        createdAt: confirmedAt,
+      });
       return repositoryUrl;
     })();
   }

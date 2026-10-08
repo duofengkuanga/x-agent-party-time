@@ -1,4 +1,5 @@
 import { requireSubmissionAccess } from '@/cooking/shared/server/access';
+import { insertAuditEvent } from '@/cooking/shared/server/audit-event';
 import { TestSubmissionWriteStore } from '@/cooking/submissions/server/test-submission-write-store';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
@@ -229,25 +230,20 @@ export class CleanupService {
     if (!attempt) return;
     const cleanup = this.queries.cleanupSource(attempt.cleanup_id);
     const now = this.now().toISOString();
-    this.db.run(
-      `INSERT INTO cooking_audit_event(
-           id, project_id, actor_user_id, action, target_type, target_id,
-           details_json, created_at
-         ) VALUES (?, ?, ?, 'CLEANUP_INTERACTION_OPENED',
-                   'EXECUTION_INTERACTION', ?, ?, ?)`,
-      [
-        this.createId(),
-        cleanup.project_id,
-        cleanup.responsible_user_id,
-        interactionId,
-        JSON.stringify({
-          cleanupId: cleanup.id,
-          executionId,
-          attempt: attempt.attempt,
-        }),
-        now,
-      ],
-    );
+    insertAuditEvent(this.db, {
+      id: this.createId(),
+      projectId: cleanup.project_id,
+      actorUserId: cleanup.responsible_user_id,
+      action: 'CLEANUP_INTERACTION_OPENED',
+      targetType: 'EXECUTION_INTERACTION',
+      targetId: interactionId,
+      details: {
+        cleanupId: cleanup.id,
+        executionId,
+        attempt: attempt.attempt,
+      },
+      createdAt: now,
+    });
     this.writes.bumpRevision(cleanup.submission_id, now);
   }
 

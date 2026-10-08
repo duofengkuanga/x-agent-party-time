@@ -3,6 +3,7 @@ import type { z } from 'zod';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
 import { CookingMutationIdSchema } from '../contract';
+import { insertAuditEvent } from './audit-event';
 
 export type CookingAuditInput = {
   projectId: string;
@@ -73,31 +74,22 @@ export class CookingWriteStore {
       const createdAt = this.now().toISOString();
       const audit = outcome.audit;
       if (audit)
-        this.db
-          .prepare(
-            `INSERT INTO cooking_audit_event(
-               id, project_id, actor_user_id, action, target_type, target_id,
-               details_json, created_at
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          )
-          .run(
-            this.createId(),
-            audit.projectId,
-            input.actorUserId,
-            audit.action,
-            input.resourceType,
-            audit.targetId ?? outcome.resourceId,
-            JSON.stringify(audit.details ?? {}),
-            createdAt,
-          );
-      this.db
-        .prepare(
-          `INSERT INTO cooking_mutation(
+        insertAuditEvent(this.db, {
+          id: this.createId(),
+          projectId: audit.projectId,
+          actorUserId: input.actorUserId,
+          action: audit.action,
+          targetType: input.resourceType,
+          targetId: audit.targetId ?? outcome.resourceId,
+          details: audit.details,
+          createdAt,
+        });
+      this.db.run(
+        `INSERT INTO cooking_mutation(
              id, actor_user_id, operation, resource_type, resource_id,
              result_json, created_at
            ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
+        [
           mutationId,
           input.actorUserId,
           input.operation,
@@ -105,7 +97,8 @@ export class CookingWriteStore {
           outcome.resourceId,
           JSON.stringify(result),
           createdAt,
-        );
+        ],
+      );
       return { result, replayed: false };
     })();
   }
