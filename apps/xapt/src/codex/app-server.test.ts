@@ -46,12 +46,18 @@ rl.on('line', (line) => {
   );
   await chmod(executable, 0o700);
   const executor = new CodexAppServerExecutor(executable);
+  const baseInput = {
+    approvalPolicy: 'on-request' as const,
+    repositoryPath: root,
+    outputSchema: { type: 'object' },
+    artifactsDirectory: join(root, 'artifacts'),
+    onInteraction: async () => ({}),
+  };
 
   const started = await executor.begin(
     {
-      approvalPolicy: 'on-request',
+      ...baseInput,
       executionId: '00000000-0000-4000-8000-000000000601',
-      repositoryPath: root,
       text: JSON.stringify({
         task: '只返回 JSON',
         attachmentReferences: [
@@ -63,7 +69,6 @@ rl.on('line', (line) => {
         ],
       }),
       skill: { name: 'agent-party-time-repair-bug', path: '/tmp/repair-skill' },
-      outputSchema: { type: 'object' },
       attachments: [
         {
           fileId: '00000000-0000-4000-8000-000000000603',
@@ -71,9 +76,7 @@ rl.on('line', (line) => {
           path: join(root, 'evidence.txt'),
         },
       ],
-      artifactsDirectory: join(root, 'artifacts'),
       taskId: null,
-      onInteraction: async () => ({}),
     },
     new AbortController().signal,
   );
@@ -83,16 +86,12 @@ rl.on('line', (line) => {
 
   const resumed = await executor.begin(
     {
-      approvalPolicy: 'on-request',
+      ...baseInput,
       executionId: '00000000-0000-4000-8000-000000000602',
-      repositoryPath: root,
       text: '继续并只返回 JSON',
       skill: null,
-      outputSchema: { type: 'object' },
       attachments: [],
-      artifactsDirectory: join(root, 'artifacts'),
       taskId: 'thread-1',
-      onInteraction: async () => ({}),
     },
     new AbortController().signal,
   );
@@ -165,6 +164,16 @@ rl.on('line', (line) => {
 });
 
 describe('Codex Interaction 安全投影', () => {
+  const privatePermissions = {
+    fileSystem: {
+      root: '/Users/example/private-repository',
+      mode: 'write',
+    },
+  };
+  const publicPermissions = {
+    fileSystem: { root: '本机路径已隐藏', mode: 'write' },
+  };
+
   test('命令审批不上传 cwd、线程标识或命令中的绝对路径', () => {
     const payload = publicInteractionPayload(
       'item/commandExecution/requestApproval',
@@ -193,12 +202,7 @@ describe('Codex Interaction 安全投影', () => {
     ).toEqual({ reason: '需要修改工作区文件' });
     expect(
       publicInteractionPayload('item/permissions/requestApproval', {
-        permissions: {
-          fileSystem: {
-            root: '/Users/example/private-repository',
-            mode: 'write',
-          },
-        },
+        permissions: privatePermissions,
         reason: '运行验证',
       }),
     ).toEqual({
@@ -214,19 +218,10 @@ describe('Codex Interaction 安全投影', () => {
       restorePrivateInteractionResolution(
         'item/permissions/requestApproval',
         {
-          permissions: {
-            fileSystem: { root: '本机路径已隐藏', mode: 'write' },
-          },
+          permissions: publicPermissions,
           scope: 'session',
         },
-        {
-          permissions: {
-            fileSystem: {
-              root: '/Users/example/private-repository',
-              mode: 'write',
-            },
-          },
-        },
+        { permissions: privatePermissions },
       ),
     ).toEqual({
       permissions: {
@@ -253,10 +248,7 @@ describe('Codex Interaction 安全投影', () => {
         },
         {
           permissions: {
-            fileSystem: {
-              root: '/Users/example/private-repository',
-              mode: 'write',
-            },
+            ...privatePermissions,
             network: {
               hosts: ['registry.npmjs.org', 'api.example.com'],
             },
@@ -301,21 +293,12 @@ describe('Codex Interaction 安全投影', () => {
   });
 
   test('Turn 与 Session 权限都会在 Runner 本机恢复，拒绝保持空权限', () => {
-    const privatePayload = {
-      permissions: {
-        fileSystem: {
-          root: '/Users/example/private-repository',
-          mode: 'write',
-        },
-      },
-    };
+    const privatePayload = { permissions: privatePermissions };
     expect(
       restorePrivateInteractionResolution(
         'item/permissions/requestApproval',
         {
-          permissions: {
-            fileSystem: { root: '本机路径已隐藏', mode: 'write' },
-          },
+          permissions: publicPermissions,
           scope: 'turn',
         },
         privatePayload,
