@@ -4,6 +4,7 @@ import { ExecutionService } from '@/platform/execution/service';
 import { LocalFileStore } from '@/platform/files/local-file-store';
 import { RunnerService } from '@/platform/runner/service';
 import { testDatabases } from '@/testing/database';
+import { seedTestUser } from '@/testing/users';
 import type { EnqueueExecutionInput } from '@agent-party-time/execution-contract';
 import { ProtocolAgent } from '@agent-party-time/runner-conformance';
 import { RunnerHttpError } from '@agent-party-time/runner-contract/http-client';
@@ -14,12 +15,10 @@ const createDatabase = testDatabases();
 
 async function setup() {
   const { directory, database } = await createDatabase();
-  const user = await new AuthService(database).seedUser({
-    id: 'conformance-user',
-    username: 'conformance-user',
-    displayName: 'Conformance 用户',
-    password: 'password',
-  });
+  const user = await seedTestUser(new AuthService(database), [
+    'conformance-user',
+    'Conformance 用户',
+  ]);
   const runners = new RunnerService(database);
   const paired = runners.pair(
     runners.issuePairingCode(user.id).code,

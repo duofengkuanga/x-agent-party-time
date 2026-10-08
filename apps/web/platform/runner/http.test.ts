@@ -1,6 +1,7 @@
 import { handleBugDelete } from '@/cooking/bugs/server/http';
 import { AuthService } from '@/platform/auth/service';
 import { testDatabases } from '@/testing/database';
+import { seedTestUser } from '@/testing/users';
 import { describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
 import {
@@ -21,12 +22,10 @@ const createDatabase = testDatabases();
 async function setup() {
   const { directory, database } = await createDatabase();
   const auth = new AuthService(database);
-  const user = await auth.seedUser({
-    id: 'http-runner-user',
-    username: 'http-runner-user',
-    displayName: 'HTTP Runner 用户',
-    password: 'password',
-  });
+  const user = await seedTestUser(auth, [
+    'http-runner-user',
+    'HTTP Runner 用户',
+  ]);
   const runners = new RunnerService(database);
   return { runners, user };
 }

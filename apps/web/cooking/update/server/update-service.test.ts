@@ -6,6 +6,7 @@ import { AuthService } from '@/platform/auth/service';
 import { handleExecutionClaim } from '@/platform/execution/http';
 import { ExecutionService } from '@/platform/execution/service';
 import { testDatabases } from '@/testing/database';
+import { seedTestUser } from '@/testing/users';
 import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { UpdateService } from './update-service';
@@ -196,12 +197,11 @@ describe('UpdateService', () => {
     fixture.createBug('无权访问时到期的候选');
     await completeNextRepair(fixture, 'repair-one', ['aaaaaaa']);
     fixture.clock.set('2026-07-27T10:02:00.000Z');
-    const outsider = await new AuthService(fixture.database).seedUser({
-      id: randomUUID(),
-      username: 'update-outsider',
-      displayName: '项目外用户',
-      password: 'password',
-    });
+    const outsider = await seedTestUser(new AuthService(fixture.database), [
+      'update-outsider',
+      '项目外用户',
+      randomUUID(),
+    ]);
     const workspace = new CookingWorkspaceService(
       new SubmissionService(fixture.database),
       fixture.bugs,

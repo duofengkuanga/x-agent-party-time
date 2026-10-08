@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import type { User } from '@/platform/auth/contract';
 import { AuthService } from '@/platform/auth/service';
 import type { AppDatabase } from '@/platform/database';
+import { seedUsers } from '@/testing/users';
 import { BindingService } from '@/cooking/bindings/server/binding-service';
 import { EngineeringService } from '@/cooking/engineering/server/engineering-service';
 import type { DeploymentMethod } from '@/cooking/engineering/contract';
@@ -19,16 +19,7 @@ export async function projectScenario<K extends string>(
   },
 ) {
   const auth = new AuthService(database, spec.authNow);
-  const users = {} as Record<K, User>;
-  for (const key of Object.keys(spec.people) as K[]) {
-    const [username, displayName, id = username] = spec.people[key];
-    users[key] = await auth.seedUser({
-      id,
-      username,
-      displayName,
-      password: 'password',
-    });
-  }
+  const users = await seedUsers(auth, spec.people);
   const ownerId = users[spec.owner].id;
   const projects = new ProjectService(database);
   const project = projects.createProject(ownerId, {

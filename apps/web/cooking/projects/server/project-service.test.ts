@@ -2,6 +2,7 @@ import { mutation } from '@/cooking/testing/project';
 import { AuthService } from '@/platform/auth/service';
 import { PlatformError } from '@/platform/errors';
 import { countRows, testDatabases } from '@/testing/database';
+import { seedUsers } from '@/testing/users';
 import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { ProjectService } from './project-service';
@@ -16,26 +17,11 @@ async function setup(options?: {
     database,
     () => new Date('2026-07-26T08:00:00Z'),
   );
-  const users = {
-    owner: await auth.seedUser({
-      id: 'user-owner',
-      username: 'owner',
-      displayName: '所有者',
-      password: 'password',
-    }),
-    member: await auth.seedUser({
-      id: 'user-member',
-      username: 'member',
-      displayName: '成员',
-      password: 'password',
-    }),
-    other: await auth.seedUser({
-      id: 'user-other',
-      username: 'other',
-      displayName: '其他用户',
-      password: 'password',
-    }),
-  };
+  const users = await seedUsers(auth, {
+    owner: ['owner', '所有者', 'user-owner'],
+    member: ['member', '成员', 'user-member'],
+    other: ['other', '其他用户', 'user-other'],
+  });
   return {
     database,
     users,

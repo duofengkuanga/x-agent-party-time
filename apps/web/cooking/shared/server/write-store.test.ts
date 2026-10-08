@@ -2,6 +2,7 @@ import { ProjectService } from '@/cooking/projects/server/project-service';
 import { TestSubmissionWriteStore } from '@/cooking/submissions/server/test-submission-write-store';
 import { AuthService } from '@/platform/auth/service';
 import { countRows, testDatabases } from '@/testing/database';
+import { seedTestUser } from '@/testing/users';
 import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -12,12 +13,7 @@ const createDatabase = testDatabases();
 test('CookingWriteStore 在同一事务中完成业务写入、Audit 与幂等结果', async () => {
   const { directory, database } = await createDatabase();
   const auth = new AuthService(database);
-  const user = await auth.seedUser({
-    id: 'write-user',
-    username: 'write-user',
-    displayName: '写入用户',
-    password: 'password',
-  });
+  const user = await seedTestUser(auth, ['write-user', '写入用户']);
   const project = new ProjectService(database).createProject(user.id, {
     mutationId: randomUUID(),
     name: '写入测试项目',
@@ -65,12 +61,7 @@ describe('CookingWriteStore 冲突保护', () => {
   test('同一操作标识不能复用于不同操作', async () => {
     const { directory, database } = await createDatabase();
     const auth = new AuthService(database);
-    const user = await auth.seedUser({
-      id: 'conflict-user',
-      username: 'conflict-user',
-      displayName: '冲突用户',
-      password: 'password',
-    });
+    const user = await seedTestUser(auth, ['conflict-user', '冲突用户']);
     const store = new CookingWriteStore(database);
     const mutationId = randomUUID();
     const base = {
@@ -90,12 +81,10 @@ describe('CookingWriteStore 冲突保护', () => {
 test('TestSubmissionWriteStore 只在首次成功提交后发布 Revision', async () => {
   const { directory, database } = await createDatabase();
   const auth = new AuthService(database);
-  const user = await auth.seedUser({
-    id: 'submission-write-user',
-    username: 'submission-write-user',
-    displayName: '提测写入用户',
-    password: 'password',
-  });
+  const user = await seedTestUser(auth, [
+    'submission-write-user',
+    '提测写入用户',
+  ]);
   const project = new ProjectService(database).createProject(user.id, {
     mutationId: randomUUID(),
     name: '提测写入项目',

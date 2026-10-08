@@ -2,6 +2,7 @@ import { mutation } from '@/cooking/testing/project';
 import { ProjectService } from '@/cooking/projects/server/project-service';
 import { AuthService } from '@/platform/auth/service';
 import { testDatabases } from '@/testing/database';
+import { seedUsers } from '@/testing/users';
 import { expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { EngineeringService } from './engineering-service';
@@ -12,17 +13,9 @@ const createDatabase = testDatabases();
 test('工程成员关系接入 Project 成员活动职责保护', async () => {
   const { directory, database } = await createDatabase();
   const auth = new AuthService(database);
-  const owner = await auth.seedUser({
-    id: 'duty-owner',
-    username: 'duty-owner',
-    displayName: '职责所有者',
-    password: 'password',
-  });
-  const member = await auth.seedUser({
-    id: 'duty-member',
-    username: 'duty-member',
-    displayName: '职责成员',
-    password: 'password',
+  const { owner, member } = await seedUsers(auth, {
+    owner: ['duty-owner', '职责所有者'],
+    member: ['duty-member', '职责成员'],
   });
   const projects = new ProjectService(
     database,

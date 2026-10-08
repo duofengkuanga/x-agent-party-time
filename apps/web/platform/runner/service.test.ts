@@ -1,5 +1,6 @@
 import { AuthService } from '@/platform/auth/service';
 import { countRows, testDatabases } from '@/testing/database';
+import { seedUsers } from '@/testing/users';
 import { describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
 import { RunnerService } from './service';
@@ -11,20 +12,10 @@ const installationId = '00000000-0000-4000-8000-000000000010';
 async function setup() {
   const { directory, database } = await createDatabase();
   const auth = new AuthService(database);
-  const users = {
-    owner: await auth.seedUser({
-      id: 'runner-owner',
-      username: 'runner-owner',
-      displayName: 'Runner 所有者',
-      password: 'password',
-    }),
-    other: await auth.seedUser({
-      id: 'runner-other',
-      username: 'runner-other',
-      displayName: '其他用户',
-      password: 'password',
-    }),
-  };
+  const users = await seedUsers(auth, {
+    owner: ['runner-owner', 'Runner 所有者'],
+    other: ['runner-other', '其他用户'],
+  });
   let now = new Date('2026-07-26T10:00:00Z');
   let codeIndex = 0;
   let credentialIndex = 0;

@@ -2,6 +2,7 @@ import { AuthService } from '@/platform/auth/service';
 import { LocalFileStore } from '@/platform/files/local-file-store';
 import { RunnerService } from '@/platform/runner/service';
 import { testDatabases } from '@/testing/database';
+import { seedTestUser } from '@/testing/users';
 import type { EnqueueExecutionInput } from '@agent-party-time/execution-contract';
 import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
@@ -12,12 +13,10 @@ const createDatabase = testDatabases();
 
 async function setup() {
   const { directory, database } = await createDatabase();
-  const user = await new AuthService(database).seedUser({
-    id: 'execution-user',
-    username: 'execution-user',
-    displayName: 'Execution 用户',
-    password: 'password',
-  });
+  const user = await seedTestUser(new AuthService(database), [
+    'execution-user',
+    'Execution 用户',
+  ]);
   const runners = new RunnerService(database);
   const paired = runners.pair(
     runners.issuePairingCode(user.id).code,
