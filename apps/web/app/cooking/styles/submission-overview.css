@@ -229,15 +229,13 @@
 }
 
 .collab-bug-card button,
-.collab-dialog button,
-.collab-submission-header__actions > button:not(.collab-primary) {
+.collab-dialog button {
   background: transparent;
   border: 1px solid var(--line);
   min-height: 32px;
   padding: 0 9px;
 }
 
-.collab-engineering-card button:hover:not(:disabled),
 .collab-bug-card button:not(.collab-bug-card__open):hover:not(:disabled),
 .collab-dialog button:hover:not(:disabled) {
   background: var(--accent);

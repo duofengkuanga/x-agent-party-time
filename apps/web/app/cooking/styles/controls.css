@@ -6,12 +6,8 @@
 .collab-shell
   :where(
     a.repair-primary,
-    a.repair-secondary,
-    a.primary-button,
-    a.secondary-button,
     a.collab-primary,
     a.collab-quiet-button,
-    .scene-links a:not([aria-current]),
     .project-settings__row-actions a,
     .collab-form__blocked a,
     .collab-empty-stage__actions a
@@ -28,12 +24,8 @@
 .collab-shell
   :where(
     a.repair-primary,
-    a.repair-secondary,
-    a.primary-button,
-    a.secondary-button,
     a.collab-primary,
     a.collab-quiet-button,
-    .scene-links a:not([aria-current]),
     .project-settings__row-actions a,
     .collab-form__blocked a,
     .collab-empty-stage__actions a
@@ -51,12 +43,8 @@
 .collab-shell
   :where(
     a.repair-primary,
-    a.repair-secondary,
-    a.primary-button,
-    a.secondary-button,
     a.collab-primary,
     a.collab-quiet-button,
-    .scene-links a:not([aria-current]),
     .project-settings__row-actions a,
     .collab-form__blocked a,
     .collab-empty-stage__actions a

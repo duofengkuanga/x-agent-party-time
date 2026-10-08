@@ -106,13 +106,6 @@
   flex: 0 0 auto;
 }
 
-.engineering-editor__primary-form > .dialog-actions > :where(a, button) {
-  font-size: 12px;
-  height: 36px;
-  min-height: 36px;
-  padding-inline: 12px;
-}
-
 .engineering-detail dl {
   border-block: 1px solid var(--line);
   margin: 0;

@@ -341,11 +341,6 @@
   opacity: 0.55;
 }
 
-.project-settings__invitees label:has(input:checked) {
-  border-color: var(--strong-line);
-  box-shadow: inset 3px 0 0 var(--accent-dark);
-}
-
 .project-settings__error {
   border-left: 2px solid var(--accent-dark);
   color: var(--accent-dark);
