@@ -244,15 +244,9 @@ export class GitExecutionWorkspaceManager implements ExecutionWorkspaceManager {
       },
     );
     const lines = new Set(existing.split('\n'));
-    const additions = entries
-      .map((entry) => entry.replace(/\/+$/u, ''))
-      .filter((entry) => !lines.has(entry));
+    const additions = entries.filter((entry) => !lines.has(entry));
     if (additions.length > 0)
-      await appendFile(
-        excludePath,
-        `\n${additions.map((entry) => entry).join('\n')}\n`,
-        'utf8',
-      );
+      await appendFile(excludePath, `\n${additions.join('\n')}\n`, 'utf8');
   }
 
   async workspaceKeys(): Promise<string[]> {
@@ -460,12 +454,8 @@ function parseWorktreeList(value: string): Array<{
 }
 
 async function ensureMissing(path: string): Promise<void> {
-  try {
-    await stat(path);
+  if (await pathExists(path))
     throw new Error('工作区物理目录已存在但没有可信映射');
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-  }
 }
 
 async function pathExists(path: string): Promise<boolean> {
