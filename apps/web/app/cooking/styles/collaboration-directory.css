@@ -56,13 +56,6 @@
   padding: 6px;
 }
 
-.collaboration-member button:hover,
-.collaboration-invitation-list button:hover {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-
 .bug-dialog .collaboration-member form,
 .bug-dialog .collaboration-invitation-list form {
   display: block;
@@ -119,12 +112,6 @@
   color: var(--ink);
   min-height: 36px;
   padding: 0 12px;
-}
-
-.project-inbox-list form button:hover {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
 }
 
 .bug-dialog .collaboration-invite-form {

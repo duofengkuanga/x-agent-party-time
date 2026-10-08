@@ -60,13 +60,6 @@
   white-space: nowrap;
 }
 
-.engineering-catalog-dialog .engineering-card__actions > a:hover,
-.engineering-catalog-dialog .engineering-card__actions > a:focus-visible {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-
 .engineering-task {
   flex: 1 1 auto;
   min-height: 0;
@@ -186,16 +179,6 @@
   min-height: 36px;
   padding: 0 12px;
   white-space: nowrap;
-}
-
-.bug-dialog .engineering-member-list button:hover,
-.bug-dialog .engineering-member-add button:hover,
-.bug-dialog .engineering-information-form button:hover,
-.bug-dialog .engineering-task__form-actions button:hover,
-.bug-dialog .engineering-task__archive button:hover {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
 }
 
 .bug-dialog .engineering-member-add form {
@@ -387,12 +370,6 @@
   height: 36px;
   min-height: 36px;
   padding: 0 12px;
-}
-
-.engineering-environments__submit > button:hover {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
 }
 
 .engineering-environment-create > summary {

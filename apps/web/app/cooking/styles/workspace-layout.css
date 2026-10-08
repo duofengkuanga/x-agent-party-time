@@ -105,12 +105,6 @@
   padding: 0 11px;
 }
 
-.collab-board-heading button:hover:not(:disabled) {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-
 .collab-board {
   flex: 1 1 auto;
   grid-auto-rows: minmax(0, 1fr);

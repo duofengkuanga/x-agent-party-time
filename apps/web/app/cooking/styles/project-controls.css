@@ -158,14 +158,6 @@
   text-decoration: none;
 }
 
-.dialog-actions > a:hover,
-.dialog-actions > button:hover,
-.dialog-actions > form button:hover {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-
 @media (max-width: 900px) {
   .project-settings__create {
     grid-template-columns: minmax(0, 1fr) auto;

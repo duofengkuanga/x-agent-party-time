@@ -270,14 +270,6 @@
   grid-row: 1 / span 3;
 }
 
-.agent-revoke button:hover:not(:disabled),
-.agent-connect button:hover:not(:disabled),
-.agent-empty button:hover:not(:disabled) {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-
 .agent-settings a:focus-visible,
 .agent-settings button:focus-visible,
 .agent-settings summary:focus-visible,
@@ -463,13 +455,6 @@
 
 .agent-connect__result strong {
   font-size: 13px;
-}
-
-.agent-connect__result a:hover,
-.agent-connect__back:hover {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
 }
 
 .agent-connect__back {

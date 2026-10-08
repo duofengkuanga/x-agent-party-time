@@ -1,0 +1,31 @@
+/* Shared accent hover and focus treatment. */
+.engineering-catalog-dialog .engineering-card__actions > a:hover,
+.engineering-catalog-dialog .engineering-card__actions > a:focus-visible,
+.bug-dialog .engineering-member-list button:hover,
+.bug-dialog .engineering-member-add button:hover,
+.bug-dialog .engineering-information-form button:hover,
+.bug-dialog .engineering-task__form-actions button:hover,
+.bug-dialog .engineering-task__archive button:hover,
+.engineering-environments__submit > button:hover,
+.collab-board-heading button:hover:not(:disabled),
+.project-inbox-dialog > header > a:hover,
+.bug-dialog .engineering-dialog__close:hover,
+.engineering-catalog__intro .repair-primary:hover,
+.engineering-environments .collaboration-section-title button:hover,
+.engineering-remove-environment:hover,
+.collaboration-member button:hover,
+.collaboration-invitation-list button:hover,
+.project-inbox-list form button:hover,
+.project-settings .project-settings__primary-action[aria-expanded='true']:hover,
+.dialog-actions > a:hover,
+.dialog-actions > button:hover,
+.dialog-actions > form button:hover,
+.agent-revoke button:hover:not(:disabled),
+.agent-connect button:hover:not(:disabled),
+.agent-empty button:hover:not(:disabled),
+.agent-connect__result a:hover,
+.agent-connect__back:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}

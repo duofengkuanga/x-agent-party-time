@@ -88,13 +88,6 @@
   color: var(--paper);
 }
 
-.project-settings
-  .project-settings__primary-action[aria-expanded='true']:hover {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-
 .project-settings .project-settings__create > button,
 .project-settings .project-settings__empty button {
   background: var(--ink);
