@@ -24,11 +24,18 @@ const commitAssertions = [
   { kind: 'GIT_COMMITS_CREATED' as const, resultPath: ['result', 'commits'] },
 ];
 
+async function cycleToIdle(
+  fixture: Awaited<ReturnType<typeof createFixture>>,
+): Promise<boolean> {
+  const claimed = await fixture.service.cycle(session);
+  await fixture.service.waitForIdle();
+  return claimed;
+}
+
 test('单槽完成领取、Codex Session、START 与结构化 Outcome happy path', async () => {
   const fixture = await createFixture();
 
-  expect(await fixture.service.cycle(session)).toBe(true);
-  await fixture.service.waitForIdle();
+  expect(await cycleToIdle(fixture)).toBe(true);
 
   expect(fixture.http.claimSlots).toEqual([3]);
   expect(fixture.http.starts).toEqual([
@@ -60,8 +67,7 @@ test('单槽完成领取、Codex Session、START 与结构化 Outcome happy path
 test('已有 Task 通过 codexTurn 继续原 Thread', async () => {
   const fixture = await createFixture({ taskId: 'thread-existing' });
 
-  await fixture.service.cycle(session);
-  await fixture.service.waitForIdle();
+  await cycleToIdle(fixture);
 
   expect(fixture.executor.inputs[0]?.taskId).toBe('thread-existing');
   expect(fixture.executor.inputs[0]?.skill).toBeNull();
@@ -72,8 +78,7 @@ test('首次执行保存结果校验基线供后续同步复用', async () => {
     capturedBaseline: { gitHead: 'baseline-commit' },
   });
 
-  await fixture.service.cycle(session);
-  await fixture.service.waitForIdle();
+  await cycleToIdle(fixture);
 
   expect(await fixture.state.loadExecutionResultBaseline(executionId)).toEqual({
     gitHead: 'baseline-commit',
@@ -92,8 +97,7 @@ test('同步会话使用原执行基线和断言校验结果', async () => {
     gitHead: 'baseline-commit',
   });
 
-  await fixture.service.cycle(session);
-  await fixture.service.waitForIdle();
+  await cycleToIdle(fixture);
 
   expect(fixture.verifiedBaselines).toEqual([{ gitHead: 'baseline-commit' }]);
   expect(fixture.http.starts[0]).toMatchObject({
@@ -116,8 +120,7 @@ test('同步会话拒绝不符合原任务结果约束的结果', async () => {
     },
   });
 
-  await fixture.service.cycle(session);
-  await fixture.service.waitForIdle();
+  await cycleToIdle(fixture);
 
   expect(fixture.http.starts[0]).toMatchObject({
     kind: 'START_FAILED',
@@ -141,8 +144,7 @@ test('同步会话保留原结果证据校验失败原因', async () => {
     ),
   });
 
-  await fixture.service.cycle(session);
-  await fixture.service.waitForIdle();
+  await cycleToIdle(fixture);
 
   expect(fixture.http.starts[0]).toMatchObject({
     kind: 'START_FAILED',
@@ -182,8 +184,7 @@ test('同步会话接受不声明提交的有效业务失败结果', async () =>
     },
   });
 
-  await fixture.service.cycle(session);
-  await fixture.service.waitForIdle();
+  await cycleToIdle(fixture);
 
   expect(fixture.http.starts[0]).toMatchObject({ kind: 'STARTED' });
   expect(fixture.http.outcomes[0]).toMatchObject({
@@ -202,8 +203,7 @@ test('同步会话不泄露原工作区解析错误', async () => {
     ),
   });
 
-  await fixture.service.cycle(session);
-  await fixture.service.waitForIdle();
+  await cycleToIdle(fixture);
 
   expect(fixture.http.starts[0]).toMatchObject({
     kind: 'START_FAILED',
@@ -221,8 +221,7 @@ test('只读会话无法确认时投递可操作的同步失败', async () => {
     ),
   });
 
-  await fixture.service.cycle(session);
-  await fixture.service.waitForIdle();
+  await cycleToIdle(fixture);
 
   expect(fixture.http.starts).toEqual([
     {
@@ -243,8 +242,7 @@ test('按 Execution 携带的审批约束启动 Codex', async () => {
   for (const approvalPolicy of ['never', 'on-request'] as const) {
     const fixture = await createFixture({ approvalPolicy });
 
-    await fixture.service.cycle(session);
-    await fixture.service.waitForIdle();
+    await cycleToIdle(fixture);
 
     expect(fixture.executor.inputs[0]?.approvalPolicy).toBe(approvalPolicy);
   }
@@ -258,8 +256,7 @@ test('Codex 结构化结果失败只收敛当前 Execution，不退出服务', a
     ),
   });
 
-  await fixture.service.cycle(session);
-  await fixture.service.waitForIdle();
+  await cycleToIdle(fixture);
 
   expect(fixture.http.outcomes[0]).toMatchObject({
     outcome: {
@@ -283,8 +280,7 @@ test('本机 Commit 结果断言失败时不提交 Codex 成功结果', async ()
     ),
   });
 
-  await fixture.service.cycle(session);
-  await fixture.service.waitForIdle();
+  await cycleToIdle(fixture);
 
   expect(fixture.http.outcomes[0]).toMatchObject({
     outcome: {
@@ -300,8 +296,7 @@ test('本机 Commit 结果断言失败时不提交 Codex 成功结果', async ()
 
 test('Outcome 网络失败进入 Outbox，重启后先重放再尝试领取', async () => {
   const fixture = await createFixture({ failOutcome: true });
-  await fixture.service.cycle(session);
-  await fixture.service.waitForIdle();
+  await cycleToIdle(fixture);
   expect(await fixture.state.loadOutbox()).toHaveLength(1);
   expect(await fixture.state.loadExecutions()).toHaveLength(1);
 
@@ -365,8 +360,7 @@ test('Codex Interaction 经 Server 解决后继续原 Session', async () => {
     answers: { question: { answers: ['ok'] } },
   };
 
-  await fixture.service.cycle(session);
-  await fixture.service.waitForIdle();
+  await cycleToIdle(fixture);
 
   expect(fixture.http.openedInteractions).toHaveLength(1);
   expect(fixture.http.outcomes[0]).toMatchObject({
@@ -394,8 +388,7 @@ test('恢复后的已解决 Interaction 直接回填给恢复的 Codex Session',
     },
   };
 
-  await fixture.service.cycle(session);
-  await fixture.service.waitForIdle();
+  await cycleToIdle(fixture);
 
   expect(fixture.executor.inputs[0]?.taskId).toBe('thread-recovered');
   expect(fixture.http.openedInteractions).toEqual([]);
