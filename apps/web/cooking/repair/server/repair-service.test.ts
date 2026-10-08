@@ -200,11 +200,9 @@ describe('RepairService', () => {
     const fixture = await setup();
     const started = await startLatest(fixture, 'legacy-result-session');
 
-    fixture.database
-      .prepare(
-        'UPDATE cooking_repair_attempt SET outcome_json = ? WHERE execution_id = ?',
-      )
-      .run(
+    fixture.database.run(
+      'UPDATE cooking_repair_attempt SET outcome_json = ? WHERE execution_id = ?',
+      [
         JSON.stringify({
           outcome: 'COMPLETED',
           completionKind: 'TARGET_ALREADY_FIXED',
@@ -215,7 +213,8 @@ describe('RepairService', () => {
           manualOperations: [],
         }),
         started.executionId,
-      );
+      ],
+    );
 
     expect(
       fixture.repairs

@@ -376,13 +376,12 @@ describe('Execution lifecycle', () => {
     const available = executions.enqueue(
       input(runnerId, binding, 'available-candidate'),
     );
-    database
-      .prepare(
-        `UPDATE platform_execution
+    database.run(
+      `UPDATE platform_execution
          SET cancellation_requested = 1
          WHERE id = ?`,
-      )
-      .run(cancelled.id);
+      [cancelled.id],
+    );
 
     const claimed = await executions.claim(runnerId, 2, 0);
     expect(claimed.map(({ id }) => id)).toEqual([available.id]);

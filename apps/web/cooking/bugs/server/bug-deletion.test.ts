@@ -79,19 +79,17 @@ describe('BugService', () => {
     const bug = createAssignedBug(fixture, '链式修复缺陷', fixture.items.front);
     const repairs = new RepairService(fixture.database);
     const first = repairs.createInitialExecution(bug.id);
-    fixture.database
-      .prepare(
-        `UPDATE platform_execution
+    fixture.database.run(
+      `UPDATE platform_execution
          SET state = 'FAILED', finished_at = ? WHERE id = ?`,
-      )
-      .run('2026-07-27T03:30:00.000Z', first);
+      ['2026-07-27T03:30:00.000Z', first],
+    );
     const second = repairs.createInitialExecution(bug.id);
-    fixture.database
-      .prepare(
-        `UPDATE platform_execution
+    fixture.database.run(
+      `UPDATE platform_execution
          SET state = 'SUCCEEDED', finished_at = ? WHERE id = ?`,
-      )
-      .run('2026-07-27T04:00:00.000Z', second);
+      ['2026-07-27T04:00:00.000Z', second],
+    );
     const previous = fixture.database.get<{
       previous_execution_id: string | null;
     }>(
@@ -126,23 +124,20 @@ describe('BugService', () => {
     const bug = createAssignedBug(fixture, '批次内缺陷', fixture.items.front);
     const repairs = new RepairService(fixture.database);
     const executionId = repairs.createInitialExecution(bug.id);
-    fixture.database
-      .prepare(
-        `UPDATE platform_execution
+    fixture.database.run(
+      `UPDATE platform_execution
          SET state = 'SUCCEEDED', finished_at = ? WHERE id = ?`,
-      )
-      .run('2026-07-27T04:00:00.000Z', executionId);
+      ['2026-07-27T04:00:00.000Z', executionId],
+    );
     const now = '2026-07-27T04:00:00.000Z';
     const batchId = randomUUID();
-    fixture.database
-      .prepare(
-        `INSERT INTO cooking_update_batch(
+    fixture.database.run(
+      `INSERT INTO cooking_update_batch(
            id, submission_id, submission_item_id, state, version,
            active_execution_id, session_id, deployment_json, frozen_at,
            created_at, updated_at
          ) VALUES (?, ?, ?, 'RUNNING', 1, ?, NULL, '{}', ?, ?, ?)`,
-      )
-      .run(
+      [
         batchId,
         fixture.submission.id,
         fixture.items.front,
@@ -150,21 +145,20 @@ describe('BugService', () => {
         now,
         now,
         now,
-      );
-    fixture.database
-      .prepare(
-        `INSERT INTO cooking_update_batch_entry(
+      ],
+    );
+    fixture.database.run(
+      `INSERT INTO cooking_update_batch_entry(
            batch_id, bug_id, position, commits_json, manual_operations_json
          ) VALUES (?, ?, 0, '[]', '[]')`,
-      )
-      .run(batchId, bug.id);
-    fixture.database
-      .prepare(
-        `INSERT INTO cooking_update_attempt(
+      [batchId, bug.id],
+    );
+    fixture.database.run(
+      `INSERT INTO cooking_update_attempt(
            id, batch_id, execution_id, attempt, outcome_json, created_at, finished_at
          ) VALUES (?, ?, ?, 1, NULL, ?, NULL)`,
-      )
-      .run(randomUUID(), batchId, executionId, now);
+      [randomUUID(), batchId, executionId, now],
+    );
 
     const sync = addSessionSync(fixture.database, executionId, 'FAILED');
     fixture.database.run(

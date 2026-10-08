@@ -137,13 +137,12 @@ describe('SubmissionService create', () => {
       ).toBe(0);
     }
 
-    fixture.database
-      .prepare(
-        `UPDATE cooking_engineering_binding
+    fixture.database.run(
+      `UPDATE cooking_engineering_binding
          SET runner_id = ?
          WHERE id = ?`,
-      )
-      .run(fixture.runners.runnerB.runner.id, fixture.bindings.frontA.id);
+      [fixture.runners.runnerB.runner.id, fixture.bindings.frontA.id],
+    );
     expect(() =>
       createSubmission(fixture, [
         {
@@ -159,13 +158,12 @@ describe('SubmissionService create', () => {
       ]),
     ).toThrow(PlatformErrorLike);
     expect(countRows(fixture.database, 'cooking_test_submission')).toBe(0);
-    fixture.database
-      .prepare(
-        `UPDATE cooking_engineering_binding
+    fixture.database.run(
+      `UPDATE cooking_engineering_binding
          SET runner_id = ?
          WHERE id = ?`,
-      )
-      .run(fixture.runners.runnerA.runner.id, fixture.bindings.frontA.id);
+      [fixture.runners.runnerA.runner.id, fixture.bindings.frontA.id],
+    );
 
     const active = createSubmission(fixture, [
       item(fixture, 'front', 'developerA', 'frontA', 'feature/active'),

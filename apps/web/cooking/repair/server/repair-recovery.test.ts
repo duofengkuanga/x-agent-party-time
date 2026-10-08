@@ -322,12 +322,11 @@ describe('RepairService', () => {
   test('旧 Task 无法恢复时仍保持原 Task 与 Skill Binding，不自动重建', async () => {
     const fixture = await setup();
     const started = await startLatest(fixture, 'legacy-custom-session');
-    fixture.database
-      .prepare(
-        `UPDATE cooking_bug_repair_context
+    fixture.database.run(
+      `UPDATE cooking_bug_repair_context
          SET pending_commits_json = ? WHERE bug_id = ?`,
-      )
-      .run(JSON.stringify(['aaaaaaa']), fixture.requested.bug.id);
+      [JSON.stringify(['aaaaaaa']), fixture.requested.bug.id],
+    );
     completeClaimedExecution(fixture, started, {
       kind: 'FAILED',
       failure: {

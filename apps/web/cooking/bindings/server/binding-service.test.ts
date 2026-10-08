@@ -321,25 +321,23 @@ describe('删除未使用工程绑定', () => {
     const submissionId = randomUUID();
     const itemId = randomUUID();
     const createdAt = '2026-07-26T11:00:00.000Z';
-    database
-      .prepare(
-        `INSERT INTO cooking_test_submission(
+    database.run(
+      `INSERT INTO cooking_test_submission(
            id, project_id, title, requirement_description, tester_user_id,
            status, version, workspace_revision, created_by_user_id,
            created_at, updated_at, closed_at
          ) VALUES (?, ?, '删除保护', '验证绑定历史', ?, 'ACTIVE', 1, 1, ?, ?, ?, NULL)`,
-      )
-      .run(
+      [
         submissionId,
         project.id,
         users.owner.id,
         users.owner.id,
         createdAt,
         createdAt,
-      );
-    database
-      .prepare(
-        `INSERT INTO cooking_submission_item(
+      ],
+    );
+    database.run(
+      `INSERT INTO cooking_submission_item(
            id, submission_id, position, engineering_id, engineering_name,
            engineering_type, engineering_identifier, repository_url,
            responsible_user_id, responsible_username,
@@ -349,8 +347,7 @@ describe('删除未使用工程绑定', () => {
          ) VALUES (?, ?, 0, ?, 'Binding 工程', 'FRONTEND', 'binding-web',
                    'https://example.com/team/project.git', ?, ?, ?, ?, ?,
                    'main', ?, '测试环境', '{"kind":"CI_CD"}', ?)`,
-      )
-      .run(
+      [
         itemId,
         submissionId,
         engineering.id,
@@ -361,7 +358,8 @@ describe('删除未使用工程绑定', () => {
         binding.id,
         randomUUID(),
         createdAt,
-      );
+      ],
+    );
     expect(() =>
       service.deleteBinding(users.member.id, binding.id, randomUUID()),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
@@ -382,9 +380,8 @@ describe('删除未使用工程绑定', () => {
       randomUUID(),
     );
     const executionId = randomUUID();
-    database
-      .prepare(
-        `INSERT INTO platform_execution(
+    database.run(
+      `INSERT INTO platform_execution(
            id, owner_namespace, owner_kind, owner_id, attempt,
            runner_id, binding_id, priority, approval_policy, state,
            outcome_json, reported_outcome_json, cancellation_requested,
@@ -393,14 +390,14 @@ describe('删除未使用工程绑定', () => {
            ?, 'COOKING', 'REPAIR', 'historical-owner', 1, ?, ?, 0,
            'on-request', 'SUCCEEDED', '{}', '{}', 0, ?, ?
          )`,
-      )
-      .run(
+      [
         executionId,
         runners.member.runner.id,
         binding.id,
         '2026-07-26T11:00:00.000Z',
         '2026-07-26T11:01:00.000Z',
-      );
+      ],
+    );
     expect(() =>
       service.deleteBinding(users.member.id, binding.id, randomUUID()),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));

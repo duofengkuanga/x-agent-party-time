@@ -89,15 +89,14 @@ test('TestSubmissionWriteStore 只在首次成功提交后发布 Revision', asyn
   }).project;
   const submissionId = randomUUID();
   const createdAt = '2026-08-11T00:00:00.000Z';
-  database
-    .prepare(
-      `INSERT INTO cooking_test_submission(
+  database.run(
+    `INSERT INTO cooking_test_submission(
          id, project_id, title, requirement_description, tester_user_id,
          status, version, workspace_revision, created_by_user_id,
          created_at, updated_at, closed_at
        ) VALUES (?, ?, '提测写入', '验证写入时序', ?, 'ACTIVE', 1, 1, ?, ?, ?, NULL)`,
-    )
-    .run(submissionId, project.id, user.id, user.id, createdAt, createdAt);
+    [submissionId, project.id, user.id, user.id, createdAt, createdAt],
+  );
   const invalidations: Array<{ submissionId: string; revision: number }> = [];
   const store = new TestSubmissionWriteStore(
     database,

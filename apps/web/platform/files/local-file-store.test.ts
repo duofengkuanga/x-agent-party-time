@@ -73,14 +73,12 @@ describe('LocalFileStore', () => {
 
   test('恶意存储键不能穿越文件根目录', async () => {
     const { database, store, user } = await setup();
-    database
-      .prepare(
-        `INSERT INTO platform_file(
+    database.run(
+      `INSERT INTO platform_file(
          id, storage_key, original_name, media_type, size_bytes,
            sha256, uploaded_by_user_id, created_at
          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
+      [
         '00000000-0000-4000-8000-000000000001',
         '../../outside',
         'outside.txt',
@@ -89,7 +87,8 @@ describe('LocalFileStore', () => {
         '0'.repeat(64),
         user.id,
         new Date().toISOString(),
-      );
+      ],
+    );
 
     await expect(
       store.read('00000000-0000-4000-8000-000000000001'),
