@@ -2,6 +2,7 @@ import { BugIdSchema } from '@/cooking/bugs/contract';
 import {
   CookingInteractionViewSchema,
   CookingMutationIdSchema,
+  CookingValidationSchema,
   CookingVisualPresentationSchema,
 } from '@/cooking/shared/contract';
 import { outputJsonSchema } from '@/cooking/shared/output-schema';
@@ -14,11 +15,7 @@ export const CommitShaSchema = z
   .toLowerCase()
   .regex(/^[a-f0-9]{7,64}$/u);
 
-export const RepairValidationSchema = z.object({
-  name: z.string().trim().min(1).max(240),
-  status: z.enum(['PASSED', 'FAILED', 'SKIPPED']),
-  detail: z.string().trim().max(300),
-});
+export const RepairValidationSchema = CookingValidationSchema;
 
 const RepositoryRelativePathSchema = z
   .string()

@@ -1,8 +1,10 @@
 import { BugIdSchema } from '@/cooking/bugs/contract';
 import { CommitShaSchema } from '@/cooking/repair/contract';
 import {
+  CookingAttachmentViewSchema,
   CookingInteractionViewSchema,
   CookingMutationIdSchema,
+  CookingValidationSchema,
   CookingVisualPresentationSchema,
 } from '@/cooking/shared/contract';
 import { outputJsonSchema } from '@/cooking/shared/output-schema';
@@ -24,11 +26,7 @@ export const UpdateBatchStateSchema = z.enum([
   'COMPLETED',
 ]);
 
-export const UpdateValidationSchema = z.object({
-  name: z.string().trim().min(1).max(240),
-  status: z.enum(['PASSED', 'FAILED', 'SKIPPED']),
-  detail: z.string().trim().max(300),
-});
+export const UpdateValidationSchema = CookingValidationSchema;
 
 const CompletedUpdateExecutionResultSchema = z
   .object({
@@ -118,19 +116,7 @@ const UpdateAttemptResultViewSchema = z.discriminatedUnion('outcome', [
   }),
 ]);
 
-export const UpdateAttachmentViewSchema = z.object({
-  id: z.uuid(),
-  originalName: z.string().trim().min(1).max(255),
-  mediaType: z.enum([
-    'image/png',
-    'image/jpeg',
-    'image/webp',
-    'text/plain',
-    'application/json',
-  ]),
-  sizeBytes: z.number().int().positive(),
-  createdAt: z.iso.datetime(),
-});
+export const UpdateAttachmentViewSchema = CookingAttachmentViewSchema;
 
 export const UpdateBatchTimelineNodeSchema = z.discriminatedUnion('kind', [
   z.object({

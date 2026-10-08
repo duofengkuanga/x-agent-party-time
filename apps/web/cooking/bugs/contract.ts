@@ -8,7 +8,10 @@ import {
   EngineeringIdentifierSchema,
   EngineeringTypeSchema,
 } from '@/cooking/engineering/contract';
-import { CookingMutationIdSchema } from '@/cooking/shared/contract';
+import {
+  CookingAttachmentViewSchema,
+  CookingMutationIdSchema,
+} from '@/cooking/shared/contract';
 
 export const BugIdSchema = z.uuid();
 export const BugStageSchema = z.enum([
@@ -107,19 +110,7 @@ export const RequestRepairInputSchema = z.object({
   expectedVersion: z.number().int().positive(),
 });
 
-export const BugAttachmentViewSchema = z.object({
-  id: z.uuid(),
-  originalName: z.string().trim().min(1).max(255),
-  mediaType: z.enum([
-    'image/png',
-    'image/jpeg',
-    'image/webp',
-    'text/plain',
-    'application/json',
-  ]),
-  sizeBytes: z.number().int().positive(),
-  createdAt: z.iso.datetime(),
-});
+export const BugAttachmentViewSchema = CookingAttachmentViewSchema;
 
 export const BugActionSchema = z.enum([
   'EDIT_REPORT',
