@@ -456,26 +456,7 @@ describe('RepairService', () => {
 
   test('同步状态把手动 Session 的有效结果追加为新 Repair 尝试', async () => {
     const fixture = await setup();
-    const started = await startLatest(fixture, 'manual-repair-session');
-    completeClaimedExecution(fixture, started, {
-      kind: 'FAILED',
-      failure: {
-        code: 'CODEX_EXECUTION_FAILED',
-        message: '首次失败',
-        retryable: true,
-      },
-    });
-    const synced = fixture.repairs.synchronizeSession(
-      fixture.users.developer.id,
-      fixture.requested.bug.id,
-      {
-        mutationId: randomUUID(),
-        expectedVersion: currentBug(fixture.database, fixture.requested.bug.id)
-          .version,
-      },
-    );
-    const [claimed] = await fixture.executions.claim(fixture.runner.id, 1, 0);
-    if (!claimed) throw new Error('缺少同步 Execution');
+    const { started, synced, claimed } = await requestSyncAfterFailure(fixture);
     expect(claimed).toMatchObject({
       previousExecutionId: started.executionId,
       codexTurn: {
@@ -529,26 +510,7 @@ describe('RepairService', () => {
 
   test('同步无法确认最新 Turn 时只向负责人显示可操作错误', async () => {
     const fixture = await setup();
-    const started = await startLatest(fixture, 'manual-repair-session');
-    completeClaimedExecution(fixture, started, {
-      kind: 'FAILED',
-      failure: {
-        code: 'CODEX_EXECUTION_FAILED',
-        message: '首次失败',
-        retryable: true,
-      },
-    });
-    const synced = fixture.repairs.synchronizeSession(
-      fixture.users.developer.id,
-      fixture.requested.bug.id,
-      {
-        mutationId: randomUUID(),
-        expectedVersion: currentBug(fixture.database, fixture.requested.bug.id)
-          .version,
-      },
-    );
-    const [claimed] = await fixture.executions.claim(fixture.runner.id, 1, 0);
-    if (!claimed) throw new Error('缺少同步 Execution');
+    const { synced, claimed } = await requestSyncAfterFailure(fixture);
     fixture.executions.start(fixture.runner.id, claimed.id, {
       kind: 'START_FAILED',
       leaseToken: claimed.lease.token,
@@ -1089,6 +1051,32 @@ function repairProtocolFetch(
     ),
     prepare: () => {},
   });
+}
+
+async function requestSyncAfterFailure(
+  fixture: Awaited<ReturnType<typeof setup>>,
+) {
+  const started = await startLatest(fixture, 'manual-repair-session');
+  completeClaimedExecution(fixture, started, {
+    kind: 'FAILED',
+    failure: {
+      code: 'CODEX_EXECUTION_FAILED',
+      message: '首次失败',
+      retryable: true,
+    },
+  });
+  const synced = fixture.repairs.synchronizeSession(
+    fixture.users.developer.id,
+    fixture.requested.bug.id,
+    {
+      mutationId: randomUUID(),
+      expectedVersion: currentBug(fixture.database, fixture.requested.bug.id)
+        .version,
+    },
+  );
+  const [claimed] = await fixture.executions.claim(fixture.runner.id, 1, 0);
+  if (!claimed) throw new Error('缺少同步 Execution');
+  return { started, synced, claimed };
 }
 
 async function startLatest(
