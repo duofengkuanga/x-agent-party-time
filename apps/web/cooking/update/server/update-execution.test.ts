@@ -416,30 +416,7 @@ describe('UpdateService', () => {
       ['aaaaaaa'],
       'failed-update-session',
     );
-    completeSuccessfulExecution(fixture, running, {
-      result: {
-        outcome: 'FAILED',
-        failedStep: '质量门：pnpm run tsc',
-        reason: '仓库不存在 tsconfig.json',
-        completedActions: ['完成候选提交集成'],
-        validations: [
-          {
-            name: 'TypeScript 静态检查',
-            status: 'FAILED',
-            detail: 'pnpm run tsc 退出码为 1',
-          },
-        ],
-        warnings: ['该失败不直接证明候选修改存在类型错误'],
-        pendingActions: ['修复质量门后重新执行'],
-      },
-    });
-
-    const batch = latestBatch(fixture.database, fixture.item.id);
-    const attempt = fixture.updates
-      .batchView(fixture.users.developer.id, batch.id)
-      .timeline.find((node) => node.kind === 'UPDATE_ATTEMPT');
-    expect(batch.state).toBe('FAILED');
-    expect(attempt?.kind === 'UPDATE_ATTEMPT' ? attempt.result : null).toEqual({
+    const failedResult = {
       outcome: 'FAILED',
       failedStep: '质量门：pnpm run tsc',
       reason: '仓库不存在 tsconfig.json',
@@ -453,6 +430,18 @@ describe('UpdateService', () => {
       ],
       warnings: ['该失败不直接证明候选修改存在类型错误'],
       pendingActions: ['修复质量门后重新执行'],
+    };
+    completeSuccessfulExecution(fixture, running, {
+      result: structuredClone(failedResult),
+    });
+
+    const batch = latestBatch(fixture.database, fixture.item.id);
+    const attempt = fixture.updates
+      .batchView(fixture.users.developer.id, batch.id)
+      .timeline.find((node) => node.kind === 'UPDATE_ATTEMPT');
+    expect(batch.state).toBe('FAILED');
+    expect(attempt?.kind === 'UPDATE_ATTEMPT' ? attempt.result : null).toEqual({
+      ...failedResult,
       failureCode: null,
     });
   });
