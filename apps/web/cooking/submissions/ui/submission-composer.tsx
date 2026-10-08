@@ -527,11 +527,7 @@ function createItemDraft(
       engineeringIsReady(candidate, testerUserId),
   );
   if (!engineering) return null;
-  const responsible = engineering.members.find(
-    (member) =>
-      member.id !== testerUserId &&
-      engineering.bindings.some((binding) => binding.userId === member.id),
-  )!;
+  const responsible = boundResponsibleMembers(engineering, testerUserId)[0]!;
   return {
     key: createClientId(),
     engineeringId: engineering.id,
@@ -553,18 +549,10 @@ function normalizeItemDraft(
   const engineering = project.engineerings.find(
     (candidate) => candidate.id === engineeringId,
   )!;
+  const members = boundResponsibleMembers(engineering, testerUserId);
   const responsible =
-    engineering.members.find(
-      (member) =>
-        member.id === current.responsibleUserId &&
-        member.id !== testerUserId &&
-        engineering.bindings.some((binding) => binding.userId === member.id),
-    ) ??
-    engineering.members.find(
-      (member) =>
-        member.id !== testerUserId &&
-        engineering.bindings.some((binding) => binding.userId === member.id),
-    );
+    members.find((member) => member.id === current.responsibleUserId) ??
+    members[0];
   return {
     ...current,
     engineeringId,
@@ -586,11 +574,17 @@ function engineeringIsReady(
 ): boolean {
   return (
     engineering.environments.length > 0 &&
-    engineering.members.some(
-      (member) =>
-        member.id !== testerUserId &&
-        engineering.bindings.some((binding) => binding.userId === member.id),
-    )
+    boundResponsibleMembers(engineering, testerUserId).length > 0
+  );
+}
+
+function boundResponsibleMembers(
+  engineering: CatalogEngineering,
+  testerUserId: string,
+) {
+  const bound = new Set(engineering.bindings.map(({ userId }) => userId));
+  return engineering.members.filter(
+    ({ id }) => id !== testerUserId && bound.has(id),
   );
 }
 
