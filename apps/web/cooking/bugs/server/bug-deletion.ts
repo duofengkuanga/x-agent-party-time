@@ -117,59 +117,25 @@ export class BugDeletion {
 
   private deleteBugRows(bugIds: string[], executionIds: string[]): void {
     if (executionIds.length > 0) {
-      this.db.run(
-        `DELETE FROM cooking_update_session_sync
-         WHERE execution_id IN (${placeholders(executionIds.length)})`,
-        executionIds,
-      );
-      this.db.run(
-        `UPDATE cooking_update_batch SET active_execution_id = NULL
-           WHERE active_execution_id IN (${placeholders(executionIds.length)})`,
-        executionIds,
-      );
-      this.db.run(
-        `UPDATE cooking_cleanup SET active_execution_id = NULL
-           WHERE active_execution_id IN (${placeholders(executionIds.length)})`,
-        executionIds,
-      );
-      this.db.run(
-        `DELETE FROM cooking_update_attempt
-           WHERE execution_id IN (${placeholders(executionIds.length)})`,
-        executionIds,
-      );
-      this.db.run(
-        `DELETE FROM cooking_cleanup_attempt
-           WHERE execution_id IN (${placeholders(executionIds.length)})`,
-        executionIds,
-      );
+      const ids = placeholders(executionIds.length);
+      for (const sql of [
+        `DELETE FROM cooking_update_session_sync WHERE execution_id IN (${ids})`,
+        `UPDATE cooking_update_batch SET active_execution_id = NULL WHERE active_execution_id IN (${ids})`,
+        `UPDATE cooking_cleanup SET active_execution_id = NULL WHERE active_execution_id IN (${ids})`,
+        `DELETE FROM cooking_update_attempt WHERE execution_id IN (${ids})`,
+        `DELETE FROM cooking_cleanup_attempt WHERE execution_id IN (${ids})`,
+      ])
+        this.db.run(sql, executionIds);
     }
-    this.db.run(
-      `DELETE FROM cooking_update_batch_entry
-         WHERE bug_id IN (${placeholders(bugIds.length)})`,
-      bugIds,
-    );
-    this.db.run(
-      `DELETE FROM cooking_mutation
-         WHERE resource_type = 'BUG'
-           AND resource_id IN (${placeholders(bugIds.length)})`,
-      bugIds,
-    );
-    this.db.run(
-      `DELETE FROM cooking_audit_event
-         WHERE target_type = 'BUG'
-           AND target_id IN (${placeholders(bugIds.length)})`,
-      bugIds,
-    );
-    this.db.run(
-      `DELETE FROM cooking_repair_attempt
-         WHERE bug_id IN (${placeholders(bugIds.length)})`,
-      bugIds,
-    );
-    this.db.run(
-      `DELETE FROM cooking_bug
-         WHERE id IN (${placeholders(bugIds.length)})`,
-      bugIds,
-    );
+    const ids = placeholders(bugIds.length);
+    for (const sql of [
+      `DELETE FROM cooking_update_batch_entry WHERE bug_id IN (${ids})`,
+      `DELETE FROM cooking_mutation WHERE resource_type = 'BUG' AND resource_id IN (${ids})`,
+      `DELETE FROM cooking_audit_event WHERE target_type = 'BUG' AND target_id IN (${ids})`,
+      `DELETE FROM cooking_repair_attempt WHERE bug_id IN (${ids})`,
+      `DELETE FROM cooking_bug WHERE id IN (${ids})`,
+    ])
+      this.db.run(sql, bugIds);
   }
 
   private deleteExecutions(executionIds: string[]): string[] {
