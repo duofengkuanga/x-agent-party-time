@@ -128,22 +128,13 @@ async function setup(
 describe('UpdateService', () => {
   test('冻结 Repair 候选中的数据库人工操作并向工作台暴露标识', async () => {
     const fixture = await setup();
-    fixture.createBug('需要数据库脚本的更新');
-    await completeNextRepair(
+    const { started } = await startCandidateUpdate(
       fixture,
+      '需要数据库脚本的更新',
       'repair-with-sql',
       ['aaaaaaa'],
-      [{ kind: 'DATABASE_SQL', paths: ['sql/add-payment-index.sql'] }],
-    );
-    const frozen = fixture.updates.freezeNow(
-      fixture.users.developer.id,
-      fixture.item.id,
-      { mutationId: randomUUID() },
-    );
-    const started = await startExecution(
-      fixture,
-      frozen.executionId,
       'update-with-sql',
+      [{ kind: 'DATABASE_SQL', paths: ['sql/add-payment-index.sql'] }],
     );
     completeSuccessfulExecution(
       fixture,
@@ -160,16 +151,11 @@ describe('UpdateService', () => {
 
   test('候选未声明人工数据库操作时不展示标识', async () => {
     const fixture = await setup();
-    fixture.createBug('未收集变更文件的更新');
-    await completeNextRepair(fixture, 'repair-without-changes', ['aaaaaaa']);
-    const frozen = fixture.updates.freezeNow(
-      fixture.users.developer.id,
-      fixture.item.id,
-      { mutationId: randomUUID() },
-    );
-    const started = await startExecution(
+    const { started } = await startCandidateUpdate(
       fixture,
-      frozen.executionId,
+      '未收集变更文件的更新',
+      'repair-without-changes',
+      ['aaaaaaa'],
       'update-without-changes',
     );
     completeSuccessfulExecution(
@@ -372,16 +358,8 @@ describe('UpdateService', () => {
     await completeNextRepair(fixture, 'repair-payment', ['aaaaaaa']);
     fixture.createBugFor(fixture.secondItem!.id, '订单工程候选');
     await completeNextRepair(fixture, 'repair-order', ['bbbbbbb']);
-    const first = fixture.updates.freezeNow(
-      fixture.users.developer.id,
-      fixture.item.id,
-      { mutationId: randomUUID() },
-    );
-    const second = fixture.updates.freezeNow(
-      fixture.users.developer.id,
-      fixture.secondItem!.id,
-      { mutationId: randomUUID() },
-    );
+    const first = freezeUpdate(fixture);
+    const second = freezeUpdate(fixture, fixture.secondItem!.id);
     const claimed = await fixture.executions.claim(fixture.runner.id, 2, 0);
     expect(claimed.map(({ id }) => id).sort()).toEqual(
       [first.executionId, second.executionId].sort(),
@@ -400,11 +378,7 @@ describe('UpdateService', () => {
         mutationId: randomUUID(),
       }),
     ).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
-    const frozen = fixture.updates.freezeNow(
-      fixture.users.developer.id,
-      fixture.item.id,
-      { mutationId: randomUUID() },
-    );
+    const frozen = freezeUpdate(fixture);
     const nextBug = fixture.createBug('后续普通修复');
     const claimed = (
       await fixture.executions.claim(fixture.runner.id, 1, 0)
@@ -419,16 +393,11 @@ describe('UpdateService', () => {
     const fixture = await setup();
     const first = fixture.createBug('支付按钮无响应');
     await completeNextRepair(fixture, 'repair-one', ['aaaaaaa']);
-    const second = fixture.createBug('支付金额错误');
-    await completeNextRepair(fixture, 'repair-two', ['bbbbbbb']);
-    const frozen = fixture.updates.freezeNow(
-      fixture.users.developer.id,
-      fixture.item.id,
-      { mutationId: randomUUID() },
-    );
-    const failed = await startExecution(
+    const { bug: second, started: failed } = await startCandidateUpdate(
       fixture,
-      frozen.executionId,
+      '支付金额错误',
+      'repair-two',
+      ['bbbbbbb'],
       'update-session',
     );
     completeSuccessfulExecution(
@@ -505,11 +474,7 @@ describe('UpdateService', () => {
     await completeNextRepair(fixture, 'repair-before-start-failure', [
       'aaaaaaa',
     ]);
-    const frozen = fixture.updates.freezeNow(
-      fixture.users.developer.id,
-      fixture.item.id,
-      { mutationId: randomUUID() },
-    );
+    const frozen = freezeUpdate(fixture);
     const claimed = (
       await fixture.executions.claim(fixture.runner.id, 1, 0)
     )[0]!;
@@ -540,16 +505,11 @@ describe('UpdateService', () => {
 
   test('CI/CD Push 后等待外部结果，失败报告携带附件在原 Batch 与 Session 继续', async () => {
     const fixture = await setup({ deploymentKind: 'CI_CD' });
-    const bug = fixture.createBug('流水线部署失败');
-    await completeNextRepair(fixture, 'repair-ci', ['c1c1c1c']);
-    const frozen = fixture.updates.freezeNow(
-      fixture.users.developer.id,
-      fixture.item.id,
-      { mutationId: randomUUID() },
-    );
-    const first = await startExecution(
+    const { bug, started: first } = await startCandidateUpdate(
       fixture,
-      frozen.executionId!,
+      '流水线部署失败',
+      'repair-ci',
+      ['c1c1c1c'],
       'update-ci-session',
     );
     completeSuccessfulExecution(
@@ -712,16 +672,11 @@ describe('UpdateService', () => {
 
   test('活动失败 Batch 隔离后续候选，完成后下一轮独立冻结', async () => {
     const fixture = await setup();
-    const first = fixture.createBug('首批候选');
-    await completeNextRepair(fixture, 'repair-one', ['aaaaaaa']);
-    const frozen = fixture.updates.freezeNow(
-      fixture.users.developer.id,
-      fixture.item.id,
-      { mutationId: randomUUID() },
-    );
-    const running = await startExecution(
+    const { bug: first, started: running } = await startCandidateUpdate(
       fixture,
-      frozen.executionId,
+      '首批候选',
+      'repair-one',
+      ['aaaaaaa'],
       'first-batch-session',
     );
     completeSuccessfulExecution(
@@ -767,16 +722,11 @@ describe('UpdateService', () => {
 
   test('Lease 恢复保持冻结 Batch 和 Session，不重复创建 Attempt', async () => {
     const fixture = await setup();
-    fixture.createBug('Lease 恢复候选');
-    await completeNextRepair(fixture, 'repair-one', ['aaaaaaa']);
-    const frozen = fixture.updates.freezeNow(
-      fixture.users.developer.id,
-      fixture.item.id,
-      { mutationId: randomUUID() },
-    );
-    const first = await startExecution(
+    const { started: first } = await startCandidateUpdate(
       fixture,
-      frozen.executionId,
+      'Lease 恢复候选',
+      'repair-one',
+      ['aaaaaaa'],
       'lease-update-session',
     );
     fixture.clock.set('2026-07-27T10:00:16.000Z');
@@ -806,16 +756,11 @@ describe('UpdateService', () => {
 
   test('非法 Update Result 可幂等重放且 Batch 保持失败', async () => {
     const fixture = await setup();
-    fixture.createBug('非法结果候选');
-    await completeNextRepair(fixture, 'repair-one', ['aaaaaaa']);
-    const frozen = fixture.updates.freezeNow(
-      fixture.users.developer.id,
-      fixture.item.id,
-      { mutationId: randomUUID() },
-    );
-    const running = await startExecution(
+    const { started: running } = await startCandidateUpdate(
       fixture,
-      frozen.executionId,
+      '非法结果候选',
+      'repair-one',
+      ['aaaaaaa'],
       'invalid-result-session',
     );
     const completion = {
@@ -845,16 +790,11 @@ describe('UpdateService', () => {
 
   test('失败 Update Result 保留验证结果与警告', async () => {
     const fixture = await setup();
-    fixture.createBug('质量门失败候选');
-    await completeNextRepair(fixture, 'repair-one', ['aaaaaaa']);
-    const frozen = fixture.updates.freezeNow(
-      fixture.users.developer.id,
-      fixture.item.id,
-      { mutationId: randomUUID() },
-    );
-    const running = await startExecution(
+    const { started: running } = await startCandidateUpdate(
       fixture,
-      frozen.executionId,
+      '质量门失败候选',
+      'repair-one',
+      ['aaaaaaa'],
       'failed-update-session',
     );
     completeSuccessfulExecution(fixture, running, {
@@ -911,16 +851,11 @@ describe('UpdateService', () => {
     const fixture = await setup({
       updateCreateId: () => ids[idIndex++] ?? randomUUID(),
     });
-    const bug = fixture.createBug('事务回滚候选');
-    await completeNextRepair(fixture, 'repair-one', ['aaaaaaa']);
-    const frozen = fixture.updates.freezeNow(
-      fixture.users.developer.id,
-      fixture.item.id,
-      { mutationId: randomUUID() },
-    );
-    const running = await startExecution(
+    const { bug, started: running } = await startCandidateUpdate(
       fixture,
-      frozen.executionId,
+      '事务回滚候选',
+      'repair-one',
+      ['aaaaaaa'],
       'rollback-update-session',
     );
     const beforeBatch = latestBatch(fixture.database, fixture.item.id);
@@ -941,16 +876,11 @@ describe('UpdateService', () => {
 
   test('负责人可处理 Update Interaction，Tester 只能看到安全等待状态', async () => {
     const fixture = await setup();
-    fixture.createBug('需要审批的候选');
-    await completeNextRepair(fixture, 'repair-one', ['aaaaaaa']);
-    const frozen = fixture.updates.freezeNow(
-      fixture.users.developer.id,
-      fixture.item.id,
-      { mutationId: randomUUID() },
-    );
-    const running = await startExecution(
+    const { started: running } = await startCandidateUpdate(
       fixture,
-      frozen.executionId,
+      '需要审批的候选',
+      'repair-one',
+      ['aaaaaaa'],
       'interaction-session',
     );
     const interaction = fixture.executions.openInteraction(
@@ -1094,11 +1024,7 @@ describe('UpdateService', () => {
     await completeNextRepair(fixture, 'repair-one', [commits[0]!]);
     fixture.createBug('第二个真实候选');
     await completeNextRepair(fixture, 'repair-two', [commits[1]!]);
-    const frozen = fixture.updates.freezeNow(
-      fixture.users.developer.id,
-      fixture.item.id,
-      { mutationId: randomUUID() },
-    );
+    const frozen = freezeUpdate(fixture);
 
     const agent = new ProtocolAgent({
       serverUrl: 'http://update.test',
@@ -1256,6 +1182,36 @@ async function completeNextRepair(
   });
 }
 
+function freezeUpdate(
+  fixture: Awaited<ReturnType<typeof setup>>,
+  submissionItemId = fixture.item.id,
+) {
+  return fixture.updates.freezeNow(
+    fixture.users.developer.id,
+    submissionItemId,
+    { mutationId: randomUUID() },
+  );
+}
+
+async function startCandidateUpdate(
+  fixture: Awaited<ReturnType<typeof setup>>,
+  title: string,
+  repairSessionId: string,
+  commits: string[],
+  updateSessionId: string,
+  manualOperations: Array<{ kind: 'DATABASE_SQL'; paths: string[] }> = [],
+) {
+  const bug = fixture.createBug(title);
+  await completeNextRepair(fixture, repairSessionId, commits, manualOperations);
+  const frozen = freezeUpdate(fixture);
+  const started = await startExecution(
+    fixture,
+    frozen.executionId!,
+    updateSessionId,
+  );
+  return { bug, started };
+}
+
 function testSkillBinding(skillName: string) {
   return {
     skillName,
@@ -1398,11 +1354,7 @@ describe('更新遵守环境使用权', () => {
         fixture.submission.id,
       ).pendingDeliveries[0]!.availableActions,
     ).toEqual([]);
-    expect(() =>
-      fixture.updates.freezeNow(fixture.users.developer.id, fixture.item.id, {
-        mutationId: randomUUID(),
-      }),
-    ).toThrow('已暂停使用环境');
+    expect(() => freezeUpdate(fixture)).toThrow('已暂停使用环境');
     const paused = submissions.getWorkspace(
       fixture.users.owner.id,
       fixture.submission.id,
@@ -1436,16 +1388,11 @@ describe('更新遵守环境使用权', () => {
 
 test('外部部署等待期间禁止切换；失败后允许切换但原批次不能重试或同步', async () => {
   const fixture = await setup({ deploymentKind: 'CI_CD' });
-  fixture.createBug('外部部署占用');
-  await completeNextRepair(fixture, 'external-lock-repair', ['ccccccc']);
-  const frozen = fixture.updates.freezeNow(
-    fixture.users.developer.id,
-    fixture.item.id,
-    { mutationId: randomUUID() },
-  );
-  const running = await startExecution(
+  const { started: running } = await startCandidateUpdate(
     fixture,
-    frozen.executionId,
+    '外部部署占用',
+    'external-lock-repair',
+    ['ccccccc'],
     'external-lock-update',
   );
   completeSuccessfulExecution(fixture, running, pushedUpdate('等待外部部署'));
