@@ -131,13 +131,11 @@ export class SubmissionClosure {
             revision,
           },
           resourceId: submissionId,
-          audits: [
-            {
-              projectId: submission.project_id,
-              action: 'SUBMISSION_CLOSED',
-              details: { cleanupCount: cleanupExecutionIds.length },
-            },
-          ],
+          audit: {
+            projectId: submission.project_id,
+            action: 'SUBMISSION_CLOSED',
+            details: { cleanupCount: cleanupExecutionIds.length },
+          },
         };
       },
     });

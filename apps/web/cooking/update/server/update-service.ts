@@ -136,13 +136,11 @@ export class UpdateService {
             revision: frozen.revision,
           },
           resourceId: frozen.batchId,
-          audits: [
-            {
-              projectId: source.project_id,
-              action: 'UPDATE_BATCH_FROZEN',
-              details: { submissionItemId, mode: 'IMMEDIATE' },
-            },
-          ],
+          audit: {
+            projectId: source.project_id,
+            action: 'UPDATE_BATCH_FROZEN',
+            details: { submissionItemId, mode: 'IMMEDIATE' },
+          },
         };
       },
     });
@@ -265,14 +263,12 @@ export class UpdateService {
             revision,
           },
           resourceId: batchId,
-          audits: [
-            {
-              projectId: this.queries.itemSource(batch.submission_item_id)
-                .project_id,
-              action: 'UPDATE_BATCH_RETRIED',
-              details: { executionId: execution.id },
-            },
-          ],
+          audit: {
+            projectId: this.queries.itemSource(batch.submission_item_id)
+              .project_id,
+            action: 'UPDATE_BATCH_RETRIED',
+            details: { executionId: execution.id },
+          },
         };
       },
     });
@@ -352,13 +348,11 @@ export class UpdateService {
             revision,
           },
           resourceId: batchId,
-          audits: [
-            {
-              projectId: source.project_id,
-              action: 'UPDATE_SESSION_SYNC_REQUESTED',
-              details: { executionId: execution.id },
-            },
-          ],
+          audit: {
+            projectId: source.project_id,
+            action: 'UPDATE_SESSION_SYNC_REQUESTED',
+            details: { executionId: execution.id },
+          },
         };
       },
     });
@@ -443,21 +437,19 @@ export class UpdateService {
             revision,
           },
           resourceId: batchId,
-          audits: [
-            {
-              projectId: this.queries.itemSource(batch.submission_item_id)
-                .project_id,
-              action:
-                input.outcome === 'SUCCEEDED'
-                  ? 'EXTERNAL_DEPLOYMENT_SUCCEEDED'
-                  : 'EXTERNAL_DEPLOYMENT_FAILED',
-              details: {
-                reportId,
-                round: reportRound,
-                attachmentCount: input.attachmentIds.length,
-              },
+          audit: {
+            projectId: this.queries.itemSource(batch.submission_item_id)
+              .project_id,
+            action:
+              input.outcome === 'SUCCEEDED'
+                ? 'EXTERNAL_DEPLOYMENT_SUCCEEDED'
+                : 'EXTERNAL_DEPLOYMENT_FAILED',
+            details: {
+              reportId,
+              round: reportRound,
+              attachmentCount: input.attachmentIds.length,
             },
-          ],
+          },
         };
       },
     });
@@ -507,14 +499,12 @@ export class UpdateService {
             revision,
           },
           resourceId: interactionId,
-          audits: [
-            {
-              projectId: this.queries.itemSource(batch.submission_item_id)
-                .project_id,
-              action: 'UPDATE_INTERACTION_RESOLVED',
-              details: { batchId: batch.id, executionId: source.execution_id },
-            },
-          ],
+          audit: {
+            projectId: this.queries.itemSource(batch.submission_item_id)
+              .project_id,
+            action: 'UPDATE_INTERACTION_RESOLVED',
+            details: { batchId: batch.id, executionId: source.execution_id },
+          },
         };
       },
     });

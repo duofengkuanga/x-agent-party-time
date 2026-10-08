@@ -33,12 +33,10 @@ test('CookingWriteStore 在同一事务中完成业务写入、Audit 与幂等�
         return {
           result: { value: '稳定结果' },
           resourceId: 'resource-one',
-          audits: [
-            {
-              projectId: project.id,
-              action: 'TEST_WRITTEN',
-            },
-          ],
+          audit: {
+            projectId: project.id,
+            action: 'TEST_WRITTEN',
+          },
         };
       },
     });
@@ -126,12 +124,10 @@ test('TestSubmissionWriteStore 只在首次成功提交后发布 Revision', asyn
         return {
           result: { revision },
           resourceId: submissionId,
-          audits: [
-            {
-              projectId: project.id,
-              action: 'TEST_SUBMISSION_WRITTEN',
-            },
-          ],
+          audit: {
+            projectId: project.id,
+            action: 'TEST_SUBMISSION_WRITTEN',
+          },
         };
       },
     });

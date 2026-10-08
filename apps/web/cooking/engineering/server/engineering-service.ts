@@ -163,13 +163,11 @@ export class EngineeringService {
         return {
           result: mapEngineering(stored),
           resourceId: id,
-          audits: [
-            {
-              projectId,
-              action: 'ENGINEERING_CREATED',
-              details: { name, type, identifier },
-            },
-          ],
+          audit: {
+            projectId,
+            action: 'ENGINEERING_CREATED',
+            details: { name, type, identifier },
+          },
         };
       },
     });
@@ -237,13 +235,11 @@ export class EngineeringService {
         return {
           result: mapEngineering(update),
           resourceId: engineeringId,
-          audits: [
-            {
-              projectId: current.projectId,
-              action: 'ENGINEERING_UPDATED',
-              details: { name, type, identifier },
-            },
-          ],
+          audit: {
+            projectId: current.projectId,
+            action: 'ENGINEERING_UPDATED',
+            details: { name, type, identifier },
+          },
         };
       },
     });
@@ -289,12 +285,10 @@ export class EngineeringService {
         return {
           result: mapEngineering(update),
           resourceId: engineeringId,
-          audits: [
-            {
-              projectId: current.projectId,
-              action: 'ENGINEERING_ARCHIVED',
-            },
-          ],
+          audit: {
+            projectId: current.projectId,
+            action: 'ENGINEERING_ARCHIVED',
+          },
         };
       },
     });
@@ -347,13 +341,11 @@ export class EngineeringService {
         return {
           result: mapMembership(stored),
           resourceId: `${engineeringId}:${targetUserId}`,
-          audits: [
-            {
-              projectId: engineering.projectId,
-              action: 'ENGINEERING_MEMBER_ADDED',
-              targetId: targetUserId,
-            },
-          ],
+          audit: {
+            projectId: engineering.projectId,
+            action: 'ENGINEERING_MEMBER_ADDED',
+            targetId: targetUserId,
+          },
         };
       },
     });
@@ -408,13 +400,11 @@ export class EngineeringService {
         return {
           result: { removed: true, userId: targetUserId },
           resourceId: `${engineeringId}:${targetUserId}`,
-          audits: [
-            {
-              projectId: engineering.projectId,
-              action: 'ENGINEERING_MEMBER_REMOVED',
-              targetId: targetUserId,
-            },
-          ],
+          audit: {
+            projectId: engineering.projectId,
+            action: 'ENGINEERING_MEMBER_REMOVED',
+            targetId: targetUserId,
+          },
         };
       },
     });

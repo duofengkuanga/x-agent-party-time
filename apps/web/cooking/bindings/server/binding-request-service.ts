@@ -143,13 +143,11 @@ export class BindingRequestService {
         return {
           result,
           resourceId: id,
-          audits: [
-            {
-              projectId: engineering.project_id,
-              action: 'ENGINEERING_BINDING_REQUESTED',
-              details: { engineeringId, runnerId },
-            },
-          ],
+          audit: {
+            projectId: engineering.project_id,
+            action: 'ENGINEERING_BINDING_REQUESTED',
+            details: { engineeringId, runnerId },
+          },
         };
       },
     });

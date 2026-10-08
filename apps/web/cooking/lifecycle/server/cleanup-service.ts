@@ -105,16 +105,14 @@ export class CleanupService {
             revision,
           },
           resourceId: cleanupId,
-          audits: [
-            {
-              projectId: cleanup.project_id,
-              action: 'CLEANUP_RETRIED',
-              details: {
-                executionId: execution.id,
-                attempt: latest.attempt + 1,
-              },
+          audit: {
+            projectId: cleanup.project_id,
+            action: 'CLEANUP_RETRIED',
+            details: {
+              executionId: execution.id,
+              attempt: latest.attempt + 1,
             },
-          ],
+          },
         };
       },
     });
@@ -170,16 +168,14 @@ export class CleanupService {
             revision,
           },
           resourceId: interactionId,
-          audits: [
-            {
-              projectId: cleanup.project_id,
-              action: 'CLEANUP_INTERACTION_RESOLVED',
-              details: {
-                cleanupId: cleanup.id,
-                executionId: source.execution_id,
-              },
+          audit: {
+            projectId: cleanup.project_id,
+            action: 'CLEANUP_INTERACTION_RESOLVED',
+            details: {
+              cleanupId: cleanup.id,
+              executionId: source.execution_id,
             },
-          ],
+          },
         };
       },
     });

@@ -107,15 +107,13 @@ export class ProjectService {
         return {
           result: result,
           resourceId: projectId,
-          audits: [
-            {
-              projectId: projectId,
-              action: 'PROJECT_CREATED',
-              details: {
-                name,
-              },
+          audit: {
+            projectId: projectId,
+            action: 'PROJECT_CREATED',
+            details: {
+              name,
             },
-          ],
+          },
         };
       },
     });
@@ -225,13 +223,11 @@ export class ProjectService {
         return {
           result: invitation,
           resourceId: invitation.id,
-          audits: [
-            {
-              projectId: projectId,
-              action: 'PROJECT_USER_INVITED',
-              details: { invitedUserId: user.id },
-            },
-          ],
+          audit: {
+            projectId: projectId,
+            action: 'PROJECT_USER_INVITED',
+            details: { invitedUserId: user.id },
+          },
         };
       },
     });
@@ -359,16 +355,14 @@ export class ProjectService {
         return {
           result: result,
           resourceId: invitationId,
-          audits: [
-            {
-              projectId: row.project_id,
-              action:
-                targetStatus === 'ACCEPTED'
-                  ? 'PROJECT_INVITATION_ACCEPTED'
-                  : 'PROJECT_INVITATION_REJECTED',
-              details: {},
-            },
-          ],
+          audit: {
+            projectId: row.project_id,
+            action:
+              targetStatus === 'ACCEPTED'
+                ? 'PROJECT_INVITATION_ACCEPTED'
+                : 'PROJECT_INVITATION_REJECTED',
+            details: {},
+          },
         };
       },
     });
@@ -418,13 +412,11 @@ export class ProjectService {
         return {
           result: result,
           resourceId: invitationId,
-          audits: [
-            {
-              projectId: row.project_id,
-              action: 'PROJECT_INVITATION_REVOKED',
-              details: {},
-            },
-          ],
+          audit: {
+            projectId: row.project_id,
+            action: 'PROJECT_INVITATION_REVOKED',
+            details: {},
+          },
         };
       },
     });
@@ -464,15 +456,13 @@ export class ProjectService {
         return {
           result: result,
           resourceId: projectId,
-          audits: [
-            {
-              projectId: projectId,
-              action: 'PROJECT_UPDATED',
-              details: {
-                name,
-              },
+          audit: {
+            projectId: projectId,
+            action: 'PROJECT_UPDATED',
+            details: {
+              name,
             },
-          ],
+          },
         };
       },
     });
@@ -535,13 +525,11 @@ export class ProjectService {
         return {
           result: result,
           resourceId: targetUserId,
-          audits: [
-            {
-              projectId: projectId,
-              action: 'PROJECT_MEMBER_REMOVED',
-              details: {},
-            },
-          ],
+          audit: {
+            projectId: projectId,
+            action: 'PROJECT_MEMBER_REMOVED',
+            details: {},
+          },
         };
       },
     });

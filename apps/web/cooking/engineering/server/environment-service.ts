@@ -91,13 +91,11 @@ export class EnvironmentService {
         return {
           result: mapEnvironment(stored),
           resourceId: id,
-          audits: [
-            {
-              projectId: engineering.projectId,
-              action: 'ENVIRONMENT_CREATED',
-              details: { name, deployment },
-            },
-          ],
+          audit: {
+            projectId: engineering.projectId,
+            action: 'ENVIRONMENT_CREATED',
+            details: { name, deployment },
+          },
         };
       },
     });
@@ -159,13 +157,11 @@ export class EnvironmentService {
         return {
           result: mapEnvironment(update),
           resourceId: environmentId,
-          audits: [
-            {
-              projectId: engineering.projectId,
-              action: 'ENVIRONMENT_UPDATED',
-              details: { name, deployment },
-            },
-          ],
+          audit: {
+            projectId: engineering.projectId,
+            action: 'ENVIRONMENT_UPDATED',
+            details: { name, deployment },
+          },
         };
       },
     });
@@ -212,12 +208,10 @@ export class EnvironmentService {
         return {
           result: { deleted: true, environmentId },
           resourceId: environmentId,
-          audits: [
-            {
-              projectId: engineering.projectId,
-              action: 'ENVIRONMENT_DELETED',
-            },
-          ],
+          audit: {
+            projectId: engineering.projectId,
+            action: 'ENVIRONMENT_DELETED',
+          },
         };
       },
     });

@@ -15,7 +15,7 @@ export type CookingAuditInput = {
 export type CookingWriteOutcome<T> = {
   result: T;
   resourceId: string;
-  audits?: CookingAuditInput[];
+  audit?: CookingAuditInput;
 };
 
 export type CookingWriteInput<T> = {
@@ -71,7 +71,8 @@ export class CookingWriteStore {
       const outcome = input.perform();
       const result = input.resultSchema.parse(outcome.result);
       const createdAt = this.now().toISOString();
-      for (const audit of outcome.audits ?? [])
+      const audit = outcome.audit;
+      if (audit)
         this.db
           .prepare(
             `INSERT INTO cooking_audit_event(

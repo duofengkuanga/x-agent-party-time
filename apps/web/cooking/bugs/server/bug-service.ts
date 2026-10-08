@@ -117,17 +117,15 @@ export class BugService {
             unboundAttachmentIds: [],
           },
           resourceId: bugId,
-          audits: [
-            {
-              projectId: access.project_id,
-              action: 'BUG_CREATED',
-              details: {
-                shortId,
-                submissionItemId: parsed.submissionItemId,
-                attachmentCount: attachmentIds.length,
-              },
+          audit: {
+            projectId: access.project_id,
+            action: 'BUG_CREATED',
+            details: {
+              shortId,
+              submissionItemId: parsed.submissionItemId,
+              attachmentCount: attachmentIds.length,
             },
-          ],
+          },
         };
       },
     });
@@ -324,13 +322,11 @@ export class BugService {
             unboundAttachmentIds: audit.unboundAttachmentIds ?? [],
           },
           resourceId: bugId,
-          audits: [
-            {
-              projectId: access.project_id,
-              action: audit.action,
-              details: audit.details,
-            },
-          ],
+          audit: {
+            projectId: access.project_id,
+            action: audit.action,
+            details: audit.details,
+          },
         };
       },
     });

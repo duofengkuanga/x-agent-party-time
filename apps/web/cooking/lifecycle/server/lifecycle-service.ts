@@ -462,7 +462,7 @@ export class LifecycleService {
             cleanupId: null,
             revision: outcome.revision,
           },
-          audits: [this.audit(source, outcome.action, outcome.details)],
+          audit: this.audit(source, outcome.action, outcome.details),
         };
       },
     });

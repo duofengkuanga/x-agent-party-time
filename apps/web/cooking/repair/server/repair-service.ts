@@ -293,13 +293,11 @@ export class RepairService {
             revision,
           },
           resourceId: bugId,
-          audits: [
-            {
-              projectId: source.project_id,
-              action: 'REPAIR_CONTINUED',
-              details: { executionId },
-            },
-          ],
+          audit: {
+            projectId: source.project_id,
+            action: 'REPAIR_CONTINUED',
+            details: { executionId },
+          },
         };
       },
     });
@@ -382,13 +380,11 @@ export class RepairService {
             revision,
           },
           resourceId: bugId,
-          audits: [
-            {
-              projectId: source.project_id,
-              action: 'REPAIR_SESSION_SYNC_REQUESTED',
-              details: { executionId: execution.id },
-            },
-          ],
+          audit: {
+            projectId: source.project_id,
+            action: 'REPAIR_SESSION_SYNC_REQUESTED',
+            details: { executionId: execution.id },
+          },
         };
       },
     });
@@ -433,13 +429,11 @@ export class RepairService {
             revision,
           },
           resourceId: interactionId,
-          audits: [
-            {
-              projectId: source.project_id,
-              action: 'REPAIR_INTERACTION_RESOLVED',
-              details: { executionId: row.execution_id, bugId: row.bug_id },
-            },
-          ],
+          audit: {
+            projectId: source.project_id,
+            action: 'REPAIR_INTERACTION_RESOLVED',
+            details: { executionId: row.execution_id, bugId: row.bug_id },
+          },
         };
       },
     });

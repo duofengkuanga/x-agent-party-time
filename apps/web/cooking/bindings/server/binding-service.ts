@@ -134,13 +134,11 @@ export class BindingService {
         return {
           result,
           resourceId: id,
-          audits: [
-            {
-              projectId: engineering.project_id,
-              action: 'ENGINEERING_BINDING_CREATED',
-              details: { engineeringId, runnerId },
-            },
-          ],
+          audit: {
+            projectId: engineering.project_id,
+            action: 'ENGINEERING_BINDING_CREATED',
+            details: { engineeringId, runnerId },
+          },
         };
       },
     });
@@ -201,12 +199,10 @@ export class BindingService {
         return {
           result: { deleted: true, bindingId: id },
           resourceId: id,
-          audits: [
-            {
-              projectId: row.project_id,
-              action: 'ENGINEERING_BINDING_DELETED',
-            },
-          ],
+          audit: {
+            projectId: row.project_id,
+            action: 'ENGINEERING_BINDING_DELETED',
+          },
         };
       },
     });

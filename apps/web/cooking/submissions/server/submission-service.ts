@@ -183,17 +183,15 @@ export class SubmissionService {
         return {
           result: submission,
           resourceId: submissionId,
-          audits: [
-            {
-              projectId,
-              action: 'SUBMISSION_CREATED',
-              details: {
-                testerUserId: parsed.testerUserId,
-                itemIds: itemSnapshots.map(({ id }) => id),
-                environmentTakeovers: takeovers,
-              },
+          audit: {
+            projectId,
+            action: 'SUBMISSION_CREATED',
+            details: {
+              testerUserId: parsed.testerUserId,
+              itemIds: itemSnapshots.map(({ id }) => id),
+              environmentTakeovers: takeovers,
             },
-          ],
+          },
         };
       },
     });
@@ -337,19 +335,17 @@ export class SubmissionService {
             updatedAt: now,
           },
           resourceId: submission.id,
-          audits: [
-            {
-              projectId: submission.project_id,
-              action:
-                input.action === 'ACQUIRE'
-                  ? 'SUBMISSION_ENVIRONMENT_ACQUIRED'
-                  : 'SUBMISSION_DEPLOYMENT_CONFIRMED',
-              details: {
-                submissionItemId: itemId,
-                takeover: input.takeover ?? null,
-              },
+          audit: {
+            projectId: submission.project_id,
+            action:
+              input.action === 'ACQUIRE'
+                ? 'SUBMISSION_ENVIRONMENT_ACQUIRED'
+                : 'SUBMISSION_DEPLOYMENT_CONFIRMED',
+            details: {
+              submissionItemId: itemId,
+              takeover: input.takeover ?? null,
             },
-          ],
+          },
         };
       },
     });
@@ -495,17 +491,15 @@ export class SubmissionService {
         return {
           result,
           resourceId: submissionId,
-          audits: [
-            {
-              projectId: current.project_id,
-              action: 'SUBMISSION_DETAILS_UPDATED',
-              details: {
-                title: parsed.title,
-                requirementDescription: parsed.requirementDescription,
-                targetBranches: changedTargetBranches,
-              },
+          audit: {
+            projectId: current.project_id,
+            action: 'SUBMISSION_DETAILS_UPDATED',
+            details: {
+              title: parsed.title,
+              requirementDescription: parsed.requirementDescription,
+              targetBranches: changedTargetBranches,
             },
-          ],
+          },
         };
       },
     });
