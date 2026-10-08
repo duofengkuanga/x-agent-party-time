@@ -1,35 +1,10 @@
-import { expectRowCount } from '@/testing/database';
-import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { expectRowCount, testDatabases } from '@/testing/database';
+import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
-import type { AppDatabase } from '@/platform/database';
 import { openDatabase } from '@/platform/database';
 import { AuthService } from './service';
 
-const temporaryDirectories: string[] = [];
-const openDatabases: AppDatabase[] = [];
-
-async function createDatabase(): Promise<{
-  path: string;
-  database: AppDatabase;
-}> {
-  const directory = await mkdtemp(join(tmpdir(), 'agent-party-time-auth-'));
-  temporaryDirectories.push(directory);
-  const path = join(directory, 'server.sqlite');
-  const database = openDatabase(path);
-  openDatabases.push(database);
-  return { path, database };
-}
-
-afterEach(async () => {
-  for (const database of openDatabases.splice(0)) database.close();
-  await Promise.all(
-    temporaryDirectories
-      .splice(0)
-      .map((directory) => rm(directory, { force: true, recursive: true })),
-  );
-});
+const createDatabase = testDatabases();
 
 describe('AuthService', () => {
   test('Seed 幂等且数据库不保存明文密码', async () => {
@@ -70,7 +45,7 @@ describe('AuthService', () => {
   });
 
   test('Session 只保存 Token Hash，并可跨数据库重启恢复和撤销', async () => {
-    const { path, database } = await createDatabase();
+    const { directory, database, trackDatabase } = await createDatabase();
     const now = new Date('2026-07-26T01:00:00Z');
     const auth = new AuthService(database, () => now);
     const user = await auth.seedUser({
@@ -89,9 +64,9 @@ describe('AuthService', () => {
     expect(auth.currentUser(session.token)).toEqual(user);
 
     database.close();
-    openDatabases.splice(openDatabases.indexOf(database), 1);
-    const reopened = openDatabase(path);
-    openDatabases.push(reopened);
+    const reopened = trackDatabase(
+      openDatabase(join(directory, 'server.sqlite')),
+    );
     const afterRestart = new AuthService(reopened, () => now);
     expect(afterRestart.currentUser(session.token)).toEqual(user);
     afterRestart.revokeSession(session.token);

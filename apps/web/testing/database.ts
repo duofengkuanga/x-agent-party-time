@@ -21,7 +21,14 @@ export function testDatabases() {
     directories.push(directory);
     const database = openDatabase(join(directory, 'server.sqlite'));
     databases.push(database);
-    return { directory, database };
+    return {
+      directory,
+      database,
+      trackDatabase: (reopened: AppDatabase) => {
+        databases.push(reopened);
+        return reopened;
+      },
+    };
   };
 }
 
