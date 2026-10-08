@@ -21,6 +21,34 @@ import {
 
 export const SUBMISSION_HIDDEN_MESSAGE = '提测单不存在或无权访问';
 
+export function hasActiveSubmissionExecution(
+  db: AppDatabase,
+  submissionId: string,
+): boolean {
+  return Boolean(
+    db.get(
+      `SELECT 1 active
+         FROM platform_execution execution
+         WHERE execution.state IN (
+           'QUEUED', 'CLAIMED', 'RUNNING', 'WAITING_FOR_INTERACTION',
+           'WAITING_TO_RESUME', 'CANCEL_REQUESTED'
+         ) AND (
+           execution.id IN (
+             SELECT attempt.execution_id FROM cooking_repair_attempt attempt
+             JOIN cooking_bug bug ON bug.id = attempt.bug_id
+             WHERE bug.submission_id = ?
+           ) OR execution.id IN (
+             SELECT attempt.execution_id FROM cooking_update_attempt attempt
+             JOIN cooking_update_batch batch ON batch.id = attempt.batch_id
+             WHERE batch.submission_id = ?
+           )
+         ) LIMIT 1`,
+      submissionId,
+      submissionId,
+    ),
+  );
+}
+
 export type SubmissionRow = DatabaseRow<TestSubmission>;
 
 export type SubmissionAccessRow = SubmissionRow & {
@@ -216,26 +244,7 @@ export class SubmissionQueries {
       submissionId,
     );
     if (unfinishedBatch) return false;
-    return !this.db.get(
-      `SELECT 1 active
-         FROM platform_execution execution
-         WHERE execution.state IN (
-           'QUEUED', 'CLAIMED', 'RUNNING', 'WAITING_FOR_INTERACTION',
-           'WAITING_TO_RESUME', 'CANCEL_REQUESTED'
-         ) AND (
-           execution.id IN (
-             SELECT attempt.execution_id FROM cooking_repair_attempt attempt
-             JOIN cooking_bug bug ON bug.id = attempt.bug_id
-             WHERE bug.submission_id = ?
-           ) OR execution.id IN (
-             SELECT attempt.execution_id FROM cooking_update_attempt attempt
-             JOIN cooking_update_batch batch ON batch.id = attempt.batch_id
-             WHERE batch.submission_id = ?
-           )
-         ) LIMIT 1`,
-      submissionId,
-      submissionId,
-    );
+    return !hasActiveSubmissionExecution(this.db, submissionId);
   }
 
   requireSubmissionAccess(

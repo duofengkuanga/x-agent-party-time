@@ -1,5 +1,6 @@
 import { requireSubmissionAccess } from '@/cooking/shared/server/access';
 import { environmentObservers } from '@/cooking/submissions/server/environment-access';
+import { hasActiveSubmissionExecution } from '@/cooking/submissions/server/submission-queries';
 import type { TestSubmissionWriteStore } from '@/cooking/submissions/server/test-submission-write-store';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
@@ -56,7 +57,7 @@ export class SubmissionClosure {
             'INVALID_TRANSITION',
             '仍有未完成缺陷，不能关闭提测单',
           );
-        if (this.hasActiveSubmissionExecution(submissionId))
+        if (hasActiveSubmissionExecution(this.db, submissionId))
           throw new PlatformError(
             'RESOURCE_CONFLICT',
             '仍有修复或更新执行未结束，不能关闭提测单',
@@ -168,29 +169,5 @@ export class SubmissionClosure {
         '只有测试负责人可以关闭提测单',
       );
     return row;
-  }
-
-  private hasActiveSubmissionExecution(submissionId: string): boolean {
-    const row = this.db.get(
-      `SELECT 1 active
-         FROM platform_execution execution
-         WHERE execution.state IN (
-           'QUEUED', 'CLAIMED', 'RUNNING', 'WAITING_FOR_INTERACTION',
-           'WAITING_TO_RESUME', 'CANCEL_REQUESTED'
-         ) AND (
-           execution.id IN (
-             SELECT attempt.execution_id FROM cooking_repair_attempt attempt
-             JOIN cooking_bug bug ON bug.id = attempt.bug_id
-             WHERE bug.submission_id = ?
-           ) OR execution.id IN (
-             SELECT attempt.execution_id FROM cooking_update_attempt attempt
-             JOIN cooking_update_batch batch ON batch.id = attempt.batch_id
-             WHERE batch.submission_id = ?
-           )
-         ) LIMIT 1`,
-      submissionId,
-      submissionId,
-    );
-    return Boolean(row);
   }
 }
