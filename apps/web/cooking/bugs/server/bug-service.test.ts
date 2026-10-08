@@ -67,19 +67,12 @@ describe('BugService', () => {
       }),
     ).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
     expect(() =>
-      fixture.service.createBug(
-        fixture.users.tester.id,
-        fixture.submission.id,
-        {
-          mutationId: randomUUID(),
-          submissionItemId: null,
-          title: '附件过多',
-          actualResultAttachmentIds: Array.from({ length: 6 }, () =>
-            randomUUID(),
-          ),
-          expectedResultAttachmentIds: [],
-        },
-      ),
+      createBug(fixture, fixture.users.tester.id, {
+        title: '附件过多',
+        actualResultAttachmentIds: Array.from({ length: 6 }, () =>
+          randomUUID(),
+        ),
+      }),
     ).toThrow();
     const file = await fixture.files.put({
       bytes: new TextEncoder().encode('复现记录'),
@@ -94,30 +87,17 @@ describe('BugService', () => {
       uploadedByUserId: fixture.users.tester.id,
     });
     expect(() =>
-      fixture.service.createBug(
-        fixture.users.tester.id,
-        fixture.submission.id,
-        {
-          mutationId: randomUUID(),
-          submissionItemId: null,
-          title: '附件不能跨结果重复使用',
-          actualResultAttachmentIds: [file.id],
-          expectedResultAttachmentIds: [file.id],
-        },
-      ),
+      createBug(fixture, fixture.users.tester.id, {
+        title: '附件不能跨结果重复使用',
+        actualResultAttachmentIds: [file.id],
+        expectedResultAttachmentIds: [file.id],
+      }),
     ).toThrow(ZodError);
     expect(() =>
-      fixture.service.createBug(
-        fixture.users.tester.id,
-        fixture.submission.id,
-        {
-          mutationId: randomUUID(),
-          submissionItemId: null,
-          title: '同一结果不能重复添加附件',
-          actualResultAttachmentIds: [file.id, file.id],
-          expectedResultAttachmentIds: [],
-        },
-      ),
+      createBug(fixture, fixture.users.tester.id, {
+        title: '同一结果不能重复添加附件',
+        actualResultAttachmentIds: [file.id, file.id],
+      }),
     ).toThrow(ZodError);
     const result = createBug(fixture, fixture.users.tester.id, {
       title: '  结算按钮无响应  ',
