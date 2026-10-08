@@ -10,17 +10,11 @@ import {
   RunnerSchema,
   RunnerStatusSchema,
   type PairingCodeIssue,
-  type RunnerAuthorizationClaimResponse,
-  type RunnerAuthorizationIssue,
   type Runner,
   type RunnerPairingResult,
   type RunnerStatus,
 } from './contract';
-import {
-  RunnerAuthorizationRequests,
-  type RunnerAuthorizationApproval,
-  type RunnerAuthorizationBrowserView,
-} from './authorization';
+import { RunnerAuthorizationRequests } from './authorization';
 import { hashSecret, mapRunner, type RunnerRow } from './runner-storage';
 
 type PairingCodeRow = {
@@ -50,6 +44,16 @@ const DEFAULT_SECRETS: RunnerSecrets = {
 
 export class RunnerService {
   private readonly authorizations: RunnerAuthorizationRequests;
+  readonly createAuthorizationRequest: RunnerAuthorizationRequests['createAuthorizationRequest'] =
+    (...args) => this.authorizations.createAuthorizationRequest(...args);
+  readonly prepareAuthorizationApproval: RunnerAuthorizationRequests['prepareAuthorizationApproval'] =
+    (...args) => this.authorizations.prepareAuthorizationApproval(...args);
+  readonly approveAuthorization: RunnerAuthorizationRequests['approveAuthorization'] =
+    (...args) => this.authorizations.approveAuthorization(...args);
+  readonly rejectAuthorization: RunnerAuthorizationRequests['rejectAuthorization'] =
+    (...args) => this.authorizations.rejectAuthorization(...args);
+  readonly claimAuthorization: RunnerAuthorizationRequests['claimAuthorization'] =
+    (...args) => this.authorizations.claimAuthorization(...args);
 
   constructor(
     private readonly db: AppDatabase,
@@ -140,62 +144,6 @@ export class RunnerService {
         credential,
       });
     })();
-  }
-
-  createAuthorizationRequest(
-    inputValue: unknown,
-    durationMs?: number,
-  ): RunnerAuthorizationIssue {
-    return this.authorizations.createAuthorizationRequest(
-      inputValue,
-      durationMs,
-    );
-  }
-
-  prepareAuthorizationApproval(
-    ownerUserId: string,
-    requestIdInput: string,
-  ): RunnerAuthorizationApproval {
-    return this.authorizations.prepareAuthorizationApproval(
-      ownerUserId,
-      requestIdInput,
-    );
-  }
-
-  approveAuthorization(
-    ownerUserId: string,
-    requestIdInput: string,
-    approvalToken: string,
-    nameInput: string,
-  ): RunnerAuthorizationBrowserView {
-    return this.authorizations.approveAuthorization(
-      ownerUserId,
-      requestIdInput,
-      approvalToken,
-      nameInput,
-    );
-  }
-
-  rejectAuthorization(
-    ownerUserId: string,
-    requestIdInput: string,
-    approvalToken: string,
-  ): RunnerAuthorizationBrowserView {
-    return this.authorizations.rejectAuthorization(
-      ownerUserId,
-      requestIdInput,
-      approvalToken,
-    );
-  }
-
-  claimAuthorization(
-    requestIdInput: string,
-    verifierInput: string,
-  ): RunnerAuthorizationClaimResponse {
-    return this.authorizations.claimAuthorization(
-      requestIdInput,
-      verifierInput,
-    );
   }
 
   authenticateCredential(credentialInput: string | undefined): Runner {
