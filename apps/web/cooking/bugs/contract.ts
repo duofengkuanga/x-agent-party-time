@@ -11,6 +11,7 @@ import {
 import {
   CookingAttachmentViewSchema,
   CookingMutationIdSchema,
+  VersionedCookingMutationSchema,
 } from '@/cooking/shared/contract';
 
 export const BugIdSchema = z.uuid();
@@ -99,16 +100,11 @@ export const UpdateBugReportInputSchema = CreateBugInputBaseSchema.extend({
   expectedVersion: z.number().int().positive(),
 }).superRefine(requireDisjointAttachments);
 
-export const AssignBugInputSchema = z.object({
-  mutationId: CookingMutationIdSchema,
-  expectedVersion: z.number().int().positive(),
+export const AssignBugInputSchema = VersionedCookingMutationSchema.extend({
   submissionItemId: SubmissionItemIdSchema.nullable(),
 });
 
-export const RequestRepairInputSchema = z.object({
-  mutationId: CookingMutationIdSchema,
-  expectedVersion: z.number().int().positive(),
-});
+export const RequestRepairInputSchema = VersionedCookingMutationSchema;
 
 export const BugAttachmentViewSchema = CookingAttachmentViewSchema;
 

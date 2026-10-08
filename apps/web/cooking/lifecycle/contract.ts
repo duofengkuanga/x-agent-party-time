@@ -4,7 +4,7 @@ import {
   ExecutionStateSchema,
 } from '@agent-party-time/execution-contract';
 import { BugAttachmentViewSchema, BugIdSchema } from '@/cooking/bugs/contract';
-import { CookingMutationIdSchema } from '@/cooking/shared/contract';
+import { VersionedCookingMutationSchema } from '@/cooking/shared/contract';
 import {
   SubmissionIdSchema,
   SubmissionItemIdSchema,
@@ -112,39 +112,29 @@ export const LifecycleWorkspaceProjectionSchema = z.object({
 });
 
 export const VerifyBugInputSchema = z.discriminatedUnion('result', [
-  z.object({
-    mutationId: CookingMutationIdSchema,
-    expectedVersion: z.number().int().positive(),
+  VersionedCookingMutationSchema.extend({
     result: z.literal('PASSED'),
     comment: z.string().trim().min(1).max(8_000).optional(),
     attachmentIds: z.array(z.uuid()).max(5),
   }),
-  z.object({
-    mutationId: CookingMutationIdSchema,
-    expectedVersion: z.number().int().positive(),
+  VersionedCookingMutationSchema.extend({
     result: z.literal('FAILED'),
     feedback: z.string().trim().min(1).max(8_000),
     attachmentIds: z.array(z.uuid()).max(5),
   }),
 ]);
 
-export const ReopenBugInputSchema = z.object({
-  mutationId: CookingMutationIdSchema,
-  expectedVersion: z.number().int().positive(),
+export const ReopenBugInputSchema = VersionedCookingMutationSchema.extend({
   feedback: z.string().trim().min(1).max(8_000),
   attachmentIds: z.array(z.uuid()).max(5),
 });
 
-export const LifecycleCommandInputSchema = z.object({
-  mutationId: CookingMutationIdSchema,
-  expectedVersion: z.number().int().positive(),
-});
+export const LifecycleCommandInputSchema = VersionedCookingMutationSchema;
 
-export const ResolveCleanupInteractionInputSchema = z.object({
-  mutationId: CookingMutationIdSchema,
-  expectedVersion: z.number().int().positive(),
-  resolution: z.json(),
-});
+export const ResolveCleanupInteractionInputSchema =
+  VersionedCookingMutationSchema.extend({
+    resolution: z.json(),
+  });
 
 export const BugLifecycleMutationResultSchema = z.object({
   bugId: BugIdSchema,

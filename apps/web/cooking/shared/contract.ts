@@ -2,6 +2,11 @@ import { z } from 'zod';
 
 export const CookingMutationIdSchema = z.uuid();
 
+export const VersionedCookingMutationSchema = z.object({
+  mutationId: CookingMutationIdSchema,
+  expectedVersion: z.number().int().positive(),
+});
+
 export const CookingValidationSchema = z.object({
   name: z.string().trim().min(1).max(240),
   status: z.enum(['PASSED', 'FAILED', 'SKIPPED']),

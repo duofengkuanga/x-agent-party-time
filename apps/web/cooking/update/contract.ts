@@ -4,6 +4,7 @@ import {
   CookingAttachmentViewSchema,
   CookingInteractionViewSchema,
   CookingMutationIdSchema,
+  VersionedCookingMutationSchema,
   CookingValidationSchema,
   CookingVisualPresentationSchema,
 } from '@/cooking/shared/contract';
@@ -172,26 +173,19 @@ export const FreezeUpdateInputSchema = z.object({
   mutationId: CookingMutationIdSchema,
 });
 
-export const RetryUpdateInputSchema = z.object({
-  mutationId: CookingMutationIdSchema,
-  expectedVersion: z.number().int().positive(),
-});
+export const RetryUpdateInputSchema = VersionedCookingMutationSchema;
 
 export const SynchronizeUpdateSessionInputSchema = RetryUpdateInputSchema;
 
 export const ExternalDeploymentReportInputSchema = z.discriminatedUnion(
   'outcome',
   [
-    z.object({
-      mutationId: CookingMutationIdSchema,
-      expectedVersion: z.number().int().positive(),
+    VersionedCookingMutationSchema.extend({
       outcome: z.literal('SUCCEEDED'),
       summary: z.string().trim().min(1).max(8_000).optional(),
       attachmentIds: z.array(z.uuid()).max(5),
     }),
-    z.object({
-      mutationId: CookingMutationIdSchema,
-      expectedVersion: z.number().int().positive(),
+    VersionedCookingMutationSchema.extend({
       outcome: z.literal('FAILED'),
       summary: z.string().trim().min(1).max(8_000),
       attachmentIds: z.array(z.uuid()).max(5),

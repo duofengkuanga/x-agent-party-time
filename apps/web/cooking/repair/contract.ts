@@ -1,7 +1,7 @@
 import { BugIdSchema } from '@/cooking/bugs/contract';
 import {
   CookingInteractionViewSchema,
-  CookingMutationIdSchema,
+  VersionedCookingMutationSchema,
   CookingValidationSchema,
   CookingVisualPresentationSchema,
 } from '@/cooking/shared/contract';
@@ -162,18 +162,14 @@ export const BugRepairViewSchema = z.object({
   }),
 });
 
-export const ContinueRepairInputSchema = z.object({
-  mutationId: CookingMutationIdSchema,
-  expectedVersion: z.number().int().positive(),
-});
+export const ContinueRepairInputSchema = VersionedCookingMutationSchema;
 
 export const SynchronizeRepairSessionInputSchema = ContinueRepairInputSchema;
 
-export const ResolveRepairInteractionInputSchema = z.object({
-  mutationId: CookingMutationIdSchema,
-  expectedVersion: z.number().int().positive(),
-  resolution: z.json(),
-});
+export const ResolveRepairInteractionInputSchema =
+  VersionedCookingMutationSchema.extend({
+    resolution: z.json(),
+  });
 
 export const RepairWorkspaceProjectionSchema = z.object({
   repairByBug: z.record(BugIdSchema, BugRepairViewSchema),

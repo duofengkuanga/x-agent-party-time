@@ -15,7 +15,10 @@ import {
   ProjectIdSchema,
   ProjectNameSchema,
 } from '@/cooking/projects/contract';
-import { CookingMutationIdSchema } from '@/cooking/shared/contract';
+import {
+  CookingMutationIdSchema,
+  VersionedCookingMutationSchema,
+} from '@/cooking/shared/contract';
 
 export const SubmissionIdSchema = z.uuid();
 export const SubmissionItemIdSchema = z.uuid();
@@ -184,21 +187,20 @@ export const SubmissionCreationCatalogSchema = z.array(
   }),
 );
 
-export const UpdateSubmissionInputSchema = z.object({
-  mutationId: CookingMutationIdSchema,
-  expectedVersion: z.number().int().positive(),
-  title: SubmissionTitleSchema,
-  requirementDescription: RequirementDescriptionSchema,
-  targetBranches: z
-    .array(
-      z.object({
-        submissionItemId: SubmissionItemIdSchema,
-        targetBranch: TargetBranchSchema,
-      }),
-    )
-    .max(20)
-    .optional(),
-});
+export const UpdateSubmissionInputSchema =
+  VersionedCookingMutationSchema.extend({
+    title: SubmissionTitleSchema,
+    requirementDescription: RequirementDescriptionSchema,
+    targetBranches: z
+      .array(
+        z.object({
+          submissionItemId: SubmissionItemIdSchema,
+          targetBranch: TargetBranchSchema,
+        }),
+      )
+      .max(20)
+      .optional(),
+  });
 
 export type TestSubmission = z.infer<typeof TestSubmissionSchema>;
 export type SubmissionItem = z.infer<typeof SubmissionItemSchema>;
