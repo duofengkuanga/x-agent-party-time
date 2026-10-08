@@ -503,10 +503,11 @@ test('续租将最新 Lease 过期时间写入崩溃恢复记录', async () => {
   });
 
   fixture.http.renewedExpiresAt = '2026-08-03T10:00:00.000Z';
-  await new ExecutionRecovery(fixture.http, fixture.state, () => new Date()).renew(
-    session,
-    execution,
-  );
+  await new ExecutionRecovery(
+    fixture.http,
+    fixture.state,
+    () => new Date(),
+  ).renew(session, execution);
   fixture.setNow('2026-08-03T09:30:00.000Z');
 
   const restarted = fixture.restartedService();
