@@ -1,15 +1,12 @@
-import type { ExecutionRecoveryState } from '../state/schemas';
 import type {
   ClaimedExecution,
   CompleteExecutionRequest,
   ExecutionFailure,
   ExecutionStartRequest,
-  JsonObject,
   JsonValue,
 } from '@agent-party-time/execution-contract';
 import { serializeDeterministicJson } from '@agent-party-time/execution-contract';
-import Ajv from 'ajv';
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import type { AuthenticatedRunnerSession } from '../agent/connection';
 import type { RunnerExecutionHttp } from '../agent/server-http';
 import { RunnerHttpError } from '@agent-party-time/runner-contract/http-client';
@@ -19,26 +16,18 @@ import {
 } from '../codex/contract';
 import { CodexAppServerError } from '../codex/errors';
 import type { LocalFileSystem } from '../platform/files';
-import {
-  SkillBundleManager,
-  XAPT_SKILL_NAMES,
-  type XaptSkillName,
-} from '../skills/manager';
-import { EXECUTION_STATE_SCHEMA_VERSION } from '../state/schemas';
+import type { SkillBundleManager } from '../skills/manager';
 import type { LocalStateStore } from '../state/store';
 import type { AttachmentMaterializer } from './attachments';
 import { ExecutionOutbox } from './outbox';
+import { ExecutionPreparation } from './preparation';
+import { ExecutionRecovery } from './recovery';
+import { failureMessage } from './failure-message';
 import {
   ExecutionResultVerificationError,
   type ExecutionResultVerifier,
 } from './result-verification';
 import type { ExecutionWorkspaceManager } from './workspaces';
-
-const MAX_FAILURE_MESSAGE_LENGTH = 1_000;
-const sessionResultSchemaValidator = new Ajv({
-  allErrors: true,
-  strict: false,
-});
 
 export interface ExecutionProjection {
   activeExecutionCount: number;
@@ -48,6 +37,8 @@ export interface ExecutionProjection {
 
 export class ExecutionService {
   private readonly outbox: ExecutionOutbox;
+  private readonly preparation: ExecutionPreparation;
+  private readonly recovery: ExecutionRecovery;
   private readonly tasks = new Map<string, Promise<void>>();
   private readonly bindingTails = new Map<string, Promise<void>>();
   private readonly controllers = new Map<string, AbortController>();
@@ -67,22 +58,32 @@ export class ExecutionService {
   constructor(
     private readonly http: RunnerExecutionHttp,
     private readonly state: LocalStateStore,
-    private readonly files: LocalFileSystem,
+    files: LocalFileSystem,
     private readonly attachments: AttachmentMaterializer,
-    private readonly workspaces: ExecutionWorkspaceManager,
+    workspaces: ExecutionWorkspaceManager,
     private readonly executor: CodexExecutor,
-    private readonly skills: SkillBundleManager,
+    skills: SkillBundleManager,
     private readonly resultVerifier: ExecutionResultVerifier,
-    private readonly now: () => Date = () => new Date(),
+    now: () => Date = () => new Date(),
     createId: () => string = randomUUID,
   ) {
     this.outbox = new ExecutionOutbox(http, state, now, createId);
+    this.preparation = new ExecutionPreparation(
+      state,
+      files,
+      attachments,
+      workspaces,
+      skills,
+      resultVerifier,
+      executor,
+    );
+    this.recovery = new ExecutionRecovery(http, state, now);
   }
 
   async cycle(session: AuthenticatedRunnerSession): Promise<boolean> {
     if (this.tasks.size === 0) {
       if (!(await this.outbox.replayOutbox(session))) return false;
-      if (await this.recoverInterrupted()) {
+      if (await this.recovery.recoverInterrupted()) {
         this.recoveryRequired = true;
         return true;
       }
@@ -121,7 +122,7 @@ export class ExecutionService {
   ): void {
     if (this.tasks.has(execution.id)) return;
     const previous = this.bindingTails.get(execution.bindingId);
-    const persisted = this.recordPhase(execution, 'CLAIMED', null);
+    const persisted = this.recovery.recordPhase(execution, 'CLAIMED', null);
     let task!: Promise<void>;
     task = Promise.all([persisted, previous ?? Promise.resolve()])
       .then(async () => {
@@ -167,121 +168,54 @@ export class ExecutionService {
       return;
     }
     if (turn.kind === 'READ_SESSION') {
-      await this.completeReadSession(session, execution, turn.taskId);
-      return;
-    }
-    const bindingPath = await this.state.resolveBinding(execution.bindingId);
-    if (!bindingPath) {
-      await this.reportStartFailure(session, execution, {
-        code: 'BINDING_NOT_FOUND',
-        message: '本机未登记该关联',
-        retryable: true,
-      });
-      return;
-    }
-    if ((await this.files.info(bindingPath))?.type !== 'directory') {
-      await this.reportStartFailure(session, execution, {
-        code: 'REPOSITORY_NOT_FOUND',
-        message: '本机仓库目录不存在',
-        retryable: true,
-      });
-      return;
-    }
-
-    let repositoryPath = bindingPath;
-    if (execution.workspace)
-      try {
-        const prepared = await this.workspaces.prepare(
-          bindingPath,
-          execution.workspace,
+      const synchronization = await this.preparation.readSession(
+        execution,
+        turn.taskId,
+      );
+      if (synchronization.kind === 'FAILED')
+        await this.reportStartFailure(
+          session,
+          execution,
+          synchronization.failure,
         );
-        if (prepared.kind === 'COMPLETED') {
-          await this.completePreparedWorkspace(
-            session,
-            execution,
-            prepared.result,
-          );
-          return;
-        }
-        repositoryPath = prepared.cwd;
+      else
+        await this.completeImmediateExecution(
+          session,
+          execution,
+          turn.taskId,
+          synchronization.result,
+        );
+      return;
+    }
+    const prepared = await this.preparation.prepare(session, execution, turn);
+    if (prepared.kind === 'FAILED') {
+      await this.reportStartFailure(session, execution, prepared.failure);
+      return;
+    }
+    if (prepared.kind === 'WORKSPACE_COMPLETED') {
+      try {
+        await this.completeImmediateExecution(
+          session,
+          execution,
+          `xapt-workspace:${execution.id}`,
+          prepared.result,
+        );
       } catch {
         await this.reportStartFailure(session, execution, {
           code: 'REPOSITORY_NOT_FOUND',
           message: '无法准备隔离的本机 Git 工作区',
           retryable: true,
         });
-        return;
       }
-
-    let materialized;
-    try {
-      materialized = await this.attachments.materialize(
-        session.serverOrigin,
-        session.credential,
-        execution,
-      );
-    } catch {
-      await this.reportStartFailure(session, execution, {
-        code: 'ATTACHMENT_DOWNLOAD_FAILED',
-        message: '任务附件下载或校验失败',
-        retryable: true,
-      });
       return;
     }
-
-    let resolvedSkill;
-    try {
-      if (turn.kind === 'INITIAL') {
-        const serialized = serializeDeterministicJson(turn.executionBrief);
-        if (
-          createHash('sha256').update(serialized).digest('hex') !==
-          turn.executionBriefHash
-        )
-          throw new Error('任务说明校验值不匹配');
-        if (!XAPT_SKILL_NAMES.includes(turn.requiredSkillName as XaptSkillName))
-          throw new Error('任务请求了未知规则');
-        resolvedSkill = await this.skills.resolveCurrent(
-          turn.requiredSkillName as XaptSkillName,
-        );
-      } else
-        resolvedSkill = await this.skills.resolveBound({
-          skillName: turn.taskSkillBinding.skillName as XaptSkillName,
-          bundleHash: turn.taskSkillBinding.bundleHash,
-          sourceRevision: turn.taskSkillBinding.sourceRevision,
-        });
-    } catch (error) {
-      await this.reportStartFailure(session, execution, {
-        code: 'CODEX_START_FAILED',
-        message: failureMessage(
-          error instanceof Error ? error.message : '规则包解析失败',
-        ),
-        retryable: false,
-      });
-      return;
-    }
-
-    const resultAssertions = turn.resultAssertions ?? [];
-    let resultBaseline;
-    try {
-      resultBaseline = await this.resultVerifier.capture(
-        repositoryPath,
-        resultAssertions,
-      );
-      await this.state.saveExecutionResultBaseline(
-        execution.id,
-        resultBaseline,
-      );
-    } catch (error) {
-      await this.reportStartFailure(session, execution, {
-        code: 'CODEX_START_FAILED',
-        message: failureMessage(
-          error instanceof Error ? error.message : '无法建立本机结果校验基线',
-        ),
-        retryable: true,
-      });
-      return;
-    }
-
+    const {
+      repositoryPath,
+      materialized,
+      resolvedSkill,
+      resultAssertions,
+      resultBaseline,
+    } = prepared;
     const controller = new AbortController();
     this.controllers.set(execution.id, controller);
     let recoveredInteraction = execution.recoveredInteraction;
@@ -345,7 +279,6 @@ export class ExecutionService {
       });
       return;
     }
-
     const startRequest: ExecutionStartRequest = {
       kind: 'STARTED',
       leaseToken: execution.lease.token,
@@ -371,9 +304,8 @@ export class ExecutionService {
     }
     startAccepted = true;
     releaseStartGate();
-    await this.recordPhase(execution, 'RUNNING', started.sessionId);
-
-    const lease = this.keepLease(session, execution, controller);
+    await this.recovery.recordPhase(execution, 'RUNNING', started.sessionId);
+    const lease = this.recovery.keepLease(session, execution, controller);
     let request: CompleteExecutionRequest;
     try {
       const result = await Promise.race([started.completion, lease.lost]);
@@ -411,7 +343,11 @@ export class ExecutionService {
     } finally {
       lease.stop();
     }
-    await this.recordPhase(execution, 'OUTCOME_PENDING', started.sessionId);
+    await this.recovery.recordPhase(
+      execution,
+      'OUTCOME_PENDING',
+      started.sessionId,
+    );
     if (
       await this.outbox.persistAndDeliver(
         session,
@@ -444,7 +380,11 @@ export class ExecutionService {
       },
     );
     this.waitingInteractionCount += 1;
-    await this.recordPhase(execution, 'WAITING_INTERACTION', sessionId);
+    await this.recovery.recordPhase(
+      execution,
+      'WAITING_INTERACTION',
+      sessionId,
+    );
     try {
       for (;;) {
         const waited = await this.http.waitInteraction(
@@ -455,13 +395,7 @@ export class ExecutionService {
           execution.lease.token,
           5_000,
         );
-        const renewed = await this.http.renewExecution(
-          session.serverOrigin,
-          session.credential,
-          execution.id,
-          execution.lease.token,
-        );
-        await this.persistRenewedLease(execution, renewed.expiresAt);
+        const renewed = await this.recovery.renew(session, execution);
         if (renewed.cancellationRequested) {
           this.controllers.get(execution.id)?.abort();
           throw new CancellationRequested();
@@ -491,94 +425,12 @@ export class ExecutionService {
       await this.state.removeExecution(execution.id);
   }
 
-  private async completePreparedWorkspace(
-    session: AuthenticatedRunnerSession,
-    execution: ClaimedExecution,
-    result: JsonValue,
-  ): Promise<void> {
-    const sessionId = `xapt-workspace:${execution.id}`;
-    if (
-      !(await this.outbox.persistAndDeliver(session, 'START', execution.id, {
-        kind: 'STARTED',
-        leaseToken: execution.lease.token,
-        sessionId,
-        taskSkillBinding: null,
-      }))
-    )
-      return;
-    if (
-      await this.outbox.persistAndDeliver(session, 'OUTCOME', execution.id, {
-        leaseToken: execution.lease.token,
-        sessionId,
-        outcome: { kind: 'SUCCEEDED', result },
-      })
-    )
-      await this.state.removeExecution(execution.id);
-  }
-
-  private async completeReadSession(
+  private async completeImmediateExecution(
     session: AuthenticatedRunnerSession,
     execution: ClaimedExecution,
     sessionId: string,
+    result: JsonValue,
   ): Promise<void> {
-    let result: JsonValue;
-    try {
-      const completed = await this.executor.readLastCompletedTurn(sessionId);
-      verifySessionResultSchema(
-        execution.codexTurn?.outputJsonSchema,
-        completed.result,
-      );
-      const resultAssertions = execution.codexTurn?.resultAssertions ?? [];
-      if (resultAssertions.length > 0) {
-        const bindingPath = await this.state.resolveBinding(
-          execution.bindingId,
-        );
-        if (!bindingPath)
-          throw new ExecutionResultVerificationError(
-            '本机未登记原任务关联，无法校验同步结果',
-          );
-        if (!execution.workspace)
-          throw new ExecutionResultVerificationError(
-            '同步任务缺少原任务工作区，无法校验结果',
-          );
-        if (!execution.previousExecutionId)
-          throw new ExecutionResultVerificationError(
-            '同步任务缺少原执行关联，无法校验结果',
-          );
-        let repositoryPath: string;
-        try {
-          repositoryPath = await this.workspaces.resolve(
-            bindingPath,
-            execution.workspace,
-          );
-        } catch {
-          throw new ExecutionResultVerificationError(
-            '原任务工作区不可用，无法校验同步结果',
-          );
-        }
-        const resultBaseline = await this.state.loadExecutionResultBaseline(
-          execution.previousExecutionId,
-        );
-        await this.resultVerifier.verify(
-          repositoryPath,
-          resultAssertions,
-          resultBaseline,
-          completed.result,
-        );
-      }
-      result = { turnId: completed.turnId, result: completed.result };
-    } catch (error) {
-      await this.reportStartFailure(session, execution, {
-        code: 'CODEX_EXECUTION_FAILED',
-        message:
-          error instanceof CodexAppServerError ||
-          error instanceof ExecutionResultVerificationError
-            ? failureMessage(error.message)
-            : '读取 Codex 会话结果失败',
-        retryable: true,
-      });
-      return;
-    }
     if (
       !(await this.outbox.persistAndDeliver(session, 'START', execution.id, {
         kind: 'STARTED',
@@ -597,115 +449,6 @@ export class ExecutionService {
     )
       await this.state.removeExecution(execution.id);
   }
-
-  private recordPhase(
-    execution: ClaimedExecution,
-    phase: ExecutionRecoveryState['phase'],
-    sessionId: string | null,
-  ): Promise<void> {
-    return this.state.saveExecution({
-      schemaVersion: EXECUTION_STATE_SCHEMA_VERSION,
-      executionId: execution.id,
-      bindingId: execution.bindingId,
-      phase,
-      sessionId,
-      claimedExecution: execution,
-      updatedAt: this.now().toISOString(),
-    });
-  }
-
-  private async recoverInterrupted(): Promise<boolean> {
-    const recoveries = await this.state.loadExecutions();
-    const now = this.now().getTime();
-    for (const recovery of recoveries)
-      if (Date.parse(recovery.claimedExecution.lease.expiresAt) <= now)
-        await this.state.removeExecution(recovery.executionId);
-    return recoveries.length > 0;
-  }
-
-  private async persistRenewedLease(
-    execution: ClaimedExecution,
-    expiresAt: string,
-  ): Promise<void> {
-    execution.lease.expiresAt = expiresAt;
-    const recovery = (await this.state.loadExecutions()).find(
-      ({ executionId }) => executionId === execution.id,
-    );
-    if (!recovery) return;
-    await this.state.saveExecution({
-      ...recovery,
-      claimedExecution: {
-        ...recovery.claimedExecution,
-        lease: { ...recovery.claimedExecution.lease, expiresAt },
-      },
-      updatedAt: this.now().toISOString(),
-    });
-  }
-
-  private keepLease(
-    session: AuthenticatedRunnerSession,
-    execution: ClaimedExecution,
-    controller: AbortController,
-  ): { lost: Promise<never>; stop: () => void } {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let rejectLost!: (error: Error) => void;
-    let stopped = false;
-    const lost = new Promise<never>((_resolve, reject) => {
-      rejectLost = reject;
-    });
-    const renew = async () => {
-      if (stopped) return;
-      try {
-        const status = await this.http.renewExecution(
-          session.serverOrigin,
-          session.credential,
-          execution.id,
-          execution.lease.token,
-        );
-        await this.persistRenewedLease(execution, status.expiresAt);
-        if (status.cancellationRequested) throw new Error('服务端已请求取消');
-        timer = setTimeout(renew, 5_000);
-      } catch (error) {
-        controller.abort();
-        rejectLost(
-          error instanceof Error ? error : new Error('任务领取凭据已失效'),
-        );
-      }
-    };
-    timer = setTimeout(renew, 5_000);
-    return {
-      lost,
-      stop: () => {
-        stopped = true;
-        if (timer) clearTimeout(timer);
-      },
-    };
-  }
-}
-
-function failureMessage(message: string): string {
-  const normalized = message.trim();
-  return normalized.length <= MAX_FAILURE_MESSAGE_LENGTH
-    ? normalized
-    : `${normalized.slice(0, MAX_FAILURE_MESSAGE_LENGTH - 1)}…`;
-}
-
-function verifySessionResultSchema(
-  outputJsonSchema: JsonObject | undefined,
-  result: JsonValue,
-): void {
-  if (!outputJsonSchema)
-    throw new ExecutionResultVerificationError('同步任务缺少原任务结果约束');
-  let validate;
-  try {
-    validate = sessionResultSchemaValidator.compile(outputJsonSchema);
-  } catch {
-    throw new ExecutionResultVerificationError('原任务结果约束无法验证');
-  }
-  if (!validate(result))
-    throw new ExecutionResultVerificationError(
-      'Codex 会话的最新轮次不符合原任务结果约束',
-    );
 }
 
 class CancellationRequested extends Error {}

@@ -29,6 +29,7 @@ import type {
 } from '../codex/contract';
 import { CodexAppServerError } from '../codex/errors';
 import { ExecutionService } from './service';
+import { ExecutionRecovery } from './recovery';
 import {
   ExecutionResultVerificationError,
   type ExecutionResultVerifier,
@@ -501,14 +502,11 @@ test('续租将最新 Lease 过期时间写入崩溃恢复记录', async () => {
     updatedAt: '2026-08-03T08:00:00.000Z',
   });
 
-  await (
-    fixture.service as unknown as {
-      persistRenewedLease: (
-        execution: ClaimedExecution,
-        expiresAt: string,
-      ) => Promise<void>;
-    }
-  ).persistRenewedLease(execution, '2026-08-03T10:00:00.000Z');
+  fixture.http.renewedExpiresAt = '2026-08-03T10:00:00.000Z';
+  await new ExecutionRecovery(fixture.http, fixture.state, () => new Date()).renew(
+    session,
+    execution,
+  );
   fixture.setNow('2026-08-03T09:30:00.000Z');
 
   const restarted = fixture.restartedService();
@@ -649,6 +647,7 @@ class FakeExecutionHttp implements RunnerExecutionHttp {
   failOutcome = false;
   interactionResolution: JsonValue = {};
   readonly openedInteractions: unknown[] = [];
+  renewedExpiresAt = '2026-08-03T09:00:00.000Z';
 
   constructor(...executions: ClaimedExecution[]) {
     this.claimed = executions;
@@ -677,7 +676,7 @@ class FakeExecutionHttp implements RunnerExecutionHttp {
 
   async renewExecution(): Promise<ExecutionRenewResponse> {
     return {
-      expiresAt: '2026-08-03T09:00:00.000Z',
+      expiresAt: this.renewedExpiresAt,
       cancellationRequested: false,
     };
   }
