@@ -1,4 +1,5 @@
 import type { Execution } from '@agent-party-time/execution-contract';
+import type { Bug } from '@/cooking/bugs/contract';
 
 export type RepairSourceRow = {
   bug_id: string;
@@ -6,14 +7,7 @@ export type RepairSourceRow = {
   submission_item_id: string;
   project_id: string;
   submission_status: 'ACTIVE' | 'CLOSED';
-  stage:
-    | 'WAITING_FOR_REPAIR'
-    | 'REPAIRING'
-    | 'WAITING_FOR_UPDATE'
-    | 'UPDATING'
-    | 'WAITING_FOR_VERIFICATION'
-    | 'DONE'
-    | 'CANCELLED';
+  stage: Bug['stage'];
   bug_version: number;
   responsible_user_id: string;
 };

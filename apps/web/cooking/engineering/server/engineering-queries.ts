@@ -16,18 +16,8 @@ import {
   type TestEnvironment,
 } from '../contract';
 
-export type EngineeringRow = {
-  id: string;
-  project_id: string;
-  name: string;
-  type: 'FRONTEND' | 'BACKEND';
-  identifier: string;
-  repository_state: 'PENDING' | 'CONFIRMED';
+export type EngineeringRow = DatabaseRow<Engineering> & {
   repository_url: string | null;
-  version: number;
-  archived_at: string | null;
-  created_at: string;
-  updated_at: string;
 };
 
 export type EngineeringMembershipRow = DatabaseRow<EngineeringMembership>;

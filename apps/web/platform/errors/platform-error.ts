@@ -1,20 +1,4 @@
-export type PlatformErrorCode =
-  | 'AUTHENTICATION_FAILED'
-  | 'NOT_AUTHENTICATED'
-  | 'PERMISSION_DENIED'
-  | 'STALE_STATE'
-  | 'INVALID_TRANSITION'
-  | 'VALIDATION_FAILED'
-  | 'SCHEMA_VERSION_MISMATCH'
-  | 'RESOURCE_CONFLICT'
-  | 'LEASE_EXPIRED'
-  | 'OUTCOME_CONFLICT'
-  | 'NOT_FOUND'
-  | 'FILE_TOO_LARGE'
-  | 'FILE_TYPE_NOT_ALLOWED'
-  | 'INTERNAL_ERROR';
-
-const STATUS_BY_CODE: Record<PlatformErrorCode, number> = {
+const STATUS_BY_CODE = {
   AUTHENTICATION_FAILED: 401,
   NOT_AUTHENTICATED: 401,
   PERMISSION_DENIED: 403,
@@ -30,6 +14,8 @@ const STATUS_BY_CODE: Record<PlatformErrorCode, number> = {
   FILE_TYPE_NOT_ALLOWED: 415,
   INTERNAL_ERROR: 500,
 };
+
+export type PlatformErrorCode = keyof typeof STATUS_BY_CODE;
 
 export class PlatformError extends Error {
   readonly status: number;
