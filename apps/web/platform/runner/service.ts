@@ -367,37 +367,29 @@ export class RunnerService {
         row.installation_id,
       ) as RunnerRow | undefined;
       const runnerId = existing?.id ?? this.createId();
-      const version = existing ? existing.version + 1 : 1;
-      let stored: RunnerRow;
-      if (existing) {
-        const updated = this.db.get<RunnerRow>(
-          `UPDATE platform_runner
-             SET name = ?, credential_hash = ?, version = ?,
-                 available_slots = 3, last_seen_at = NULL, revoked_at = NULL
-             WHERE id = ? AND version = ? RETURNING *`,
-          row.approved_name,
-          credentialHash,
-          version,
-          existing.id,
-          existing.version,
-        );
-        if (!updated)
-          throw new PlatformError('STALE_STATE', 'Agent 已更新，请重试授权');
-        stored = updated;
-      } else {
-        stored = this.db.get<RunnerRow>(
-          `INSERT INTO platform_runner(
-               id, owner_user_id, installation_id, name, credential_hash,
-               version, last_seen_at, revoked_at, created_at
-             ) VALUES (?, ?, ?, ?, ?, 1, NULL, NULL, ?) RETURNING *`,
-          runnerId,
-          row.owner_user_id,
-          row.installation_id,
-          row.approved_name,
-          credentialHash,
-          now.toISOString(),
-        )!;
-      }
+      const stored = this.db.get<RunnerRow>(
+        `INSERT INTO platform_runner(
+           id, owner_user_id, installation_id, name, credential_hash,
+           version, last_seen_at, revoked_at, created_at
+         ) VALUES (?, ?, ?, ?, ?, 1, NULL, NULL, ?)
+         ON CONFLICT(owner_user_id, installation_id)
+           WHERE installation_id IS NOT NULL
+         DO UPDATE SET name = excluded.name,
+                       credential_hash = excluded.credential_hash,
+                       version = platform_runner.version + 1,
+                       available_slots = 3,
+                       last_seen_at = NULL, revoked_at = NULL
+         WHERE platform_runner.version = ? RETURNING *`,
+        runnerId,
+        row.owner_user_id,
+        row.installation_id,
+        row.approved_name,
+        credentialHash,
+        now.toISOString(),
+        existing?.version ?? 0,
+      );
+      if (!stored)
+        throw new PlatformError('STALE_STATE', 'Agent 已更新，请重试授权');
       const consumed = this.db.run(
         `UPDATE platform_runner_authorization_request
            SET state = 'CONSUMED', consumed_at = ?
