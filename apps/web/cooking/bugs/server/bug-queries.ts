@@ -1,5 +1,6 @@
 import { parseRow, type DatabaseRow } from '@/platform/database/row-mapper';
 import { environmentReady } from '@/cooking/submissions/server/environment-access';
+import { CookingAttachmentViewSchema } from '@/cooking/shared/contract';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
 import {
@@ -48,6 +49,11 @@ export type ReportAttachmentIds = {
   expectedResultAttachmentIds: string[];
 };
 
+type BugAttachmentPreview = Pick<
+  StoredFile,
+  'id' | 'originalName' | 'mediaType' | 'sizeBytes' | 'createdAt'
+>;
+
 const STAGE_LABELS: Record<Bug['stage'], string> = {
   WAITING_FOR_REPAIR: '待修复',
   REPAIRING: '修复中',
@@ -70,7 +76,8 @@ export class BugQueries {
         submissionId,
       )
       .map((row) => {
-        const bug = mapBug(row, this.reportAttachmentIds(row.id));
+        const attachments = this.attachmentsForBug(row.id);
+        const bug = mapBug(row, attachments);
         const item = this.requireItem(submissionId, bug.submissionItemId);
         return {
           ...bug,
@@ -85,11 +92,8 @@ export class BugQueries {
             ...(bug.report.expectedResult
               ? { expectedResult: bug.report.expectedResult }
               : {}),
-            actualResultAttachments: this.attachments(row.id, 'ACTUAL_RESULT'),
-            expectedResultAttachments: this.attachments(
-              row.id,
-              'EXPECTED_RESULT',
-            ),
+            actualResultAttachments: attachments.actualResultAttachments,
+            expectedResultAttachments: attachments.expectedResultAttachments,
           },
           createdBy: this.getUser(bug.createdByUserId),
           assignment: item
@@ -176,7 +180,7 @@ export class BugQueries {
     const row = this.db.get('SELECT * FROM cooking_bug WHERE id = ?', bugId) as
       BugRow | undefined;
     if (!row) throw new PlatformError('NOT_FOUND', '缺陷不存在或无权访问');
-    return mapBug(row, this.reportAttachmentIds(row.id));
+    return mapBug(row, this.attachmentsForBug(row.id));
   }
 
   requireItem(submissionId: string, itemId: string | null): ItemRow | null {
@@ -216,64 +220,39 @@ export class BugQueries {
     return row.next_id;
   }
 
-  private reportAttachmentIds(bugId: string): ReportAttachmentIds {
-    const rows = this.db.all<{
-      file_id: string;
-      role: BugAttachmentRole;
-    }>(
-      `SELECT file_id, role FROM cooking_bug_attachment
-         WHERE bug_id = ? ORDER BY role, position`,
-      bugId,
-    );
-    return {
-      actualResultAttachmentIds: rows
-        .filter(({ role }) => role === 'ACTUAL_RESULT')
-        .map(({ file_id }) => file_id),
-      expectedResultAttachmentIds: rows
-        .filter(({ role }) => role === 'EXPECTED_RESULT')
-        .map(({ file_id }) => file_id),
-    };
-  }
-
-  private attachments(
-    bugId: string,
-    role: BugAttachmentRole,
-  ): Array<
-    Pick<
-      StoredFile,
-      'id' | 'originalName' | 'mediaType' | 'sizeBytes' | 'createdAt'
-    >
-  > {
-    const rows = this.db.all<{
-      id: string;
-      storage_key: string;
-      original_name: string;
-      media_type: string;
-      size_bytes: number;
-      sha256: string;
-      uploaded_by_user_id: string;
-      created_at: string;
-    }>(
-      `SELECT file.id, file.storage_key, file.original_name, file.media_type,
-                file.size_bytes, file.sha256, file.uploaded_by_user_id,
-                file.created_at
+  private attachmentsForBug(bugId: string) {
+    const rows = this.db.all<
+      DatabaseRow<StoredFile> & { role: BugAttachmentRole }
+    >(
+      `SELECT attachment.role, file.id, file.storage_key, file.original_name,
+              file.media_type, file.size_bytes, file.sha256,
+              file.uploaded_by_user_id, file.created_at
          FROM cooking_bug_attachment attachment
          JOIN platform_file file ON file.id = attachment.file_id
-         WHERE attachment.bug_id = ? AND attachment.role = ?
-         ORDER BY attachment.position`,
+         WHERE attachment.bug_id = ?
+         ORDER BY attachment.role, attachment.position`,
       bugId,
-      role,
     );
-    return rows.map((row) => {
+    const actual = {
+      ids: [] as string[],
+      previews: [] as BugAttachmentPreview[],
+    };
+    const expected = {
+      ids: [] as string[],
+      previews: [] as BugAttachmentPreview[],
+    };
+    for (const row of rows) {
+      const target = row.role === 'ACTUAL_RESULT' ? actual : expected;
       const file = parseRow(StoredFileSchema, row);
-      return {
-        id: file.id,
-        originalName: file.originalName,
-        mediaType: file.mediaType,
-        sizeBytes: file.sizeBytes,
-        createdAt: file.createdAt,
-      };
-    });
+      target.ids.push(file.id);
+      target.previews.push(CookingAttachmentViewSchema.parse(file));
+    }
+    return {
+      actualResultAttachmentIds: actual.ids,
+      expectedResultAttachmentIds: expected.ids,
+      actualResultAttachments: actual.previews,
+      expectedResultAttachments: expected.previews,
+    };
   }
 
   private availableActions(userId: string, access: AccessRow, bug: Bug) {
