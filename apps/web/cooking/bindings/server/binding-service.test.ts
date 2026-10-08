@@ -1,7 +1,7 @@
 import { projectScenario } from '@/cooking/testing/scenario';
 import { EngineeringService } from '@/cooking/engineering/server/engineering-service';
 import { RunnerService } from '@/platform/runner/service';
-import { testDatabases } from '@/testing/database';
+import { countRows, testDatabases } from '@/testing/database';
 import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { BindingRequestService } from './binding-request-service';
@@ -222,11 +222,7 @@ describe('Web 驱动工程绑定', () => {
       runners.member.runner.id,
       randomUUID(),
     );
-    expect(
-      database.get<{ count: number }>(
-        'SELECT COUNT(*) count FROM cooking_engineering_binding',
-      )?.count,
-    ).toBe(0);
+    expect(countRows(database, 'cooking_engineering_binding')).toBe(0);
     expect(requestService.claimNext(runners.other.runner.id)).toBeNull();
     const work = requestService.claimNext(runners.member.runner.id);
     expect(work).toMatchObject({ requestId: request.id });
@@ -381,12 +377,9 @@ describe('删除未使用工程绑定', () => {
     expect(service.listBindings(users.member.id, engineering.id)).toHaveLength(
       1,
     );
-    expect(
-      database.get<{ count: number }>(
-        'SELECT COUNT(*) count FROM cooking_submission_item WHERE id = ?',
-        itemId,
-      )?.count,
-    ).toBe(1);
+    expect(countRows(database, 'cooking_submission_item', { id: itemId })).toBe(
+      1,
+    );
   });
 
   test('已被执行历史引用的绑定不能删除', async () => {
@@ -420,11 +413,8 @@ describe('删除未使用工程绑定', () => {
     expect(() =>
       service.deleteBinding(users.member.id, binding.id, randomUUID()),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
-    expect(
-      database.get<{ count: number }>(
-        'SELECT COUNT(*) count FROM platform_execution WHERE id = ?',
-        executionId,
-      )?.count,
-    ).toBe(1);
+    expect(countRows(database, 'platform_execution', { id: executionId })).toBe(
+      1,
+    );
   });
 });

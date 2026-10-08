@@ -7,7 +7,7 @@ import { SubmissionService } from '@/cooking/submissions/server/submission-servi
 import type { AppDatabase } from '@/platform/database';
 import { LocalFileStore } from '@/platform/files/local-file-store';
 import { RunnerService } from '@/platform/runner/service';
-import { testDatabases } from '@/testing/database';
+import { countRows, testDatabases } from '@/testing/database';
 import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
@@ -448,11 +448,10 @@ describe('BugService', () => {
       { submissionId: fixture.submission.id, revision: first.revision },
     ]);
     expect(
-      fixture.database.get<{ count: number }>(
-        `SELECT COUNT(*) count FROM cooking_audit_event
-           WHERE target_id = ? AND action = 'BUG_CREATED'`,
-        first.bug.id,
-      )?.count,
+      countRows(fixture.database, 'cooking_audit_event', {
+        target_id: first.bug.id,
+        action: 'BUG_CREATED',
+      }),
     ).toBe(1);
     expect(
       fixture.service.workspace(fixture.users.tester.id, fixture.submission.id)
@@ -495,24 +494,19 @@ describe('BugService', () => {
     expect(result.deletedBugIds).toEqual([first.bug.id, second.bug.id]);
     expect(result.deletedExecutionIds).toEqual([]);
     expect(
-      fixture.database.get<{ count: number }>(
-        'SELECT COUNT(*) count FROM cooking_bug WHERE id = ?',
-        first.bug.id,
-      )?.count,
+      countRows(fixture.database, 'cooking_bug', { id: first.bug.id }),
     ).toBe(0);
     expect(
-      fixture.database.get<{ count: number }>(
-        `SELECT COUNT(*) count FROM cooking_mutation
-           WHERE resource_type = 'BUG' AND resource_id = ?`,
-        first.bug.id,
-      )?.count,
+      countRows(fixture.database, 'cooking_mutation', {
+        resource_type: 'BUG',
+        resource_id: first.bug.id,
+      }),
     ).toBe(0);
     expect(
-      fixture.database.get<{ count: number }>(
-        `SELECT COUNT(*) count FROM cooking_audit_event
-           WHERE target_type = 'BUG' AND target_id = ?`,
-        second.bug.id,
-      )?.count,
+      countRows(fixture.database, 'cooking_audit_event', {
+        target_type: 'BUG',
+        target_id: second.bug.id,
+      }),
     ).toBe(0);
     expect(fixture.events.at(-1)).toEqual({
       submissionId: fixture.submission.id,
@@ -527,12 +521,7 @@ describe('BugService', () => {
     expect(() => fixture.service.deleteBugs({ bugIds: [bug.id] })).toThrow(
       expect.objectContaining({ code: 'RESOURCE_CONFLICT' }),
     );
-    expect(
-      fixture.database.get<{ count: number }>(
-        'SELECT COUNT(*) count FROM cooking_bug WHERE id = ?',
-        bug.id,
-      )?.count,
-    ).toBe(1);
+    expect(countRows(fixture.database, 'cooking_bug', { id: bug.id })).toBe(1);
   });
 
   test('deleteBugs --force 删除链式修复执行与关联上下文', async () => {
@@ -569,29 +558,17 @@ describe('BugService', () => {
       new Set([first, second]),
     );
     expect(
-      fixture.database.get<{ count: number }>(
-        'SELECT COUNT(*) count FROM platform_execution WHERE id = ?',
-        first,
-      )?.count,
+      countRows(fixture.database, 'platform_execution', { id: first }),
     ).toBe(0);
     expect(
-      fixture.database.get<{ count: number }>(
-        'SELECT COUNT(*) count FROM cooking_repair_attempt WHERE bug_id = ?',
-        bug.id,
-      )?.count,
+      countRows(fixture.database, 'cooking_repair_attempt', { bug_id: bug.id }),
     ).toBe(0);
     expect(
-      fixture.database.get<{ count: number }>(
-        'SELECT COUNT(*) count FROM cooking_bug_repair_context WHERE bug_id = ?',
-        bug.id,
-      )?.count,
+      countRows(fixture.database, 'cooking_bug_repair_context', {
+        bug_id: bug.id,
+      }),
     ).toBe(0);
-    expect(
-      fixture.database.get<{ count: number }>(
-        'SELECT COUNT(*) count FROM cooking_bug WHERE id = ?',
-        bug.id,
-      )?.count,
-    ).toBe(0);
+    expect(countRows(fixture.database, 'cooking_bug', { id: bug.id })).toBe(0);
   });
 
   test('deleteBugs --all --force 清理空的统一更新批次与活动执行', async () => {
@@ -652,28 +629,20 @@ describe('BugService', () => {
       fixture.database.all('SELECT id FROM cooking_update_session_sync'),
     ).toEqual([]);
     expect(
-      fixture.database.get<{ count: number }>(
-        `SELECT COUNT(*) count FROM cooking_update_batch_entry WHERE bug_id = ?`,
-        bug.id,
-      )?.count,
+      countRows(fixture.database, 'cooking_update_batch_entry', {
+        bug_id: bug.id,
+      }),
     ).toBe(0);
     expect(
-      fixture.database.get<{ count: number }>(
-        `SELECT COUNT(*) count FROM cooking_update_attempt WHERE execution_id = ?`,
-        executionId,
-      )?.count,
+      countRows(fixture.database, 'cooking_update_attempt', {
+        execution_id: executionId,
+      }),
     ).toBe(0);
     expect(
-      fixture.database.get<{ count: number }>(
-        'SELECT COUNT(*) count FROM cooking_update_batch WHERE id = ?',
-        batchId,
-      )?.count,
+      countRows(fixture.database, 'cooking_update_batch', { id: batchId }),
     ).toBe(0);
     expect(
-      fixture.database.get<{ count: number }>(
-        'SELECT COUNT(*) count FROM platform_execution WHERE id = ?',
-        executionId,
-      )?.count,
+      countRows(fixture.database, 'platform_execution', { id: executionId }),
     ).toBe(0);
   });
 
@@ -755,10 +724,9 @@ describe('BugService', () => {
     const result = fixture.service.deleteBugs({ all: true });
     expect(result.deletedBugIds).toHaveLength(2);
     expect(
-      fixture.database.get<{ count: number }>(
-        'SELECT COUNT(*) count FROM cooking_bug WHERE submission_id = ?',
-        fixture.submission.id,
-      )?.count,
+      countRows(fixture.database, 'cooking_bug', {
+        submission_id: fixture.submission.id,
+      }),
     ).toBe(0);
   });
 });

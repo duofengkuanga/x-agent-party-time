@@ -1,3 +1,4 @@
+import { countRows } from '@/testing/database';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -52,11 +53,7 @@ describe('AuthService', () => {
     });
 
     expect(repeated).toEqual(first);
-    expect(
-      database.get<{ count: number }>(
-        'SELECT COUNT(*) count FROM platform_user',
-      )?.count,
-    ).toBe(1);
+    expect(countRows(database, 'platform_user')).toBe(1);
     const row = database.get<{ password_hash: string }>(
       'SELECT password_hash FROM platform_user WHERE id = ?',
       'user-one',
@@ -115,10 +112,6 @@ describe('AuthService', () => {
     now = new Date('2026-07-26T02:00:02Z');
 
     expect(auth.currentUser(session.token)).toBeNull();
-    expect(
-      database.get<{ count: number }>(
-        'SELECT COUNT(*) count FROM platform_session',
-      )?.count,
-    ).toBe(0);
+    expect(countRows(database, 'platform_session')).toBe(0);
   });
 });

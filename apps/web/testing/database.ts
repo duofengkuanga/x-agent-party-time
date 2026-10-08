@@ -24,3 +24,21 @@ export function testDatabases() {
     return { directory, database };
   };
 }
+
+/** Count fixture rows using only named equality conditions. */
+export function countRows(
+  database: AppDatabase,
+  table: string,
+  where: Record<string, string | number | null> = {},
+): number {
+  const conditions = Object.entries(where);
+  const predicate = conditions.length
+    ? ` WHERE ${conditions.map(([column]) => `${column} = ?`).join(' AND ')}`
+    : '';
+  return (
+    database.get<{ count: number }>(
+      `SELECT COUNT(*) count FROM ${table}${predicate}`,
+      ...conditions.map(([, value]) => value),
+    )?.count ?? 0
+  );
+}

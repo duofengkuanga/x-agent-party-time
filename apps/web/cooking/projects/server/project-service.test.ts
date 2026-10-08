@@ -1,6 +1,6 @@
 import { AuthService } from '@/platform/auth/service';
 import { PlatformError } from '@/platform/errors';
-import { testDatabases } from '@/testing/database';
+import { countRows, testDatabases } from '@/testing/database';
 import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { ProjectService } from './project-service';
@@ -65,21 +65,9 @@ describe('ProjectService', () => {
     expect(created.membership.role).toBe('OWNER');
     expect(service.listProjects(users.owner.id)).toEqual([created]);
     expect(service.listProjects(users.member.id)).toEqual([]);
-    expect(
-      database.get<{ count: number }>(
-        'SELECT COUNT(*) count FROM cooking_project',
-      )?.count,
-    ).toBe(1);
-    expect(
-      database.get<{ count: number }>(
-        'SELECT COUNT(*) count FROM cooking_project_membership',
-      )?.count,
-    ).toBe(1);
-    expect(
-      database.get<{ count: number }>(
-        'SELECT COUNT(*) count FROM cooking_audit_event',
-      )?.count,
-    ).toBe(1);
+    expect(countRows(database, 'cooking_project')).toBe(1);
+    expect(countRows(database, 'cooking_project_membership')).toBe(1);
+    expect(countRows(database, 'cooking_audit_event')).toBe(1);
   });
 
   test('非成员读取真实或不存在项目都得到相同安全错误', async () => {
@@ -156,12 +144,10 @@ describe('ProjectService', () => {
     );
     expect(service.listMembers(users.owner.id, project.id)).toHaveLength(2);
     expect(
-      database.get<{ count: number }>(
-        `SELECT COUNT(*) count FROM cooking_project_membership
-           WHERE project_id = ? AND user_id = ?`,
-        project.id,
-        users.member.id,
-      )?.count,
+      countRows(database, 'cooking_project_membership', {
+        project_id: project.id,
+        user_id: users.member.id,
+      }),
     ).toBe(1);
     expect(() =>
       service.inviteUser(users.member.id, project.id, {

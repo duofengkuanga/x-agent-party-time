@@ -1,5 +1,5 @@
 import { projectScenario } from '@/cooking/testing/scenario';
-import { testDatabases } from '@/testing/database';
+import { countRows, testDatabases } from '@/testing/database';
 import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import {
@@ -125,11 +125,7 @@ describe('EngineeringService', () => {
       }),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
     expect(service.listEngineering(users.owner.id, project.id)).toEqual([]);
-    expect(
-      database.get<{ count: number }>(
-        'SELECT COUNT(*) count FROM cooking_mutation',
-      )?.count,
-    ).toBe(mutationCountBefore);
+    expect(countRows(database, 'cooking_mutation')).toBe(mutationCountBefore);
   });
 
   test('工程初始化至少需要一个测试环境', async () => {
@@ -208,11 +204,7 @@ describe('EngineeringService', () => {
         identifier: 'forbidden-api',
       }),
     ).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
-    expect(
-      database.get<{ count: number }>(
-        'SELECT COUNT(*) count FROM cooking_engineering',
-      )?.count,
-    ).toBe(1);
+    expect(countRows(database, 'cooking_engineering')).toBe(1);
   });
 
   test('稳定标识格式正确、项目内唯一且归档后仍不能复用', async () => {
@@ -486,10 +478,7 @@ describe('EngineeringService', () => {
     );
     expect(archived.archivedAt).not.toBeNull();
     expect(
-      database.get<{ count: number }>(
-        'SELECT COUNT(*) count FROM cooking_engineering WHERE id = ?',
-        engineering.id,
-      )?.count,
+      countRows(database, 'cooking_engineering', { id: engineering.id }),
     ).toBe(1);
     expect(
       service.getWorkspace(users.member.id, engineering.id).members,

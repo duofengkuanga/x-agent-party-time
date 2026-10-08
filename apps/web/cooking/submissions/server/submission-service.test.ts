@@ -6,7 +6,7 @@ import { EngineeringService } from '@/cooking/engineering/server/engineering-ser
 import { ProjectService } from '@/cooking/projects/server/project-service';
 import type { AppDatabase } from '@/platform/database';
 import { RunnerService } from '@/platform/runner/service';
-import { testDatabases } from '@/testing/database';
+import { countRows, testDatabases } from '@/testing/database';
 import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import {
@@ -587,11 +587,10 @@ describe('Submission workspace', () => {
     );
     expect(ownerUpdate).toMatchObject({ version: 3, workspaceRevision: 3 });
     expect(
-      fixture.database.get<{ count: number }>(
-        `SELECT COUNT(*) count FROM cooking_audit_event
-           WHERE target_id = ? AND action = 'SUBMISSION_DETAILS_UPDATED'`,
-        submission.id,
-      )?.count,
+      countRows(fixture.database, 'cooking_audit_event', {
+        target_id: submission.id,
+        action: 'SUBMISSION_DETAILS_UPDATED',
+      }),
     ).toBe(2);
   });
 });
@@ -662,13 +661,6 @@ function insertBug(
       now,
       now,
     );
-}
-
-function countRows(database: AppDatabase, table: string): number {
-  return (
-    database.get<{ count: number }>(`SELECT COUNT(*) count FROM ${table}`)
-      ?.count ?? 0
-  );
 }
 
 describe('环境使用权切换', () => {
