@@ -1,3 +1,4 @@
+import { mutation } from '@/cooking/testing/project';
 import { testDatabases } from '@/testing/database';
 import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
@@ -25,8 +26,7 @@ describe('环境切换与验证、关闭', () => {
     const { next } = createTakeoverSubmission(fixture, '优先提测', '切换验证');
     const verify = () =>
       fixture.lifecycle.verifyBug(fixture.users.tester.id, bug.id, {
-        mutationId: randomUUID(),
-        expectedVersion: currentBug(fixture.database, bug.id).version,
+        ...mutation(currentBug(fixture.database, bug.id).version),
         result: 'PASSED',
         attachmentIds: [],
       });
@@ -62,8 +62,7 @@ describe('环境切换与验证、关闭', () => {
     );
     verify();
     fixture.lifecycle.closeSubmission(fixture.users.tester.id, next.id, {
-      mutationId: randomUUID(),
-      expectedVersion: next.version,
+      ...mutation(next.version),
     });
     expect(
       fixture.submissions.getWorkspace(
@@ -86,8 +85,7 @@ test('占用单关闭后暂停单收到新版本，可重新取得空闲环境�
     fixture.submission.id,
   ).revision;
   fixture.lifecycle.closeSubmission(fixture.users.tester.id, next.id, {
-    mutationId: randomUUID(),
-    expectedVersion: next.version,
+    ...mutation(next.version),
   });
   const available = fixture.submissions.getWorkspace(
     fixture.users.developer.id,

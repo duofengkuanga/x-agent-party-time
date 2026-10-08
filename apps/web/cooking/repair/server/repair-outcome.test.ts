@@ -1,3 +1,4 @@
+import { mutation } from '@/cooking/testing/project';
 import { completeSuccessfulExecution } from '@/cooking/testing/execution';
 import { testDatabases } from '@/testing/database';
 import { describe, expect, test } from 'bun:test';
@@ -252,8 +253,7 @@ describe('RepairService', () => {
         fixture.users.developer.id,
         interaction.id,
         {
-          mutationId: randomUUID(),
-          expectedVersion: 1,
+          ...mutation(1),
           resolution: { decision: 'accept' },
         },
       ),
@@ -263,8 +263,7 @@ describe('RepairService', () => {
         fixture.users.owner.id,
         interaction.id,
         {
-          mutationId: randomUUID(),
-          expectedVersion: 2,
+          ...mutation(2),
           resolution: { decision: 'decline' },
         },
       ),
@@ -273,8 +272,7 @@ describe('RepairService', () => {
       fixture.users.developer.id,
       interaction.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: 2,
+        ...mutation(2),
         resolution: { decision: 'acceptForSession' },
       },
     );
@@ -324,8 +322,7 @@ describe('RepairService', () => {
         fixture.users.developer.id,
         interaction.id,
         {
-          mutationId: randomUUID(),
-          expectedVersion: 3,
+          ...mutation(3),
           resolution: { decision: 'accept' },
         },
       ),

@@ -1,3 +1,4 @@
+import { mutation } from '@/cooking/testing/project';
 import { testDatabases } from '@/testing/database';
 import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
@@ -29,16 +30,14 @@ describe('LifecycleService', () => {
     ).bug;
     expect(() =>
       fixture.lifecycle.cancelBug(fixture.users.developer.id, waiting.id, {
-        mutationId: randomUUID(),
-        expectedVersion: waiting.version,
+        ...mutation(waiting.version),
       }),
     ).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
     const cancelled = fixture.lifecycle.cancelBug(
       fixture.users.tester.id,
       waiting.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: waiting.version,
+        ...mutation(waiting.version),
       },
     );
     expect(currentBug(fixture.database, waiting.id).stage).toBe('CANCELLED');
@@ -46,8 +45,7 @@ describe('LifecycleService', () => {
       fixture.users.tester.id,
       waiting.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: cancelled.bugVersion,
+        ...mutation(cancelled.bugVersion),
       },
     );
     expect(currentBug(fixture.database, waiting.id).stage).toBe(
@@ -64,14 +62,12 @@ describe('LifecycleService', () => {
       fixture.users.tester.id,
       waiting.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: restored.bugVersion,
+        ...mutation(restored.bugVersion),
       },
     ).bug;
     expect(() =>
       fixture.lifecycle.cancelBug(fixture.users.tester.id, waiting.id, {
-        mutationId: randomUUID(),
-        expectedVersion: repairing.version,
+        ...mutation(repairing.version),
       }),
     ).toThrow(expect.objectContaining({ code: 'INVALID_TRANSITION' }));
     await completeNextRepair(fixture, 'repair-archive', ['6666666']);
@@ -80,8 +76,7 @@ describe('LifecycleService', () => {
       summary: '归档前部署完成',
     });
     fixture.lifecycle.verifyBug(fixture.users.tester.id, waiting.id, {
-      mutationId: randomUUID(),
-      expectedVersion: currentBug(fixture.database, waiting.id).version,
+      ...mutation(currentBug(fixture.database, waiting.id).version),
       result: 'PASSED',
       attachmentIds: [],
     });
@@ -89,8 +84,7 @@ describe('LifecycleService', () => {
       fixture.users.tester.id,
       waiting.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: currentBug(fixture.database, waiting.id).version,
+        ...mutation(currentBug(fixture.database, waiting.id).version),
       },
     );
     expect(currentBug(fixture.database, waiting.id)).toMatchObject({
@@ -98,8 +92,7 @@ describe('LifecycleService', () => {
       archived_at: '2026-07-27T12:00:00.000Z',
     });
     fixture.lifecycle.unarchiveBug(fixture.users.tester.id, waiting.id, {
-      mutationId: randomUUID(),
-      expectedVersion: archived.bugVersion,
+      ...mutation(archived.bugVersion),
     });
     expect(currentBug(fixture.database, waiting.id)).toMatchObject({
       stage: 'DONE',
@@ -116,8 +109,7 @@ describe('LifecycleService', () => {
       summary: '部署完成',
     });
     fixture.lifecycle.verifyBug(fixture.users.tester.id, bug.id, {
-      mutationId: randomUUID(),
-      expectedVersion: currentBug(fixture.database, bug.id).version,
+      ...mutation(currentBug(fixture.database, bug.id).version),
       result: 'PASSED',
       attachmentIds: [],
     });
@@ -125,8 +117,7 @@ describe('LifecycleService', () => {
       fixture.users.tester.id,
       bug.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: currentBug(fixture.database, bug.id).version,
+        ...mutation(currentBug(fixture.database, bug.id).version),
         feedback: '回归时发现新证据',
         attachmentIds: [],
       },
@@ -155,8 +146,7 @@ describe('LifecycleService', () => {
       summary: '重开后部署完成',
     });
     fixture.lifecycle.verifyBug(fixture.users.tester.id, bug.id, {
-      mutationId: randomUUID(),
-      expectedVersion: currentBug(fixture.database, bug.id).version,
+      ...mutation(currentBug(fixture.database, bug.id).version),
       result: 'PASSED',
       attachmentIds: [],
     });
@@ -172,8 +162,7 @@ describe('LifecycleService', () => {
       },
     ).bug;
     fixture.lifecycle.cancelBug(fixture.users.tester.id, other.id, {
-      mutationId: randomUUID(),
-      expectedVersion: other.version,
+      ...mutation(other.version),
     });
     expect(currentBug(fixture.database, other.id).stage).toBe('CANCELLED');
     const beforeClose = submissionRow(fixture.database, fixture.submission.id);
@@ -181,14 +170,12 @@ describe('LifecycleService', () => {
       fixture.users.tester.id,
       fixture.submission.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: beforeClose.version,
+        ...mutation(beforeClose.version),
       },
     );
     expect(() =>
       fixture.lifecycle.reopenBug(fixture.users.tester.id, bug.id, {
-        mutationId: randomUUID(),
-        expectedVersion: currentBug(fixture.database, bug.id).version,
+        ...mutation(currentBug(fixture.database, bug.id).version),
         feedback: '关闭后不允许',
         attachmentIds: [],
       }),

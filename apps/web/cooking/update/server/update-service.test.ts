@@ -1,3 +1,4 @@
+import { mutation } from '@/cooking/testing/project';
 import { completeSuccessfulExecution } from '@/cooking/testing/execution';
 import { SubmissionService } from '@/cooking/submissions/server/submission-service';
 import { CookingWorkspaceService } from '@/cooking/workspace/server/workspace-service';
@@ -121,8 +122,7 @@ describe('UpdateService', () => {
 
     expect(() =>
       fixture.repairs.continueRepair(fixture.users.developer.id, second.id, {
-        mutationId: randomUUID(),
-        expectedVersion: currentBug(fixture.database, second.id).version,
+        ...mutation(currentBug(fixture.database, second.id).version),
       }),
     ).toThrow(expect.objectContaining({ code: 'INVALID_TRANSITION' }));
     expect(pending(fixture.database, fixture.item.id)).toEqual({

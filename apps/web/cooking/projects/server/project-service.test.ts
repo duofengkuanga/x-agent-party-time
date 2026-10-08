@@ -1,3 +1,4 @@
+import { mutation } from '@/cooking/testing/project';
 import { AuthService } from '@/platform/auth/service';
 import { PlatformError } from '@/platform/errors';
 import { countRows, testDatabases } from '@/testing/database';
@@ -113,8 +114,7 @@ describe('ProjectService', () => {
     expect(service.listReceivedInvitations(users.member.id)).toHaveLength(1);
     expect(() =>
       service.respondToInvitation(users.other.id, invitation.id, {
-        mutationId: randomUUID(),
-        expectedVersion: invitation.version,
+        ...mutation(invitation.version),
         decision: 'ACCEPT',
       }),
     ).toThrow(expect.objectContaining({ code: 'NOT_FOUND' }));
@@ -123,8 +123,7 @@ describe('ProjectService', () => {
       users.member.id,
       invitation.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: invitation.version,
+        ...mutation(invitation.version),
         decision: 'ACCEPT',
       },
     );
@@ -132,8 +131,7 @@ describe('ProjectService', () => {
       users.member.id,
       invitation.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: invitation.version,
+        ...mutation(invitation.version),
         decision: 'ACCEPT',
       },
     );
@@ -171,22 +169,19 @@ describe('ProjectService', () => {
       users.member.id,
       rejectedInvitation.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: rejectedInvitation.version,
+        ...mutation(rejectedInvitation.version),
         decision: 'REJECT',
       },
     );
     expect(
       service.respondToInvitation(users.member.id, rejectedInvitation.id, {
-        mutationId: randomUUID(),
-        expectedVersion: rejectedInvitation.version,
+        ...mutation(rejectedInvitation.version),
         decision: 'REJECT',
       }),
     ).toEqual(rejected);
     expect(() =>
       service.respondToInvitation(users.member.id, rejectedInvitation.id, {
-        mutationId: randomUUID(),
-        expectedVersion: rejectedInvitation.version,
+        ...mutation(rejectedInvitation.version),
         decision: 'ACCEPT',
       }),
     ).toThrow(expect.objectContaining({ code: 'INVALID_TRANSITION' }));
@@ -199,14 +194,12 @@ describe('ProjectService', () => {
       users.owner.id,
       revokedInvitation.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: revokedInvitation.version,
+        ...mutation(revokedInvitation.version),
       },
     );
     expect(
       service.revokeInvitation(users.owner.id, revokedInvitation.id, {
-        mutationId: randomUUID(),
-        expectedVersion: revokedInvitation.version,
+        ...mutation(revokedInvitation.version),
       }),
     ).toEqual(revoked);
   });
@@ -226,8 +219,7 @@ describe('ProjectService', () => {
       username: 'member',
     });
     service.respondToInvitation(users.member.id, invitation.id, {
-      mutationId: randomUUID(),
-      expectedVersion: invitation.version,
+      ...mutation(invitation.version),
       decision: 'ACCEPT',
     });
     const member = service
@@ -236,8 +228,7 @@ describe('ProjectService', () => {
 
     expect(() =>
       service.updateProject(users.owner.id, created.project.id, {
-        mutationId: randomUUID(),
-        expectedVersion: 99,
+        ...mutation(99),
         name: '过期修改',
       }),
     ).toThrow(expect.objectContaining({ code: 'STALE_STATE' }));
@@ -247,8 +238,7 @@ describe('ProjectService', () => {
         created.project.id,
         users.member.id,
         {
-          mutationId: randomUUID(),
-          expectedVersion: member.membership.version,
+          ...mutation(member.membership.version),
         },
       ),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
@@ -259,15 +249,13 @@ describe('ProjectService', () => {
         created.project.id,
         users.member.id,
         {
-          mutationId: randomUUID(),
-          expectedVersion: member.membership.version,
+          ...mutation(member.membership.version),
         },
       ),
     ).toEqual({ removed: true, userId: users.member.id });
     expect(() =>
       service.removeMember(users.owner.id, created.project.id, users.owner.id, {
-        mutationId: randomUUID(),
-        expectedVersion: created.membership.version,
+        ...mutation(created.membership.version),
       }),
     ).toThrow(expect.objectContaining({ code: 'INVALID_TRANSITION' }));
   });

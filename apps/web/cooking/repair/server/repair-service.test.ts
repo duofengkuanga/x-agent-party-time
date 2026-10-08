@@ -1,3 +1,4 @@
+import { mutation } from '@/cooking/testing/project';
 import { completeSuccessfulExecution } from '@/cooking/testing/execution';
 import { testDatabases } from '@/testing/database';
 import { describe, expect, test } from 'bun:test';
@@ -183,8 +184,7 @@ describe('RepairService', () => {
         fixture.users.developer.id,
         fixture.requested.bug.id,
         {
-          mutationId: randomUUID(),
-          expectedVersion: 3,
+          ...mutation(3),
         },
       ),
     ).toThrow(expect.objectContaining({ code: 'INVALID_TRANSITION' }));

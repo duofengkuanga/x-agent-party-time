@@ -1,3 +1,4 @@
+import { mutation } from '@/cooking/testing/project';
 import {
   completeClaimedExecution,
   testSkillBinding,
@@ -6,7 +7,6 @@ import { testDatabases } from '@/testing/database';
 import type { ClaimedExecution } from '@agent-party-time/execution-contract';
 import { ProtocolAgent } from '@agent-party-time/runner-conformance';
 import { describe, expect, test } from 'bun:test';
-import { randomUUID } from 'node:crypto';
 import {
   currentBug,
   repairFixture,
@@ -53,8 +53,7 @@ describe('RepairService', () => {
       fixture.users.developer.id,
       fixture.requested.bug.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: 3,
+        ...mutation(3),
       },
     );
     await agent.runNext(
@@ -196,9 +195,9 @@ describe('RepairService', () => {
       fixture.users.developer.id,
       fixture.requested.bug.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: currentBug(fixture.database, fixture.requested.bug.id)
-          .version,
+        ...mutation(
+          currentBug(fixture.database, fixture.requested.bug.id).version,
+        ),
       },
     );
     const [schemaClaim] = await fixture.executions.claim(
@@ -309,8 +308,7 @@ describe('RepairService', () => {
         fixture.users.developer.id,
         fixture.requested.bug.id,
         {
-          mutationId: randomUUID(),
-          expectedVersion: 3,
+          ...mutation(3),
         },
       ),
     ).toThrow(
@@ -344,8 +342,7 @@ describe('RepairService', () => {
       fixture.users.developer.id,
       fixture.requested.bug.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: 3,
+        ...mutation(3),
       },
     );
     const execution = fixture.executions.get(continued.executionId);

@@ -1,3 +1,4 @@
+import { mutation } from '@/cooking/testing/project';
 import { projectScenario } from '@/cooking/testing/scenario';
 import { countRows, testDatabases } from '@/testing/database';
 import { describe, expect, test } from 'bun:test';
@@ -231,8 +232,7 @@ describe('EngineeringService', () => {
     ).toThrow();
 
     service.archiveEngineering(users.owner.id, engineering.id, {
-      mutationId: randomUUID(),
-      expectedVersion: engineering.version,
+      ...mutation(engineering.version),
     });
     expect(() =>
       service.createEngineering(users.owner.id, project.id, {
@@ -267,8 +267,7 @@ describe('EngineeringService', () => {
     });
     references.engineering.add(engineering.id);
     const renamed = service.updateEngineering(users.owner.id, engineering.id, {
-      mutationId: randomUUID(),
-      expectedVersion: engineering.version,
+      ...mutation(engineering.version),
       name: '新名称',
       type: 'BACKEND',
       identifier: engineering.identifier,
@@ -283,8 +282,7 @@ describe('EngineeringService', () => {
     );
     expect(() =>
       service.updateEngineering(users.owner.id, engineering.id, {
-        mutationId: randomUUID(),
-        expectedVersion: renamed.version,
+        ...mutation(renamed.version),
         name: '继续改名',
         type: 'BACKEND',
         identifier: 'admin-web',
@@ -323,15 +321,13 @@ describe('EngineeringService', () => {
     references.member.add(`${engineering.id}:${users.member.id}`);
     expect(() =>
       service.removeMember(users.owner.id, engineering.id, users.member.id, {
-        mutationId: randomUUID(),
-        expectedVersion: membership.version,
+        ...mutation(membership.version),
       }),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
     references.member.clear();
     expect(
       service.removeMember(users.owner.id, engineering.id, users.member.id, {
-        mutationId: randomUUID(),
-        expectedVersion: membership.version,
+        ...mutation(membership.version),
       }),
     ).toEqual({ removed: true, userId: users.member.id });
     expect(
@@ -381,15 +377,13 @@ describe('EngineeringService', () => {
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
     expect(() =>
       service.updateEnvironment(users.owner.id, environment.id, {
-        mutationId: randomUUID(),
-        expectedVersion: 99,
+        ...mutation(99),
         name: '测试环境',
         deployment: { kind: 'CI_CD' },
       }),
     ).toThrow(expect.objectContaining({ code: 'STALE_STATE' }));
     const updated = service.updateEnvironment(users.owner.id, environment.id, {
-      mutationId: randomUUID(),
-      expectedVersion: environment.version,
+      ...mutation(environment.version),
       name: '持续集成环境',
       deployment: { kind: 'CI_CD' },
     });
@@ -464,24 +458,21 @@ describe('EngineeringService', () => {
     references.environment.add(environment.id);
     expect(() =>
       service.updateEnvironment(users.owner.id, environment.id, {
-        mutationId: randomUUID(),
-        expectedVersion: environment.version,
+        ...mutation(environment.version),
         name: '不可修改',
         deployment: { kind: 'LOCAL_SCRIPT', command: 'deploy' },
       }),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
     expect(() =>
       service.deleteEnvironment(users.owner.id, environment.id, {
-        mutationId: randomUUID(),
-        expectedVersion: environment.version,
+        ...mutation(environment.version),
       }),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
     references.environment.clear();
     references.engineering.add(engineering.id);
     expect(() =>
       service.archiveEngineering(users.owner.id, engineering.id, {
-        mutationId: randomUUID(),
-        expectedVersion: engineering.version,
+        ...mutation(engineering.version),
       }),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
     references.engineering.clear();
@@ -489,8 +480,7 @@ describe('EngineeringService', () => {
       users.owner.id,
       engineering.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: engineering.version,
+        ...mutation(engineering.version),
       },
     );
     expect(archived.archivedAt).not.toBeNull();

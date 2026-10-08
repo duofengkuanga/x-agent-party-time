@@ -1,3 +1,4 @@
+import { mutation } from '@/cooking/testing/project';
 import { LocalFileStore } from '@/platform/files/local-file-store';
 import { testDatabases } from '@/testing/database';
 import { describe, expect, test } from 'bun:test';
@@ -45,9 +46,9 @@ describe('LifecycleService', () => {
       fixture.users.developer.id,
       ciBatch.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: latestBatch(fixture.database, fixture.items[1]!.id)
-          .version,
+        ...mutation(
+          latestBatch(fixture.database, fixture.items[1]!.id).version,
+        ),
         outcome: 'SUCCEEDED',
         summary: '外部部署成功',
         attachmentIds: [],
@@ -73,8 +74,7 @@ describe('LifecycleService', () => {
     });
     expect(() =>
       fixture.lifecycle.verifyBug(fixture.users.developer.id, localBug.id, {
-        mutationId: randomUUID(),
-        expectedVersion: currentBug(fixture.database, localBug.id).version,
+        ...mutation(currentBug(fixture.database, localBug.id).version),
         result: 'FAILED',
         feedback: '仍可复现',
         attachmentIds: [],
@@ -84,8 +84,7 @@ describe('LifecycleService', () => {
       fixture.users.tester.id,
       localBug.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: currentBug(fixture.database, localBug.id).version,
+        ...mutation(currentBug(fixture.database, localBug.id).version),
         result: 'FAILED',
         feedback: '仍可复现，请检查边界条件',
         attachmentIds: [evidence.id],
@@ -133,8 +132,7 @@ describe('LifecycleService', () => {
       fixture.users.tester.id,
       localBug.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: currentBug(fixture.database, localBug.id).version,
+        ...mutation(currentBug(fixture.database, localBug.id).version),
         result: 'PASSED',
         comment: '边界场景已通过',
         attachmentIds: [],
@@ -143,8 +141,7 @@ describe('LifecycleService', () => {
     expect(passed.executionId).toBeNull();
     expect(currentBug(fixture.database, localBug.id).stage).toBe('DONE');
     fixture.lifecycle.verifyBug(fixture.users.tester.id, ciBug.id, {
-      mutationId: randomUUID(),
-      expectedVersion: currentBug(fixture.database, ciBug.id).version,
+      ...mutation(currentBug(fixture.database, ciBug.id).version),
       result: 'PASSED',
       attachmentIds: [],
     });
@@ -155,8 +152,7 @@ describe('LifecycleService', () => {
       fixture.users.tester.id,
       fixture.submission.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: beforeClose.version,
+        ...mutation(beforeClose.version),
       },
     );
     expect(closed.cleanupExecutionIds).toHaveLength(2);
@@ -259,8 +255,7 @@ describe('LifecycleService', () => {
         fixture.users.owner.id,
         cleanupInteraction.id,
         {
-          mutationId: randomUUID(),
-          expectedVersion: runningCleanup.version,
+          ...mutation(runningCleanup.version),
           resolution: { decision: 'decline' },
         },
       ),
@@ -270,8 +265,7 @@ describe('LifecycleService', () => {
         fixture.users.developer.id,
         cleanupInteraction.id,
         {
-          mutationId: randomUUID(),
-          expectedVersion: runningCleanup.version,
+          ...mutation(runningCleanup.version),
           resolution: { decision: 'decline' },
         },
       );
@@ -334,8 +328,7 @@ describe('LifecycleService', () => {
       fixture.users.developer.id,
       cleanup.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: cleanup.version,
+        ...mutation(cleanup.version),
       },
     );
     expect(fixture.executions.get(retried.executionId)).toMatchObject({

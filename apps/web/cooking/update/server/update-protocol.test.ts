@@ -246,8 +246,7 @@ test('外部部署等待期间禁止切换；失败后允许切换但原批次�
     fixture.users.developer.id,
     waiting.id,
     {
-      mutationId: randomUUID(),
-      expectedVersion: waiting.version,
+      ...mutation(waiting.version),
       outcome: 'FAILED',
       summary: '外部部署已经失败并结束',
       attachmentIds: [],
@@ -266,14 +265,12 @@ test('外部部署等待期间禁止切换；失败后允许切换但原批次�
   const batch = latestBatch(fixture.database, fixture.item.id);
   expect(() =>
     fixture.updates.retryUpdate(fixture.users.developer.id, batch.id, {
-      mutationId: randomUUID(),
-      expectedVersion: batch.version,
+      ...mutation(batch.version),
     }),
   ).toThrow('已暂停使用环境');
   expect(() =>
     fixture.updates.synchronizeSession(fixture.users.developer.id, batch.id, {
-      mutationId: randomUUID(),
-      expectedVersion: batch.version,
+      ...mutation(batch.version),
     }),
   ).toThrow('已暂停使用环境');
   expect(

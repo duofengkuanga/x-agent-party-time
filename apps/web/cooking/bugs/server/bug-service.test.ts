@@ -169,8 +169,7 @@ describe('BugService', () => {
       fixture.users.tester.id,
       result.bug.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: result.bug.version,
+        ...mutation(result.bug.version),
         submissionItemId: null,
         title: result.bug.report.title,
         actualResultAttachmentIds: [],
@@ -198,8 +197,7 @@ describe('BugService', () => {
       fixture.users.developerB.id,
       created.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: 1,
+        ...mutation(1),
         submissionItemId: fixture.items.front,
       },
     ).bug;
@@ -221,16 +219,14 @@ describe('BugService', () => {
     ).toEqual([]);
     expect(() =>
       fixture.service.requestRepair(fixture.users.developerB.id, assigned.id, {
-        mutationId: randomUUID(),
-        expectedVersion: assigned.version,
+        ...mutation(assigned.version),
       }),
     ).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
     const repairing = fixture.service.requestRepair(
       fixture.users.tester.id,
       assigned.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: assigned.version,
+        ...mutation(assigned.version),
       },
     ).bug;
     expect(repairing).toMatchObject({
@@ -240,8 +236,7 @@ describe('BugService', () => {
     });
     expect(() =>
       fixture.service.updateReport(fixture.users.tester.id, repairing.id, {
-        mutationId: randomUUID(),
-        expectedVersion: repairing.version,
+        ...mutation(repairing.version),
         submissionItemId: fixture.items.front,
         title: '不能覆盖',
         actualResultAttachmentIds: [],

@@ -29,8 +29,7 @@ describe('LifecycleService', () => {
     });
     fixture.clock.set('2026-07-27T12:02:00.000Z');
     fixture.lifecycle.verifyBug(fixture.users.tester.id, bug.id, {
-      mutationId: randomUUID(),
-      expectedVersion: currentBug(fixture.database, bug.id).version,
+      ...mutation(currentBug(fixture.database, bug.id).version),
       result: 'FAILED',
       feedback: '边界条件仍可复现',
       attachmentIds: [],

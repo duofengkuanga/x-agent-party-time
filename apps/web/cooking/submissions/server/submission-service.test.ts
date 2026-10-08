@@ -1,3 +1,4 @@
+import { mutation } from '@/cooking/testing/project';
 import { EngineeringService } from '@/cooking/engineering/server/engineering-service';
 import { ProjectService } from '@/cooking/projects/server/project-service';
 import { countRows, testDatabases } from '@/testing/database';
@@ -87,8 +88,7 @@ describe('SubmissionService create', () => {
       fixture.users.owner.id,
       fixture.engineering.front.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: current.version,
+        ...mutation(current.version),
         name: '改名后的工程',
         type: 'BACKEND',
         identifier: current.identifier,
@@ -208,8 +208,7 @@ describe('SubmissionService create', () => {
 
     fixture.events.splice(0);
     const updateInput = {
-      mutationId: randomUUID(),
-      expectedVersion: 1,
+      ...mutation(1),
       title: '幂等提测已更新',
       requirementDescription: '重复更新也只通知一次',
     };
@@ -296,8 +295,7 @@ describe('Submission workspace', () => {
       fixture.users.developerA.id,
       submission.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: 1,
+        ...mutation(1),
         title: submission.title,
         requirementDescription: submission.requirementDescription,
         targetBranches: [
@@ -322,8 +320,7 @@ describe('Submission workspace', () => {
         fixture.users.developerA.id,
         submission.id,
         {
-          mutationId: randomUUID(),
-          expectedVersion: 2,
+          ...mutation(2),
           title: submission.title,
           requirementDescription: submission.requirementDescription,
           targetBranches: [
@@ -334,8 +331,7 @@ describe('Submission workspace', () => {
     ).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
     expect(() =>
       fixture.service.updateSubmission(fixture.users.owner.id, submission.id, {
-        mutationId: randomUUID(),
-        expectedVersion: 2,
+        ...mutation(2),
         title: submission.title,
         requirementDescription: submission.requirementDescription,
         targetBranches: [
@@ -354,8 +350,7 @@ describe('Submission workspace', () => {
         fixture.users.developerA.id,
         submission.id,
         {
-          mutationId: randomUUID(),
-          expectedVersion: 2,
+          ...mutation(2),
           title: submission.title,
           requirementDescription: submission.requirementDescription,
           targetBranches: [
@@ -388,11 +383,12 @@ describe('Submission workspace', () => {
         fixture.users.owner.id,
         fixture.engineering.front.id,
         {
-          mutationId: randomUUID(),
-          expectedVersion: engineering.getEngineering(
-            fixture.users.owner.id,
-            fixture.engineering.front.id,
-          ).version,
+          ...mutation(
+            engineering.getEngineering(
+              fixture.users.owner.id,
+              fixture.engineering.front.id,
+            ).version,
+          ),
           name: fixture.engineering.front.name,
           type: fixture.engineering.front.type,
           identifier: 'renamed-web',
@@ -404,8 +400,7 @@ describe('Submission workspace', () => {
         fixture.users.owner.id,
         fixture.environments.front.id,
         {
-          mutationId: randomUUID(),
-          expectedVersion: fixture.environments.front.version,
+          ...mutation(fixture.environments.front.version),
           name: fixture.environments.front.name,
           deployment: { kind: 'CI_CD' },
         },
@@ -420,8 +415,7 @@ describe('Submission workspace', () => {
         fixture.engineering.front.id,
         fixture.users.developerA.id,
         {
-          mutationId: randomUUID(),
-          expectedVersion: developerMembership.version,
+          ...mutation(developerMembership.version),
         },
       ),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
@@ -446,8 +440,7 @@ describe('Submission workspace', () => {
         fixture.project.id,
         fixture.users.tester.id,
         {
-          mutationId: randomUUID(),
-          expectedVersion: testerMembership.version,
+          ...mutation(testerMembership.version),
         },
       ),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
@@ -465,8 +458,7 @@ describe('Submission workspace', () => {
       fixture.users.creator.id,
       submission.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: 1,
+        ...mutation(1),
         title: '第一次修改',
         requirementDescription: '第一次需求修改',
       },
@@ -480,8 +472,7 @@ describe('Submission workspace', () => {
         fixture.users.creator.id,
         submission.id,
         {
-          mutationId: randomUUID(),
-          expectedVersion: 1,
+          ...mutation(1),
           title: '旧版本',
           requirementDescription: '不能覆盖',
         },
@@ -493,8 +484,7 @@ describe('Submission workspace', () => {
     ).toBe(2);
     expect(() =>
       fixture.service.updateSubmission(fixture.users.member.id, submission.id, {
-        mutationId: randomUUID(),
-        expectedVersion: 2,
+        ...mutation(2),
         title: '普通成员修改',
         requirementDescription: '不应允许',
       }),
@@ -503,8 +493,7 @@ describe('Submission workspace', () => {
       fixture.users.owner.id,
       submission.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: 2,
+        ...mutation(2),
         title: '所有者修改',
         requirementDescription: '项目所有者可以修改',
       },

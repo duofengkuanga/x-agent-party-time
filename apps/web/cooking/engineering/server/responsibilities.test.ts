@@ -1,3 +1,4 @@
+import { mutation } from '@/cooking/testing/project';
 import { ProjectService } from '@/cooking/projects/server/project-service';
 import { AuthService } from '@/platform/auth/service';
 import { testDatabases } from '@/testing/database';
@@ -39,8 +40,7 @@ test('工程成员关系接入 Project 成员活动职责保护', async () => {
     username: member.username,
   });
   projects.respondToInvitation(member.id, invitation.id, {
-    mutationId: randomUUID(),
-    expectedVersion: invitation.version,
+    ...mutation(invitation.version),
     decision: 'ACCEPT',
   });
   const engineering = new EngineeringService(database).createEngineering(
@@ -65,8 +65,7 @@ test('工程成员关系接入 Project 成员活动职责保护', async () => {
 
   expect(() =>
     projects.removeMember(owner.id, project.project.id, member.id, {
-      mutationId: randomUUID(),
-      expectedVersion: projectMember.membership.version,
+      ...mutation(projectMember.membership.version),
     }),
   ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
 });

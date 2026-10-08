@@ -1,3 +1,4 @@
+import { mutation } from '@/cooking/testing/project';
 import {
   completeSuccessfulExecution,
   testSkillBinding,
@@ -65,8 +66,7 @@ describe('UpdateService', () => {
       fixture.users.developer.id,
       batch.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: batch.version,
+        ...mutation(batch.version),
       },
     );
     const continuation = fixture.executions.get(continued.executionId);
@@ -128,8 +128,7 @@ describe('UpdateService', () => {
 
     expect(() =>
       fixture.updates.retryUpdate(fixture.users.developer.id, batch.id, {
-        mutationId: randomUUID(),
-        expectedVersion: batch.version,
+        ...mutation(batch.version),
       }),
     ).toThrow(
       expect.objectContaining({
@@ -195,8 +194,7 @@ describe('UpdateService', () => {
         fixture.users.tester.id,
         waiting.id,
         {
-          mutationId: randomUUID(),
-          expectedVersion: waiting.version,
+          ...mutation(waiting.version),
           outcome: 'FAILED',
           summary: '流水线测试失败',
           attachmentIds: [],
@@ -251,8 +249,7 @@ describe('UpdateService', () => {
       fixture.users.developer.id,
       waiting.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: failed.batchVersion,
+        ...mutation(failed.batchVersion),
       },
     );
     const continuationExecution = fixture.executions.get(
@@ -290,8 +287,7 @@ describe('UpdateService', () => {
       fixture.users.developer.id,
       waiting.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: waitingAgain.version,
+        ...mutation(waitingAgain.version),
         outcome: 'SUCCEEDED',
         summary: '流水线与部署均成功',
         attachmentIds: [],
@@ -338,8 +334,7 @@ describe('UpdateService', () => {
       fixture.users.developer.id,
       firstBatch.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: latestBatch(fixture.database, fixture.item.id).version,
+        ...mutation(latestBatch(fixture.database, fixture.item.id).version),
       },
     );
     const resumed = await startExecution(
@@ -589,8 +584,7 @@ describe('UpdateService', () => {
         fixture.users.developer.id,
         interaction.id,
         {
-          mutationId: randomUUID(),
-          expectedVersion: batch.version - 1,
+          ...mutation(batch.version - 1),
           resolution: { decision: 'accept' },
         },
       ),
@@ -599,8 +593,7 @@ describe('UpdateService', () => {
       fixture.users.developer.id,
       interaction.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: batch.version,
+        ...mutation(batch.version),
         resolution: { decision: 'acceptForSession' },
       },
     );
@@ -645,8 +638,7 @@ describe('UpdateService', () => {
         fixture.users.developer.id,
         interaction.id,
         {
-          mutationId: randomUUID(),
-          expectedVersion: batch.version + 1,
+          ...mutation(batch.version + 1),
           resolution: { decision: 'accept' },
         },
       ),
