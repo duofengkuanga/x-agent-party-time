@@ -1,5 +1,5 @@
 import { AuthService } from '@/platform/auth/service';
-import { countRows, testDatabases } from '@/testing/database';
+import { expectRowCount, testDatabases } from '@/testing/database';
 import { seedUsers } from '@/testing/users';
 import { describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
@@ -179,7 +179,7 @@ describe('Agent 浏览器授权', () => {
     expect(service.claimAuthorization(issue.requestId, verifier)).toMatchObject(
       { state: 'REJECTED' },
     );
-    expect(countRows(database, 'platform_runner')).toBe(0);
+    expectRowCount(database, 'platform_runner').toBe(0);
     setNow('2026-07-26T10:00:02Z');
     expect(service.claimAuthorization(issue.requestId, verifier)).toMatchObject(
       { state: 'REJECTED' },
@@ -222,7 +222,7 @@ describe('Agent 浏览器授权', () => {
       version: first.runner.version + 1,
       createdAt: first.runner.createdAt,
     });
-    expect(countRows(database, 'platform_runner')).toBe(1);
+    expectRowCount(database, 'platform_runner').toBe(1);
     expect(() => service.heartbeat(first.credential)).toThrow(
       expect.objectContaining({ code: 'NOT_AUTHENTICATED' }),
     );

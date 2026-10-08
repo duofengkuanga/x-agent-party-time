@@ -1,7 +1,7 @@
 import { ProjectService } from '@/cooking/projects/server/project-service';
 import { TestSubmissionWriteStore } from '@/cooking/submissions/server/test-submission-write-store';
 import { AuthService } from '@/platform/auth/service';
-import { countRows, testDatabases } from '@/testing/database';
+import { expectRowCount, testDatabases } from '@/testing/database';
 import { seedTestUser } from '@/testing/users';
 import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
@@ -44,9 +44,9 @@ test('CookingWriteStore 在同一事务中完成业务写入、Audit 与幂等�
   expect(command()).toEqual({ value: '稳定结果' });
   expect(command()).toEqual({ value: '稳定结果' });
   expect(executions).toBe(1);
-  expect(
-    countRows(database, 'cooking_audit_event', { action: 'TEST_WRITTEN' }),
-  ).toBe(1);
+  expectRowCount(database, 'cooking_audit_event', {
+    action: 'TEST_WRITTEN',
+  }).toBe(1);
   expect(
     database.get<{ target_type: string; target_id: string }>(
       `SELECT target_type, target_id FROM cooking_audit_event
@@ -135,11 +135,9 @@ test('TestSubmissionWriteStore 只在首次成功提交后发布 Revision', asyn
   expect(command()).toEqual({ revision: 2 });
   expect(executions).toBe(1);
   expect(invalidations).toEqual([{ submissionId, revision: 2 }]);
-  expect(
-    countRows(database, 'cooking_audit_event', {
-      action: 'TEST_SUBMISSION_WRITTEN',
-    }),
-  ).toBe(1);
+  expectRowCount(database, 'cooking_audit_event', {
+    action: 'TEST_SUBMISSION_WRITTEN',
+  }).toBe(1);
 
   expect(() =>
     store.run({

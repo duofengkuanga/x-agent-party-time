@@ -1,5 +1,5 @@
 import { mutation } from '@/cooking/testing/project';
-import { countRows, testDatabases } from '@/testing/database';
+import { expectRowCount, testDatabases } from '@/testing/database';
 import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { ZodError } from 'zod';
@@ -316,12 +316,10 @@ describe('BugService', () => {
     expect(fixture.events).toEqual([
       { submissionId: fixture.submission.id, revision: first.revision },
     ]);
-    expect(
-      countRows(fixture.database, 'cooking_audit_event', {
-        target_id: first.bug.id,
-        action: 'BUG_CREATED',
-      }),
-    ).toBe(1);
+    expectRowCount(fixture.database, 'cooking_audit_event', {
+      target_id: first.bug.id,
+      action: 'BUG_CREATED',
+    }).toBe(1);
     expect(
       fixture.service.workspace(fixture.users.tester.id, fixture.submission.id)
         .bugs,

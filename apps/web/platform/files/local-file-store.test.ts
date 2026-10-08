@@ -1,4 +1,4 @@
-import { countRows } from '@/testing/database';
+import { expectRowCount } from '@/testing/database';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -53,7 +53,7 @@ describe('LocalFileStore', () => {
     expect(await store.deleteUnbound(stored.id, 'other-user')).toBe(false);
     expect(await store.deleteUnbound(stored.id, user.id)).toBe(true);
     expect(store.get(stored.id)).toBeNull();
-    expect(countRows(database, 'platform_file')).toBe(0);
+    expectRowCount(database, 'platform_file').toBe(0);
   });
 
   test('无效上传不会留下元数据或临时文件', async () => {
@@ -67,7 +67,7 @@ describe('LocalFileStore', () => {
         uploadedByUserId: 'missing-user',
       }),
     ).rejects.toThrow();
-    expect(countRows(database, 'platform_file')).toBe(0);
+    expectRowCount(database, 'platform_file').toBe(0);
     expect(await listFiles(root)).toEqual([]);
   });
 

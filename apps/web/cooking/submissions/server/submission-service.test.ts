@@ -1,7 +1,7 @@
 import { mutation } from '@/cooking/testing/project';
 import { EngineeringService } from '@/cooking/engineering/server/engineering-service';
 import { ProjectService } from '@/cooking/projects/server/project-service';
-import { countRows, testDatabases } from '@/testing/database';
+import { expectRowCount, testDatabases } from '@/testing/database';
 import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import {
@@ -27,7 +27,7 @@ describe('SubmissionService create', () => {
         item(fixture, 'front', 'developerA', 'frontA', 'feature/pending'),
       ]),
     ).toThrow('提测项仓库、负责人、绑定、Agent 或环境配置无效');
-    expect(countRows(fixture.database, 'cooking_test_submission')).toBe(0);
+    expectRowCount(fixture.database, 'cooking_test_submission').toBe(0);
   });
 
   test('支持同一人多工程、不同人多工程和单个全栈工程', async () => {
@@ -114,7 +114,7 @@ describe('SubmissionService create', () => {
         fixture.users.outsider.id,
       ),
     ).toThrow(PlatformErrorLike);
-    expect(countRows(fixture.database, 'cooking_test_submission')).toBe(0);
+    expectRowCount(fixture.database, 'cooking_test_submission').toBe(0);
     const invalidInputs = [
       [item(fixture, 'front', 'tester', 'frontA', 'feature/tester-conflict')],
       [
@@ -130,10 +130,11 @@ describe('SubmissionService create', () => {
     ];
     for (const items of invalidInputs) {
       expect(() => createSubmission(fixture, items)).toThrow(PlatformErrorLike);
-      expect(countRows(fixture.database, 'cooking_test_submission')).toBe(0);
-      expect(countRows(fixture.database, 'cooking_submission_item')).toBe(0);
-      expect(
-        countRows(fixture.database, 'cooking_submission_environment_lock'),
+      expectRowCount(fixture.database, 'cooking_test_submission').toBe(0);
+      expectRowCount(fixture.database, 'cooking_submission_item').toBe(0);
+      expectRowCount(
+        fixture.database,
+        'cooking_submission_environment_lock',
       ).toBe(0);
     }
 
@@ -157,7 +158,7 @@ describe('SubmissionService create', () => {
         },
       ]),
     ).toThrow(PlatformErrorLike);
-    expect(countRows(fixture.database, 'cooking_test_submission')).toBe(0);
+    expectRowCount(fixture.database, 'cooking_test_submission').toBe(0);
     fixture.database.run(
       `UPDATE cooking_engineering_binding
          SET runner_id = ?
@@ -174,8 +175,8 @@ describe('SubmissionService create', () => {
         item(fixture, 'front', 'developerA', 'frontA', 'feature/conflict'),
       ]),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
-    expect(countRows(fixture.database, 'cooking_test_submission')).toBe(1);
-    expect(countRows(fixture.database, 'cooking_submission_item')).toBe(1);
+    expectRowCount(fixture.database, 'cooking_test_submission').toBe(1);
+    expectRowCount(fixture.database, 'cooking_submission_item').toBe(1);
   });
 
   test('创建和更新的幂等回放不会重复发布失效通知', async () => {
@@ -497,12 +498,10 @@ describe('Submission workspace', () => {
       },
     );
     expect(ownerUpdate).toMatchObject({ version: 3, workspaceRevision: 3 });
-    expect(
-      countRows(fixture.database, 'cooking_audit_event', {
-        target_id: submission.id,
-        action: 'SUBMISSION_DETAILS_UPDATED',
-      }),
-    ).toBe(2);
+    expectRowCount(fixture.database, 'cooking_audit_event', {
+      target_id: submission.id,
+      action: 'SUBMISSION_DETAILS_UPDATED',
+    }).toBe(2);
   });
 });
 

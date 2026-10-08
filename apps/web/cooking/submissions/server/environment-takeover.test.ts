@@ -1,4 +1,4 @@
-import { countRows, testDatabases } from '@/testing/database';
+import { expectRowCount, testDatabases } from '@/testing/database';
 import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import {
@@ -73,8 +73,9 @@ describe('环境使用权切换', () => {
       ).id,
     ).toBe(next.id);
     expect(fixture.events).toHaveLength(eventCount);
-    expect(
-      countRows(fixture.database, 'cooking_submission_environment_lock'),
+    expectRowCount(
+      fixture.database,
+      'cooking_submission_environment_lock',
     ).toBe(2);
     const competing = { ...confirmed, mutationId: randomUUID() };
     expect(() =>
@@ -84,7 +85,7 @@ describe('环境使用权切换', () => {
         competing,
       ),
     ).toThrow('环境使用情况已变化');
-    expect(countRows(fixture.database, 'cooking_test_submission')).toBe(2);
+    expectRowCount(fixture.database, 'cooking_test_submission').toBe(2);
     expect(() =>
       fixture.service.changeEnvironment(fixture.users.tester.id, nextItem.id, {
         mutationId: randomUUID(),
@@ -139,7 +140,7 @@ describe('环境使用权切换', () => {
       ),
     ).toThrow('环境使用情况已变化');
     expect(fixture.events).toHaveLength(eventCount);
-    expect(countRows(fixture.database, 'cooking_test_submission')).toBe(1);
+    expectRowCount(fixture.database, 'cooking_test_submission').toBe(1);
     expect(
       fixture.service
         .getWorkspace(fixture.users.owner.id, original.id)
@@ -188,6 +189,6 @@ describe('环境使用权切换', () => {
         input,
       ),
     ).toThrow('项目不存在或无权访问');
-    expect(countRows(fixture.database, 'cooking_test_submission')).toBe(1);
+    expectRowCount(fixture.database, 'cooking_test_submission').toBe(1);
   });
 });

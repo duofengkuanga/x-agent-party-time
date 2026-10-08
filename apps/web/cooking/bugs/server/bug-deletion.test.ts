@@ -1,6 +1,6 @@
 import { RepairService } from '@/cooking/repair/server/repair-service';
 import type { AppDatabase } from '@/platform/database';
-import { countRows, testDatabases } from '@/testing/database';
+import { expectRowCount, testDatabases } from '@/testing/database';
 import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { ZodError } from 'zod';
@@ -43,21 +43,17 @@ describe('BugService', () => {
     });
     expect(result.deletedBugIds).toEqual([first.bug.id, second.bug.id]);
     expect(result.deletedExecutionIds).toEqual([]);
-    expect(
-      countRows(fixture.database, 'cooking_bug', { id: first.bug.id }),
-    ).toBe(0);
-    expect(
-      countRows(fixture.database, 'cooking_mutation', {
-        resource_type: 'BUG',
-        resource_id: first.bug.id,
-      }),
-    ).toBe(0);
-    expect(
-      countRows(fixture.database, 'cooking_audit_event', {
-        target_type: 'BUG',
-        target_id: second.bug.id,
-      }),
-    ).toBe(0);
+    expectRowCount(fixture.database, 'cooking_bug', { id: first.bug.id }).toBe(
+      0,
+    );
+    expectRowCount(fixture.database, 'cooking_mutation', {
+      resource_type: 'BUG',
+      resource_id: first.bug.id,
+    }).toBe(0);
+    expectRowCount(fixture.database, 'cooking_audit_event', {
+      target_type: 'BUG',
+      target_id: second.bug.id,
+    }).toBe(0);
     expect(fixture.events.at(-1)).toEqual({
       submissionId: fixture.submission.id,
       revision: 4,
@@ -71,7 +67,7 @@ describe('BugService', () => {
     expect(() => fixture.service.deleteBugs({ bugIds: [bug.id] })).toThrow(
       expect.objectContaining({ code: 'RESOURCE_CONFLICT' }),
     );
-    expect(countRows(fixture.database, 'cooking_bug', { id: bug.id })).toBe(1);
+    expectRowCount(fixture.database, 'cooking_bug', { id: bug.id }).toBe(1);
   });
 
   test('deleteBugs --force 删除链式修复执行与关联上下文', async () => {
@@ -105,18 +101,16 @@ describe('BugService', () => {
     expect(new Set(result.deletedExecutionIds)).toEqual(
       new Set([first, second]),
     );
-    expect(
-      countRows(fixture.database, 'platform_execution', { id: first }),
-    ).toBe(0);
-    expect(
-      countRows(fixture.database, 'cooking_repair_attempt', { bug_id: bug.id }),
-    ).toBe(0);
-    expect(
-      countRows(fixture.database, 'cooking_bug_repair_context', {
-        bug_id: bug.id,
-      }),
-    ).toBe(0);
-    expect(countRows(fixture.database, 'cooking_bug', { id: bug.id })).toBe(0);
+    expectRowCount(fixture.database, 'platform_execution', { id: first }).toBe(
+      0,
+    );
+    expectRowCount(fixture.database, 'cooking_repair_attempt', {
+      bug_id: bug.id,
+    }).toBe(0);
+    expectRowCount(fixture.database, 'cooking_bug_repair_context', {
+      bug_id: bug.id,
+    }).toBe(0);
+    expectRowCount(fixture.database, 'cooking_bug', { id: bug.id }).toBe(0);
   });
 
   test('deleteBugs --all --force 清理空的统一更新批次与活动执行', async () => {
@@ -172,22 +166,18 @@ describe('BugService', () => {
     expect(
       fixture.database.all('SELECT id FROM cooking_update_session_sync'),
     ).toEqual([]);
-    expect(
-      countRows(fixture.database, 'cooking_update_batch_entry', {
-        bug_id: bug.id,
-      }),
-    ).toBe(0);
-    expect(
-      countRows(fixture.database, 'cooking_update_attempt', {
-        execution_id: executionId,
-      }),
-    ).toBe(0);
-    expect(
-      countRows(fixture.database, 'cooking_update_batch', { id: batchId }),
-    ).toBe(0);
-    expect(
-      countRows(fixture.database, 'platform_execution', { id: executionId }),
-    ).toBe(0);
+    expectRowCount(fixture.database, 'cooking_update_batch_entry', {
+      bug_id: bug.id,
+    }).toBe(0);
+    expectRowCount(fixture.database, 'cooking_update_attempt', {
+      execution_id: executionId,
+    }).toBe(0);
+    expectRowCount(fixture.database, 'cooking_update_batch', {
+      id: batchId,
+    }).toBe(0);
+    expectRowCount(fixture.database, 'platform_execution', {
+      id: executionId,
+    }).toBe(0);
   });
 
   test.each(['QUEUED', 'FAILED'])(
@@ -267,11 +257,9 @@ describe('BugService', () => {
     createBug(fixture, fixture.users.tester.id, { title: '全部清理二' });
     const result = fixture.service.deleteBugs({ all: true });
     expect(result.deletedBugIds).toHaveLength(2);
-    expect(
-      countRows(fixture.database, 'cooking_bug', {
-        submission_id: fixture.submission.id,
-      }),
-    ).toBe(0);
+    expectRowCount(fixture.database, 'cooking_bug', {
+      submission_id: fixture.submission.id,
+    }).toBe(0);
   });
 });
 

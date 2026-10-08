@@ -1,7 +1,7 @@
 import { mutation } from '@/cooking/testing/project';
 import { AuthService } from '@/platform/auth/service';
 import { PlatformError } from '@/platform/errors';
-import { countRows, testDatabases } from '@/testing/database';
+import { expectRowCount, testDatabases } from '@/testing/database';
 import { seedUsers } from '@/testing/users';
 import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
@@ -52,9 +52,9 @@ describe('ProjectService', () => {
     expect(created.membership.role).toBe('OWNER');
     expect(service.listProjects(users.owner.id)).toEqual([created]);
     expect(service.listProjects(users.member.id)).toEqual([]);
-    expect(countRows(database, 'cooking_project')).toBe(1);
-    expect(countRows(database, 'cooking_project_membership')).toBe(1);
-    expect(countRows(database, 'cooking_audit_event')).toBe(1);
+    expectRowCount(database, 'cooking_project').toBe(1);
+    expectRowCount(database, 'cooking_project_membership').toBe(1);
+    expectRowCount(database, 'cooking_audit_event').toBe(1);
   });
 
   test('非成员读取真实或不存在项目都得到相同安全错误', async () => {
@@ -127,12 +127,10 @@ describe('ProjectService', () => {
       'MEMBER',
     );
     expect(service.listMembers(users.owner.id, project.id)).toHaveLength(2);
-    expect(
-      countRows(database, 'cooking_project_membership', {
-        project_id: project.id,
-        user_id: users.member.id,
-      }),
-    ).toBe(1);
+    expectRowCount(database, 'cooking_project_membership', {
+      project_id: project.id,
+      user_id: users.member.id,
+    }).toBe(1);
     expect(() =>
       service.inviteUser(users.member.id, project.id, {
         mutationId: randomUUID(),

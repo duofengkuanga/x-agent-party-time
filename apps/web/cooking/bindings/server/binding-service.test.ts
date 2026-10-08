@@ -1,7 +1,7 @@
 import { projectScenario } from '@/cooking/testing/scenario';
 import { EngineeringService } from '@/cooking/engineering/server/engineering-service';
 import { RunnerService } from '@/platform/runner/service';
-import { countRows, testDatabases } from '@/testing/database';
+import { expectRowCount, testDatabases } from '@/testing/database';
 import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { BindingRequestService } from './binding-request-service';
@@ -201,11 +201,9 @@ test('首次 Runner Binding 确认仓库身份，后续 Binding 必须匹配', a
       'ssh://git@example.com/team/project',
     ),
   ).toBe('https://example.com/team/project.git');
-  expect(
-    countRows(database, 'cooking_audit_event', {
-      action: 'ENGINEERING_REPOSITORY_CONFIRMED',
-    }),
-  ).toBe(1);
+  expectRowCount(database, 'cooking_audit_event', {
+    action: 'ENGINEERING_REPOSITORY_CONFIRMED',
+  }).toBe(1);
   expect(() =>
     service.confirmRepository(
       runners.member.runner.id,
@@ -226,7 +224,7 @@ describe('Web 驱动工程绑定', () => {
       service,
       users,
     } = await onlineRequest();
-    expect(countRows(database, 'cooking_engineering_binding')).toBe(0);
+    expectRowCount(database, 'cooking_engineering_binding').toBe(0);
     expect(requestService.claimNext(runners.other.runner.id)).toBeNull();
     const work = requestService.claimNext(runners.member.runner.id);
     expect(work).toMatchObject({ requestId: request.id });
@@ -366,9 +364,7 @@ describe('删除未使用工程绑定', () => {
     expect(service.listBindings(users.member.id, engineering.id)).toHaveLength(
       1,
     );
-    expect(countRows(database, 'cooking_submission_item', { id: itemId })).toBe(
-      1,
-    );
+    expectRowCount(database, 'cooking_submission_item', { id: itemId }).toBe(1);
   });
 
   test('已被执行历史引用的绑定不能删除', async () => {
@@ -401,8 +397,6 @@ describe('删除未使用工程绑定', () => {
     expect(() =>
       service.deleteBinding(users.member.id, binding.id, randomUUID()),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
-    expect(countRows(database, 'platform_execution', { id: executionId })).toBe(
-      1,
-    );
+    expectRowCount(database, 'platform_execution', { id: executionId }).toBe(1);
   });
 });

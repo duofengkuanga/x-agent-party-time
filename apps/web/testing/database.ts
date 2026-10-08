@@ -1,4 +1,4 @@
-import { afterEach } from 'bun:test';
+import { afterEach, expect } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -41,4 +41,8 @@ export function countRows(
       ...conditions.map(([, value]) => value),
     )?.count ?? 0
   );
+}
+
+export function expectRowCount(...args: Parameters<typeof countRows>) {
+  return expect(countRows(...args));
 }

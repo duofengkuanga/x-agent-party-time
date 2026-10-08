@@ -1,6 +1,6 @@
 import { mutation } from '@/cooking/testing/project';
 import { projectScenario } from '@/cooking/testing/scenario';
-import { countRows, testDatabases } from '@/testing/database';
+import { countRows, expectRowCount, testDatabases } from '@/testing/database';
 import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import {
@@ -124,7 +124,7 @@ describe('EngineeringService', () => {
       }),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
     expect(service.listEngineering(users.owner.id, project.id)).toEqual([]);
-    expect(countRows(database, 'cooking_mutation')).toBe(mutationCountBefore);
+    expectRowCount(database, 'cooking_mutation').toBe(mutationCountBefore);
   });
 
   test('工程初始化至少需要一个测试环境', async () => {
@@ -203,7 +203,7 @@ describe('EngineeringService', () => {
         identifier: 'forbidden-api',
       }),
     ).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
-    expect(countRows(database, 'cooking_engineering')).toBe(1);
+    expectRowCount(database, 'cooking_engineering').toBe(1);
   });
 
   test('稳定标识格式正确、项目内唯一且归档后仍不能复用', async () => {
@@ -484,9 +484,9 @@ describe('EngineeringService', () => {
       },
     );
     expect(archived.archivedAt).not.toBeNull();
-    expect(
-      countRows(database, 'cooking_engineering', { id: engineering.id }),
-    ).toBe(1);
+    expectRowCount(database, 'cooking_engineering', {
+      id: engineering.id,
+    }).toBe(1);
     expect(
       service.getWorkspace(users.member.id, engineering.id).members,
     ).toHaveLength(1);
