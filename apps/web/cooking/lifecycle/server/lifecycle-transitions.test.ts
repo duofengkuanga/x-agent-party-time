@@ -41,6 +41,16 @@ describe('LifecycleService', () => {
     expect(currentBug(fixture.database, waiting.id).stage).toBe(
       'WAITING_FOR_REPAIR',
     );
+    expect(() =>
+      fixture.lifecycle.restoreBug(fixture.users.tester.id, waiting.id, {
+        ...mutation(restored.bugVersion),
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        code: 'INVALID_TRANSITION',
+        message: '当前缺陷不能恢复到待修复',
+      }),
+    );
     expect(
       fixture.lifecycle.workspace(
         fixture.users.tester.id,

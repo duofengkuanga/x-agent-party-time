@@ -29,6 +29,23 @@ import { LifecycleQueries } from './lifecycle-queries';
 import type { BugSourceRow } from './records';
 import { staleLifecycle } from './results';
 
+const STORED_BUG_TRANSITIONS = {
+  cancel: {
+    operation: 'BUG_CANCEL',
+    from: 'WAITING_FOR_REPAIR',
+    to: 'CANCELLED',
+    event: 'CANCELLED',
+    audit: 'BUG_CANCELLED',
+  },
+  restore: {
+    operation: 'BUG_RESTORE',
+    from: 'CANCELLED',
+    to: 'WAITING_FOR_REPAIR',
+    event: 'RESTORED',
+    audit: 'BUG_RESTORED',
+  },
+} as const;
+
 export class LifecycleService {
   private readonly writes: TestSubmissionWriteStore;
   private readonly queries: LifecycleQueries;
@@ -265,37 +282,7 @@ export class LifecycleService {
     bugId: string,
     inputValue: LifecycleCommandInput,
   ): BugLifecycleMutationResult {
-    const input = LifecycleCommandInputSchema.parse(inputValue);
-    return this.writeBugTransition(
-      actorUserId,
-      bugId,
-      input,
-      'BUG_CANCEL',
-      (source) => {
-        this.requireBugVersion(source, input.expectedVersion);
-        if (source.stage !== 'WAITING_FOR_REPAIR')
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '只有待修复缺陷可以取消',
-          );
-        const now = this.now().toISOString();
-        const update = this.db.run(
-          `UPDATE cooking_bug
-             SET stage = 'CANCELLED', version = version + 1, updated_at = ?
-             WHERE id = ? AND version = ? AND stage = ?`,
-          [now, bugId, input.expectedVersion, 'WAITING_FOR_REPAIR'],
-        );
-        if (update.changes !== 1) throw staleLifecycle('缺陷');
-        this.recordBugTransition(bugId, 'CANCELLED', actorUserId, now);
-        const revision = this.writes.bumpRevision(source.submission_id, now);
-        return {
-          revision: revision,
-
-          action: 'BUG_CANCELLED',
-          details: {},
-        };
-      },
-    );
+    return this.changeStoredBugState(actorUserId, bugId, inputValue, 'cancel');
   }
 
   restoreBug(
@@ -303,16 +290,7 @@ export class LifecycleService {
     bugId: string,
     inputValue: LifecycleCommandInput,
   ): BugLifecycleMutationResult {
-    return this.changeStoredBugState(
-      actorUserId,
-      bugId,
-      inputValue,
-      'BUG_RESTORE',
-      'CANCELLED',
-      'WAITING_FOR_REPAIR',
-      'RESTORED',
-      'BUG_RESTORED',
-    );
+    return this.changeStoredBugState(actorUserId, bugId, inputValue, 'restore');
   }
 
   archiveBug(
@@ -343,40 +321,39 @@ export class LifecycleService {
     actorUserId: string,
     bugId: string,
     inputValue: LifecycleCommandInput,
-    operation: string,
-    from: 'CANCELLED',
-    to: 'WAITING_FOR_REPAIR',
-    transition: 'RESTORED',
-    auditAction: string,
+    kind: keyof typeof STORED_BUG_TRANSITIONS,
   ): BugLifecycleMutationResult {
+    const transition = STORED_BUG_TRANSITIONS[kind];
     const input = LifecycleCommandInputSchema.parse(inputValue);
     return this.writeBugTransition(
       actorUserId,
       bugId,
       input,
-      operation,
+      transition.operation,
       (source) => {
         this.requireBugVersion(source, input.expectedVersion);
+        if (kind === 'cancel' && source.stage !== transition.from)
+          throw new PlatformError(
+            'INVALID_TRANSITION',
+            '只有待修复缺陷可以取消',
+          );
         const now = this.now().toISOString();
         const update = this.db.run(
           `UPDATE cooking_bug
              SET stage = ?, version = version + 1, updated_at = ?
              WHERE id = ? AND version = ? AND stage = ?`,
-          [to, now, bugId, input.expectedVersion, from],
+          [transition.to, now, bugId, input.expectedVersion, transition.from],
         );
-        if (update.changes !== 1)
+        if (update.changes !== 1) {
+          if (kind === 'cancel') throw staleLifecycle('缺陷');
           throw new PlatformError(
             'INVALID_TRANSITION',
             '当前缺陷不能恢复到待修复',
           );
-        this.recordBugTransition(bugId, transition, actorUserId, now);
+        }
+        this.recordBugTransition(bugId, transition.event, actorUserId, now);
         const revision = this.writes.bumpRevision(source.submission_id, now);
-        return {
-          revision: revision,
-
-          action: auditAction,
-          details: {},
-        };
+        return { revision, action: transition.audit, details: {} };
       },
     );
   }
