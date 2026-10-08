@@ -1,5 +1,4 @@
 import { DeploymentMethodSchema } from '@/cooking/engineering/contract';
-import type { CookingExecutionProjectionEvent } from '@/cooking/runtime/execution-projection';
 import { requireSubmissionAccess } from '@/cooking/shared/server/access';
 import {
   isTerminal,
@@ -29,9 +28,7 @@ import {
   type ResolveUpdateInteractionInput,
   type RetryUpdateInput,
   type SynchronizeUpdateSessionInput,
-  type UpdateBatchView,
   type UpdateMutationResult,
-  type UpdateWorkspaceProjection,
 } from '../contract';
 import type { BatchRow, ItemSourceRow } from './records';
 import { UpdateProjection } from './update-projection';
@@ -45,18 +42,21 @@ export class UpdateService {
   private readonly queries: UpdateQueries;
   private readonly projection: UpdateProjection;
   private readonly delivery: UpdateDelivery;
-  projectExecution(event: CookingExecutionProjectionEvent): void {
-    this.projection.projectExecution(event);
-  }
-  workspace(userId: string, submissionId: string): UpdateWorkspaceProjection {
-    return this.queries.workspace(userId, submissionId);
-  }
-  batchView(userId: string, batchId: string): UpdateBatchView {
-    return this.queries.batchView(userId, batchId);
-  }
-  requireExternalAttachmentAccess(userId: string, fileId: string): void {
-    this.queries.requireExternalAttachmentAccess(userId, fileId);
-  }
+  readonly projectExecution: UpdateProjection['projectExecution'] = (...args) =>
+    this.projection.projectExecution(...args);
+  readonly workspace: UpdateQueries['workspace'] = (...args) =>
+    this.queries.workspace(...args);
+  readonly batchView: UpdateQueries['batchView'] = (...args) =>
+    this.queries.batchView(...args);
+  readonly requireExternalAttachmentAccess: UpdateQueries['requireExternalAttachmentAccess'] =
+    (...args) => this.queries.requireExternalAttachmentAccess(...args);
+  readonly recordCandidateAvailable: UpdateDelivery['recordCandidateAvailable'] =
+    (...args) => this.delivery.recordCandidateAvailable(...args);
+  readonly recalculatePendingDeliveryForBug: UpdateDelivery['recalculatePendingDeliveryForBug'] =
+    (...args) => this.delivery.recalculatePendingDeliveryForBug(...args);
+  readonly prepareDueExecutions: UpdateDelivery['prepareDueExecutions'] = (
+    ...args
+  ) => this.delivery.prepareDueExecutions(...args);
 
   constructor(
     private readonly db: AppDatabase,
@@ -87,18 +87,6 @@ export class UpdateService {
       now,
       createId,
     );
-  }
-
-  recordCandidateAvailable(bugId: string, candidateAt: string): void {
-    this.delivery.recordCandidateAvailable(bugId, candidateAt);
-  }
-
-  recalculatePendingDeliveryForBug(bugId: string): void {
-    this.delivery.recalculatePendingDeliveryForBug(bugId);
-  }
-
-  prepareDueExecutions(nowValue: Date = this.now()): string[] {
-    return this.delivery.prepareDueExecutions(nowValue);
   }
 
   freezeNow(

@@ -1,5 +1,4 @@
 import { BugRepairContextService } from '@/cooking/bugs/server/repair-context';
-import type { CookingExecutionProjectionEvent } from '@/cooking/runtime/execution-projection';
 import { requireSubmissionAccess } from '@/cooking/shared/server/access';
 import {
   isTerminal,
@@ -24,10 +23,8 @@ import {
   RepairMutationResultSchema,
   RepairOutputJsonSchema,
   ResolveRepairInteractionInputSchema,
-  type BugRepairView,
   type ContinueRepairInput,
   type RepairMutationResult,
-  type RepairWorkspaceProjection,
   type ResolveRepairInteractionInput,
   type SynchronizeRepairSessionInput,
 } from '../contract';
@@ -58,15 +55,12 @@ export class RepairService {
   private readonly writes: TestSubmissionWriteStore;
   private readonly queries: RepairQueries;
   private readonly projection: RepairProjection;
-  projectExecution(event: CookingExecutionProjectionEvent): void {
-    this.projection.projectExecution(event);
-  }
-  workspace(userId: string, submissionId: string): RepairWorkspaceProjection {
-    return this.queries.workspace(userId, submissionId);
-  }
-  repairView(userId: string, bugId: string): BugRepairView | null {
-    return this.queries.repairView(userId, bugId);
-  }
+  readonly projectExecution: RepairProjection['projectExecution'] = (...args) =>
+    this.projection.projectExecution(...args);
+  readonly workspace: RepairQueries['workspace'] = (...args) =>
+    this.queries.workspace(...args);
+  readonly repairView: RepairQueries['repairView'] = (...args) =>
+    this.queries.repairView(...args);
 
   constructor(
     private readonly db: AppDatabase,
