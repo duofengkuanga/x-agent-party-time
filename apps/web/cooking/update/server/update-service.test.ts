@@ -35,11 +35,7 @@ describe('UpdateService', () => {
       'update-with-sql',
       [{ kind: 'DATABASE_SQL', paths: ['sql/add-payment-index.sql'] }],
     );
-    completeSuccessfulExecution(
-      fixture,
-      started,
-      completedUpdate('统一更新完成，SQL 交由人工执行'),
-    );
+    completeSuccessfulExecution(fixture, started, completedUpdate());
 
     const batch = latestBatch(fixture.database, fixture.item.id);
     expect(
@@ -57,11 +53,7 @@ describe('UpdateService', () => {
       ['aaaaaaa'],
       'update-without-changes',
     );
-    completeSuccessfulExecution(
-      fixture,
-      started,
-      completedUpdate('统一更新完成'),
-    );
+    completeSuccessfulExecution(fixture, started, completedUpdate());
 
     const batch = latestBatch(fixture.database, fixture.item.id);
     expect(batch.state).toBe('COMPLETED');

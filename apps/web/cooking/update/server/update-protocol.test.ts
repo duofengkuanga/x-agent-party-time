@@ -46,7 +46,7 @@ describe('UpdateService', () => {
         claimedCommits = candidates.flatMap((candidate) => candidate.commits);
         return {
           kind: 'SUCCEEDED',
-          result: completedUpdate('普通 Push 和本地脚本完成'),
+          result: completedUpdate(),
         };
       },
       { sessionId: () => 'update-conformance-session' },
@@ -99,7 +99,7 @@ test('统一装配只向 Update 投影更新会话同步，保留原失败尝试
       kind: 'SUCCEEDED',
       result: {
         turnId: 'external-update-turn',
-        result: completedUpdate('外部更新已完成'),
+        result: completedUpdate(),
       },
     },
   });
@@ -203,7 +203,7 @@ test('外部部署等待期间禁止切换；失败后允许切换但原批次�
     ['ccccccc'],
     'external-lock-update',
   );
-  completeSuccessfulExecution(fixture, running, pushedUpdate('等待外部部署'));
+  completeSuccessfulExecution(fixture, running, pushedUpdate());
   const submissions = new SubmissionService(
     fixture.database,
     fixture.clock.now,

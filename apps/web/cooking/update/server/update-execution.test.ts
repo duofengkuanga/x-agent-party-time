@@ -87,11 +87,7 @@ describe('UpdateService', () => {
       continuation.id,
       'update-session',
     );
-    completeSuccessfulExecution(
-      fixture,
-      resumed,
-      completedUpdate('统一更新和部署完成'),
-    );
+    completeSuccessfulExecution(fixture, resumed, completedUpdate());
     batch = latestBatch(fixture.database, fixture.item.id);
     expect(batch.state).toBe('COMPLETED');
     expect(currentBug(fixture.database, first.id).stage).toBe(
@@ -147,11 +143,7 @@ describe('UpdateService', () => {
       ['c1c1c1c'],
       'update-ci-session',
     );
-    completeSuccessfulExecution(
-      fixture,
-      first,
-      pushedUpdate('代码已普通 Push'),
-    );
+    completeSuccessfulExecution(fixture, first, pushedUpdate());
     const waiting = latestBatch(fixture.database, fixture.item.id);
     expect(waiting.state).toBe('WAITING_EXTERNAL');
     expect(currentBug(fixture.database, bug.id).stage).toBe('UPDATING');
@@ -275,11 +267,7 @@ describe('UpdateService', () => {
       continued.executionId!,
       'update-ci-session',
     );
-    completeSuccessfulExecution(
-      fixture,
-      second,
-      pushedUpdate('修复后已重新 Push'),
-    );
+    completeSuccessfulExecution(fixture, second, pushedUpdate());
     const waitingAgain = latestBatch(fixture.database, fixture.item.id);
     expect(waitingAgain.id).toBe(waiting.id);
     expect(waitingAgain.state).toBe('WAITING_EXTERNAL');
@@ -342,7 +330,7 @@ describe('UpdateService', () => {
       continued.executionId,
       'first-batch-session',
     );
-    completeSuccessfulExecution(fixture, resumed, completedUpdate('首批完成'));
+    completeSuccessfulExecution(fixture, resumed, completedUpdate());
     expect(fixture.updates.prepareDueExecutions()).toHaveLength(1);
     const secondBatch = latestBatch(fixture.database, fixture.item.id);
     expect(secondBatch.id).not.toBe(firstBatch.id);
@@ -493,11 +481,7 @@ describe('UpdateService', () => {
     const beforeBug = currentBug(fixture.database, bug.id);
 
     expect(() =>
-      completeSuccessfulExecution(
-        fixture,
-        running,
-        completedUpdate('应整体回滚'),
-      ),
+      completeSuccessfulExecution(fixture, running, completedUpdate()),
     ).toThrow();
     expect(fixture.executions.get(running.executionId).state).toBe('RUNNING');
     expect(latestBatch(fixture.database, fixture.item.id)).toEqual(beforeBatch);

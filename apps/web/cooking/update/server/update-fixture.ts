@@ -129,7 +129,7 @@ async function setup(
   };
 }
 
-export function completedUpdate(_summary: string) {
+export function completedUpdate() {
   return {
     result: {
       outcome: 'COMPLETED' as const,
@@ -142,7 +142,7 @@ export function completedUpdate(_summary: string) {
   };
 }
 
-export function pushedUpdate(_summary: string) {
+export function pushedUpdate() {
   return {
     result: {
       outcome: 'PUSHED' as const,
