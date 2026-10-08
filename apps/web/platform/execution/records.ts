@@ -1,5 +1,5 @@
 import type { AppDatabase } from '@/platform/database';
-import { parseRow } from '@/platform/database/row-mapper';
+import { parseRow, type DatabaseRow } from '@/platform/database/row-mapper';
 import { PlatformError } from '@/platform/errors';
 import {
   ExecutionInteractionSchema,
@@ -9,34 +9,32 @@ import {
   type ExecutionInteraction,
   type TaskSkillBinding,
 } from '@agent-party-time/execution-contract';
-export type ExecutionRow = {
-  id: string;
+export type ExecutionRow = DatabaseRow<
+  Omit<
+    Execution,
+    | 'owner'
+    | 'codexTurn'
+    | 'workspace'
+    | 'attachments'
+    | 'lease'
+    | 'outcome'
+    | 'cancellationRequested'
+  >
+> & {
   owner_namespace: string;
   owner_kind: string;
   owner_id: string;
-  attempt: number;
-  previous_execution_id: string | null;
-  runner_id: string;
-  binding_id: string;
-  priority: number;
-  approval_policy: Execution['approvalPolicy'];
-  state: Execution['state'];
   codex_turn_json: string | null;
   skill_name: string | null;
   skill_bundle_hash: string | null;
   skill_source_revision: string | null;
   workspace_json: string | null;
-  session_id: string | null;
   lease_token_hash: string | null;
   lease_expires_at: string | null;
   outcome_json: string | null;
   reported_outcome_json: string | null;
   cancellation_requested: number;
   resume_requested_at: string | null;
-  created_at: string;
-  claimed_at: string | null;
-  started_at: string | null;
-  finished_at: string | null;
 };
 export type AttachmentRow = {
   file_id: string;
@@ -45,16 +43,11 @@ export type AttachmentRow = {
   size_bytes: number;
   sha256: string;
 };
-export type InteractionRow = {
-  id: string;
-  execution_id: string;
-  kind: ExecutionInteraction['kind'];
-  method: string;
+export type InteractionRow = DatabaseRow<
+  Omit<ExecutionInteraction, 'payload' | 'resolution'>
+> & {
   payload_json: string;
-  state: ExecutionInteraction['state'];
   resolution_json: string | null;
-  created_at: string;
-  resolved_at: string | null;
 };
 export type FileRow = AttachmentRow & {
   storage_key: string;
