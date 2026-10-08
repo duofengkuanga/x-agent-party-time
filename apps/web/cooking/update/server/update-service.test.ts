@@ -148,6 +148,7 @@ describe('UpdateService', () => {
       fixture.bugs,
       fixture.repairs,
       fixture.updates,
+      fixture.lifecycle,
     ).getWorkspace(fixture.users.developer.id, fixture.submission.id);
     expect(workspace.pendingDeliveries).toEqual([]);
     expect(workspace.updateBatches).toHaveLength(1);
@@ -207,6 +208,7 @@ describe('UpdateService', () => {
       fixture.bugs,
       fixture.repairs,
       fixture.updates,
+      fixture.lifecycle,
     );
     expect(() =>
       workspace.getWorkspace(outsider.id, fixture.submission.id),
