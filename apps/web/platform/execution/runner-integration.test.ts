@@ -5,11 +5,11 @@ import { LocalFileStore } from '@/platform/files/local-file-store';
 import { RunnerService } from '@/platform/runner/service';
 import { testDatabases } from '@/testing/database';
 import { seedTestUser } from '@/testing/users';
-import type { EnqueueExecutionInput } from '@agent-party-time/execution-contract';
 import { ProtocolAgent } from '@agent-party-time/runner-conformance';
 import { RunnerHttpError } from '@agent-party-time/runner-contract/http-client';
 import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
+import { bindingId, input } from './test-fixture';
 
 const createDatabase = testDatabases();
 
@@ -251,27 +251,6 @@ function protocolFetch(
       complete: () => 'FAILED',
     },
   });
-}
-
-function input(
-  runnerId: string,
-  localBindingId: string,
-  ownerId: string,
-): EnqueueExecutionInput {
-  return {
-    owner: { namespace: 'fixture', kind: 'generic', id: ownerId },
-    attempt: 1,
-    previousExecutionId: null,
-    runnerId,
-    bindingId: localBindingId,
-    approvalPolicy: 'on-request',
-    codexTurn: null,
-    attachmentIds: [],
-  };
-}
-
-function bindingId(index: number): string {
-  return `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`;
 }
 
 test('正式 Runner 路由保留认证顺序、方法限制和 HEAD 响应', async () => {

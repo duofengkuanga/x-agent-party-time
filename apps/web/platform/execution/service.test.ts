@@ -3,11 +3,11 @@ import { LocalFileStore } from '@/platform/files/local-file-store';
 import { RunnerService } from '@/platform/runner/service';
 import { testDatabases } from '@/testing/database';
 import { seedTestUser } from '@/testing/users';
-import type { EnqueueExecutionInput } from '@agent-party-time/execution-contract';
 import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { createInitialCodexTurn } from './codex-turn';
 import { ExecutionService } from './service';
+import { bindingId, input } from './test-fixture';
 
 const createDatabase = testDatabases();
 
@@ -519,25 +519,3 @@ describe('Execution lifecycle', () => {
     });
   });
 });
-
-function input(
-  runnerId: string,
-  localBindingId: string,
-  ownerId: string,
-): EnqueueExecutionInput {
-  return {
-    owner: { namespace: 'fixture', kind: 'generic', id: ownerId },
-    attempt: 1,
-    previousExecutionId: null,
-    runnerId,
-    bindingId: localBindingId,
-    approvalPolicy: 'on-request',
-    codexTurn: null,
-    workspace: null,
-    attachmentIds: [],
-  };
-}
-
-function bindingId(index: number): string {
-  return `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`;
-}
