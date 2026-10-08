@@ -5,7 +5,6 @@ import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
 import { createInitialCodexTurn } from '@/platform/execution/codex-turn';
 import type { ExecutionService } from '@/platform/execution/service';
-import type { JsonObject } from '@agent-party-time/execution-contract';
 import { buildInitialUpdateBrief } from '../brief';
 import {
   CiCdUpdateOutputJsonSchema,
@@ -166,8 +165,8 @@ export class UpdateDelivery {
         executionBrief,
         outputJsonSchema:
           deployment.kind === 'LOCAL_SCRIPT'
-            ? (LocalScriptUpdateOutputJsonSchema as JsonObject)
-            : (CiCdUpdateOutputJsonSchema as JsonObject),
+            ? LocalScriptUpdateOutputJsonSchema
+            : CiCdUpdateOutputJsonSchema,
       }),
       workspace: {
         key: workspaceKey,

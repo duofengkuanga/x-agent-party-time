@@ -12,7 +12,6 @@ import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
 import { createContinuationCodexTurn } from '@/platform/execution/codex-turn';
 import { ExecutionService } from '@/platform/execution/service';
-import type { JsonObject } from '@agent-party-time/execution-contract';
 import { randomUUID } from 'node:crypto';
 import {
   buildUpdateExternalFailureInput,
@@ -220,8 +219,8 @@ export class UpdateService {
             text: continuationInput,
             outputJsonSchema:
               deployment.kind === 'LOCAL_SCRIPT'
-                ? (LocalScriptUpdateOutputJsonSchema as JsonObject)
-                : (CiCdUpdateOutputJsonSchema as JsonObject),
+                ? LocalScriptUpdateOutputJsonSchema
+                : CiCdUpdateOutputJsonSchema,
           }),
           workspace: {
             key: `update-batch:${batchId}`,

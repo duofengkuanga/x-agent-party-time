@@ -13,10 +13,7 @@ import {
   createInitialCodexTurn,
 } from '@/platform/execution/codex-turn';
 import { ExecutionService } from '@/platform/execution/service';
-import type {
-  ExecutionResultAssertion,
-  JsonObject,
-} from '@agent-party-time/execution-contract';
+import type { ExecutionResultAssertion } from '@agent-party-time/execution-contract';
 import { randomUUID } from 'node:crypto';
 import {
   buildInitialRepairBrief,
@@ -160,7 +157,7 @@ export class RepairService {
       codexTurn: createInitialCodexTurn({
         requiredSkillName: 'agent-party-time-repair-bug',
         executionBrief,
-        outputJsonSchema: RepairOutputJsonSchema as JsonObject,
+        outputJsonSchema: RepairOutputJsonSchema,
         resultAssertions: REPAIR_RESULT_ASSERTIONS,
       }),
       workspace: {
@@ -208,7 +205,7 @@ export class RepairService {
       text: buildRepairContinuationInput({
         lifecycleContext: lifecycleContext || undefined,
       }),
-      outputJsonSchema: RepairOutputJsonSchema as JsonObject,
+      outputJsonSchema: RepairOutputJsonSchema,
       resultAssertions: REPAIR_RESULT_ASSERTIONS,
     });
     const execution = this.executions.enqueue({
