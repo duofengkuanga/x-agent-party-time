@@ -155,7 +155,7 @@ export class UpdateService {
         const latest = this.queries.latestAttempt(batchId);
         if (!latest || !isTerminal(latest.state))
           throw new PlatformError('RESOURCE_CONFLICT', '当前更新执行尚未结束');
-        const source = this.queries.itemSource(batch.submission_item_id);
+        const source = batch.source;
         const deployment = DeploymentMethodSchema.parse(
           JSON.parse(batch.deployment_json),
         );
@@ -245,8 +245,7 @@ export class UpdateService {
           },
           resourceId: batchId,
           audit: {
-            projectId: this.queries.itemSource(batch.submission_item_id)
-              .project_id,
+            projectId: batch.source.project_id,
             action: 'UPDATE_BATCH_RETRIED',
             details: { executionId: execution.id },
           },
@@ -284,7 +283,7 @@ export class UpdateService {
           );
         if (this.queries.hasActiveSessionSync(batchId))
           throw new PlatformError('RESOURCE_CONFLICT', '更新会话正在同步');
-        const source = this.queries.itemSource(batch.submission_item_id);
+        const source = batch.source;
         const previousExecution = this.executions.get(latest.execution_id);
         if (!previousExecution.codexTurn)
           throw new PlatformError(
@@ -412,8 +411,7 @@ export class UpdateService {
           },
           resourceId: batchId,
           audit: {
-            projectId: this.queries.itemSource(batch.submission_item_id)
-              .project_id,
+            projectId: batch.source.project_id,
             action:
               input.outcome === 'SUCCEEDED'
                 ? 'EXTERNAL_DEPLOYMENT_SUCCEEDED'
@@ -470,8 +468,7 @@ export class UpdateService {
           },
           resourceId: interactionId,
           audit: {
-            projectId: this.queries.itemSource(batch.submission_item_id)
-              .project_id,
+            projectId: batch.source.project_id,
             action: 'UPDATE_INTERACTION_RESOLVED',
             details: { batchId: batch.id, executionId: source.execution_id },
           },
@@ -497,10 +494,10 @@ export class UpdateService {
     return source;
   }
 
-  private requireBatchResponsible(userId: string, batchId: string): BatchRow {
+  private requireBatchResponsible(userId: string, batchId: string) {
     const batch = this.queries.batch(batchId);
-    this.requireResponsible(userId, batch.submission_item_id);
-    return batch;
+    const source = this.requireResponsible(userId, batch.submission_item_id);
+    return { ...batch, source };
   }
 
   private requireBatchVersion(batch: BatchRow, expectedVersion: number): void {
