@@ -58,11 +58,6 @@ const SERVICE_DEFINITIONS: readonly ServiceDefinition[] = [
       },
     ],
   },
-  {
-    key: 'agent',
-    label: 'Agent',
-    matchers: [],
-  },
 ];
 
 export function parseProcessTable(output: string): ProcessRow[] {
@@ -206,16 +201,6 @@ function printStatus(
   console.log('开发服务状态：');
 
   for (const definition of SERVICE_DEFINITIONS) {
-    if (definition.key === 'agent') {
-      const detail =
-        agent.service === 'RUNNING'
-          ? `运行中，${agent.activeSlots} / ${agent.totalSlots} 个执行槽使用中`
-          : agent.service === 'UNRESPONSIVE'
-            ? '无响应'
-            : '未运行';
-      console.log(`- ${definition.label}：${detail}`);
-      continue;
-    }
     const serviceRoots = roots.filter(
       (entry) => entry.service === definition.key,
     );
@@ -229,6 +214,13 @@ function printStatus(
       .join('、');
     console.log(`- ${definition.label}：运行中，${instances}`);
   }
+  const agentDetail =
+    agent.service === 'RUNNING'
+      ? `运行中，${agent.activeSlots} / ${agent.totalSlots} 个执行槽使用中`
+      : agent.service === 'UNRESPONSIVE'
+        ? '无响应'
+        : '未运行';
+  console.log(`- Agent：${agentDetail}`);
 }
 
 function processIsAlive(pid: number): boolean {
@@ -307,13 +299,12 @@ async function stopServices(
 
   const serviceRoots = findServiceRoots(processes);
   const grouped = SERVICE_DEFINITIONS.map((definition) => {
-    if (definition.key === 'agent')
-      return agent.service === 'RUNNING' ? 'Agent 1 组' : null;
     const count = serviceRoots.filter(
       (entry) => entry.service === definition.key,
     ).length;
     return count > 0 ? `${definition.label} ${count} 组` : null;
   }).filter((value): value is string => value !== null);
+  if (agent.service === 'RUNNING') grouped.push('Agent 1 组');
 
   console.log(`正在停止：${grouped.join('、')}。`);
   const errors = signalProcesses(targetPids, 'SIGTERM');
