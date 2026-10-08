@@ -124,13 +124,13 @@ export class BindingService {
              ) VALUES (?, ?, ?, ?, ?)`,
           )
           .run(id, engineeringId, actorUserId, runnerId, createdAt);
-        const result = EngineeringBindingSchema.parse({
+        const result = {
           id,
           engineeringId,
           userId: actorUserId,
           runnerId,
           createdAt,
-        });
+        } satisfies EngineeringBinding;
         return {
           result,
           resourceId: id,

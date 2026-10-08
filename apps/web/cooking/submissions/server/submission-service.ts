@@ -484,14 +484,14 @@ export class SubmissionService {
           submissionId,
           updatedAt,
         );
-        const result = TestSubmissionSchema.parse({
+        const result = {
           ...mapSubmission(current),
           title: parsed.title,
           requirementDescription: parsed.requirementDescription,
           version: current.version + 1,
           workspaceRevision,
           updatedAt,
-        });
+        } satisfies TestSubmission;
         return {
           result,
           resourceId: submissionId,

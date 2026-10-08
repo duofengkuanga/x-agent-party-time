@@ -129,7 +129,7 @@ export class BindingRequestService {
             expiresAt,
             createdAt.toISOString(),
           );
-        const result = BindingRequestSchema.parse({
+        const result = {
           id,
           engineeringId,
           userId: actorUserId,
@@ -139,7 +139,7 @@ export class BindingRequestService {
           expiresAt,
           createdAt: createdAt.toISOString(),
           completedAt: null,
-        });
+        } satisfies BindingRequest;
         return {
           result,
           resourceId: id,

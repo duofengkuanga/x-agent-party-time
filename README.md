@@ -219,7 +219,7 @@ packages/runner-conformance/  协议验收 Adapter
 
 提测服务保留 `submission-service.ts` 作为调用入口，由 `submission-queries.ts` 集中有权限的读取和工作区投影；环境使用权由 `environment-access.ts` 判断。
 
-`runtime/create-cooking.ts` 是生产和集成测试共同使用的执行链装配入口。Platform 以同一个带类型的事件通知事务内的 APPLY 和提交后的 AFTER；会话同步先按记录归属选择 Repair 或 Update，避免跨领域解释结果。修复和更新的 Codex JSON Schema 从服务器 Zod 定义派生。共享权限检查、附件归属校验和幂等写入集中在 `shared/server/`；写入 Store 从 Mutation 资源填充 Audit 目标，仅目标 ID 不同的命令显式覆盖。平坦实体及先解码 JSON 字段的 SQL 行映射集中在 `platform/database/row-mapper.ts`，由已有 Zod Schema 限定读取字段；数据库建表 SQL 按 Platform 与 Cooking 分别保存在 `platform-schema.ts`、`cooking-schema.ts`，初始化仍一次执行完整 Schema。Runner 与 Execution HTTP 处理器通过 `platform/http/responses.ts` 统一结果校验和公开错误响应，认证与业务执行顺序由各处理器保留。
+`runtime/create-cooking.ts` 是生产和集成测试共同使用的执行链装配入口。Platform 以同一个带类型的事件通知事务内的 APPLY 和提交后的 AFTER；会话同步先按记录归属选择 Repair 或 Update，避免跨领域解释结果。修复和更新的 Codex JSON Schema 从服务器 Zod 定义派生。共享权限检查、附件归属校验和幂等写入集中在 `shared/server/`；写入 Store 集中验证结果并从 Mutation 资源填充 Audit 目标，仅目标 ID 不同的命令显式覆盖。平坦实体及先解码 JSON 字段的 SQL 行映射集中在 `platform/database/row-mapper.ts`，由已有 Zod Schema 限定读取字段；数据库建表 SQL 按 Platform 与 Cooking 分别保存在 `platform-schema.ts`、`cooking-schema.ts`，初始化仍一次执行完整 Schema。Runner 与 Execution HTTP 处理器通过 `platform/http/responses.ts` 统一结果校验和公开错误响应，认证与业务执行顺序由各处理器保留。
 
 Execution 的领域无关状态转换在 `platform/execution/service.ts`；`queue.ts` 管领取、恢复及 Lease 到期，`records.ts` 读取并映射持久记录，`lease.ts` 集中 Lease 状态与校验。xapt 的 `execution/service.ts` 驱动本机 Codex，`preparation.ts` 负责工作区、附件、规则包与结果校验准备，`recovery.ts` 维护执行阶段和 Lease，`outbox.ts` 持久化待上报结果并负责恢复后重放。两侧通过 Runner HTTP 协议连接，Cooking 只接收归属明确的 Execution 投影事件。`platform/runner/router.ts` 是生产与协议测试共用的路由表，`cooking/runtime/runner-http.ts` 装配绑定操作和带业务投影的执行服务；Next 路由文件只声明允许的 HTTP 方法。`runner-contract/http-client` 统一通用客户端的请求校验、认证、响应解析及错误类型；xapt 只扩展缺陷删除命令，协议验收客户端只补充场景驱动。
 

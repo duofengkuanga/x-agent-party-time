@@ -87,7 +87,7 @@ export class ProjectService {
            ) VALUES (?, ?, 'OWNER', 1, ?)`,
           [projectId, actorUserId, createdAt],
         );
-        const result = ProjectSummarySchema.parse({
+        const result = {
           project: {
             id: projectId,
             name,
@@ -103,7 +103,7 @@ export class ProjectService {
             version: 1,
             createdAt,
           },
-        });
+        } satisfies ProjectSummary;
         return {
           result: result,
           resourceId: projectId,
@@ -455,12 +455,12 @@ export class ProjectService {
         );
         if (update.changes !== 1)
           throw new PlatformError('STALE_STATE', '项目已更新，请刷新后重试');
-        const result = ProjectSchema.parse({
+        const result = {
           ...current,
           name,
           version: current.version + 1,
           updatedAt,
-        });
+        } satisfies Project;
         return {
           result: result,
           resourceId: projectId,
@@ -580,7 +580,7 @@ export class ProjectService {
          ) VALUES (?, ?, ?, ?, 'PENDING', 1, ?, NULL)`,
       [id, projectId, invitedUserId, invitedByUserId, createdAt],
     );
-    return ProjectInvitationSchema.parse({
+    return {
       id,
       projectId,
       invitedUserId,
@@ -589,7 +589,7 @@ export class ProjectService {
       version: 1,
       createdAt,
       respondedAt: null,
-    });
+    };
   }
 
   private invitationForRecipient(id: string, userId: string): InvitationRow {
