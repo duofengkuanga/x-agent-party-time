@@ -38,13 +38,20 @@ export async function deliveryProject(
     title: string;
     description: string;
     now?: () => Date;
+    password?: string;
+    runnerName?: string;
+    people?: Record<
+      'owner' | 'tester' | 'developer',
+      [username: string, displayName: string, id?: string]
+    >;
   },
 ) {
   const { users, project } = await projectScenario(database, {
     name: options.name,
     owner: 'owner',
     members: ['tester', 'developer'],
-    people: {
+    password: options.password,
+    people: options.people ?? {
       owner: [`${options.prefix}-owner`, '项目所有者', randomUUID()],
       tester: [`${options.prefix}-tester`, '测试负责人', randomUUID()],
       developer: [`${options.prefix}-developer`, '工程负责人', randomUUID()],
@@ -54,7 +61,7 @@ export async function deliveryProject(
   const runners = new RunnerService(database);
   const pairedRunner = runners.pair(
     runners.issuePairingCode(users.developer.id).code,
-    `${options.prefix} Runner`,
+    options.runnerName ?? `${options.prefix} Runner`,
   );
   const sources = options.sources.map((spec) => {
     const { source, environment, bindings } = engineeringScenario(

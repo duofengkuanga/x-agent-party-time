@@ -1,11 +1,6 @@
 import { createCooking } from '@/cooking/runtime/create-cooking';
-import {
-  engineeringScenario,
-  projectScenario,
-} from '@/cooking/testing/scenario';
-import { SubmissionService } from '@/cooking/submissions/server/submission-service';
+import { deliveryProject } from '@/cooking/testing/project';
 import { openDatabase } from '@/platform/database';
-import { RunnerService } from '@/platform/runner/service';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 
@@ -23,64 +18,38 @@ export async function seedBrowserFixture(
   const db = openDatabase(join(home, 'server', 'server.sqlite'));
   try {
     const password = 'browser-test-password';
-    const { users, project } = await projectScenario(db, {
+    const {
+      users,
+      project,
+      submission,
+      items,
+      pairedRunner: paired,
+    } = await deliveryProject(db, {
       name: '浏览器验收项目',
-      owner: 'owner',
-      members: ['tester', 'developer'],
+      prefix: 'browser',
       password,
+      runnerName: '浏览器测试 Agent',
       people: {
         owner: ['browser-owner', '浏览器测试负责人', randomUUID()],
         tester: ['browser-tester', '浏览器测试执行人', randomUUID()],
         developer: ['browser-developer', '浏览器测试开发者', randomUUID()],
       },
-    });
-    const { owner, tester, developer } = users;
-    const runners = new RunnerService(db);
-    const paired = runners.pair(
-      runners.issuePairingCode(developer.id).code,
-      '浏览器测试 Agent',
-    );
-    const { source, environment, bindings } = engineeringScenario(
-      db,
-      owner.id,
-      project.id,
-      {
-        name: '浏览器前端工程',
-        type: 'FRONTEND',
-        identifier: 'browser-web',
-        environment: '浏览器测试环境',
-        deployment: { kind: 'CI_CD' },
-        repository: 'https://example.com/browser.git',
-        developers: {
-          developer: { userId: developer.id, runnerId: paired.runner.id },
+      sources: [
+        {
+          name: '浏览器前端工程',
+          type: 'FRONTEND',
+          identifier: 'browser-web',
+          environment: '浏览器测试环境',
+          deployment: { kind: 'CI_CD' },
+          repository: 'https://example.com/browser.git',
+          branch: 'feature/browser-test',
         },
-      },
-    );
-    const binding = bindings.developer;
-
-    const submission = new SubmissionService(db).createSubmission(
-      owner.id,
-      project.id,
-      {
-        mutationId: randomUUID(),
-        title: '浏览器架构验收提测',
-        requirementDescription: '覆盖路由、Action、附件和缺陷生命周期交互',
-        testerUserId: tester.id,
-        items: [
-          {
-            engineeringId: source.id,
-            responsibleUserId: developer.id,
-            bindingId: binding.id,
-            targetBranch: 'feature/browser-test',
-            environmentId: environment.id,
-          },
-        ],
-      },
-    );
-    const item = db.get(
-      'SELECT id FROM cooking_submission_item WHERE submission_id = ?',
-      submission.id,
-    ) as { id: string };
+      ],
+      title: '浏览器架构验收提测',
+      description: '覆盖路由、Action、附件和缺陷生命周期交互',
+    });
+    const { tester, developer } = users;
+    const item = items[0]!;
 
     const { executions, bugs } = createCooking(db);
 
