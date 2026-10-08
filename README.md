@@ -225,7 +225,7 @@ packages/runner-conformance/  协议验收 Adapter
 
 Execution 的领域无关状态转换在 `platform/execution/service.ts`；`queue.ts` 管领取、恢复及 Lease 到期，`interactions.ts` 管操作请求的打开、等待与处理，`records.ts` 读取并映射持久记录，`lease.ts` 集中 Lease 状态与校验，`polling.ts` 统一有界等待。xapt 的 `execution/service.ts` 驱动本机 Codex，`preparation.ts` 负责工作区、附件、规则包与结果校验准备，`recovery.ts` 维护执行阶段和 Lease，`outbox.ts` 持久化待上报结果并负责恢复后重放。两侧通过 Runner HTTP 协议连接，Cooking 只接收归属明确的 Execution 投影事件。`platform/runner/router.ts` 是生产与协议测试共用的路由表，`cooking/runtime/runner-http.ts` 装配绑定操作和带业务投影的执行服务；Next 路由文件只声明允许的 HTTP 方法。`runner-contract/http-client` 统一通用客户端的请求校验、认证、响应解析及错误类型；xapt 只扩展缺陷删除命令，协议验收客户端只补充场景驱动。
 
-Cooking 样式入口 `app/cooking/cooking.css` 只声明有序导入；`styles/` 按页面和职责维护样式，导入顺序保留共享控件与布局的层叠规则。看板卡片与表单、工程目录与工程管理分别维护在相邻的样式文件中，附件选择与展示集中在 `styles/attachments.css`，Agent 台账与连接页分别由 `styles/agents.css` 和 `styles/agent-connect.css` 承担；跨页面的 accent 悬停与焦点规则由最后导入的 `styles/accent-interactions.css` 统一管理。集成测试通过 `testing/database.ts` 管理隔离数据库，通过 `cooking/testing/scenario.ts` 装配真实用户、成员、工程与绑定，再由 `cooking/testing/project.ts` 建立完整提测场景。
+Cooking 样式入口 `app/cooking/cooking.css` 只声明有序导入；`styles/` 按页面和职责维护样式，导入顺序保留共享控件与布局的层叠规则。看板卡片与表单、工程目录与工程管理分别维护在相邻的样式文件中，附件选择与展示集中在 `styles/attachments.css`，Agent 台账与连接页分别由 `styles/agents.css` 和 `styles/agent-connect.css` 承担；跨页面的 accent 悬停与焦点规则由最后导入的 `styles/accent-interactions.css` 统一管理。集成测试通过 `testing/database.ts` 管理隔离数据库，通过 `cooking/testing/scenario.ts` 装配真实用户、成员、工程与绑定，再由 `cooking/testing/project.ts` 建立完整提测场景；协议级 Agent 测试通过 `cooking/testing/runner-http.ts` 装配本地 Runner HTTP 处理器。
 
 `BugService` 保留缺陷命令入口，`BugQueries` 集中有权限的读取、附件访问与工作区投影。`BugService.deleteBugs()` 是调用方的删除 Interface，内部 `BugDeletion` 集中处理关联执行收集、活动检查、事务删除、依赖校验与提测版本推进。测试继续通过 `BugService` 验证完整行为，不依赖私有步骤。
 

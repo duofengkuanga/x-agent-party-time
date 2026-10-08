@@ -1,4 +1,3 @@
-import { cookingRunnerFetch } from '@/cooking/runtime/runner-http';
 import { createCooking } from '@/cooking/runtime/create-cooking';
 import {
   completeRepairExecution,
@@ -10,11 +9,9 @@ import {
   mutation,
 } from '@/cooking/testing/project';
 import type { AppDatabase } from '@/platform/database';
-import { LocalFileStore } from '@/platform/files/local-file-store';
 import { testDatabases } from '@/testing/database';
 import { expect } from 'bun:test';
 import { randomUUID } from 'node:crypto';
-import { join } from 'node:path';
 
 /** Each test file owns its database factory and cleanup hook. */
 export function updateFixture(
@@ -288,16 +285,4 @@ export function pendingCommits(database: AppDatabase, bugId: string): string[] {
   return JSON.parse(row.pending_commits_json) as string[];
 }
 
-export function updateProtocolFetch(
-  fixture: Awaited<ReturnType<typeof setup>>,
-): ReturnType<typeof cookingRunnerFetch> {
-  return cookingRunnerFetch(fixture.database, {
-    runners: fixture.runners,
-    executions: fixture.executions,
-    files: new LocalFileStore(
-      fixture.database,
-      join(fixture.directory, 'files'),
-    ),
-    prepare: () => {},
-  });
-}
+export { testRunnerFetch as updateProtocolFetch } from '@/cooking/testing/runner-http';

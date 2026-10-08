@@ -1,4 +1,3 @@
-import { cookingRunnerFetch } from '@/cooking/runtime/runner-http';
 import { createCooking } from '@/cooking/runtime/create-cooking';
 import {
   completeClaimedExecution,
@@ -105,19 +104,7 @@ async function setup(
   };
 }
 
-export function repairProtocolFetch(
-  fixture: Awaited<ReturnType<typeof setup>>,
-): ReturnType<typeof cookingRunnerFetch> {
-  return cookingRunnerFetch(fixture.database, {
-    runners: fixture.runners,
-    executions: fixture.executions,
-    files: new LocalFileStore(
-      fixture.database,
-      join(fixture.directory, 'files'),
-    ),
-    prepare: () => {},
-  });
-}
+export { testRunnerFetch as repairProtocolFetch } from '@/cooking/testing/runner-http';
 
 export async function requestSyncAfterFailure(
   fixture: Awaited<ReturnType<typeof setup>>,
