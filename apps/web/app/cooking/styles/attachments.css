@@ -86,7 +86,8 @@
   font-size: 8px;
 }
 
-.collab-attachments {
+.collab-attachments,
+.collab-bug-detail-attachments {
   display: grid;
   gap: 7px;
   list-style: none;
@@ -112,6 +113,21 @@
 .collab-attachments small {
   color: var(--faint);
   font-size: 7px;
+}
+
+.collab-bug-detail-attachments li {
+  gap: 5px;
+}
+
+.collab-bug-detail-attachments a {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collab-bug-detail-attachments small {
+  color: var(--muted);
+  flex: 0 0 auto;
 }
 
 .collab-attachment-picker__files li {
@@ -250,10 +266,6 @@
 .collab-attachment-file__meta > small {
   color: var(--muted);
   font-size: 7px;
-}
-
-.collab-bug-detail-attachments {
-  gap: 7px;
 }
 
 .collab-attachments li,

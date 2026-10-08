@@ -159,28 +159,6 @@
   min-width: 0;
 }
 
-.collab-bug-detail-attachments {
-  display: grid;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.collab-bug-detail-attachments li {
-  gap: 5px;
-}
-
-.collab-bug-detail-attachments a {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.collab-bug-detail-attachments small {
-  color: var(--muted);
-  flex: 0 0 auto;
-}
-
 .collab-bug-id {
   align-items: center;
   display: inline-flex;
