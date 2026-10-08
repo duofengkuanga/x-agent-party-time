@@ -12,6 +12,7 @@ import {
 import { EngineeringIdSchema } from '@/cooking/engineering/contract';
 import { CookingMutationIdSchema } from '@/cooking/shared/contract';
 import { CookingWriteStore } from '@/cooking/shared/server/write-store';
+import { requireBindingEngineering } from './engineering-access';
 import {
   BindingRequestIdSchema,
   BindingRequestSchema,
@@ -61,23 +62,11 @@ export class BindingRequestService {
       resultSchema: BindingRequestSchema,
       perform: () => {
         this.failExpired();
-        const engineering = this.db.get(
-          `SELECT engineering.project_id, engineering.archived_at
-             FROM cooking_engineering engineering
-             JOIN cooking_engineering_membership membership
-               ON membership.engineering_id = engineering.id
-              AND membership.user_id = ?
-             WHERE engineering.id = ?`,
+        const engineering = requireBindingEngineering(
+          this.db,
           actorUserId,
           engineeringId,
-        ) as { project_id: string; archived_at: string | null } | undefined;
-        if (!engineering)
-          throw new PlatformError('NOT_FOUND', '工程不存在或你不是工程成员');
-        if (engineering.archived_at)
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '已归档工程不能建立绑定',
-          );
+        );
         const runner = this.db.get(
           `SELECT last_seen_at FROM platform_runner
              WHERE id = ? AND owner_user_id = ? AND revoked_at IS NULL`,

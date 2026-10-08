@@ -84,6 +84,15 @@ describe('BindingService', () => {
         randomUUID(),
       ),
     ).toEqual(binding);
+    expect(() =>
+      service.createReservedBinding(
+        users.member.id,
+        engineering.id,
+        runners.member.runner.id,
+        randomUUID(),
+        randomUUID(),
+      ),
+    ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
     expect(service.listBindingsForRunner(runners.member.runner.id)).toEqual([
       binding,
     ]);

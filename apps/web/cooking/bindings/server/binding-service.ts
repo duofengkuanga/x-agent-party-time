@@ -9,6 +9,7 @@ import {
   RepositoryUrlSchema,
 } from '@/cooking/engineering/contract';
 import { CookingWriteStore } from '@/cooking/shared/server/write-store';
+import { requireBindingEngineering } from './engineering-access';
 import {
   EngineeringBindingSchema,
   EngineeringBindingSummarySchema,
@@ -41,86 +42,13 @@ export class BindingService {
     mutationId: string,
   ): EngineeringBinding {
     EngineeringIdSchema.parse(engineeringId);
-    return this.writes.run({
-      mutationId,
+    return this.createBindingForRunner(
       actorUserId,
-      operation: 'ENGINEERING_BINDING_CREATE',
-      resourceType: 'ENGINEERING_BINDING',
-      resultSchema: EngineeringBindingSchema,
-      perform: () => {
-        const engineering = this.db.get(
-          `SELECT engineering.project_id, engineering.archived_at
-             FROM cooking_engineering engineering
-             JOIN cooking_engineering_membership membership
-               ON membership.engineering_id = engineering.id
-              AND membership.user_id = ?
-             WHERE engineering.id = ?`,
-          actorUserId,
-          engineeringId,
-        ) as { project_id: string; archived_at: string | null } | undefined;
-        if (!engineering)
-          throw new PlatformError('NOT_FOUND', '工程不存在或你不是工程成员');
-        if (engineering.archived_at)
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '已归档工程不能建立绑定',
-          );
-        const runner = this.db.get(
-          `SELECT id FROM platform_runner
-             WHERE id = ? AND owner_user_id = ? AND revoked_at IS NULL`,
-          runnerId,
-          actorUserId,
-        );
-        if (!runner)
-          throw new PlatformError(
-            'NOT_FOUND',
-            'Agent 不存在、已停用或不属于当前用户',
-          );
-        const existing = this.db.get(
-          `SELECT id, engineering_id, user_id, runner_id, created_at
-             FROM cooking_engineering_binding
-             WHERE engineering_id = ? AND user_id = ?`,
-          engineeringId,
-          actorUserId,
-        ) as BindingRow | undefined;
-        if (existing?.runner_id === runnerId)
-          return { result: mapBinding(existing), resourceId: existing.id };
-        if (existing)
-          throw new PlatformError(
-            'RESOURCE_CONFLICT',
-            '当前用户已经为这个工程建立绑定；请先删除原绑定',
-          );
-        const id = this.createId();
-        const createdAt = this.now().toISOString();
-        this.db
-          .prepare(
-            `INSERT INTO cooking_engineering_binding(
-               id, engineering_id, user_id, runner_id, created_at
-             ) VALUES (?, ?, ?, ?, ?)`,
-          )
-          .run(id, engineeringId, actorUserId, runnerId, createdAt);
-        const result = EngineeringBindingSchema.parse({
-          id,
-          engineeringId,
-          userId: actorUserId,
-          runnerId,
-          createdAt,
-        });
-        return {
-          result,
-          resourceId: id,
-          audits: [
-            {
-              projectId: engineering.project_id,
-              action: 'ENGINEERING_BINDING_CREATED',
-              targetType: 'ENGINEERING_BINDING',
-              targetId: id,
-              details: { engineeringId, runnerId },
-            },
-          ],
-        };
-      },
-    });
+      engineeringId,
+      runnerId,
+      mutationId,
+      null,
+    );
   }
 
   createReservedBinding(
@@ -132,6 +60,22 @@ export class BindingService {
   ): EngineeringBinding {
     EngineeringIdSchema.parse(engineeringId);
     const id = z.uuid().parse(bindingId);
+    return this.createBindingForRunner(
+      actorUserId,
+      engineeringId,
+      runnerId,
+      mutationId,
+      id,
+    );
+  }
+
+  private createBindingForRunner(
+    actorUserId: string,
+    engineeringId: string,
+    runnerId: string,
+    mutationId: string,
+    reservedId: string | null,
+  ): EngineeringBinding {
     return this.writes.run({
       mutationId,
       actorUserId,
@@ -139,23 +83,11 @@ export class BindingService {
       resourceType: 'ENGINEERING_BINDING',
       resultSchema: EngineeringBindingSchema,
       perform: () => {
-        const engineering = this.db.get(
-          `SELECT engineering.project_id, engineering.archived_at
-             FROM cooking_engineering engineering
-             JOIN cooking_engineering_membership membership
-               ON membership.engineering_id = engineering.id
-              AND membership.user_id = ?
-             WHERE engineering.id = ?`,
+        const engineering = requireBindingEngineering(
+          this.db,
           actorUserId,
           engineeringId,
-        ) as { project_id: string; archived_at: string | null } | undefined;
-        if (!engineering)
-          throw new PlatformError('NOT_FOUND', '工程不存在或你不是工程成员');
-        if (engineering.archived_at)
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '已归档工程不能建立绑定',
-          );
+        );
         const runner = this.db.get(
           `SELECT id FROM platform_runner
              WHERE id = ? AND owner_user_id = ? AND revoked_at IS NULL`,
@@ -174,11 +106,16 @@ export class BindingService {
           engineeringId,
           actorUserId,
         ) as BindingRow | undefined;
+        if (!reservedId && existing?.runner_id === runnerId)
+          return { result: mapBinding(existing), resourceId: existing.id };
         if (existing)
           throw new PlatformError(
             'RESOURCE_CONFLICT',
-            '当前用户已经为这个工程建立绑定',
+            reservedId
+              ? '当前用户已经为这个工程建立绑定'
+              : '当前用户已经为这个工程建立绑定；请先删除原绑定',
           );
+        const id = reservedId ?? this.createId();
         const createdAt = this.now().toISOString();
         this.db
           .prepare(
