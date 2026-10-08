@@ -3,42 +3,7 @@ import { isAbsolute, join, resolve } from 'node:path';
 export const XAPT_IDENTIFIER = 'com.agentpartytime.xapt';
 export const XAPT_LAUNCH_AGENT_LABEL = `${XAPT_IDENTIFIER}.daemon`;
 
-export interface XaptPaths {
-  home: string;
-  commandLink: string;
-  installRoot: string;
-  versions: string;
-  currentLink: string;
-  currentExecutable: string;
-  installState: string;
-  applicationSupport: string;
-  skills: string;
-  skillBundles: string;
-  skillGenerations: string;
-  userSkills: string;
-  skillNamespaceLink: string;
-  identity: string;
-  connection: string;
-  bindings: string;
-  run: string;
-  controlSocket: string;
-  state: string;
-  outbox: string;
-  executions: string;
-  resultBaselines: string;
-  workspaces: string;
-  caches: string;
-  updateCache: string;
-  attachmentCache: string;
-  executionCache: string;
-  logs: string;
-  daemonLog: string;
-  daemonErrorLog: string;
-  launchAgentPlist: string;
-  versionExecutable(version: string): string;
-}
-
-export function xaptPaths(home: string): XaptPaths {
+export function xaptPaths(home: string) {
   if (!isAbsolute(home)) throw new Error('xapt Home 必须是绝对路径');
   const normalizedHome = resolve(home);
   const installRoot = join(normalizedHome, '.local', 'share', 'xapt');
@@ -50,6 +15,7 @@ export function xaptPaths(home: string): XaptPaths {
   );
   const state = join(applicationSupport, 'state');
   const skills = join(applicationSupport, 'skills');
+  const userSkills = join(normalizedHome, '.agents', 'skills');
   const caches = join(normalizedHome, 'Library', 'Caches', XAPT_IDENTIFIER);
   const logs = join(normalizedHome, 'Library', 'Logs', XAPT_IDENTIFIER);
   const versions = join(installRoot, 'versions');
@@ -67,13 +33,8 @@ export function xaptPaths(home: string): XaptPaths {
     skills,
     skillBundles: join(skills, 'bundles'),
     skillGenerations: join(skills, 'generations'),
-    userSkills: join(normalizedHome, '.agents', 'skills'),
-    skillNamespaceLink: join(
-      normalizedHome,
-      '.agents',
-      'skills',
-      'x-agent-party-time',
-    ),
+    userSkills,
+    skillNamespaceLink: join(userSkills, 'x-agent-party-time'),
     identity: join(applicationSupport, 'identity.json'),
     connection: join(applicationSupport, 'connection.json'),
     bindings: join(applicationSupport, 'bindings.json'),
@@ -104,3 +65,5 @@ export function xaptPaths(home: string): XaptPaths {
     },
   };
 }
+
+export type XaptPaths = ReturnType<typeof xaptPaths>;
