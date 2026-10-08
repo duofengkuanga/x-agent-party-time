@@ -1,6 +1,5 @@
-import { randomUUID } from 'node:crypto';
 import type { ReceivedProjectInvitation } from '../contract';
-import { respondProjectInvitationAction } from '../server/actions';
+import { InvitationForm } from './invitation-form';
 
 export function AccountInvitationNotifications({
   invitations,
@@ -23,17 +22,19 @@ export function AccountInvitationNotifications({
               <strong>{projectName}</strong>
               <p>接受后，你可以参与该项目的工程配置与提测协作。</p>
               <div>
-                <InvitationResponseForm
+                <InvitationForm
                   decision="REJECT"
                   invitationId={invitation.id}
                   label="拒绝"
+                  returnTo="/cooking/projects"
                   version={invitation.version}
                 />
-                <InvitationResponseForm
+                <InvitationForm
                   buttonClassName="collab-account-menu__accept"
                   decision="ACCEPT"
                   invitationId={invitation.id}
                   label="接受"
+                  returnTo="/cooking/projects"
                   version={invitation.version}
                 />
               </div>
@@ -42,32 +43,5 @@ export function AccountInvitationNotifications({
         )}
       </div>
     </section>
-  );
-}
-
-function InvitationResponseForm({
-  buttonClassName,
-  decision,
-  invitationId,
-  label,
-  version,
-}: {
-  buttonClassName?: string;
-  decision: 'ACCEPT' | 'REJECT';
-  invitationId: string;
-  label: string;
-  version: number;
-}) {
-  return (
-    <form action={respondProjectInvitationAction}>
-      <input name="mutationId" type="hidden" value={randomUUID()} />
-      <input name="invitationId" type="hidden" value={invitationId} />
-      <input name="expectedVersion" type="hidden" value={version} />
-      <input name="decision" type="hidden" value={decision} />
-      <input name="returnTo" type="hidden" value="/cooking/projects" />
-      <button className={buttonClassName} type="submit">
-        {label}
-      </button>
-    </form>
   );
 }
