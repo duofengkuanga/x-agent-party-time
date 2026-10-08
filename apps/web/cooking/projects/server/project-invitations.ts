@@ -61,9 +61,7 @@ export class ProjectInvitations {
         if (member)
           throw new PlatformError('RESOURCE_CONFLICT', '该用户已经是项目成员');
         const pending = this.db.get(
-          `SELECT id, project_id, invited_user_id, invited_by_user_id, status,
-                  version, created_at, responded_at
-           FROM cooking_project_invitation
+          `SELECT * FROM cooking_project_invitation
            WHERE project_id = ? AND invited_user_id = ? AND status = 'PENDING'`,
           projectId,
           user.id,
@@ -91,9 +89,8 @@ export class ProjectInvitations {
     this.requireOwner(userId, projectId);
     return this.db
       .all(
-        `SELECT i.id, i.project_id, i.invited_user_id, i.invited_by_user_id,
-                i.status, i.version, i.created_at, i.responded_at,
-                u.username, u.display_name, u.created_at user_created_at
+        `SELECT i.*, u.username, u.display_name,
+                u.created_at user_created_at
          FROM cooking_project_invitation i
          JOIN platform_user u ON u.id = i.invited_user_id
          WHERE i.project_id = ? AND i.status = 'PENDING'
@@ -121,9 +118,8 @@ export class ProjectInvitations {
   listReceivedInvitations(userId: string): ReceivedProjectInvitation[] {
     return this.db
       .all(
-        `SELECT i.id, i.project_id, i.invited_user_id, i.invited_by_user_id,
-                i.status, i.version, i.created_at, i.responded_at,
-                p.name project_name, inviter.display_name inviter_name
+        `SELECT i.*, p.name project_name,
+                inviter.display_name inviter_name
          FROM cooking_project_invitation i
          JOIN cooking_project p ON p.id = i.project_id
          JOIN platform_user inviter ON inviter.id = i.invited_by_user_id
@@ -211,13 +207,16 @@ export class ProjectInvitations {
             '邀请状态已更新，请刷新后重试',
           );
         const respondedAt = this.now().toISOString();
-        const update = this.db.run(
+        const updated = this.db.get<InvitationRow>(
           `UPDATE cooking_project_invitation
            SET status = ?, version = version + 1, responded_at = ?
-           WHERE id = ? AND version = ? AND status = 'PENDING'`,
-          [targetStatus, respondedAt, invitationId, input.expectedVersion],
+           WHERE id = ? AND version = ? AND status = 'PENDING' RETURNING *`,
+          targetStatus,
+          respondedAt,
+          invitationId,
+          input.expectedVersion,
         );
-        if (update.changes !== 1)
+        if (!updated)
           throw new PlatformError(
             'STALE_STATE',
             '邀请状态已更新，请刷新后重试',
@@ -229,12 +228,7 @@ export class ProjectInvitations {
              ) VALUES (?, ?, 'MEMBER', 1, ?)`,
             [row.project_id, actorUserId, respondedAt],
           );
-        const result = mapInvitation({
-          ...row,
-          status: targetStatus,
-          version: row.version + 1,
-          responded_at: respondedAt,
-        });
+        const result = mapInvitation(updated);
         return {
           result,
           resourceId: invitationId,
@@ -271,9 +265,7 @@ export class ProjectInvitations {
 
   private invitationForRecipient(id: string, userId: string): InvitationRow {
     const row = this.db.get(
-      `SELECT id, project_id, invited_user_id, invited_by_user_id, status,
-                version, created_at, responded_at
-         FROM cooking_project_invitation
+      `SELECT * FROM cooking_project_invitation
          WHERE id = ? AND invited_user_id = ?`,
       id,
       userId,
@@ -284,8 +276,7 @@ export class ProjectInvitations {
 
   private invitationForOwner(id: string, userId: string): InvitationRow {
     const row = this.db.get(
-      `SELECT i.id, i.project_id, i.invited_user_id, i.invited_by_user_id,
-                i.status, i.version, i.created_at, i.responded_at
+      `SELECT i.*
          FROM cooking_project_invitation i
          JOIN cooking_project_membership m ON m.project_id = i.project_id
          WHERE i.id = ? AND m.user_id = ? AND m.role = 'OWNER'`,
