@@ -102,11 +102,6 @@ button:disabled {
   letter-spacing: 0.14em;
 }
 
-.form-error {
-  margin: 0;
-  color: #a92f22;
-}
-
 .placeholder-page {
   display: grid;
   align-content: start;
