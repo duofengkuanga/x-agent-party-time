@@ -49,7 +49,7 @@ export async function createEngineeringAction(
             (key) => ({
               mutationId: formField(formData, `environmentMutationId:${key}`),
               name: formField(formData, `environmentName:${key}`),
-              deployment: keyedDeploymentField(formData, key),
+              deployment: deploymentField(formData, key),
             }),
           ),
         },
@@ -155,7 +155,7 @@ export async function createEnvironmentAction(
       formStringList(formData, 'environmentKey').map((key) => ({
         mutationId: formField(formData, `environmentMutationId:${key}`),
         name: formField(formData, `environmentName:${key}`),
-        deployment: keyedDeploymentField(formData, key),
+        deployment: deploymentField(formData, key),
       })),
     );
     return { path, message: '测试环境已创建' };
@@ -231,17 +231,9 @@ function engineeringIds(formData: FormData) {
   };
 }
 
-function deploymentField(formData: FormData): DeploymentMethod {
-  const kind = formField(formData, 'deploymentKind');
-  const command = formField(formData, 'command').trim();
-  return DeploymentMethodSchema.parse(command ? { kind, command } : { kind });
-}
-
-function keyedDeploymentField(
-  formData: FormData,
-  key: string,
-): DeploymentMethod {
-  const kind = formField(formData, `deploymentKind:${key}`);
-  const command = formField(formData, `command:${key}`).trim();
+function deploymentField(formData: FormData, key?: string): DeploymentMethod {
+  const suffix = key === undefined ? '' : `:${key}`;
+  const kind = formField(formData, `deploymentKind${suffix}`);
+  const command = formField(formData, `command${suffix}`).trim();
   return DeploymentMethodSchema.parse(command ? { kind, command } : { kind });
 }
