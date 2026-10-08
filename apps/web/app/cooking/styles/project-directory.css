@@ -556,14 +556,6 @@
     justify-content: flex-start;
   }
 
-  .project-settings__create {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .project-settings__create > button {
-    grid-column: 1 / -1;
-  }
-
   .project-settings__list > li {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -590,14 +582,6 @@
   .project-settings__hero {
     gap: 22px;
     padding: 42px 0 24px;
-  }
-
-  .project-settings__create {
-    grid-template-columns: 1fr;
-  }
-
-  .project-settings__create > button {
-    grid-column: auto;
   }
 
   .project-settings__list > li {
