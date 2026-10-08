@@ -502,47 +502,22 @@ export class RunnerService {
     runnerId: string,
     expectedVersion: number,
   ): Runner {
-    return this.db.transaction(() => {
-      const row = this.db.get(
-        `SELECT id, owner_user_id, name, credential_hash, version,
-                  last_seen_at, revoked_at, created_at
-           FROM platform_runner
-           WHERE id = ? AND owner_user_id = ?`,
-        runnerId,
-        ownerUserId,
-      ) as RunnerRow | undefined;
-      if (!row) throw new PlatformError('NOT_FOUND', 'Agent 不存在或无权访问');
-      if (row.revoked_at) return mapRunner(row);
-      if (row.version !== expectedVersion)
-        throw new PlatformError('STALE_STATE', 'Agent 已更新，请刷新后重试');
-      if (this.hasActiveExecutions(runnerId))
-        throw new PlatformError(
-          'RESOURCE_CONFLICT',
-          'Agent 仍有活动执行，暂时不能停用',
-        );
-      const revokedAt = this.now().toISOString();
-      const update = this.db
-        .prepare(
-          `UPDATE platform_runner
-           SET revoked_at = ?, version = version + 1
-           WHERE id = ? AND owner_user_id = ? AND version = ?
-             AND revoked_at IS NULL`,
-        )
-        .run(revokedAt, runnerId, ownerUserId, expectedVersion);
-      if (update.changes !== 1)
-        throw new PlatformError('STALE_STATE', 'Agent 已更新，请刷新后重试');
-      return RunnerSchema.parse({
-        ...mapRunner(row),
-        revokedAt,
-        version: row.version + 1,
-      });
-    })();
+    return this.setRevoked(ownerUserId, runnerId, expectedVersion, true);
   }
 
   reactivateRunner(
     ownerUserId: string,
     runnerId: string,
     expectedVersion: number,
+  ): Runner {
+    return this.setRevoked(ownerUserId, runnerId, expectedVersion, false);
+  }
+
+  private setRevoked(
+    ownerUserId: string,
+    runnerId: string,
+    expectedVersion: number,
+    revoke: boolean,
   ): Runner {
     return this.db.transaction(() => {
       const row = this.db.get(
@@ -554,23 +529,39 @@ export class RunnerService {
         ownerUserId,
       ) as RunnerRow | undefined;
       if (!row) throw new PlatformError('NOT_FOUND', 'Agent 不存在或无权访问');
-      if (!row.revoked_at) return mapRunner(row);
+      if (Boolean(row.revoked_at) === revoke) return mapRunner(row);
       if (row.version !== expectedVersion)
         throw new PlatformError('STALE_STATE', 'Agent 已更新，请刷新后重试');
-      const update = this.db
-        .prepare(
-          `UPDATE platform_runner
-           SET revoked_at = NULL, last_seen_at = NULL, version = version + 1
-           WHERE id = ? AND owner_user_id = ? AND version = ?
-             AND revoked_at IS NOT NULL`,
-        )
-        .run(runnerId, ownerUserId, expectedVersion);
+      if (revoke && this.hasActiveExecutions(runnerId))
+        throw new PlatformError(
+          'RESOURCE_CONFLICT',
+          'Agent 仍有活动执行，暂时不能停用',
+        );
+      const revokedAt = revoke ? this.now().toISOString() : null;
+      const update = revoke
+        ? this.db
+            .prepare(
+              `UPDATE platform_runner
+               SET revoked_at = ?, version = version + 1
+               WHERE id = ? AND owner_user_id = ? AND version = ?
+                 AND revoked_at IS NULL`,
+            )
+            .run(revokedAt, runnerId, ownerUserId, expectedVersion)
+        : this.db
+            .prepare(
+              `UPDATE platform_runner
+               SET revoked_at = NULL, last_seen_at = NULL, version = version + 1
+               WHERE id = ? AND owner_user_id = ? AND version = ?
+                 AND revoked_at IS NOT NULL`,
+            )
+            .run(runnerId, ownerUserId, expectedVersion);
       if (update.changes !== 1)
         throw new PlatformError('STALE_STATE', 'Agent 已更新，请刷新后重试');
+      const runner = mapRunner(row);
       return RunnerSchema.parse({
-        ...mapRunner(row),
-        lastSeenAt: null,
-        revokedAt: null,
+        ...runner,
+        lastSeenAt: revoke ? runner.lastSeenAt : null,
+        revokedAt,
         version: row.version + 1,
       });
     })();
