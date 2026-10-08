@@ -16,10 +16,11 @@ export async function projectScenario<K extends string>(
     owner: K;
     members: K[];
     authNow?: () => Date;
+    password?: string;
   },
 ) {
   const auth = new AuthService(database, spec.authNow);
-  const users = await seedUsers(auth, spec.people);
+  const users = await seedUsers(auth, spec.people, spec.password);
   const ownerId = users[spec.owner].id;
   const projects = new ProjectService(database);
   const project = projects.createProject(ownerId, {

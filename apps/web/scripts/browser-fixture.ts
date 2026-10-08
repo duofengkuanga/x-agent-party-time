@@ -1,9 +1,9 @@
-import { BindingService } from '@/cooking/bindings/server/binding-service';
-import { EngineeringService } from '@/cooking/engineering/server/engineering-service';
-import { ProjectService } from '@/cooking/projects/server/project-service';
 import { createCooking } from '@/cooking/runtime/create-cooking';
+import {
+  engineeringScenario,
+  projectScenario,
+} from '@/cooking/testing/scenario';
 import { SubmissionService } from '@/cooking/submissions/server/submission-service';
-import { AuthService } from '@/platform/auth/service';
 import { openDatabase } from '@/platform/database';
 import { RunnerService } from '@/platform/runner/service';
 import { randomUUID } from 'node:crypto';
@@ -23,76 +23,40 @@ export async function seedBrowserFixture(
   const db = openDatabase(join(home, 'server', 'server.sqlite'));
   try {
     const password = 'browser-test-password';
-    const auth = new AuthService(db);
-    const owner = await auth.seedUser({
-      id: randomUUID(),
-      username: 'browser-owner',
-      displayName: '浏览器测试负责人',
-      password,
-    });
-    const tester = await auth.seedUser({
-      id: randomUUID(),
-      username: 'browser-tester',
-      displayName: '浏览器测试执行人',
-      password,
-    });
-    const developer = await auth.seedUser({
-      id: randomUUID(),
-      username: 'browser-developer',
-      displayName: '浏览器测试开发者',
-      password,
-    });
-
-    const projects = new ProjectService(db);
-    const project = projects.createProject(owner.id, {
-      mutationId: randomUUID(),
+    const { users, project } = await projectScenario(db, {
       name: '浏览器验收项目',
-    }).project;
-    for (const invited of [tester, developer]) {
-      const invitation = projects.inviteUser(owner.id, project.id, {
-        mutationId: randomUUID(),
-        username: invited.username,
-      });
-      projects.respondToInvitation(invited.id, invitation.id, {
-        mutationId: randomUUID(),
-        expectedVersion: invitation.version,
-        decision: 'ACCEPT',
-      });
-    }
-
-    const engineering = new EngineeringService(db);
-    const source = engineering.createEngineering(owner.id, project.id, {
-      mutationId: randomUUID(),
-      name: '浏览器前端工程',
-      type: 'FRONTEND',
-      identifier: 'browser-web',
+      owner: 'owner',
+      members: ['tester', 'developer'],
+      password,
+      people: {
+        owner: ['browser-owner', '浏览器测试负责人', randomUUID()],
+        tester: ['browser-tester', '浏览器测试执行人', randomUUID()],
+        developer: ['browser-developer', '浏览器测试开发者', randomUUID()],
+      },
     });
-    engineering.addMember(owner.id, source.id, developer.id, {
-      mutationId: randomUUID(),
-    });
-    const environment = engineering.createEnvironment(owner.id, source.id, {
-      mutationId: randomUUID(),
-      name: '浏览器测试环境',
-      deployment: { kind: 'CI_CD' },
-    });
-
+    const { owner, tester, developer } = users;
     const runners = new RunnerService(db);
     const paired = runners.pair(
       runners.issuePairingCode(developer.id).code,
       '浏览器测试 Agent',
     );
-    const bindings = new BindingService(db);
-    const binding = bindings.createBinding(
-      developer.id,
-      source.id,
-      paired.runner.id,
-      randomUUID(),
+    const { source, environment, bindings } = engineeringScenario(
+      db,
+      owner.id,
+      project.id,
+      {
+        name: '浏览器前端工程',
+        type: 'FRONTEND',
+        identifier: 'browser-web',
+        environment: '浏览器测试环境',
+        deployment: { kind: 'CI_CD' },
+        repository: 'https://example.com/browser.git',
+        developers: {
+          developer: { userId: developer.id, runnerId: paired.runner.id },
+        },
+      },
     );
-    bindings.confirmRepository(
-      paired.runner.id,
-      binding.id,
-      'https://example.com/browser.git',
-    );
+    const binding = bindings.developer;
 
     const submission = new SubmissionService(db).createSubmission(
       owner.id,
