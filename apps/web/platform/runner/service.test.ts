@@ -188,52 +188,31 @@ describe('Agent 浏览器授权', () => {
 
   test('同一安装重新授权复用 Agent 并轮换 Credential', async () => {
     const { database, service, setNow, users } = await setup();
-    const firstVerifier = 'a'.repeat(43);
-    const firstIssue = service.createAuthorizationRequest({
-      installationId,
-      verifierHash: createHash('sha256').update(firstVerifier).digest('hex'),
-      fingerprint: '1111-2222-3333',
-      suggestedName: '首次 Agent',
-    });
-    const firstApproval = service.prepareAuthorizationApproval(
-      users.owner.id,
-      firstIssue.requestId,
-    );
-    service.approveAuthorization(
-      users.owner.id,
-      firstIssue.requestId,
-      firstApproval.approvalToken!,
-      '首次 Agent',
-    );
-    const first = service.claimAuthorization(
-      firstIssue.requestId,
-      firstVerifier,
-    );
+    const authorize = (verifier: string, fingerprint: string, name: string) => {
+      const issue = service.createAuthorizationRequest({
+        installationId,
+        verifierHash: createHash('sha256').update(verifier).digest('hex'),
+        fingerprint,
+        suggestedName: name,
+      });
+      const approval = service.prepareAuthorizationApproval(
+        users.owner.id,
+        issue.requestId,
+      );
+      service.approveAuthorization(
+        users.owner.id,
+        issue.requestId,
+        approval.approvalToken!,
+        name,
+      );
+      return service.claimAuthorization(issue.requestId, verifier);
+    };
+    const first = authorize('a'.repeat(43), '1111-2222-3333', '首次 Agent');
     expect(first.state).toBe('AUTHORIZED');
     if (first.state !== 'AUTHORIZED') throw new Error('首次授权失败');
 
     setNow('2026-07-26T10:01:00Z');
-    const secondVerifier = 'b'.repeat(43);
-    const secondIssue = service.createAuthorizationRequest({
-      installationId,
-      verifierHash: createHash('sha256').update(secondVerifier).digest('hex'),
-      fingerprint: '4444-5555-6666',
-      suggestedName: '再次 Agent',
-    });
-    const secondApproval = service.prepareAuthorizationApproval(
-      users.owner.id,
-      secondIssue.requestId,
-    );
-    service.approveAuthorization(
-      users.owner.id,
-      secondIssue.requestId,
-      secondApproval.approvalToken!,
-      '再次 Agent',
-    );
-    const second = service.claimAuthorization(
-      secondIssue.requestId,
-      secondVerifier,
-    );
+    const second = authorize('b'.repeat(43), '4444-5555-6666', '再次 Agent');
     expect(second.state).toBe('AUTHORIZED');
     if (second.state !== 'AUTHORIZED') throw new Error('再次授权失败');
 
