@@ -1,6 +1,5 @@
 import { requireProjectMember } from '@/cooking/shared/server/access';
 import {
-  environmentConflict,
   environmentObservers,
   environmentOwned,
   environmentBusy,
@@ -12,6 +11,12 @@ import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
 import { ProjectIdSchema } from '@/cooking/projects/contract';
 import { TestSubmissionWriteStore } from './test-submission-write-store';
+import {
+  ensureDistinctItems,
+  environmentConflictsForSubmission,
+  insertItem,
+  snapshotItemSource,
+} from './submission-items';
 import {
   CreateSubmissionInputSchema,
   TestSubmissionSchema,
@@ -31,11 +36,6 @@ import {
   type SubmissionItemRow,
   type SubmissionRow,
 } from './submission-queries';
-
-type ItemSnapshotSource = Omit<
-  SubmissionItemRow,
-  'id' | 'submission_id' | 'target_branch' | 'created_at'
->;
 
 export class SubmissionService {
   private readonly queries: SubmissionQueries;
@@ -75,7 +75,7 @@ export class SubmissionService {
   ): TestSubmission {
     const projectId = ProjectIdSchema.parse(projectIdInput);
     const parsed = CreateSubmissionInputSchema.parse(input);
-    this.ensureDistinctItems(parsed);
+    ensureDistinctItems(parsed);
     const takeovers = parsed.environmentTakeovers ?? [];
     if (
       new Set(takeovers.map((value) => value.environmentId)).size !==
@@ -116,7 +116,7 @@ export class SubmissionService {
           return {
             id: this.createId(),
             position,
-            source: this.snapshotItemSource(projectId, item),
+            source: snapshotItemSource(this.db, projectId, item),
             targetBranch: item.targetBranch,
           };
         });
@@ -136,7 +136,8 @@ export class SubmissionService {
           createdAt,
         )!;
         for (const item of itemSnapshots) {
-          this.insertItem(
+          insertItem(
+            this.db,
             submissionId,
             item.id,
             item.position,
@@ -203,21 +204,12 @@ export class SubmissionService {
     projectId: string,
     input: CreateSubmissionInput,
   ): EnvironmentConflict[] {
-    requireProjectMember(
+    return environmentConflictsForSubmission(
       this.db,
       actorUserId,
-      ProjectIdSchema.parse(projectId),
+      projectId,
+      input,
     );
-    const parsed = CreateSubmissionInputSchema.parse(input);
-    return parsed.items.flatMap((item) => {
-      this.snapshotItemSource(projectId, item);
-      const conflict = environmentConflict(
-        this.db,
-        actorUserId,
-        item.environmentId,
-      );
-      return conflict ? [conflict] : [];
-    });
   }
 
   changeEnvironment(
@@ -501,121 +493,5 @@ export class SubmissionService {
         };
       },
     });
-  }
-
-  private ensureDistinctItems(input: CreateSubmissionInput): void {
-    const engineeringIds = new Set<string>();
-    const environmentIds = new Set<string>();
-    for (const item of input.items) {
-      if (engineeringIds.has(item.engineeringId))
-        throw new PlatformError(
-          'VALIDATION_FAILED',
-          '同一工程在一张提测单中只能出现一次',
-        );
-      if (environmentIds.has(item.environmentId))
-        throw new PlatformError(
-          'VALIDATION_FAILED',
-          '同一环境在一张提测单中只能出现一次',
-        );
-      engineeringIds.add(item.engineeringId);
-      environmentIds.add(item.environmentId);
-    }
-  }
-
-  private snapshotItemSource(
-    projectId: string,
-    item: CreateSubmissionInput['items'][number],
-  ): ItemSnapshotSource {
-    const source = this.db.get(
-      `SELECT engineering.id engineering_id,
-                engineering.name engineering_name,
-                engineering.type engineering_type,
-                engineering.identifier engineering_identifier,
-                engineering.repository_url,
-                responsible.id responsible_user_id,
-                responsible.username responsible_username,
-                responsible.display_name responsible_display_name,
-                responsible.created_at responsible_user_created_at,
-                binding.id binding_id,
-                environment.id environment_id,
-                environment.name environment_name,
-                environment.deployment_json
-         FROM cooking_engineering engineering
-         JOIN cooking_project_membership project_membership
-           ON project_membership.project_id = engineering.project_id
-          AND project_membership.user_id = ?
-         JOIN cooking_engineering_membership engineering_membership
-           ON engineering_membership.engineering_id = engineering.id
-          AND engineering_membership.user_id = ?
-         JOIN platform_user responsible
-           ON responsible.id = engineering_membership.user_id
-         JOIN cooking_engineering_binding binding
-           ON binding.id = ?
-          AND binding.engineering_id = engineering.id
-          AND binding.user_id = responsible.id
-         JOIN platform_runner runner
-           ON runner.id = binding.runner_id
-          AND runner.owner_user_id = responsible.id
-          AND runner.revoked_at IS NULL
-         JOIN cooking_environment environment
-           ON environment.id = ?
-          AND environment.engineering_id = engineering.id
-         WHERE engineering.id = ?
-           AND engineering.project_id = ?
-           AND engineering.repository_state = 'CONFIRMED'
-           AND engineering.archived_at IS NULL`,
-      item.responsibleUserId,
-      item.responsibleUserId,
-      item.bindingId,
-      item.environmentId,
-      item.engineeringId,
-      projectId,
-    ) as ItemSnapshotSource | undefined;
-    if (!source)
-      throw new PlatformError(
-        'VALIDATION_FAILED',
-        '提测项仓库、负责人、绑定、Agent 或环境配置无效',
-      );
-    return source;
-  }
-
-  private insertItem(
-    submissionId: string,
-    itemId: string,
-    position: number,
-    source: ItemSnapshotSource,
-    targetBranch: string,
-    createdAt: string,
-  ): void {
-    this.db.run(
-      `INSERT INTO cooking_submission_item(
-           id, submission_id, position, engineering_id, engineering_name,
-           engineering_type, engineering_identifier, repository_url,
-           responsible_user_id, responsible_username,
-           responsible_display_name, responsible_user_created_at,
-           binding_id, target_branch, environment_id, environment_name,
-           deployment_json, created_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        itemId,
-        submissionId,
-        position,
-        source.engineering_id,
-        source.engineering_name,
-        source.engineering_type,
-        source.engineering_identifier,
-        source.repository_url,
-        source.responsible_user_id,
-        source.responsible_username,
-        source.responsible_display_name,
-        source.responsible_user_created_at,
-        source.binding_id,
-        targetBranch,
-        source.environment_id,
-        source.environment_name,
-        source.deployment_json,
-        createdAt,
-      ],
-    );
   }
 }
