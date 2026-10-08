@@ -1,20 +1,117 @@
 /* Attachment assets stay visually unified across forms, details and timelines. */
 .collab-attachment-picker {
-  border-style: solid;
+  border: 1px solid var(--strong-line);
+  display: grid;
   gap: 10px;
   padding: 12px;
 }
 
+.collab-attachment-picker:focus-visible,
+.collab-attachment-picker:focus-within {
+  border-color: var(--accent-dark);
+  outline: 2px solid color-mix(in srgb, var(--accent), transparent 58%);
+  outline-offset: 2px;
+}
+
+.collab-attachment-picker__input {
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  width: 1px;
+}
+
 .collab-attachment-picker__prompt {
+  align-items: center;
   border-left: 3px solid var(--accent);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
   padding-left: 10px;
 }
 
+.collab-attachment-picker__prompt > span {
+  display: grid;
+  gap: 3px;
+}
+
+.collab-attachment-picker__prompt strong {
+  font-size: 10px;
+}
+
+.collab-attachment-picker__prompt small,
+.collab-attachment-picker__empty {
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.collab-attachment-picker__prompt button {
+  flex: 0 0 auto;
+  font-size: 9px;
+  padding: 6px 9px;
+}
+
 .collab-attachment-picker__files {
+  border-top: 1px solid var(--line);
   display: grid;
   gap: 7px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  padding-top: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 10px 0 0;
+}
+
+.collab-attachment-picker__files li > span {
+  font-size: 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collab-attachment-picker__files li > small {
+  color: var(--faint);
+  font-size: 8px;
+}
+
+.collab-attachment-picker__files button {
+  border: 0;
+  color: var(--accent-dark);
+  font-size: 8px;
+  min-height: 0;
+  padding: 2px;
+}
+
+.collab-attachment-picker__notice {
+  color: var(--accent-dark);
+  font-size: 8px;
+}
+
+.collab-attachments {
+  display: grid;
+  gap: 7px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.collab-attachments li {
+  justify-content: space-between;
+}
+
+.collab-attachments button {
+  border: 0;
+  color: var(--blue);
+  font-size: 8px;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+  text-align: left;
+  text-overflow: ellipsis;
+}
+
+.collab-attachments small {
+  color: var(--faint);
+  font-size: 7px;
 }
 
 .collab-attachment-picker__files li {
@@ -155,7 +252,6 @@
   font-size: 7px;
 }
 
-.collab-attachments,
 .collab-bug-detail-attachments {
   gap: 7px;
 }
