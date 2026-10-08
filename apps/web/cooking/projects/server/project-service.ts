@@ -27,6 +27,11 @@ import {
 
 const PROJECT_HIDDEN_MESSAGE = '项目不存在或无权访问';
 const INVITATION_HIDDEN_MESSAGE = '邀请不存在或无权操作';
+const INVITATION_STATUS = {
+  ACCEPT: 'ACCEPTED',
+  REJECT: 'REJECTED',
+  REVOKE: 'REVOKED',
+} as const;
 
 type ProjectRow = DatabaseRow<Project>;
 
@@ -304,23 +309,55 @@ export class ProjectService {
   ): ProjectInvitation {
     const mutationId = MutationIdSchema.parse(input.mutationId);
     const decision = ProjectInvitationDecisionSchema.parse(input.decision);
-    const operation = `PROJECT_INVITATION_${decision}`;
-
-    return this.writes.run({
-      mutationId,
+    return this.transitionInvitation(
       actorUserId,
-      operation: operation,
+      invitationId,
+      { mutationId, expectedVersion: input.expectedVersion },
+      decision,
+    );
+  }
+
+  revokeInvitation(
+    actorUserId: string,
+    invitationId: string,
+    input: { mutationId: string; expectedVersion: number },
+  ): ProjectInvitation {
+    const mutationId = MutationIdSchema.parse(input.mutationId);
+    return this.transitionInvitation(
+      actorUserId,
+      invitationId,
+      { mutationId, expectedVersion: input.expectedVersion },
+      'REVOKE',
+    );
+  }
+
+  private transitionInvitation(
+    actorUserId: string,
+    invitationId: string,
+    input: { mutationId: string; expectedVersion: number },
+    decision: keyof typeof INVITATION_STATUS,
+  ): ProjectInvitation {
+    const targetStatus = INVITATION_STATUS[decision];
+    return this.writes.run({
+      mutationId: input.mutationId,
+      actorUserId,
+      operation: `PROJECT_INVITATION_${decision}`,
       resourceType: 'PROJECT_INVITATION',
       resultSchema: ProjectInvitationSchema,
       perform: () => {
-        const row = this.invitationForRecipient(invitationId, actorUserId);
-        const targetStatus =
-          input.decision === 'ACCEPT' ? 'ACCEPTED' : 'REJECTED';
+        const row =
+          decision === 'REVOKE'
+            ? this.invitationForOwner(invitationId, actorUserId)
+            : this.invitationForRecipient(invitationId, actorUserId);
         if (row.status !== 'PENDING') {
           if (row.status !== targetStatus)
-            throw new PlatformError('INVALID_TRANSITION', '邀请已完成其他处理');
-          const result = mapInvitation(row);
-          return { result: result, resourceId: invitationId };
+            throw new PlatformError(
+              'INVALID_TRANSITION',
+              decision === 'REVOKE'
+                ? '邀请已完成，无法撤销'
+                : '邀请已完成其他处理',
+            );
+          return { result: mapInvitation(row), resourceId: invitationId };
         }
         if (row.version !== input.expectedVersion)
           throw new PlatformError(
@@ -339,7 +376,7 @@ export class ProjectService {
             'STALE_STATE',
             '邀请状态已更新，请刷新后重试',
           );
-        if (targetStatus === 'ACCEPTED')
+        if (decision === 'ACCEPT')
           this.db.run(
             `INSERT OR IGNORE INTO cooking_project_membership(
                project_id, user_id, role, version, created_at
@@ -353,68 +390,11 @@ export class ProjectService {
           responded_at: respondedAt,
         });
         return {
-          result: result,
+          result,
           resourceId: invitationId,
           audit: {
             projectId: row.project_id,
-            action:
-              targetStatus === 'ACCEPTED'
-                ? 'PROJECT_INVITATION_ACCEPTED'
-                : 'PROJECT_INVITATION_REJECTED',
-            details: {},
-          },
-        };
-      },
-    });
-  }
-
-  revokeInvitation(
-    actorUserId: string,
-    invitationId: string,
-    input: { mutationId: string; expectedVersion: number },
-  ): ProjectInvitation {
-    const mutationId = MutationIdSchema.parse(input.mutationId);
-    return this.writes.run({
-      mutationId,
-      actorUserId,
-      operation: 'PROJECT_INVITATION_REVOKE',
-      resourceType: 'PROJECT_INVITATION',
-      resultSchema: ProjectInvitationSchema,
-      perform: () => {
-        const row = this.invitationForOwner(invitationId, actorUserId);
-        if (row.status !== 'PENDING') {
-          if (row.status !== 'REVOKED')
-            throw new PlatformError(
-              'INVALID_TRANSITION',
-              '邀请已完成，无法撤销',
-            );
-          const result = mapInvitation(row);
-          return { result: result, resourceId: invitationId };
-        }
-        if (row.version !== input.expectedVersion)
-          throw new PlatformError(
-            'STALE_STATE',
-            '邀请状态已更新，请刷新后重试',
-          );
-        const respondedAt = this.now().toISOString();
-        this.db.run(
-          `UPDATE cooking_project_invitation
-           SET status = 'REVOKED', version = version + 1, responded_at = ?
-           WHERE id = ? AND version = ? AND status = 'PENDING'`,
-          [respondedAt, invitationId, input.expectedVersion],
-        );
-        const result = mapInvitation({
-          ...row,
-          status: 'REVOKED',
-          version: row.version + 1,
-          responded_at: respondedAt,
-        });
-        return {
-          result: result,
-          resourceId: invitationId,
-          audit: {
-            projectId: row.project_id,
-            action: 'PROJECT_INVITATION_REVOKED',
+            action: `PROJECT_INVITATION_${targetStatus}`,
             details: {},
           },
         };
