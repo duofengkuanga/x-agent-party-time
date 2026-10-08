@@ -30,6 +30,13 @@ const INVITATION_HIDDEN_MESSAGE = '邀请不存在或无权操作';
 
 type ProjectRow = DatabaseRow<Project>;
 
+type ProjectSummaryRow = ProjectRow & {
+  user_id: string;
+  role: 'OWNER' | 'MEMBER';
+  membership_version: number;
+  membership_created_at: string;
+};
+
 type MembershipRow = DatabaseRow<ProjectMembership>;
 
 type InvitationRow = DatabaseRow<ProjectInvitation>;
@@ -128,24 +135,7 @@ export class ProjectService {
          ORDER BY p.updated_at DESC, p.id`,
         userId,
       )
-      .map((row) => {
-        const value = row as ProjectRow & {
-          user_id: string;
-          role: 'OWNER' | 'MEMBER';
-          membership_version: number;
-          membership_created_at: string;
-        };
-        return ProjectSummarySchema.parse({
-          project: mapProject(value),
-          membership: {
-            projectId: value.id,
-            userId: value.user_id,
-            role: value.role,
-            version: value.membership_version,
-            createdAt: value.membership_created_at,
-          },
-        });
-      });
+      .map((row) => mapProjectSummary(row as ProjectSummaryRow));
   }
 
   getProject(userId: string, projectId: string): ProjectSummary {
@@ -159,25 +149,9 @@ export class ProjectService {
          WHERE p.id = ? AND m.user_id = ?`,
       projectId,
       userId,
-    ) as
-      | (ProjectRow & {
-          user_id: string;
-          role: 'OWNER' | 'MEMBER';
-          membership_version: number;
-          membership_created_at: string;
-        })
-      | undefined;
+    ) as ProjectSummaryRow | undefined;
     if (!row) throw hiddenProject();
-    return ProjectSummarySchema.parse({
-      project: mapProject(row),
-      membership: {
-        projectId,
-        userId: row.user_id,
-        role: row.role,
-        version: row.membership_version,
-        createdAt: row.membership_created_at,
-      },
-    });
+    return mapProjectSummary(row);
   }
 
   listMembers(userId: string, projectId: string): ProjectMember[] {
@@ -660,6 +634,19 @@ export class ProjectService {
 
 function mapProject(row: ProjectRow): Project {
   return parseRow(ProjectSchema, row);
+}
+
+function mapProjectSummary(row: ProjectSummaryRow): ProjectSummary {
+  return ProjectSummarySchema.parse({
+    project: mapProject(row),
+    membership: {
+      projectId: row.id,
+      userId: row.user_id,
+      role: row.role,
+      version: row.membership_version,
+      createdAt: row.membership_created_at,
+    },
+  });
 }
 
 function mapMembership(row: MembershipRow): ProjectMembership {
