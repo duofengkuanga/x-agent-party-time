@@ -66,9 +66,7 @@ export class ConnectionCoordinator {
     }
     try {
       const runner = await this.http.heartbeat(origin, credential, 3);
-      this.projection.status = 'CONNECTED';
-      this.projection.agentName = runner.name;
-      this.projection.lastHeartbeatAt = this.clock.now().toISOString();
+      this.markConnected(origin, runner.name);
     } catch (error) {
       this.projection.status = isRevoked(error) ? 'REVOKED' : 'DEGRADED';
     }
@@ -85,10 +83,7 @@ export class ConnectionCoordinator {
         session.credential,
         availableSlots,
       );
-      this.projection.status = 'CONNECTED';
-      this.projection.serverOrigin = session.serverOrigin;
-      this.projection.agentName = runner.name;
-      this.projection.lastHeartbeatAt = this.clock.now().toISOString();
+      this.markConnected(session.serverOrigin, runner.name);
       return session;
     } catch (error) {
       this.reportConnectionError(error);
@@ -124,6 +119,13 @@ export class ConnectionCoordinator {
 
   reportConnectionError(error: unknown): void {
     this.projection.status = isRevoked(error) ? 'REVOKED' : 'DEGRADED';
+  }
+
+  private markConnected(origin: string, agentName: string): void {
+    this.projection.status = 'CONNECTED';
+    this.projection.serverOrigin = origin;
+    this.projection.agentName = agentName;
+    this.projection.lastHeartbeatAt = this.clock.now().toISOString();
   }
 
   private async authenticatedSession(): Promise<AuthenticatedRunnerSession | null> {
@@ -170,10 +172,7 @@ export class ConnectionCoordinator {
             credential,
             3,
           );
-          this.projection.status = 'CONNECTED';
-          this.projection.serverOrigin = existingOrigin;
-          this.projection.agentName = runner.name;
-          this.projection.lastHeartbeatAt = this.clock.now().toISOString();
+          this.markConnected(existingOrigin, runner.name);
           return;
         } catch (error) {
           if (!isRevoked(error)) throw error;
@@ -259,10 +258,7 @@ export class ConnectionCoordinator {
           if (previousAccount !== account)
             await this.keychain.delete(previousAccount);
         }
-        this.projection.status = 'CONNECTED';
-        this.projection.serverOrigin = origin;
-        this.projection.agentName = result.runner.name;
-        this.projection.lastHeartbeatAt = this.clock.now().toISOString();
+        this.markConnected(origin, result.runner.name);
         return;
       }
       throw new ConnectionError(
