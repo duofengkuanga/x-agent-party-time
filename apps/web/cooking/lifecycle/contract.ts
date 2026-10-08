@@ -170,18 +170,14 @@ export const CleanupMutationResultSchema = z.object({
 });
 
 export const CleanupExecutionResultSchema = z.discriminatedUnion('outcome', [
-  z
-    .object({
-      outcome: z.literal('COMPLETED'),
-      summary: z.string().trim().min(1).max(4_000),
-    })
-    .strict(),
-  z
-    .object({
-      outcome: z.literal('FAILED'),
-      summary: z.string().trim().min(1).max(4_000),
-    })
-    .strict(),
+  z.strictObject({
+    outcome: z.literal('COMPLETED'),
+    summary: z.string().trim().min(1).max(4_000),
+  }),
+  z.strictObject({
+    outcome: z.literal('FAILED'),
+    summary: z.string().trim().min(1).max(4_000),
+  }),
 ]);
 export const CleanupOutputJsonSchema: JsonObject = {
   type: 'object',

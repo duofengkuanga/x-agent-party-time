@@ -30,18 +30,16 @@ const RepositoryRelativePathSchema = z
     '必须是仓库内的相对路径',
   );
 
-export const ManualOperationSchema = z
-  .object({
-    kind: z.literal('DATABASE_SQL'),
-    paths: z.array(RepositoryRelativePathSchema).min(1).max(100),
-  })
-  .strict();
+export const ManualOperationSchema = z.strictObject({
+  kind: z.literal('DATABASE_SQL'),
+  paths: z.array(RepositoryRelativePathSchema).min(1).max(100),
+});
 
 export const ManualOperationsSchema = z.array(ManualOperationSchema).max(5);
 
 const RepairExecutionResultValueSchema = z.discriminatedUnion('outcome', [
   z
-    .object({
+    .strictObject({
       outcome: z.literal('COMPLETED'),
       completionKind: z.enum(['CHANGES_COMMITTED', 'TARGET_ALREADY_FIXED']),
       changes: z.array(z.string().trim().min(1).max(300)).max(5),
@@ -50,7 +48,6 @@ const RepairExecutionResultValueSchema = z.discriminatedUnion('outcome', [
       commits: z.array(CommitShaSchema).max(5),
       manualOperations: ManualOperationsSchema,
     })
-    .strict()
     .superRefine((result, context) => {
       if (result.completionKind === 'CHANGES_COMMITTED') {
         if (result.commits.length === 0)
@@ -89,20 +86,18 @@ const RepairExecutionResultValueSchema = z.discriminatedUnion('outcome', [
           message: '目标分支已修复必须有成功且无失败的验证结果',
         });
     }),
-  z
-    .object({
-      outcome: z.literal('FAILED'),
-      failedStep: z.string().trim().min(1).max(240),
-      reason: z.string().trim().min(1).max(500),
-      completedActions: z.array(z.string().trim().min(1).max(300)).max(5),
-      pendingActions: z.array(z.string().trim().min(1).max(300)).max(5),
-    })
-    .strict(),
+  z.strictObject({
+    outcome: z.literal('FAILED'),
+    failedStep: z.string().trim().min(1).max(240),
+    reason: z.string().trim().min(1).max(500),
+    completedActions: z.array(z.string().trim().min(1).max(300)).max(5),
+    pendingActions: z.array(z.string().trim().min(1).max(300)).max(5),
+  }),
 ]);
 
-export const RepairExecutionResultSchema = z
-  .object({ result: RepairExecutionResultValueSchema })
-  .strict();
+export const RepairExecutionResultSchema = z.strictObject({
+  result: RepairExecutionResultValueSchema,
+});
 
 export const RepairOutputJsonSchema = outputJsonSchema(
   RepairExecutionResultSchema,

@@ -176,12 +176,11 @@ export type BugWorkspaceProjection = z.infer<
 export type BugMutationResult = z.infer<typeof BugMutationResultSchema>;
 
 export const BugDeleteRequestSchema = z
-  .object({
+  .strictObject({
     bugIds: z.array(z.uuid()).min(1).optional(),
     all: z.boolean().optional(),
     force: z.boolean().optional(),
   })
-  .strict()
   .refine((value) => (value.all ? !value.bugIds : value.bugIds !== undefined), {
     message: '必须指定 bugIds 或 all 之一',
   });

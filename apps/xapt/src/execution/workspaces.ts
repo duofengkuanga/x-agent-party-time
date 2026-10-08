@@ -17,22 +17,18 @@ import { z } from 'zod';
 import { NodeLocalFileSystem } from '../platform/files';
 import type { XaptPaths } from '../platform/paths';
 
-const WorkspaceRecordSchema = z
-  .object({
-    key: z.string().min(1),
-    repositoryPath: z.string().min(1),
-    worktreePath: z.string().min(1),
-    isolation: z.enum(['BRANCH_WORKTREE', 'DETACHED_WORKTREE']),
-    branch: z.string().min(1).nullable(),
-    updatedAt: z.iso.datetime(),
-  })
-  .strict();
+const WorkspaceRecordSchema = z.strictObject({
+  key: z.string().min(1),
+  repositoryPath: z.string().min(1),
+  worktreePath: z.string().min(1),
+  isolation: z.enum(['BRANCH_WORKTREE', 'DETACHED_WORKTREE']),
+  branch: z.string().min(1).nullable(),
+  updatedAt: z.iso.datetime(),
+});
 
-const WorkspaceStateSchema = z
-  .object({
-    workspaces: z.record(z.string(), WorkspaceRecordSchema),
-  })
-  .strict();
+const WorkspaceStateSchema = z.strictObject({
+  workspaces: z.record(z.string(), WorkspaceRecordSchema),
+});
 
 type WorkspaceRecord = z.infer<typeof WorkspaceRecordSchema>;
 

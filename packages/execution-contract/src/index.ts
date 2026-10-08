@@ -49,85 +49,60 @@ export const ExecutionLeaseSchema = z.object({
 });
 
 export const ExecutionWorkspaceSchema = z.discriminatedUnion('isolation', [
-  z
-    .object({
-      key: z.string().trim().min(1).max(240),
-      isolation: z.literal('BRANCH_WORKTREE'),
-      baseRef: z.string().trim().min(1).max(240),
-      branch: z.string().trim().min(1).max(240),
-    })
-    .strict(),
-  z
-    .object({
-      key: z.string().trim().min(1).max(240),
-      isolation: z.literal('DETACHED_WORKTREE'),
-      baseRef: z.string().trim().min(1).max(240),
-    })
-    .strict(),
-  z
-    .object({
-      key: z.string().trim().min(1).max(240),
-      isolation: z.literal('CLEANUP_WORKTREES'),
-      workspaceKeys: z.array(z.string().trim().min(1).max(240)).min(1).max(100),
-      completionResult: JsonValueSchema,
-    })
-    .strict(),
+  z.strictObject({
+    key: z.string().trim().min(1).max(240),
+    isolation: z.literal('BRANCH_WORKTREE'),
+    baseRef: z.string().trim().min(1).max(240),
+    branch: z.string().trim().min(1).max(240),
+  }),
+  z.strictObject({
+    key: z.string().trim().min(1).max(240),
+    isolation: z.literal('DETACHED_WORKTREE'),
+    baseRef: z.string().trim().min(1).max(240),
+  }),
+  z.strictObject({
+    key: z.string().trim().min(1).max(240),
+    isolation: z.literal('CLEANUP_WORKTREES'),
+    workspaceKeys: z.array(z.string().trim().min(1).max(240)).min(1).max(100),
+    completionResult: JsonValueSchema,
+  }),
 ]);
 
-export const TaskSkillBindingSchema = z
-  .object({
-    skillName: z.string().trim().min(1).max(120),
-    bundleHash: z.string().regex(/^[a-f0-9]{64}$/u),
-    sourceRevision: z.string().regex(/^[a-f0-9]{40}$/u),
-  })
-  .strict();
+export const TaskSkillBindingSchema = z.strictObject({
+  skillName: z.string().trim().min(1).max(120),
+  bundleHash: z.string().regex(/^[a-f0-9]{64}$/u),
+  sourceRevision: z.string().regex(/^[a-f0-9]{40}$/u),
+});
 
-export const ExecutionResultAssertionSchema = z
-  .object({
-    kind: z.literal('GIT_COMMITS_CREATED'),
-    resultPath: z.array(z.string().trim().min(1).max(120)).min(1).max(8),
-  })
-  .strict();
+export const ExecutionResultAssertionSchema = z.strictObject({
+  kind: z.literal('GIT_COMMITS_CREATED'),
+  resultPath: z.array(z.string().trim().min(1).max(120)).min(1).max(8),
+});
 
 export const CodexTurnSchema = z.discriminatedUnion('kind', [
-  z
-    .object({
-      kind: z.literal('INITIAL'),
-      requiredSkillName: z.string().trim().min(1).max(120),
-      executionBrief: JsonObjectSchema,
-      executionBriefHash: z.string().regex(/^[a-f0-9]{64}$/u),
-      outputJsonSchema: JsonObjectSchema,
-      taskSkillBinding: TaskSkillBindingSchema.nullable().default(null),
-      resultAssertions: z
-        .array(ExecutionResultAssertionSchema)
-        .max(5)
-        .optional(),
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal('CONTINUATION'),
-      taskId: SessionIdSchema,
-      taskSkillBinding: TaskSkillBindingSchema,
-      input: z.string().trim().min(1).max(200_000),
-      outputJsonSchema: JsonObjectSchema,
-      resultAssertions: z
-        .array(ExecutionResultAssertionSchema)
-        .max(5)
-        .optional(),
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal('READ_SESSION'),
-      taskId: SessionIdSchema,
-      outputJsonSchema: JsonObjectSchema,
-      resultAssertions: z
-        .array(ExecutionResultAssertionSchema)
-        .max(5)
-        .optional(),
-    })
-    .strict(),
+  z.strictObject({
+    kind: z.literal('INITIAL'),
+    requiredSkillName: z.string().trim().min(1).max(120),
+    executionBrief: JsonObjectSchema,
+    executionBriefHash: z.string().regex(/^[a-f0-9]{64}$/u),
+    outputJsonSchema: JsonObjectSchema,
+    taskSkillBinding: TaskSkillBindingSchema.nullable().default(null),
+    resultAssertions: z.array(ExecutionResultAssertionSchema).max(5).optional(),
+  }),
+  z.strictObject({
+    kind: z.literal('CONTINUATION'),
+    taskId: SessionIdSchema,
+    taskSkillBinding: TaskSkillBindingSchema,
+    input: z.string().trim().min(1).max(200_000),
+    outputJsonSchema: JsonObjectSchema,
+    resultAssertions: z.array(ExecutionResultAssertionSchema).max(5).optional(),
+  }),
+  z.strictObject({
+    kind: z.literal('READ_SESSION'),
+    taskId: SessionIdSchema,
+    outputJsonSchema: JsonObjectSchema,
+    resultAssertions: z.array(ExecutionResultAssertionSchema).max(5).optional(),
+  }),
 ]);
 
 export const ExecutionFailureCodeSchema = z.enum([
@@ -203,12 +178,11 @@ export const ClaimedExecutionSchema = ExecutionSchema.extend({
   }),
   outcome: z.null(),
   recoveredInteraction: z
-    .object({
+    .strictObject({
       method: z.string().trim().min(1).max(160),
       payload: JsonValueSchema,
       resolution: JsonValueSchema,
     })
-    .strict()
     .nullable(),
 });
 
@@ -356,31 +330,23 @@ export function serializeDeterministicJson(value: JsonValue): string {
     .join(',')}}`;
 }
 
-const ApprovalResolutionSchema = z
-  .object({
-    decision: z.enum(['decline', 'accept', 'acceptForSession']),
-  })
-  .strict();
+const ApprovalResolutionSchema = z.strictObject({
+  decision: z.enum(['decline', 'accept', 'acceptForSession']),
+});
 
-const PermissionResolutionSchema = z
-  .object({
-    permissions: JsonObjectSchema,
-    scope: z.enum(['turn', 'session']),
-  })
-  .strict();
+const PermissionResolutionSchema = z.strictObject({
+  permissions: JsonObjectSchema,
+  scope: z.enum(['turn', 'session']),
+});
 
-const UserInputResolutionSchema = z
-  .object({
-    answers: z.record(
-      z.string().trim().min(1),
-      z
-        .object({
-          answers: z.array(z.string().trim().min(1)).min(1),
-        })
-        .strict(),
-    ),
-  })
-  .strict();
+const UserInputResolutionSchema = z.strictObject({
+  answers: z.record(
+    z.string().trim().min(1),
+    z.strictObject({
+      answers: z.array(z.string().trim().min(1)).min(1),
+    }),
+  ),
+});
 
 export function parseExecutionInteractionResolution(
   method: string,

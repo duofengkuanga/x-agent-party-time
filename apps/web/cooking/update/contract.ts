@@ -28,53 +28,43 @@ export const UpdateBatchStateSchema = z.enum([
 
 export const UpdateValidationSchema = CookingValidationSchema;
 
-const CompletedUpdateExecutionResultSchema = z
-  .object({
-    outcome: z.literal('COMPLETED'),
-    completedActions: z.array(z.string().trim().min(1).max(300)).max(5),
-    validations: z.array(UpdateValidationSchema).max(5),
-    warnings: z.array(z.string().trim().min(1).max(300)).max(3),
-  })
-  .strict();
+const CompletedUpdateExecutionResultSchema = z.strictObject({
+  outcome: z.literal('COMPLETED'),
+  completedActions: z.array(z.string().trim().min(1).max(300)).max(5),
+  validations: z.array(UpdateValidationSchema).max(5),
+  warnings: z.array(z.string().trim().min(1).max(300)).max(3),
+});
 
-const PushedUpdateExecutionResultSchema = z
-  .object({
-    outcome: z.literal('PUSHED'),
-    completedActions: z.array(z.string().trim().min(1).max(300)).max(5),
-    validations: z.array(UpdateValidationSchema).max(5),
-    warnings: z.array(z.string().trim().min(1).max(300)).max(3),
-  })
-  .strict();
+const PushedUpdateExecutionResultSchema = z.strictObject({
+  outcome: z.literal('PUSHED'),
+  completedActions: z.array(z.string().trim().min(1).max(300)).max(5),
+  validations: z.array(UpdateValidationSchema).max(5),
+  warnings: z.array(z.string().trim().min(1).max(300)).max(3),
+});
 
-const FailedUpdateExecutionResultSchema = z
-  .object({
-    outcome: z.literal('FAILED'),
-    failedStep: z.string().trim().min(1).max(240),
-    reason: z.string().trim().min(1).max(500),
-    completedActions: z.array(z.string().trim().min(1).max(300)).max(5),
-    validations: z.array(UpdateValidationSchema).max(5),
-    warnings: z.array(z.string().trim().min(1).max(300)).max(3),
-    pendingActions: z.array(z.string().trim().min(1).max(300)).max(5),
-  })
-  .strict();
+const FailedUpdateExecutionResultSchema = z.strictObject({
+  outcome: z.literal('FAILED'),
+  failedStep: z.string().trim().min(1).max(240),
+  reason: z.string().trim().min(1).max(500),
+  completedActions: z.array(z.string().trim().min(1).max(300)).max(5),
+  validations: z.array(UpdateValidationSchema).max(5),
+  warnings: z.array(z.string().trim().min(1).max(300)).max(3),
+  pendingActions: z.array(z.string().trim().min(1).max(300)).max(5),
+});
 
-export const LocalScriptUpdateExecutionResultSchema = z
-  .object({
-    result: z.discriminatedUnion('outcome', [
-      CompletedUpdateExecutionResultSchema,
-      FailedUpdateExecutionResultSchema,
-    ]),
-  })
-  .strict();
+export const LocalScriptUpdateExecutionResultSchema = z.strictObject({
+  result: z.discriminatedUnion('outcome', [
+    CompletedUpdateExecutionResultSchema,
+    FailedUpdateExecutionResultSchema,
+  ]),
+});
 
-export const CiCdUpdateExecutionResultSchema = z
-  .object({
-    result: z.discriminatedUnion('outcome', [
-      PushedUpdateExecutionResultSchema,
-      FailedUpdateExecutionResultSchema,
-    ]),
-  })
-  .strict();
+export const CiCdUpdateExecutionResultSchema = z.strictObject({
+  result: z.discriminatedUnion('outcome', [
+    PushedUpdateExecutionResultSchema,
+    FailedUpdateExecutionResultSchema,
+  ]),
+});
 
 export const LocalScriptUpdateOutputJsonSchema = outputJsonSchema(
   LocalScriptUpdateExecutionResultSchema,

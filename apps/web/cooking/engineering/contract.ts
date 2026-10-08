@@ -18,13 +18,11 @@ export const EngineeringIdentifierSchema = z
     '工程标识只能使用中文、小写字母、数字和连字符，并以中文或小写字母开头',
   );
 export const DeploymentMethodSchema = z.discriminatedUnion('kind', [
-  z
-    .object({
-      kind: z.literal('LOCAL_SCRIPT'),
-      command: z.string().trim().min(1).max(4_000),
-    })
-    .strict(),
-  z.object({ kind: z.literal('CI_CD') }).strict(),
+  z.strictObject({
+    kind: z.literal('LOCAL_SCRIPT'),
+    command: z.string().trim().min(1).max(4_000),
+  }),
+  z.strictObject({ kind: z.literal('CI_CD') }),
 ]);
 
 const EngineeringBaseSchema = z.object({
