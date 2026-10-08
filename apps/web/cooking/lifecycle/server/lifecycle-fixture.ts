@@ -97,12 +97,12 @@ async function setup(createDatabase: ReturnType<typeof testDatabases>) {
   };
 }
 
-export function createAndRequestBug(
+export function createBug(
   fixture: Awaited<ReturnType<typeof setup>>,
   submissionItemId: string,
   title: string,
 ) {
-  const created = fixture.bugs.createBug(
+  return fixture.bugs.createBug(
     fixture.users.tester.id,
     fixture.submission.id,
     {
@@ -113,6 +113,14 @@ export function createAndRequestBug(
       expectedResultAttachmentIds: [],
     },
   ).bug;
+}
+
+export function createAndRequestBug(
+  fixture: Awaited<ReturnType<typeof setup>>,
+  submissionItemId: string,
+  title: string,
+) {
+  const created = createBug(fixture, submissionItemId, title);
   return fixture.bugs.requestRepair(
     fixture.users.tester.id,
     created.id,

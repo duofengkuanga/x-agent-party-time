@@ -1,12 +1,12 @@
 import { mutation } from '@/cooking/testing/project';
 import { testDatabases } from '@/testing/database';
 import { describe, expect, test } from 'bun:test';
-import { randomUUID } from 'node:crypto';
 import {
   completeClaimedRepair,
   completeNextRepair,
   completeUpdate,
   createAndRequestBug,
+  createBug,
   currentBug,
   lifecycleFixture,
   submissionRow,
@@ -17,17 +17,7 @@ const setup = lifecycleFixture(testDatabases());
 describe('LifecycleService', () => {
   test('仅测试负责人可取消恢复与归档，且取消只允许待修复', async () => {
     const fixture = await setup();
-    const waiting = fixture.bugs.createBug(
-      fixture.users.tester.id,
-      fixture.submission.id,
-      {
-        mutationId: randomUUID(),
-        submissionItemId: fixture.items[0]!.id,
-        title: '可取消缺陷',
-        actualResultAttachmentIds: [],
-        expectedResultAttachmentIds: [],
-      },
-    ).bug;
+    const waiting = createBug(fixture, fixture.items[0]!.id, '可取消缺陷');
     expect(() =>
       fixture.lifecycle.cancelBug(fixture.users.developer.id, waiting.id, {
         ...mutation(waiting.version),
@@ -150,17 +140,7 @@ describe('LifecycleService', () => {
       result: 'PASSED',
       attachmentIds: [],
     });
-    const other = fixture.bugs.createBug(
-      fixture.users.tester.id,
-      fixture.submission.id,
-      {
-        mutationId: randomUUID(),
-        submissionItemId: fixture.items[1]!.id,
-        title: '取消缺陷',
-        actualResultAttachmentIds: [],
-        expectedResultAttachmentIds: [],
-      },
-    ).bug;
+    const other = createBug(fixture, fixture.items[1]!.id, '取消缺陷');
     fixture.lifecycle.cancelBug(fixture.users.tester.id, other.id, {
       ...mutation(other.version),
     });
@@ -181,13 +161,7 @@ describe('LifecycleService', () => {
       }),
     ).toThrow(expect.objectContaining({ code: 'INVALID_TRANSITION' }));
     expect(() =>
-      fixture.bugs.createBug(fixture.users.tester.id, fixture.submission.id, {
-        mutationId: randomUUID(),
-        submissionItemId: fixture.items[0]!.id,
-        title: '关闭后新增',
-        actualResultAttachmentIds: [],
-        expectedResultAttachmentIds: [],
-      }),
+      createBug(fixture, fixture.items[0]!.id, '关闭后新增'),
     ).toThrow(expect.objectContaining({ code: 'INVALID_TRANSITION' }));
   });
 });

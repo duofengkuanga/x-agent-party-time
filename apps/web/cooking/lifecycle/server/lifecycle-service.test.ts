@@ -2,11 +2,11 @@ import { mutation } from '@/cooking/testing/project';
 import { CookingWorkspaceService } from '@/cooking/workspace/server/workspace-service';
 import { testDatabases } from '@/testing/database';
 import { describe, expect, test } from 'bun:test';
-import { randomUUID } from 'node:crypto';
 import {
   completeNextRepair,
   completeUpdate,
   createAndRequestBug,
+  createBug,
   currentBug,
   lifecycleFixture,
 } from './lifecycle-fixture';
@@ -60,17 +60,7 @@ describe('LifecycleService', () => {
     });
 
     fixture.clock.set('2026-07-27T12:03:00.000Z');
-    const stored = fixture.bugs.createBug(
-      fixture.users.tester.id,
-      fixture.submission.id,
-      {
-        mutationId: randomUUID(),
-        submissionItemId: fixture.items[1]!.id,
-        title: '取消恢复时间线',
-        actualResultAttachmentIds: [],
-        expectedResultAttachmentIds: [],
-      },
-    ).bug;
+    const stored = createBug(fixture, fixture.items[1]!.id, '取消恢复时间线');
     fixture.clock.set('2026-07-27T12:04:00.000Z');
     const cancelled = fixture.lifecycle.cancelBug(
       fixture.users.tester.id,
