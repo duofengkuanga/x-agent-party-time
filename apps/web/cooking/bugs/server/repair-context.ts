@@ -1,4 +1,5 @@
 import type { AppDatabase } from '@/platform/database';
+import { parseRow } from '@/platform/database/row-mapper';
 import { PlatformError } from '@/platform/errors';
 import { z } from 'zod';
 
@@ -106,16 +107,8 @@ export class BugRepairContextService {
       )
       .map(({ content }) => content);
 
-    return BugRepairContextSchema.parse({
-      bugId: row.bug_id,
-      submissionId: row.submission_id,
-      submissionTitle: row.submission_title,
-      requirementDescription: row.requirement_description,
-      engineeringName: row.engineering_name,
-      repositoryUrl: row.repository_url,
-      targetBranch: row.target_branch,
-      runnerId: row.runner_id,
-      bindingId: row.binding_id,
+    return parseRow(BugRepairContextSchema, {
+      ...row,
       report: {
         title: row.title,
         operationPath: row.operation_path,

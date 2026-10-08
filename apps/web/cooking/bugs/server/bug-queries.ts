@@ -329,12 +329,8 @@ export class BugQueries {
 }
 
 function mapBug(row: BugRow, attachmentIds: ReportAttachmentIds): Bug {
-  return BugSchema.parse({
-    id: row.id,
-    shortId: row.short_id,
-    submissionId: row.submission_id,
-    submissionItemId: row.submission_item_id,
-    stage: row.stage,
+  return parseRow(BugSchema, {
+    ...row,
     report: {
       title: row.title,
       ...(row.operation_path ? { operationPath: row.operation_path } : {}),
@@ -342,13 +338,6 @@ function mapBug(row: BugRow, attachmentIds: ReportAttachmentIds): Bug {
       ...(row.expected_result ? { expectedResult: row.expected_result } : {}),
       ...attachmentIds,
     },
-    reportLockedAt: row.report_locked_at,
-    archivedAt: row.archived_at,
-    archivedByUserId: row.archived_by_user_id,
-    version: row.version,
-    createdByUserId: row.created_by_user_id,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
   });
 }
 
