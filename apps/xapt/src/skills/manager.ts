@@ -101,11 +101,8 @@ export class SkillBundleManager {
     ) as Record<XaptSkillName, string>;
     for (const skill of downloaded.skills)
       validateSkill(skill.name, skill.files);
-    await mkdir(this.paths.skillBundles, { recursive: true, mode: 0o700 });
-    await mkdir(this.paths.skillGenerations, {
-      recursive: true,
-      mode: 0o700,
-    });
+    for (const path of [this.paths.skillBundles, this.paths.skillGenerations])
+      await mkdir(path, { recursive: true, mode: 0o700 });
     for (const skill of downloaded.skills)
       await this.installBundle(skill.files, hashes[skill.name]);
     const manifest: GenerationManifest = {
