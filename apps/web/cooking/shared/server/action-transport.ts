@@ -119,6 +119,19 @@ export async function runInteractiveMutation<T>(
   }
 }
 
+export function cookingMutationAction(validationEvent: string) {
+  return <T>(
+    command: (userId: string) => T,
+  ): Promise<InteractiveActionResult<T>> =>
+    runInteractiveMutation({
+      validationEvent,
+      command: ({ userId }) => ({
+        result: command(userId),
+        refreshPaths: ['/cooking'],
+      }),
+    });
+}
+
 export async function runRedirectMutation(
   input: {
     formData: FormData;

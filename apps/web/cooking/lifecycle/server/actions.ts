@@ -1,6 +1,7 @@
 'use server';
 
 import {
+  cookingMutationAction,
   integerFormField,
   optionalFormField,
   requiredFormField,
@@ -149,14 +150,6 @@ function runLifecycleUpload(
   });
 }
 
-function simpleAction<T>(
-  command: (userId: string) => T,
-): Promise<InteractiveActionResult<T>> {
-  return runInteractiveMutation({
-    validationEvent: 'cooking_lifecycle_action_validation_failed',
-    command: ({ userId }) => ({
-      result: command(userId),
-      refreshPaths: ['/cooking'],
-    }),
-  });
-}
+const simpleAction = cookingMutationAction(
+  'cooking_lifecycle_action_validation_failed',
+);
