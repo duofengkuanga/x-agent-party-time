@@ -112,35 +112,23 @@ export class BindingRequestService {
         const expiresAt = new Date(
           createdAt.getTime() + durationMs,
         ).toISOString();
-        this.db.run(
+        const stored = this.db.get<BindingRequestRow>(
           `INSERT INTO cooking_binding_request(
                id, engineering_id, user_id, runner_id, state, error_message,
                repository_url, binding_id, expires_at, claimed_at,
                completed_at, created_at
-             ) VALUES (?, ?, ?, ?, 'PENDING', NULL, NULL, ?, ?, NULL, NULL, ?)`,
-          [
-            id,
-            engineeringId,
-            actorUserId,
-            runnerId,
-            bindingId,
-            expiresAt,
-            createdAt.toISOString(),
-          ],
-        );
-        const result = {
+             ) VALUES (?, ?, ?, ?, 'PENDING', NULL, NULL, ?, ?, NULL, NULL, ?)
+             RETURNING *`,
           id,
           engineeringId,
-          userId: actorUserId,
+          actorUserId,
           runnerId,
-          state: 'PENDING',
-          errorMessage: null,
+          bindingId,
           expiresAt,
-          createdAt: createdAt.toISOString(),
-          completedAt: null,
-        } satisfies BindingRequest;
+          createdAt.toISOString(),
+        );
         return {
-          result,
+          result: mapRequest(stored!),
           resourceId: id,
           audit: {
             projectId: engineering.project_id,

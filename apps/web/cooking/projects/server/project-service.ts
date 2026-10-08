@@ -80,34 +80,27 @@ export class ProjectService {
       perform: () => {
         const projectId = this.createId();
         const createdAt = this.now().toISOString();
-        this.db.run(
+        const project = this.db.get<ProjectRow>(
           `INSERT INTO cooking_project(
              id, name, version, created_by_user_id, created_at, updated_at
-           ) VALUES (?, ?, 1, ?, ?, ?)`,
-          [projectId, name, actorUserId, createdAt, createdAt],
+           ) VALUES (?, ?, 1, ?, ?, ?) RETURNING *`,
+          projectId,
+          name,
+          actorUserId,
+          createdAt,
+          createdAt,
         );
-        this.db.run(
+        const membership = this.db.get<MembershipRow>(
           `INSERT INTO cooking_project_membership(
              project_id, user_id, role, version, created_at
-           ) VALUES (?, ?, 'OWNER', 1, ?)`,
-          [projectId, actorUserId, createdAt],
+           ) VALUES (?, ?, 'OWNER', 1, ?) RETURNING *`,
+          projectId,
+          actorUserId,
+          createdAt,
         );
         const result = {
-          project: {
-            id: projectId,
-            name,
-            version: 1,
-            createdByUserId: actorUserId,
-            createdAt,
-            updatedAt: createdAt,
-          },
-          membership: {
-            projectId,
-            userId: actorUserId,
-            role: 'OWNER',
-            version: 1,
-            createdAt,
-          },
+          project: mapProject(project!),
+          membership: mapMembership(membership!),
         } satisfies ProjectSummary;
         return {
           result: result,
@@ -420,21 +413,18 @@ export class ProjectService {
         if (current.version !== input.expectedVersion)
           throw new PlatformError('STALE_STATE', '项目已更新，请刷新后重试');
         const updatedAt = this.now().toISOString();
-        const update = this.db.run(
+        const updated = this.db.get<ProjectRow>(
           `UPDATE cooking_project SET name = ?, version = version + 1, updated_at = ?
-           WHERE id = ? AND version = ?`,
-          [name, updatedAt, projectId, input.expectedVersion],
-        );
-        if (update.changes !== 1)
-          throw new PlatformError('STALE_STATE', '项目已更新，请刷新后重试');
-        const result = {
-          ...current,
+           WHERE id = ? AND version = ? RETURNING *`,
           name,
-          version: current.version + 1,
           updatedAt,
-        } satisfies Project;
+          projectId,
+          input.expectedVersion,
+        );
+        if (!updated)
+          throw new PlatformError('STALE_STATE', '项目已更新，请刷新后重试');
         return {
-          result: result,
+          result: mapProject(updated),
           resourceId: projectId,
           audit: {
             projectId: projectId,
@@ -541,23 +531,18 @@ export class ProjectService {
   ): ProjectInvitation {
     const id = this.createId();
     const createdAt = this.now().toISOString();
-    this.db.run(
+    const stored = this.db.get<InvitationRow>(
       `INSERT INTO cooking_project_invitation(
            id, project_id, invited_user_id, invited_by_user_id, status,
            version, created_at, responded_at
-         ) VALUES (?, ?, ?, ?, 'PENDING', 1, ?, NULL)`,
-      [id, projectId, invitedUserId, invitedByUserId, createdAt],
-    );
-    return {
+         ) VALUES (?, ?, ?, ?, 'PENDING', 1, ?, NULL) RETURNING *`,
       id,
       projectId,
       invitedUserId,
       invitedByUserId,
-      status: 'PENDING',
-      version: 1,
       createdAt,
-      respondedAt: null,
-    };
+    );
+    return mapInvitation(stored!);
   }
 
   private invitationForRecipient(id: string, userId: string): InvitationRow {

@@ -150,29 +150,19 @@ export class RunnerService {
         this.secrets.credential(),
       );
       const runnerId = this.createId();
-      this.db.run(
+      const stored = this.db.get<RunnerRow>(
         `INSERT INTO platform_runner(
              id, owner_user_id, name, credential_hash, version,
              last_seen_at, revoked_at, created_at
-           ) VALUES (?, ?, ?, ?, 1, NULL, NULL, ?)`,
-        [
-          runnerId,
-          pairing.owner_user_id,
-          name,
-          hashSecret(credential),
-          now.toISOString(),
-        ],
+           ) VALUES (?, ?, ?, ?, 1, NULL, NULL, ?) RETURNING *`,
+        runnerId,
+        pairing.owner_user_id,
+        name,
+        hashSecret(credential),
+        now.toISOString(),
       );
       return RunnerPairingResultSchema.parse({
-        runner: {
-          id: runnerId,
-          ownerUserId: pairing.owner_user_id,
-          name,
-          version: 1,
-          lastSeenAt: null,
-          revokedAt: null,
-          createdAt: now.toISOString(),
-        },
+        runner: mapRunner(stored!),
         credential,
       });
     })();
@@ -526,30 +516,29 @@ export class RunnerService {
           'Agent 仍有活动执行，暂时不能停用',
         );
       const revokedAt = revoke ? this.now().toISOString() : null;
-      const update = revoke
-        ? this.db.run(
+      const updated = revoke
+        ? this.db.get<RunnerRow>(
             `UPDATE platform_runner
                SET revoked_at = ?, version = version + 1
                WHERE id = ? AND owner_user_id = ? AND version = ?
-                 AND revoked_at IS NULL`,
-            [revokedAt, runnerId, ownerUserId, expectedVersion],
+                 AND revoked_at IS NULL RETURNING *`,
+            revokedAt,
+            runnerId,
+            ownerUserId,
+            expectedVersion,
           )
-        : this.db.run(
+        : this.db.get<RunnerRow>(
             `UPDATE platform_runner
                SET revoked_at = NULL, last_seen_at = NULL, version = version + 1
                WHERE id = ? AND owner_user_id = ? AND version = ?
-                 AND revoked_at IS NOT NULL`,
-            [runnerId, ownerUserId, expectedVersion],
+                 AND revoked_at IS NOT NULL RETURNING *`,
+            runnerId,
+            ownerUserId,
+            expectedVersion,
           );
-      if (update.changes !== 1)
+      if (!updated)
         throw new PlatformError('STALE_STATE', 'Agent 已更新，请刷新后重试');
-      const runner = mapRunner(row);
-      return RunnerSchema.parse({
-        ...runner,
-        lastSeenAt: revoke ? runner.lastSeenAt : null,
-        revokedAt,
-        version: row.version + 1,
-      });
+      return mapRunner(updated);
     })();
   }
 

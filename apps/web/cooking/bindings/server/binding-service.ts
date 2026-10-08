@@ -118,21 +118,18 @@ export class BindingService {
           );
         const id = reservedId ?? this.createId();
         const createdAt = this.now().toISOString();
-        this.db.run(
+        const stored = this.db.get<BindingRow>(
           `INSERT INTO cooking_engineering_binding(
                id, engineering_id, user_id, runner_id, created_at
-             ) VALUES (?, ?, ?, ?, ?)`,
-          [id, engineeringId, actorUserId, runnerId, createdAt],
-        );
-        const result = {
+             ) VALUES (?, ?, ?, ?, ?) RETURNING *`,
           id,
           engineeringId,
-          userId: actorUserId,
+          actorUserId,
           runnerId,
           createdAt,
-        } satisfies EngineeringBinding;
+        );
         return {
-          result,
+          result: mapBinding(stored!),
           resourceId: id,
           audit: {
             projectId: engineering.project_id,
