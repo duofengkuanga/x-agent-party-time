@@ -3,34 +3,23 @@ import type {
   JsonValue,
 } from '@agent-party-time/execution-contract';
 import { createHash } from 'node:crypto';
-import {
-  appendFile,
-  chmod,
-  mkdir,
-  readFile,
-  realpath,
-  stat,
-  symlink,
-} from 'node:fs/promises';
+import { chmod, mkdir, readFile, stat } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { z } from 'zod';
 import { NodeLocalFileSystem } from '../platform/files';
 import type { XaptPaths } from '../platform/paths';
-
-const WorkspaceRecordSchema = z.strictObject({
-  key: z.string().min(1),
-  repositoryPath: z.string().min(1),
-  worktreePath: z.string().min(1),
-  isolation: z.enum(['BRANCH_WORKTREE', 'DETACHED_WORKTREE']),
-  branch: z.string().min(1).nullable(),
-  updatedAt: z.iso.datetime(),
-});
+import {
+  isExpectedGitWorktree,
+  requireDirectory,
+  WorkspaceRecordSchema,
+  type WorkspaceRecord,
+} from './worktree-identity';
+import { mirrorIgnoredRepositoryContents } from './worktree-local-contents';
+import { git, gitSucceeds } from './worktree-git';
 
 const WorkspaceStateSchema = z.strictObject({
   workspaces: z.record(z.string(), WorkspaceRecordSchema),
 });
-
-type WorkspaceRecord = z.infer<typeof WorkspaceRecordSchema>;
 
 export interface ExecutionWorkspaceManager {
   prepare(
@@ -134,7 +123,7 @@ export class GitExecutionWorkspaceManager implements ExecutionWorkspaceManager {
       if (
         await isExpectedGitWorktree(repositoryPath, existing, this.worktreeRoot)
       ) {
-        await this.mirrorRepositoryLocalContents(
+        await mirrorIgnoredRepositoryContents(
           repositoryPath,
           existing.worktreePath,
         );
@@ -195,7 +184,7 @@ export class GitExecutionWorkspaceManager implements ExecutionWorkspaceManager {
     };
     current.workspaces[workspace.key] = record;
     try {
-      await this.mirrorRepositoryLocalContents(repositoryPath, worktreePath);
+      await mirrorIgnoredRepositoryContents(repositoryPath, worktreePath);
       await this.writeState(current);
     } catch (error) {
       await git(repositoryPath, ['worktree', 'remove', worktreePath]).catch(
@@ -204,49 +193,6 @@ export class GitExecutionWorkspaceManager implements ExecutionWorkspaceManager {
       throw error;
     }
     return { kind: 'EXECUTE', cwd: worktreePath };
-  }
-
-  private async mirrorRepositoryLocalContents(
-    repositoryPath: string,
-    worktreePath: string,
-  ): Promise<void> {
-    const entries = await ignoredRepositoryEntries(repositoryPath);
-    if (entries.length === 0) return;
-    await Promise.all(
-      entries.map(async (entry) => {
-        const target = join(worktreePath, entry);
-        // 被忽略文件可能位于主工程里未跟踪的父目录下（如 cache/.DS_Store），
-        // worktree 里没有该父目录，先补建（空目录不会出现在 git status）。
-        await mkdir(dirname(target), { recursive: true });
-        await symlink(join(repositoryPath, entry), target).catch(
-          (error: NodeJS.ErrnoException) => {
-            if (error.code !== 'EEXIST') throw error;
-          },
-        );
-      }),
-    );
-    // 符号链接目录不会被带斜杠的忽略规则匹配，追加不带斜杠的条目到仓库公共
-    // .git/info/exclude，避免 git status 显示为未跟踪。注意：worktree 私有
-    // gitdir（.git/worktrees/<name>/info/exclude）不会被 git 读取，必须写
-    // 公共 gitdir 的 info/exclude（git rev-parse --git-path info/exclude
-    // 即指向公共目录）。
-    const gitDir = await git(worktreePath, [
-      'rev-parse',
-      '--path-format=absolute',
-      '--git-common-dir',
-    ]);
-    const excludePath = join(gitDir, 'info', 'exclude');
-    await mkdir(dirname(excludePath), { recursive: true });
-    const existing = await readFile(excludePath, 'utf8').catch(
-      (error: NodeJS.ErrnoException) => {
-        if (error.code === 'ENOENT') return '';
-        throw error;
-      },
-    );
-    const lines = new Set(existing.split('\n'));
-    const additions = entries.filter((entry) => !lines.has(entry));
-    if (additions.length > 0)
-      await appendFile(excludePath, `\n${additions.join('\n')}\n`, 'utf8');
   }
 
   async workspaceKeys(): Promise<string[]> {
@@ -364,22 +310,6 @@ export class GitExecutionWorkspaceManager implements ExecutionWorkspaceManager {
   }
 }
 
-async function ignoredRepositoryEntries(
-  repositoryPath: string,
-): Promise<string[]> {
-  const value = await git(repositoryPath, [
-    'ls-files',
-    '--others',
-    '--ignored',
-    '--exclude-standard',
-    '--directory',
-    '-z',
-  ]);
-  return [...new Set(value.split('\0'))]
-    .map((entry) => entry.replace(/\/+$/u, ''))
-    .filter((entry) => entry.length > 0);
-}
-
 async function fetchBaseRef(
   repositoryPath: string,
   baseRef: string,
@@ -387,70 +317,6 @@ async function fetchBaseRef(
   const remote = baseRef.match(/^([^/]+)\/(.+)$/u);
   if (remote) await git(repositoryPath, ['fetch', '--prune', remote[1]!]);
   await git(repositoryPath, ['rev-parse', '--verify', `${baseRef}^{commit}`]);
-}
-
-async function isExpectedGitWorktree(
-  repositoryPath: string,
-  record: WorkspaceRecord,
-  worktreeRoot: string,
-): Promise<boolean> {
-  try {
-    await requireDirectory(record.worktreePath, '工作区不存在');
-    const [repositoryCommonDirectory, worktreeCommonDirectory] =
-      await Promise.all([
-        gitCommonDirectory(repositoryPath),
-        gitCommonDirectory(record.worktreePath),
-      ]);
-    if (
-      repositoryCommonDirectory !== worktreeCommonDirectory ||
-      (await realpath(dirname(record.worktreePath))) !==
-        (await realpath(worktreeRoot))
-    )
-      return false;
-    const expectedPath = await realpath(record.worktreePath);
-    const registered = parseWorktreeList(
-      await git(repositoryPath, ['worktree', 'list', '--porcelain']),
-    ).find(({ path }) => path === expectedPath);
-    if (!registered) return false;
-    if (record.isolation === 'DETACHED_WORKTREE')
-      return registered.detached && record.branch === null;
-    return (
-      !registered.detached &&
-      registered.branch === `refs/heads/${record.branch}`
-    );
-  } catch {
-    return false;
-  }
-}
-
-async function gitCommonDirectory(repositoryPath: string): Promise<string> {
-  const value = await git(repositoryPath, [
-    'rev-parse',
-    '--path-format=absolute',
-    '--git-common-dir',
-  ]);
-  return realpath(value);
-}
-
-function parseWorktreeList(value: string): Array<{
-  path: string;
-  branch: string | null;
-  detached: boolean;
-}> {
-  return value
-    .split('\n\n')
-    .filter(Boolean)
-    .map((block) => {
-      const lines = block.split('\n');
-      return {
-        path: resolve(
-          lines.find((line) => line.startsWith('worktree '))!.slice(9),
-        ),
-        branch:
-          lines.find((line) => line.startsWith('branch '))?.slice(7) ?? null,
-        detached: lines.includes('detached'),
-      };
-    });
 }
 
 async function ensureMissing(path: string): Promise<void> {
@@ -482,37 +348,6 @@ async function deleteBranchIfPresent(
     ]))
   )
     await git(repositoryPath, ['branch', '-D', branch]);
-}
-
-async function requireDirectory(path: string, message: string): Promise<void> {
-  const value = await stat(path).catch(() => null);
-  if (!value?.isDirectory()) throw new Error(message);
-}
-
-async function git(repositoryPath: string, args: string[]): Promise<string> {
-  const child = Bun.spawn(['git', '-C', repositoryPath, ...args], {
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
-  const [exitCode, stdout, stderr] = await Promise.all([
-    child.exited,
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-  ]);
-  if (exitCode !== 0)
-    throw new Error(stderr.trim() || `Git 命令失败：${args[0] ?? 'unknown'}`);
-  return stdout.trim();
-}
-
-async function gitSucceeds(
-  repositoryPath: string,
-  args: string[],
-): Promise<boolean> {
-  const child = Bun.spawn(['git', '-C', repositoryPath, ...args], {
-    stdout: 'ignore',
-    stderr: 'ignore',
-  });
-  return (await child.exited) === 0;
 }
 
 async function writePrivateJson(path: string, value: unknown): Promise<void> {
