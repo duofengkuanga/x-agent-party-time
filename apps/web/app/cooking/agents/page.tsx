@@ -5,7 +5,7 @@ import { executionService } from '@/platform/execution/server';
 import { runnerService } from '@/platform/runner/server';
 import { bindingService } from '@/cooking/runtime/services';
 import { AgentRevokeForm } from './agent-revoke-form';
-import { AgentStatusRefresh } from './agent-status-refresh';
+import { AutoRefresh } from '@/cooking/shared/ui/auto-refresh';
 
 export const metadata: Metadata = {
   title: '我的 Agent — Agent Party Time',
@@ -30,7 +30,7 @@ export default async function AgentsPage({
   const message = await searchParams;
   return (
     <main className="agent-settings">
-      <AgentStatusRefresh />
+      <AutoRefresh />
       <header className="agent-settings__hero">
         <Link className="agent-settings__back" href="/cooking">
           ← 返回工作台
