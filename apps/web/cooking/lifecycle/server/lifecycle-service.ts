@@ -1,5 +1,4 @@
 import type { RepairService } from '@/cooking/repair/server/repair-service';
-import type { CookingExecutionProjectionEvent } from '@/cooking/runtime/execution-projection';
 import { requireSubmissionAccess } from '@/cooking/shared/server/access';
 import { requireBindableFiles } from '@/cooking/shared/server/attachments';
 import { requireEnvironment } from '@/cooking/submissions/server/environment-access';
@@ -14,13 +13,8 @@ import {
   ReopenBugInputSchema,
   VerifyBugInputSchema,
   type BugLifecycleMutationResult,
-  type CleanupInteractionView,
-  type CleanupMutationResult,
-  type CloseSubmissionMutationResult,
   type LifecycleCommandInput,
-  type LifecycleWorkspaceProjection,
   type ReopenBugInput,
-  type ResolveCleanupInteractionInput,
   type VerifyBugInput,
 } from '../contract';
 import { CleanupService } from './cleanup-service';
@@ -51,6 +45,19 @@ export class LifecycleService {
   private readonly queries: LifecycleQueries;
   private readonly cleanup: CleanupService;
   private readonly closure: SubmissionClosure;
+  readonly retryCleanup: CleanupService['retryCleanup'] = (...args) =>
+    this.cleanup.retryCleanup(...args);
+  readonly resolveCleanupInteraction: CleanupService['resolveCleanupInteraction'] =
+    (...args) => this.cleanup.resolveCleanupInteraction(...args);
+  readonly projectExecution: CleanupService['projectExecution'] = (...args) =>
+    this.cleanup.projectExecution(...args);
+  readonly workspace: LifecycleQueries['workspace'] = (...args) =>
+    this.queries.workspace(...args);
+  readonly cleanupInteractions: LifecycleQueries['cleanupInteractions'] = (
+    ...args
+  ) => this.queries.cleanupInteractions(...args);
+  readonly closeSubmission: SubmissionClosure['closeSubmission'] = (...args) =>
+    this.closure.closeSubmission(...args);
 
   constructor(
     private readonly db: AppDatabase,
@@ -81,44 +88,6 @@ export class LifecycleService {
       this.writes,
       now,
     );
-  }
-
-  retryCleanup(
-    actorUserId: string,
-    cleanupId: string,
-    input: LifecycleCommandInput,
-  ): CleanupMutationResult {
-    return this.cleanup.retryCleanup(actorUserId, cleanupId, input);
-  }
-
-  resolveCleanupInteraction(
-    actorUserId: string,
-    interactionId: string,
-    input: ResolveCleanupInteractionInput,
-  ): CleanupMutationResult {
-    return this.cleanup.resolveCleanupInteraction(
-      actorUserId,
-      interactionId,
-      input,
-    );
-  }
-
-  projectExecution(event: CookingExecutionProjectionEvent): void {
-    this.cleanup.projectExecution(event);
-  }
-
-  workspace(
-    userId: string,
-    submissionId: string,
-  ): LifecycleWorkspaceProjection {
-    return this.queries.workspace(userId, submissionId);
-  }
-
-  cleanupInteractions(
-    userId: string,
-    submissionId: string,
-  ): CleanupInteractionView[] {
-    return this.queries.cleanupInteractions(userId, submissionId);
   }
 
   verifyBug(
@@ -307,14 +276,6 @@ export class LifecycleService {
     inputValue: LifecycleCommandInput,
   ): BugLifecycleMutationResult {
     return this.changeArchiveState(actorUserId, bugId, inputValue, false);
-  }
-
-  closeSubmission(
-    actorUserId: string,
-    submissionId: string,
-    inputValue: LifecycleCommandInput,
-  ): CloseSubmissionMutationResult {
-    return this.closure.closeSubmission(actorUserId, submissionId, inputValue);
   }
 
   private changeStoredBugState(
