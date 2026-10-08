@@ -337,12 +337,7 @@ export class ExecutionService {
         const laneAcquired = this.queue.tryAcquireResumeLane(executionId);
         if (laneAcquired || Date.now() >= deadline)
           return { interaction: mapInteraction(interaction), laneAcquired };
-      } else if (interaction.state === 'INVALIDATED')
-        return {
-          interaction: mapInteraction(interaction),
-          laneAcquired: false,
-        };
-      else if (Date.now() >= deadline)
+      } else if (interaction.state === 'INVALIDATED' || Date.now() >= deadline)
         return {
           interaction: mapInteraction(interaction),
           laneAcquired: false,
