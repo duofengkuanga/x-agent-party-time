@@ -227,6 +227,27 @@ export function SubmissionWorkspace({
     });
   }
 
+  function runMutation<T>(
+    action: () => Promise<
+      { ok: true; result: T } | { ok: false; error: { message: string } }
+    >,
+    onSuccess: (result: T) => Promise<void>,
+    fallback: string,
+  ) {
+    startTransition(async () => {
+      try {
+        const response = await action();
+        if (!response.ok) {
+          setError(response.error.message);
+          return;
+        }
+        await onSuccess(response.result);
+      } catch (actionError) {
+        setError(messageOf(actionError, fallback));
+      }
+    });
+  }
+
   function saveSidebarWidth(width: number) {
     window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(width));
     writeSidebarWidthCookie(width);
@@ -319,28 +340,19 @@ export function SubmissionWorkspace({
           onBackToList={() => setShowDetails(false)}
           onCloseSubmission={() => {
             if (!snapshot) return;
-            startTransition(async () => {
-              try {
-                const result = await closeSubmissionAction(
-                  snapshot.submission.submission.id,
-                  {
-                    mutationId: createClientId(),
-                    expectedVersion: snapshot.submission.submission.version,
-                  },
-                );
-                if (!result.ok) {
-                  setError(result.error.message);
-                  return;
-                }
+            runMutation(
+              () =>
+                closeSubmissionAction(snapshot.submission.submission.id, {
+                  mutationId: createClientId(),
+                  expectedVersion: snapshot.submission.submission.version,
+                }),
+              async (result) => {
                 setError(null);
                 setNotice('提测单已关闭，环境已释放，清理任务已排队。');
-                await refreshSnapshot(result.result.revision);
-              } catch (actionError) {
-                setError(
-                  messageOf(actionError, '关闭提测单失败，请稍后重试。'),
-                );
-              }
-            });
+                await refreshSnapshot(result.revision);
+              },
+              '关闭提测单失败，请稍后重试。',
+            );
           }}
           onCreate={openSubmissionComposer}
           onIncludeClosedChange={setIncludeClosed}
@@ -355,48 +367,35 @@ export function SubmissionWorkspace({
             expectedVersion,
             resolution,
           ) => {
-            startTransition(async () => {
-              try {
-                const result = await resolveCleanupInteractionAction(
-                  interactionId,
-                  {
-                    mutationId: createClientId(),
-                    expectedVersion,
-                    resolution,
-                  },
-                );
-                if (!result.ok) {
-                  setError(result.error.message);
-                  return;
-                }
-                setError(null);
-                setNotice('清理交互已提交给 Codex。');
-                await refreshSnapshot(result.result.revision);
-              } catch (actionError) {
-                setError(
-                  messageOf(actionError, '提交清理交互失败，请稍后重试。'),
-                );
-              }
-            });
-          }}
-          onRetryCleanup={(cleanupId, expectedVersion) => {
-            startTransition(async () => {
-              try {
-                const result = await retryCleanupAction(cleanupId, {
+            runMutation(
+              () =>
+                resolveCleanupInteractionAction(interactionId, {
                   mutationId: createClientId(),
                   expectedVersion,
-                });
-                if (!result.ok) {
-                  setError(result.error.message);
-                  return;
-                }
+                  resolution,
+                }),
+              async (result) => {
+                setError(null);
+                setNotice('清理交互已提交给 Codex。');
+                await refreshSnapshot(result.revision);
+              },
+              '提交清理交互失败，请稍后重试。',
+            );
+          }}
+          onRetryCleanup={(cleanupId, expectedVersion) => {
+            runMutation(
+              () =>
+                retryCleanupAction(cleanupId, {
+                  mutationId: createClientId(),
+                  expectedVersion,
+                }),
+              async (result) => {
                 setError(null);
                 setNotice('本地资源清理已重新排队。');
-                await refreshSnapshot(result.result.revision);
-              } catch (actionError) {
-                setError(messageOf(actionError, '重试清理失败，请稍后重试。'));
-              }
-            });
+                await refreshSnapshot(result.revision);
+              },
+              '重试清理失败，请稍后重试。',
+            );
           }}
           onSelect={selectSubmission}
           onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
@@ -406,35 +405,26 @@ export function SubmissionWorkspace({
           syncState={syncState}
           updateDetails={(title, requirementDescription, targetBranches) => {
             if (!snapshot) return;
-            startTransition(async () => {
-              try {
-                const result = await updateSubmissionAction(
-                  snapshot.submission.submission.id,
-                  {
-                    mutationId: createClientId(),
-                    expectedVersion: snapshot.submission.submission.version,
-                    title,
-                    requirementDescription,
-                    targetBranches,
-                  },
-                );
-                if (!result.ok) {
-                  setError(result.error.message);
-                  return;
-                }
+            runMutation(
+              () =>
+                updateSubmissionAction(snapshot.submission.submission.id, {
+                  mutationId: createClientId(),
+                  expectedVersion: snapshot.submission.submission.version,
+                  title,
+                  requirementDescription,
+                  targetBranches,
+                }),
+              async (result) => {
                 dispatch({
                   type: 'UPDATE_SUBMISSION',
-                  submission: result.result,
+                  submission: result,
                 });
-                await refreshSnapshot(result.result.workspaceRevision);
+                await refreshSnapshot(result.workspaceRevision);
                 setNotice('提测信息已更新。');
                 setError(null);
-              } catch (actionError) {
-                setError(
-                  messageOf(actionError, '保存提测信息失败，请稍后重试。'),
-                );
-              }
-            });
+              },
+              '保存提测信息失败，请稍后重试。',
+            );
           }}
           updating={pending}
         />
