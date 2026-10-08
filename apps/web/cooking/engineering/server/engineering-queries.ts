@@ -249,13 +249,5 @@ export function mapEnvironment(row: EnvironmentRow): TestEnvironment {
       cause: error,
     });
   }
-  return TestEnvironmentSchema.parse({
-    id: row.id,
-    engineeringId: row.engineering_id,
-    name: row.name,
-    deployment,
-    version: row.version,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  });
+  return parseRow(TestEnvironmentSchema, { ...row, deployment });
 }

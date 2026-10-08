@@ -1,4 +1,5 @@
 import type { AppDatabase } from '@/platform/database';
+import { parseRow } from '@/platform/database/row-mapper';
 import { PlatformError } from '@/platform/errors';
 import {
   ExecutionInteractionSchema,
@@ -163,16 +164,10 @@ export class ExecutionRecords {
   }
 }
 export function mapInteraction(row: InteractionRow): ExecutionInteraction {
-  return ExecutionInteractionSchema.parse({
-    id: row.id,
-    executionId: row.execution_id,
-    kind: row.kind,
-    method: row.method,
+  return parseRow(ExecutionInteractionSchema, {
+    ...row,
     payload: JSON.parse(row.payload_json),
-    state: row.state,
     resolution: row.resolution_json ? JSON.parse(row.resolution_json) : null,
-    createdAt: row.created_at,
-    resolvedAt: row.resolved_at,
   });
 }
 export function mapCodexTurn(row: ExecutionRow): CodexTurn | null {
