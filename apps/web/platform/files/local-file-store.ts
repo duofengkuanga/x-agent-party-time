@@ -1,3 +1,4 @@
+import { type DatabaseRow } from '@/platform/database/row-mapper';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
@@ -27,15 +28,8 @@ export const StoredFileSchema = z.object({
 export type StoredFile = z.infer<typeof StoredFileSchema>;
 export type AllowedMediaType = z.infer<typeof AllowedMediaTypeSchema>;
 
-type StoredFileRow = {
-  id: string;
-  storage_key: string;
-  original_name: string;
+type StoredFileRow = Omit<DatabaseRow<StoredFile>, 'media_type'> & {
   media_type: string;
-  size_bytes: number;
-  sha256: string;
-  uploaded_by_user_id: string;
-  created_at: string;
 };
 
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;

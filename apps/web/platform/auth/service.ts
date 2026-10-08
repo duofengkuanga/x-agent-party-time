@@ -1,3 +1,4 @@
+import { parseRow, type DatabaseRow } from '@/platform/database/row-mapper';
 import { createHash, randomBytes } from 'node:crypto';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
@@ -10,13 +11,7 @@ import {
 } from './contract';
 import { hashPassword, verifyPassword } from './password';
 
-type UserRow = {
-  id: string;
-  username: string;
-  display_name: string;
-  password_hash: string;
-  created_at: string;
-};
+type UserRow = DatabaseRow<User> & { password_hash: string };
 
 type SessionUserRow = UserRow & {
   expires_at: string;
@@ -148,10 +143,5 @@ function hashToken(token: string): string {
 }
 
 function mapUser(row: UserRow): User {
-  return UserSchema.parse({
-    id: row.id,
-    username: row.username,
-    displayName: row.display_name,
-    createdAt: row.created_at,
-  });
+  return parseRow(UserSchema, row);
 }

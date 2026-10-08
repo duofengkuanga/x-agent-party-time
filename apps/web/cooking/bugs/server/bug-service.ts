@@ -1,3 +1,4 @@
+import { type DatabaseRow } from '@/platform/database/row-mapper';
 import { requireBindableFiles } from '@/cooking/shared/server/attachments';
 import { environmentReady } from '@/cooking/submissions/server/environment-access';
 import { BugDeletion } from './bug-deletion';
@@ -29,23 +30,11 @@ import {
   type UpdateBugReportInput,
 } from '../contract';
 
-type BugRow = {
-  id: string;
-  short_id: number;
-  submission_id: string;
-  submission_item_id: string | null;
-  stage: Bug['stage'];
+type BugRow = Omit<DatabaseRow<Bug>, 'report'> & {
   title: string;
   operation_path: string | null;
   actual_result: string | null;
   expected_result: string | null;
-  report_locked_at: string | null;
-  archived_at: string | null;
-  archived_by_user_id: string | null;
-  version: number;
-  created_by_user_id: string;
-  created_at: string;
-  updated_at: string;
 };
 
 type AccessRow = {

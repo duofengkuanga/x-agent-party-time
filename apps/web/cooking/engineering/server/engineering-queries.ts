@@ -1,3 +1,4 @@
+import { parseRow, type DatabaseRow } from '@/platform/database/row-mapper';
 import { requireProjectMember } from '@/cooking/shared/server/access';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
@@ -29,22 +30,12 @@ export type EngineeringRow = {
   updated_at: string;
 };
 
-export type EngineeringMembershipRow = {
-  engineering_id: string;
-  user_id: string;
-  version: number;
-  created_at: string;
-};
+export type EngineeringMembershipRow = DatabaseRow<EngineeringMembership>;
 
-export type EnvironmentRow = {
-  id: string;
-  engineering_id: string;
-  name: string;
-  deployment_json: string;
-  version: number;
-  created_at: string;
-  updated_at: string;
-};
+export type EnvironmentRow = Omit<
+  DatabaseRow<TestEnvironment>,
+  'deployment'
+> & { deployment_json: string };
 
 export class EngineeringQueries {
   constructor(private readonly db: AppDatabase) {}
@@ -246,12 +237,7 @@ export function mapEngineering(row: EngineeringRow): Engineering {
 export function mapMembership(
   row: EngineeringMembershipRow,
 ): EngineeringMembership {
-  return EngineeringMembershipSchema.parse({
-    engineeringId: row.engineering_id,
-    userId: row.user_id,
-    version: row.version,
-    createdAt: row.created_at,
-  });
+  return parseRow(EngineeringMembershipSchema, row);
 }
 
 export function mapEnvironment(row: EnvironmentRow): TestEnvironment {

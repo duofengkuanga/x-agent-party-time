@@ -1,3 +1,4 @@
+import { parseRow, type DatabaseRow } from '@/platform/database/row-mapper';
 import { randomUUID } from 'node:crypto';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError, publicError } from '@/platform/errors';
@@ -18,19 +19,10 @@ import {
 } from '../contract';
 import { BindingService } from './binding-service';
 
-type BindingRequestRow = {
-  id: string;
-  engineering_id: string;
-  user_id: string;
-  runner_id: string;
-  state: BindingRequest['state'];
-  error_message: string | null;
+type BindingRequestRow = DatabaseRow<BindingRequest> & {
   repository_url: string | null;
   binding_id: string;
-  expires_at: string;
   claimed_at: string | null;
-  completed_at: string | null;
-  created_at: string;
 };
 
 const DEFAULT_REQUEST_DURATION_MS = 5 * 60 * 1_000;
@@ -334,15 +326,5 @@ export class BindingRequestService {
 }
 
 function mapRequest(row: BindingRequestRow): BindingRequest {
-  return BindingRequestSchema.parse({
-    id: row.id,
-    engineeringId: row.engineering_id,
-    userId: row.user_id,
-    runnerId: row.runner_id,
-    state: row.state,
-    errorMessage: row.error_message,
-    expiresAt: row.expires_at,
-    createdAt: row.created_at,
-    completedAt: row.completed_at,
-  });
+  return parseRow(BindingRequestSchema, row);
 }

@@ -1,3 +1,4 @@
+import { parseRow, type DatabaseRow } from '@/platform/database/row-mapper';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
@@ -22,16 +23,7 @@ import {
   type RunnerStatus,
 } from './contract';
 
-type RunnerRow = {
-  id: string;
-  owner_user_id: string;
-  name: string;
-  credential_hash: string;
-  version: number;
-  last_seen_at: string | null;
-  revoked_at: string | null;
-  created_at: string;
-};
+type RunnerRow = DatabaseRow<Runner> & { credential_hash: string };
 
 type PairingCodeRow = {
   id: string;
@@ -621,15 +613,7 @@ function hashSecret(value: string): string {
 }
 
 function mapRunner(row: RunnerRow): Runner {
-  return RunnerSchema.parse({
-    id: row.id,
-    ownerUserId: row.owner_user_id,
-    name: row.name,
-    version: row.version,
-    lastSeenAt: row.last_seen_at,
-    revokedAt: row.revoked_at,
-    createdAt: row.created_at,
-  });
+  return parseRow(RunnerSchema, row);
 }
 
 function invalidPairingCode(): PlatformError {

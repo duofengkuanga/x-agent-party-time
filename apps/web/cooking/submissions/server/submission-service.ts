@@ -1,3 +1,4 @@
+import { parseRow, type DatabaseRow } from '@/platform/database/row-mapper';
 import { requireProjectMember } from '@/cooking/shared/server/access';
 import {
   environmentConflict,
@@ -34,20 +35,7 @@ import {
 
 const SUBMISSION_HIDDEN_MESSAGE = '提测单不存在或无权访问';
 
-type SubmissionRow = {
-  id: string;
-  project_id: string;
-  title: string;
-  requirement_description: string;
-  tester_user_id: string;
-  status: 'ACTIVE' | 'CLOSED';
-  version: number;
-  workspace_revision: number;
-  created_by_user_id: string;
-  created_at: string;
-  updated_at: string;
-  closed_at: string | null;
-};
+type SubmissionRow = DatabaseRow<TestSubmission>;
 
 type SubmissionAccessRow = SubmissionRow & {
   project_name: string;
@@ -928,20 +916,7 @@ export class SubmissionService {
 }
 
 function mapSubmission(row: SubmissionRow): TestSubmission {
-  return TestSubmissionSchema.parse({
-    id: row.id,
-    projectId: row.project_id,
-    title: row.title,
-    requirementDescription: row.requirement_description,
-    testerUserId: row.tester_user_id,
-    status: row.status,
-    version: row.version,
-    workspaceRevision: row.workspace_revision,
-    createdByUserId: row.created_by_user_id,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    closedAt: row.closed_at,
-  });
+  return parseRow(TestSubmissionSchema, row);
 }
 
 function mapItem(row: SubmissionItemRow): SubmissionItem {

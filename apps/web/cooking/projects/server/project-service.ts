@@ -1,3 +1,4 @@
+import { parseRow, type DatabaseRow } from '@/platform/database/row-mapper';
 import { z } from 'zod';
 import { CookingWriteStore } from '@/cooking/shared/server/write-store';
 import { randomUUID } from 'node:crypto';
@@ -27,33 +28,11 @@ import {
 const PROJECT_HIDDEN_MESSAGE = '项目不存在或无权访问';
 const INVITATION_HIDDEN_MESSAGE = '邀请不存在或无权操作';
 
-type ProjectRow = {
-  id: string;
-  name: string;
-  version: number;
-  created_by_user_id: string;
-  created_at: string;
-  updated_at: string;
-};
+type ProjectRow = DatabaseRow<Project>;
 
-type MembershipRow = {
-  project_id: string;
-  user_id: string;
-  role: 'OWNER' | 'MEMBER';
-  version: number;
-  created_at: string;
-};
+type MembershipRow = DatabaseRow<ProjectMembership>;
 
-type InvitationRow = {
-  id: string;
-  project_id: string;
-  invited_user_id: string;
-  invited_by_user_id: string;
-  status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'REVOKED';
-  version: number;
-  created_at: string;
-  responded_at: string | null;
-};
+type InvitationRow = DatabaseRow<ProjectInvitation>;
 
 export type RemoveMemberResult = { removed: boolean; userId: string };
 
@@ -680,37 +659,15 @@ export class ProjectService {
 }
 
 function mapProject(row: ProjectRow): Project {
-  return ProjectSchema.parse({
-    id: row.id,
-    name: row.name,
-    version: row.version,
-    createdByUserId: row.created_by_user_id,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  });
+  return parseRow(ProjectSchema, row);
 }
 
 function mapMembership(row: MembershipRow): ProjectMembership {
-  return ProjectMembershipSchema.parse({
-    projectId: row.project_id,
-    userId: row.user_id,
-    role: row.role,
-    version: row.version,
-    createdAt: row.created_at,
-  });
+  return parseRow(ProjectMembershipSchema, row);
 }
 
 function mapInvitation(row: InvitationRow): ProjectInvitation {
-  return ProjectInvitationSchema.parse({
-    id: row.id,
-    projectId: row.project_id,
-    invitedUserId: row.invited_user_id,
-    invitedByUserId: row.invited_by_user_id,
-    status: row.status,
-    version: row.version,
-    createdAt: row.created_at,
-    respondedAt: row.responded_at,
-  });
+  return parseRow(ProjectInvitationSchema, row);
 }
 
 function parseRemoveResult(value: unknown): RemoveMemberResult {

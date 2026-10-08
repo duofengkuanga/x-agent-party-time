@@ -1,3 +1,4 @@
+import { parseRow, type DatabaseRow } from '@/platform/database/row-mapper';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { AppDatabase } from '@/platform/database';
@@ -15,13 +16,7 @@ import {
   type EngineeringBindingSummary,
 } from '../contract';
 
-type BindingRow = {
-  id: string;
-  engineering_id: string;
-  user_id: string;
-  runner_id: string;
-  created_at: string;
-};
+type BindingRow = DatabaseRow<EngineeringBinding>;
 
 const DeleteBindingResultSchema = z.object({
   deleted: z.boolean(),
@@ -441,13 +436,7 @@ type BindingSummaryRow = BindingRow & {
 };
 
 function mapBinding(row: BindingRow): EngineeringBinding {
-  return EngineeringBindingSchema.parse({
-    id: row.id,
-    engineeringId: row.engineering_id,
-    userId: row.user_id,
-    runnerId: row.runner_id,
-    createdAt: row.created_at,
-  });
+  return parseRow(EngineeringBindingSchema, row);
 }
 
 function mapSummary(row: BindingSummaryRow): EngineeringBindingSummary {
