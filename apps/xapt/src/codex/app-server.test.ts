@@ -317,39 +317,38 @@ describe('Codex Interaction 安全投影', () => {
   });
 });
 
+function completeFakeTurn(
+  threadId: string,
+  turnId: string,
+  turn: Record<string, unknown>,
+): Promise<unknown> {
+  const executor = new CodexAppServerExecutor();
+  return new Promise((resolve, reject) => {
+    (
+      executor as unknown as {
+        completeTurn: (
+          active: unknown,
+          params: Record<string, unknown>,
+        ) => void;
+      }
+    ).completeTurn(
+      { threadId, turnId, log: { write: () => undefined }, reject, resolve },
+      { turn: { id: turnId, ...turn } },
+    );
+  });
+}
+
 describe('Codex Turn 失败摘要', () => {
   test('Turn 失败时保留 429 重试耗尽摘要', async () => {
-    const executor = new CodexAppServerExecutor();
-    const failure = new Promise((resolve, reject) => {
-      (
-        executor as unknown as {
-          completeTurn: (
-            active: unknown,
-            params: Record<string, unknown>,
-          ) => void;
-        }
-      ).completeTurn(
-        {
-          threadId: 'thread-429',
-          turnId: 'turn-429',
-          log: { write: () => undefined },
-          reject,
-          resolve,
+    const failure = completeFakeTurn('thread-429', 'turn-429', {
+      status: 'failed',
+      error: {
+        message:
+          'exceeded retry limit, last status: 429 Too Many Requests, request id: request-429',
+        codexErrorInfo: {
+          responseTooManyFailedAttempts: { httpStatusCode: 429 },
         },
-        {
-          turn: {
-            id: 'turn-429',
-            status: 'failed',
-            error: {
-              message:
-                'exceeded retry limit, last status: 429 Too Many Requests, request id: request-429',
-              codexErrorInfo: {
-                responseTooManyFailedAttempts: { httpStatusCode: 429 },
-              },
-            },
-          },
-        },
-      );
+      },
     });
 
     await expect(failure).rejects.toMatchObject({
@@ -361,31 +360,9 @@ describe('Codex Turn 失败摘要', () => {
 
 describe('Codex Turn 结构化结果解析', () => {
   function completeTurnWithMessage(text: string): Promise<unknown> {
-    const executor = new CodexAppServerExecutor();
-    return new Promise((resolve, reject) => {
-      (
-        executor as unknown as {
-          completeTurn: (
-            active: unknown,
-            params: Record<string, unknown>,
-          ) => void;
-        }
-      ).completeTurn(
-        {
-          threadId: 'thread-structured',
-          turnId: 'turn-structured',
-          log: { write: () => undefined },
-          reject,
-          resolve,
-        },
-        {
-          turn: {
-            id: 'turn-structured',
-            status: 'completed',
-            items: [{ type: 'agentMessage', text }],
-          },
-        },
-      );
+    return completeFakeTurn('thread-structured', 'turn-structured', {
+      status: 'completed',
+      items: [{ type: 'agentMessage', text }],
     });
   }
 
