@@ -1,22 +1,15 @@
-import { expectRowCount } from '@/testing/database';
-import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { expectRowCount, testDatabases } from '@/testing/database';
+import { describe, expect, test } from 'bun:test';
+import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { AppDatabase } from '@/platform/database';
-import { openDatabase } from '@/platform/database';
 import { AuthService } from '@/platform/auth/service';
 import { PlatformError } from '@/platform/errors';
 import { LocalFileStore } from './local-file-store';
 
-const temporaryDirectories: string[] = [];
-const openDatabases: AppDatabase[] = [];
+const createDatabase = testDatabases();
 
 async function setup() {
-  const directory = await mkdtemp(join(tmpdir(), 'agent-party-time-files-'));
-  temporaryDirectories.push(directory);
-  const database = openDatabase(join(directory, 'server.sqlite'));
-  openDatabases.push(database);
+  const { directory, database } = await createDatabase();
   const auth = new AuthService(database);
   const user = await auth.seedUser({
     id: 'file-user',
@@ -27,15 +20,6 @@ async function setup() {
   const root = join(directory, 'files');
   return { database, root, store: new LocalFileStore(database, root), user };
 }
-
-afterEach(async () => {
-  for (const database of openDatabases.splice(0)) database.close();
-  await Promise.all(
-    temporaryDirectories
-      .splice(0)
-      .map((directory) => rm(directory, { force: true, recursive: true })),
-  );
-});
 
 describe('LocalFileStore', () => {
   test('原子写入、读取和删除文件内容及元数据', async () => {
