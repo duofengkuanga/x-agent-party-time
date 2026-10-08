@@ -5,6 +5,10 @@ import type {
   CookingVisualPresentation,
 } from '@/cooking/shared/contract';
 import {
+  interactionVisual,
+  queueVisual,
+} from '@/cooking/shared/server/execution-visual';
+import {
   ManualOperationsSchema,
   RepairExecutionResultSchema,
 } from '../contract';
@@ -65,47 +69,19 @@ export function repairVisual(
   idleLabel: string,
   queue: { state: Execution['state']; aheadCount: number } | undefined,
 ): CookingVisualPresentation {
-  const pending = interactions.filter(
-    (interaction) => interaction.state === 'PENDING',
+  const interaction = interactionVisual(
+    interactions,
+    latest?.state,
+    responsible,
+    '修复',
   );
-  if (pending.length > 1)
-    throw new PlatformError(
-      'INTERNAL_ERROR',
-      '同一修复记录存在多个待处理操作请求',
-    );
-  const interaction = pending[0];
-  if (interaction) {
-    if (!latest || latest.state !== 'WAITING_FOR_INTERACTION')
-      throw new PlatformError('INTERNAL_ERROR', '修复操作请求与任务状态不一致');
-    return interaction.kind === 'APPROVAL'
-      ? {
-          state: 'NEEDS_APPROVAL',
-          label: responsible ? '需要你审批' : '等待工程负责人审批',
-          symbol: '!',
-        }
-      : {
-          state: 'NEEDS_INPUT',
-          label: responsible ? '需要你回答' : '等待工程负责人回答',
-          symbol: '?',
-        };
-  }
-  if (latest?.state === 'WAITING_FOR_INTERACTION')
-    throw new PlatformError(
-      'INTERNAL_ERROR',
-      '等待操作请求的修复任务缺少待处理记录',
-    );
+  if (interaction) return interaction;
   if (
     latest?.state === 'FAILED' ||
     (latest?.outcome_json && isFailedAttemptOutcome(latest.outcome_json))
   )
     return { state: 'FAILED', label: '自动修复未完成', symbol: '×' };
-  if (latest?.state === 'QUEUED')
-    return {
-      state: 'QUEUED_FOR_ENGINEERING',
-      label: `等待工程执行通道（前方 ${queue?.aheadCount ?? 0} 项）`,
-      symbol: '…',
-      aheadCount: queue?.aheadCount ?? 0,
-    };
+  if (latest?.state === 'QUEUED') return queueVisual(queue?.aheadCount);
   if (latest?.state === 'WAITING_TO_RESUME')
     return { state: 'WAITING_TO_RESUME', label: '等待继续', symbol: 'Ⅱ' };
   if (latest && ['CLAIMED', 'RUNNING'].includes(latest.state))
