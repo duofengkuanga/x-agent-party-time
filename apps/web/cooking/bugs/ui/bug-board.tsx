@@ -44,6 +44,21 @@ import { BugCard, UpdateBatchCard } from './bug-card';
 import { BugDrawer } from './bug-drawer';
 import { BugReworkDialog } from './bug-editor';
 
+const STORAGE_TRANSITIONS = {
+  cancelled: {
+    apply: cancelBugAction,
+    undo: restoreBugAction,
+    message: '已取消。',
+    undoMessage: '已恢复到待修复。',
+  },
+  archived: {
+    apply: archiveBugAction,
+    undo: unarchiveBugAction,
+    message: '已归档。',
+    undoMessage: '已移出归档。',
+  },
+} as const;
+
 export function BugBoard({
   onChanged,
   snapshot,
@@ -100,47 +115,24 @@ export function BugBoard({
     setArchiveDropActive(false);
   }
 
-  function cancelBug(bug: BugView) {
+  function storeBug(bug: BugView, kind: BugStorageKind) {
+    const transition = STORAGE_TRANSITIONS[kind];
+    const message = `${bugLabel(bug)} ${transition.message}`;
     run(
       () =>
-        cancelBugAction(bug.id, {
+        transition.apply(bug.id, {
           mutationId: createClientId(),
           expectedVersion: bug.version,
         }),
-      `${bugLabel(bug)} 已取消。`,
+      message,
       (result) => {
         const version = bugVersionOf(result);
         if (!version) return;
         setUndoAction({
-          message: `${bugLabel(bug)} 已取消。`,
-          successMessage: `${bugLabel(bug)} 已恢复到待修复。`,
+          message,
+          successMessage: `${bugLabel(bug)} ${transition.undoMessage}`,
           command: () =>
-            restoreBugAction(bug.id, {
-              mutationId: createClientId(),
-              expectedVersion: version,
-            }),
-        });
-      },
-      null,
-    );
-  }
-
-  function archiveBug(bug: BugView) {
-    run(
-      () =>
-        archiveBugAction(bug.id, {
-          mutationId: createClientId(),
-          expectedVersion: bug.version,
-        }),
-      `${bugLabel(bug)} 已归档。`,
-      (result) => {
-        const version = bugVersionOf(result);
-        if (!version) return;
-        setUndoAction({
-          message: `${bugLabel(bug)} 已归档。`,
-          successMessage: `${bugLabel(bug)} 已移出归档。`,
-          command: () =>
-            unarchiveBugAction(bug.id, {
+            transition.undo(bug.id, {
               mutationId: createClientId(),
               expectedVersion: version,
             }),
@@ -172,7 +164,7 @@ export function BugBoard({
           draggedBugFrom={draggedBugFrom}
           clearDraggingBug={clearDraggingBug}
           onOpen={() => setStorage('cancelled')}
-          onStore={cancelBug}
+          onStore={(bug) => storeBug(bug, 'cancelled')}
         />
         <span>{snapshot.submission.submission.title} · 缺陷看板</span>
         <div className="collab-board-heading__actions">
@@ -195,7 +187,7 @@ export function BugBoard({
             draggedBugFrom={draggedBugFrom}
             clearDraggingBug={clearDraggingBug}
             onOpen={() => setStorage('archived')}
-            onStore={archiveBug}
+            onStore={(bug) => storeBug(bug, 'archived')}
           />
         </div>
       </div>
