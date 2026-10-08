@@ -736,6 +736,7 @@ function createBug(
   actorUserId: string,
   values: {
     title: string;
+    submissionItemId?: string;
     operationPath?: string;
     actualResultAttachmentIds?: string[];
     expectedResultAttachmentIds?: string[];
@@ -743,7 +744,7 @@ function createBug(
 ) {
   return fixture.service.createBug(actorUserId, fixture.submission.id, {
     mutationId: randomUUID(),
-    submissionItemId: null,
+    submissionItemId: values.submissionItemId ?? null,
     title: values.title,
     operationPath: values.operationPath,
     actualResultAttachmentIds: values.actualResultAttachmentIds ?? [],
@@ -756,17 +757,10 @@ function createAssignedBug(
   title: string,
   submissionItemId: string,
 ) {
-  return fixture.service.createBug(
-    fixture.users.tester.id,
-    fixture.submission.id,
-    {
-      mutationId: randomUUID(),
-      submissionItemId,
-      title,
-      actualResultAttachmentIds: [],
-      expectedResultAttachmentIds: [],
-    },
-  ).bug;
+  return createBug(fixture, fixture.users.tester.id, {
+    title,
+    submissionItemId,
+  }).bug;
 }
 
 function mutation(expectedVersion: number) {
