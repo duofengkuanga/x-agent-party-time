@@ -348,6 +348,13 @@ const UserInputResolutionSchema = z.strictObject({
   ),
 });
 
+const INTERACTION_PAYLOAD_KEYS: Record<string, readonly string[]> = {
+  'item/commandExecution/requestApproval': ['command', 'reason'],
+  'item/fileChange/requestApproval': ['reason'],
+  'item/permissions/requestApproval': ['permissions', 'reason'],
+  'item/tool/requestUserInput': ['questions'],
+};
+
 export function parseExecutionInteractionResolution(
   method: string,
   payloadValue: JsonValue,
@@ -362,24 +369,12 @@ export function parseExecutionInteractionResolution(
     const resolution = PermissionResolutionSchema.parse(resolutionValue);
     const requested = jsonRecord(payloadValue).permissions;
     if (!isJsonSubset(resolution.permissions, requested))
-      throw new z.ZodError([
-        {
-          code: 'custom',
-          path: ['permissions'],
-          message: '只能提交 Codex 实际请求的权限',
-        },
-      ]);
+      invalidInteraction('permissions', '只能提交 Codex 实际请求的权限');
     if (
       Object.keys(resolution.permissions).length === 0 &&
       resolution.scope !== 'turn'
     )
-      throw new z.ZodError([
-        {
-          code: 'custom',
-          path: ['scope'],
-          message: '拒绝权限请求只能使用 turn scope',
-        },
-      ]);
+      invalidInteraction('scope', '拒绝权限请求只能使用 turn scope');
     return resolution;
   }
   if (method === 'item/tool/requestUserInput') {
@@ -397,22 +392,14 @@ export function parseExecutionInteractionResolution(
       questionIds.length !== answerIds.length ||
       questionIds.some((id) => !answerIds.includes(id))
     )
-      throw new z.ZodError([
-        {
-          code: 'custom',
-          path: ['answers'],
-          message: '必须一次提交全部 Codex questions 的回答',
-        },
-      ]);
+      invalidInteraction('answers', '必须一次提交全部 Codex questions 的回答');
     return resolution;
   }
-  throw new z.ZodError([
-    {
-      code: 'custom',
-      path: ['method'],
-      message: '不支持的 Codex Interaction method',
-    },
-  ]);
+  invalidInteraction('method', '不支持的 Codex Interaction method');
+}
+
+function invalidInteraction(path: string, message: string): never {
+  throw new z.ZodError([{ code: 'custom', path: [path], message }]);
 }
 
 export function sanitizeExecutionInteractionPayload(
@@ -420,16 +407,7 @@ export function sanitizeExecutionInteractionPayload(
   value: unknown,
 ): JsonValue {
   const payload = jsonRecord(value);
-  const keys =
-    method === 'item/commandExecution/requestApproval'
-      ? ['command', 'reason']
-      : method === 'item/fileChange/requestApproval'
-        ? ['reason']
-        : method === 'item/permissions/requestApproval'
-          ? ['permissions', 'reason']
-          : method === 'item/tool/requestUserInput'
-            ? ['questions']
-            : [];
+  const keys = INTERACTION_PAYLOAD_KEYS[method] ?? [];
   return Object.fromEntries(
     keys.flatMap((key) =>
       payload[key] === undefined
