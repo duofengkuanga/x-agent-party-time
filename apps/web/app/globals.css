@@ -161,13 +161,16 @@ button:disabled {
 }
 
 .placeholder-page {
+  align-content: start;
+  display: grid;
+  gap: 3rem;
   min-height: 100vh;
   padding: clamp(1rem, 4vw, 4rem);
   overflow: auto;
 }
 
 .placeholder-card {
-  width: min(100%, 34rem);
+  width: min(100%, 48rem);
   padding: clamp(1.25rem, 4vw, 2.5rem);
   background: color-mix(in srgb, var(--paper) 92%, white);
   border: 1px solid var(--line);
@@ -193,21 +196,11 @@ button:disabled {
   letter-spacing: 0.14em;
 }
 
-.placeholder-page {
-  display: grid;
-  align-content: start;
-  gap: 3rem;
-}
-
 .placeholder-page header {
   display: flex;
   gap: 2rem;
   align-items: center;
   justify-content: space-between;
-}
-
-.placeholder-card {
-  width: min(100%, 48rem);
 }
 
 @media (max-width: 600px) {

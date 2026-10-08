@@ -286,10 +286,6 @@
   outline-offset: 3px;
 }
 
-.agent-connect {
-  border-bottom: 1px solid var(--line);
-}
-
 .agent-connect > div {
   border-left: 2px solid var(--accent-dark);
   display: grid;
