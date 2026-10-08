@@ -265,25 +265,21 @@ export class GitExecutionWorkspaceManager implements ExecutionWorkspaceManager {
         dirname(record.worktreePath) !== this.worktreeRoot
       )
         throw new Error('拒绝清理不属于当前绑定的本机工作区');
-      if (!(await pathExists(record.worktreePath))) {
-        await git(repositoryPath, ['worktree', 'prune']);
-        await deleteBranchIfPresent(repositoryPath, record.branch);
-        delete current.workspaces[key];
-        continue;
-      }
-      if (
-        !(await isExpectedGitWorktree(
-          repositoryPath,
-          record,
-          this.worktreeRoot,
-        ))
-      )
-        throw new Error('拒绝清理仓库或分支身份不匹配的本机工作区');
-      if (
-        (await git(record.worktreePath, ['status', '--porcelain'])).length > 0
-      )
-        throw new Error('工作区仍有未提交修改，拒绝自动清理');
-      await git(repositoryPath, ['worktree', 'remove', record.worktreePath]);
+      if (await pathExists(record.worktreePath)) {
+        if (
+          !(await isExpectedGitWorktree(
+            repositoryPath,
+            record,
+            this.worktreeRoot,
+          ))
+        )
+          throw new Error('拒绝清理仓库或分支身份不匹配的本机工作区');
+        if (
+          (await git(record.worktreePath, ['status', '--porcelain'])).length > 0
+        )
+          throw new Error('工作区仍有未提交修改，拒绝自动清理');
+        await git(repositoryPath, ['worktree', 'remove', record.worktreePath]);
+      } else await git(repositoryPath, ['worktree', 'prune']);
       await deleteBranchIfPresent(repositoryPath, record.branch);
       delete current.workspaces[key];
     }
