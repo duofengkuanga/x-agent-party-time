@@ -1,4 +1,7 @@
 import { requireSubmissionAccess } from '@/cooking/shared/server/access';
+import { CookingAttachmentViewSchema } from '@/cooking/shared/contract';
+import { parseRow, type DatabaseRow } from '@/platform/database/row-mapper';
+import type { z } from 'zod';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
 import { sanitizeExecutionInteractionPayload } from '@agent-party-time/execution-contract';
@@ -203,13 +206,7 @@ export class LifecycleQueries {
     ownerId: string,
   ) {
     return this.db
-      .all<{
-        id: string;
-        original_name: string;
-        media_type: string;
-        size_bytes: number;
-        created_at: string;
-      }>(
+      .all<DatabaseRow<z.infer<typeof CookingAttachmentViewSchema>>>(
         `SELECT file.id, file.original_name, file.media_type,
                   file.size_bytes, file.created_at
            FROM ${table} attachment
@@ -217,13 +214,7 @@ export class LifecycleQueries {
            WHERE attachment.${ownerColumn} = ? ORDER BY attachment.position`,
         ownerId,
       )
-      .map((row) => ({
-        id: row.id,
-        originalName: row.original_name,
-        mediaType: row.media_type,
-        sizeBytes: row.size_bytes,
-        createdAt: row.created_at,
-      }));
+      .map((row) => parseRow(CookingAttachmentViewSchema, row));
   }
 
   cleanupView(userId: string, cleanupId: string) {
