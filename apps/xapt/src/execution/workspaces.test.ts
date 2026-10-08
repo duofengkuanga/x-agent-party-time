@@ -10,33 +10,9 @@ const createTestDirectory = testDirectories('apt-workspaces-');
 
 describe('GitExecutionWorkspaceManager', () => {
   test('Repair 使用唯一分支，Update 使用 Detached HEAD 且目录互不串扰', async () => {
-    const root = await createTestDirectory();
-    const remote = join(root, 'remote.git');
-    const source = join(root, 'source');
-    const binding = join(root, 'binding');
-    await run(['git', 'init', '--bare', remote]);
-    await run(['git', 'init', source]);
-    await run([
-      'git',
-      '-C',
-      source,
-      'config',
-      'user.email',
-      'test@example.com',
-    ]);
-    await run(['git', '-C', source, 'config', 'user.name', 'Test']);
-    await writeFile(join(source, 'README.md'), 'baseline\n');
-    await writeFile(
-      join(source, '.gitignore'),
-      'node_modules/\n.env.local\n.DS_Store\n',
-    );
-    await run(['git', '-C', source, 'add', 'README.md', '.gitignore']);
-    await run(['git', '-C', source, 'commit', '-m', 'baseline']);
-    await run(['git', '-C', source, 'branch', '-M', 'main']);
-    await run(['git', '-C', source, 'remote', 'add', 'origin', remote]);
-    await run(['git', '-C', source, 'push', '-u', 'origin', 'main']);
-    await run(['git', 'clone', remote, binding]);
-    await run(['git', '-C', binding, 'switch', 'main']);
+    const { root, source, binding } = await createRepository({
+      ignoreLocalFiles: true,
+    });
 
     const paths = xaptPaths(root);
     const manager = new GitExecutionWorkspaceManager(paths);
@@ -175,33 +151,9 @@ describe('GitExecutionWorkspaceManager', () => {
   });
 
   test('新 worktree 镜像主工程被忽略内容，复用不覆盖已存在项', async () => {
-    const root = await createTestDirectory();
-    const remote = join(root, 'remote.git');
-    const source = join(root, 'source');
-    const binding = join(root, 'binding');
-    await run(['git', 'init', '--bare', remote]);
-    await run(['git', 'init', source]);
-    await run([
-      'git',
-      '-C',
-      source,
-      'config',
-      'user.email',
-      'test@example.com',
-    ]);
-    await run(['git', '-C', source, 'config', 'user.name', 'Test']);
-    await writeFile(join(source, 'README.md'), 'baseline\n');
-    await writeFile(
-      join(source, '.gitignore'),
-      'node_modules/\n.env.local\n.DS_Store\n',
-    );
-    await run(['git', '-C', source, 'add', 'README.md', '.gitignore']);
-    await run(['git', '-C', source, 'commit', '-m', 'baseline']);
-    await run(['git', '-C', source, 'branch', '-M', 'main']);
-    await run(['git', '-C', source, 'remote', 'add', 'origin', remote]);
-    await run(['git', '-C', source, 'push', '-u', 'origin', 'main']);
-    await run(['git', 'clone', remote, binding]);
-    await run(['git', '-C', binding, 'switch', 'main']);
+    const { root, source, binding } = await createRepository({
+      ignoreLocalFiles: true,
+    });
 
     await mkdir(join(binding, 'node_modules'), { recursive: true });
     await writeFile(join(binding, 'node_modules', 'dep.js'), 'dep\n');
@@ -253,29 +205,7 @@ describe('GitExecutionWorkspaceManager', () => {
   });
 
   test('removeWorkspaces 先全量校验再删除，force 覆盖未提交修改', async () => {
-    const root = await createTestDirectory();
-    const remote = join(root, 'remote.git');
-    const source = join(root, 'source');
-    const binding = join(root, 'binding');
-    await run(['git', 'init', '--bare', remote]);
-    await run(['git', 'init', source]);
-    await run([
-      'git',
-      '-C',
-      source,
-      'config',
-      'user.email',
-      'test@example.com',
-    ]);
-    await run(['git', '-C', source, 'config', 'user.name', 'Test']);
-    await writeFile(join(source, 'README.md'), 'baseline\n');
-    await run(['git', '-C', source, 'add', 'README.md']);
-    await run(['git', '-C', source, 'commit', '-m', 'baseline']);
-    await run(['git', '-C', source, 'branch', '-M', 'main']);
-    await run(['git', '-C', source, 'remote', 'add', 'origin', remote]);
-    await run(['git', '-C', source, 'push', '-u', 'origin', 'main']);
-    await run(['git', 'clone', remote, binding]);
-    await run(['git', '-C', binding, 'switch', 'main']);
+    const { root, binding } = await createRepository();
 
     const paths = xaptPaths(root);
     const manager = new GitExecutionWorkspaceManager(paths);
@@ -356,6 +286,40 @@ describe('GitExecutionWorkspaceManager', () => {
     expect(heads).not.toContain('apt/repair/bug-3');
   });
 });
+
+async function createRepository({
+  ignoreLocalFiles = false,
+}: { ignoreLocalFiles?: boolean } = {}) {
+  const root = await createTestDirectory();
+  const remote = join(root, 'remote.git');
+  const source = join(root, 'source');
+  const binding = join(root, 'binding');
+  await run(['git', 'init', '--bare', remote]);
+  await run(['git', 'init', source]);
+  await run(['git', '-C', source, 'config', 'user.email', 'test@example.com']);
+  await run(['git', '-C', source, 'config', 'user.name', 'Test']);
+  await writeFile(join(source, 'README.md'), 'baseline\n');
+  if (ignoreLocalFiles)
+    await writeFile(
+      join(source, '.gitignore'),
+      'node_modules/\n.env.local\n.DS_Store\n',
+    );
+  await run([
+    'git',
+    '-C',
+    source,
+    'add',
+    'README.md',
+    ...(ignoreLocalFiles ? ['.gitignore'] : []),
+  ]);
+  await run(['git', '-C', source, 'commit', '-m', 'baseline']);
+  await run(['git', '-C', source, 'branch', '-M', 'main']);
+  await run(['git', '-C', source, 'remote', 'add', 'origin', remote]);
+  await run(['git', '-C', source, 'push', '-u', 'origin', 'main']);
+  await run(['git', 'clone', remote, binding]);
+  await run(['git', '-C', binding, 'switch', 'main']);
+  return { root, source, binding };
+}
 
 function cwd(
   prepared:
