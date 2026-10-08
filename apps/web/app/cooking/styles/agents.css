@@ -300,24 +300,11 @@
 }
 
 .agent-connect p,
-.agent-empty p,
-.agent-connect .pairing-result p {
+.agent-empty p {
   color: var(--muted);
   font-size: 9px;
   line-height: 1.65;
   margin: 0;
-}
-
-.agent-connect .pairing-card,
-.agent-empty .pairing-card {
-  align-items: start;
-  justify-items: start;
-}
-
-.agent-connect .pairing-result,
-.agent-empty .pairing-result {
-  border: 1px solid var(--strong-line);
-  width: min(100%, 520px);
 }
 
 .agent-empty {
@@ -335,10 +322,6 @@
   font-weight: 500;
   letter-spacing: -0.045em;
   margin: 12px 0 8px;
-}
-
-.agent-empty .pairing-card {
-  margin-top: 20px;
 }
 
 .agent-ledger__connect-note {

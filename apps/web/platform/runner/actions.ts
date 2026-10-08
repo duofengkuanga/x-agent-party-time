@@ -10,26 +10,6 @@ import {
 } from '@/platform/http/message-redirect';
 import { runnerService } from './server';
 
-export type PairingCodeState = {
-  code: string | null;
-  expiresAt: string | null;
-  error: string | null;
-};
-
-export async function issueRunnerPairingCodeAction(): Promise<PairingCodeState> {
-  const user = await requireCurrentUser();
-  try {
-    const issue = runnerService().issuePairingCode(user.id);
-    return { code: issue.code, expiresAt: issue.expiresAt, error: null };
-  } catch (error) {
-    return {
-      code: null,
-      expiresAt: null,
-      error: publicError(error).message,
-    };
-  }
-}
-
 export async function revokeRunnerAction(formData: FormData): Promise<never> {
   const user = await requireCurrentUser();
   try {

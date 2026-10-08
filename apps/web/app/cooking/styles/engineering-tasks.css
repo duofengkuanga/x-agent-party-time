@@ -502,11 +502,6 @@
   border: 1px solid currentColor;
 }
 
-.notice-error {
-  color: #9f2f21;
-  background: color-mix(in srgb, #e05d43 10%, var(--paper));
-}
-
 .notice-success {
   color: #285f3d;
   background: color-mix(in srgb, #4d9c68 10%, var(--paper));
@@ -517,35 +512,7 @@
     background: color-mix(in srgb, var(--paper) 92%, black);
   }
 
-  .notice-error {
-    color: #ffb6a8;
-  }
-
   .notice-success {
     color: #a7ddb8;
   }
-}
-
-.pairing-card,
-.pairing-result {
-  display: grid;
-  gap: 0.75rem;
-}
-
-.pairing-result {
-  padding: 1rem;
-  border: 1px solid var(--line);
-}
-
-.pairing-result strong {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: clamp(1.5rem, 5vw, 2.4rem);
-  letter-spacing: 0.15em;
-  overflow-wrap: anywhere;
-}
-
-.pairing-result p {
-  margin: 0;
-  color: var(--muted);
-  line-height: 1.6;
 }
