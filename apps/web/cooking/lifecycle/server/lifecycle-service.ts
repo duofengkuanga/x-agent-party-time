@@ -126,32 +126,38 @@ export class LifecycleService {
           );
         const now = this.now().toISOString();
         const round = this.nextVerificationRound(bugId);
-        if (input.result === 'PASSED') {
-          requireBindableFiles(this.db, actorUserId, input.attachmentIds);
-          if (input.attachmentIds.length)
-            throw new PlatformError(
-              'VALIDATION_FAILED',
-              '验证通过不需要上传失败证据',
-            );
-          this.db.run(
-            `INSERT INTO cooking_verification_record(
-                 id, bug_id, round, result, comment, repair_attempt,
-                 verified_by_user_id, created_at
-               ) VALUES (?, ?, ?, 'PASSED', ?, NULL, ?, ?)`,
-            [
-              this.createId(),
-              bugId,
-              round,
-              input.comment?.trim() || null,
-              actorUserId,
-              now,
-            ],
+        requireBindableFiles(this.db, actorUserId, input.attachmentIds);
+        if (input.result === 'PASSED' && input.attachmentIds.length)
+          throw new PlatformError(
+            'VALIDATION_FAILED',
+            '验证通过不需要上传失败证据',
           );
+        const verificationId = this.createId();
+        const repairAttempt =
+          input.result === 'FAILED' ? this.nextRepairAttempt(bugId) : null;
+        this.db.run(
+          `INSERT INTO cooking_verification_record(
+               id, bug_id, round, result, comment, repair_attempt,
+               verified_by_user_id, created_at
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            verificationId,
+            bugId,
+            round,
+            input.result,
+            input.result === 'PASSED'
+              ? input.comment?.trim() || null
+              : input.feedback.trim(),
+            repairAttempt,
+            actorUserId,
+            now,
+          ],
+        );
+        if (input.result === 'PASSED') {
           this.updateBugStage(bugId, 'WAITING_FOR_VERIFICATION', 'DONE', now);
           const revision = this.writes.bumpRevision(source.submission_id, now);
           return {
-            revision: revision,
-
+            revision,
             action: 'BUG_VERIFICATION_PASSED',
             details: {
               round,
@@ -159,11 +165,17 @@ export class LifecycleService {
             },
           };
         }
-        const failure = this.recordVerificationFailureAndContinue(
-          actorUserId,
+        this.bindLifecycleAttachments(
+          'cooking_verification_attachment',
+          'verification_id',
+          verificationId,
+          input.attachmentIds,
+          now,
+        );
+        const failure = this.continueRepair(
           source,
-          round,
-          input.feedback,
+          'WAITING_FOR_VERIFICATION',
+          `测试负责人第 ${round} 轮验证未通过：${input.feedback.trim()}`,
           input.attachmentIds,
           now,
         );
@@ -226,28 +238,22 @@ export class LifecycleService {
           input.attachmentIds,
           now,
         );
-        const update = this.db.run(
-          `UPDATE cooking_bug
-             SET stage = 'REPAIRING', version = version + 1, updated_at = ?
-             WHERE id = ? AND version = ? AND stage = 'DONE'`,
-          [now, source.id, source.version],
-        );
-        if (update.changes !== 1) throw staleLifecycle('缺陷');
-        const executionId = this.repairs.createContinuationExecution(
-          source.id,
+        const continuation = this.continueRepair(
+          source,
+          'DONE',
           `第 ${round} 次重新打开：${input.feedback.trim()}`,
           input.attachmentIds,
+          now,
         );
-        const revision = this.writes.bumpRevision(source.submission_id, now);
         return {
-          revision: revision,
-          executionId: executionId,
+          revision: continuation.revision,
+          executionId: continuation.executionId,
           action: 'BUG_REOPENED',
           details: {
             round,
             repairAttempt,
             attachmentCount: input.attachmentIds.length,
-            executionId,
+            executionId: continuation.executionId,
           },
         };
       },
@@ -480,49 +486,23 @@ export class LifecycleService {
     );
   }
 
-  private recordVerificationFailureAndContinue(
-    actorUserId: string,
+  private continueRepair(
     source: BugSourceRow,
-    round: number,
-    feedback: string,
+    fromStage: 'WAITING_FOR_VERIFICATION' | 'DONE',
+    context: string,
     attachmentIds: string[],
     now: string,
   ): { executionId: string; revision: number } {
-    requireBindableFiles(this.db, actorUserId, attachmentIds);
-    const verificationId = this.createId();
-    const repairAttempt = this.nextRepairAttempt(source.id);
-    this.db.run(
-      `INSERT INTO cooking_verification_record(
-           id, bug_id, round, result, comment, repair_attempt,
-           verified_by_user_id, created_at
-         ) VALUES (?, ?, ?, 'FAILED', ?, ?, ?, ?)`,
-      [
-        verificationId,
-        source.id,
-        round,
-        feedback.trim(),
-        repairAttempt,
-        actorUserId,
-        now,
-      ],
-    );
-    this.bindLifecycleAttachments(
-      'cooking_verification_attachment',
-      'verification_id',
-      verificationId,
-      attachmentIds,
-      now,
-    );
     const update = this.db.run(
       `UPDATE cooking_bug
          SET stage = 'REPAIRING', version = version + 1, updated_at = ?
-         WHERE id = ? AND version = ? AND stage = 'WAITING_FOR_VERIFICATION'`,
-      [now, source.id, source.version],
+         WHERE id = ? AND version = ? AND stage = ?`,
+      [now, source.id, source.version, fromStage],
     );
     if (update.changes !== 1) throw staleLifecycle('缺陷');
     const executionId = this.repairs.createContinuationExecution(
       source.id,
-      `测试负责人第 ${round} 轮验证未通过：${feedback.trim()}`,
+      context,
       attachmentIds,
     );
     return {
