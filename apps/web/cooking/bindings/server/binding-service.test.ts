@@ -190,10 +190,9 @@ test('首次 Runner Binding 确认仓库身份，后续 Binding 必须匹配', a
     ),
   ).toBe('https://example.com/team/project.git');
   expect(
-    database.get<{
-      count: number;
-    }>(`SELECT COUNT(*) count FROM cooking_audit_event
-         WHERE action = 'ENGINEERING_REPOSITORY_CONFIRMED'`)?.count,
+    countRows(database, 'cooking_audit_event', {
+      action: 'ENGINEERING_REPOSITORY_CONFIRMED',
+    }),
   ).toBe(1);
   expect(() =>
     service.confirmRepository(

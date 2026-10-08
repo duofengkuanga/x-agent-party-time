@@ -1,7 +1,7 @@
 import { ProjectService } from '@/cooking/projects/server/project-service';
 import { TestSubmissionWriteStore } from '@/cooking/submissions/server/test-submission-write-store';
 import { AuthService } from '@/platform/auth/service';
-import { testDatabases } from '@/testing/database';
+import { countRows, testDatabases } from '@/testing/database';
 import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -53,10 +53,7 @@ test('CookingWriteStore 在同一事务中完成业务写入、Audit 与幂等�
   expect(command()).toEqual({ value: '稳定结果' });
   expect(executions).toBe(1);
   expect(
-    database.get<{
-      count: number;
-    }>(`SELECT COUNT(*) count FROM cooking_audit_event
-         WHERE action = 'TEST_WRITTEN'`)?.count,
+    countRows(database, 'cooking_audit_event', { action: 'TEST_WRITTEN' }),
   ).toBe(1);
 });
 
@@ -153,10 +150,9 @@ test('TestSubmissionWriteStore 只在首次成功提交后发布 Revision', asyn
   expect(executions).toBe(1);
   expect(invalidations).toEqual([{ submissionId, revision: 2 }]);
   expect(
-    database.get<{
-      count: number;
-    }>(`SELECT COUNT(*) count FROM cooking_audit_event
-         WHERE action = 'TEST_SUBMISSION_WRITTEN'`)?.count,
+    countRows(database, 'cooking_audit_event', {
+      action: 'TEST_SUBMISSION_WRITTEN',
+    }),
   ).toBe(1);
 
   expect(() =>

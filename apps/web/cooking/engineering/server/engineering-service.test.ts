@@ -99,9 +99,7 @@ describe('EngineeringService', () => {
 
   test('工程初始化后续步骤失败时回滚工程与 Mutation', async () => {
     const { database, project, service, users } = await setup();
-    const mutationCountBefore = database.get<{ count: number }>(
-      'SELECT COUNT(*) count FROM cooking_mutation',
-    )!.count;
+    const mutationCountBefore = countRows(database, 'cooking_mutation');
     expect(() =>
       service.createEngineeringSetup(users.owner.id, project.id, {
         mutationId: randomUUID(),
