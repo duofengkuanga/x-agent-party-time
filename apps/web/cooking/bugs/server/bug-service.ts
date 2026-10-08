@@ -106,18 +106,7 @@ export class BugService {
             now,
           ],
         );
-        this.bindAttachments(
-          bugId,
-          'ACTUAL_RESULT',
-          parsed.actualResultAttachmentIds,
-          now,
-        );
-        this.bindAttachments(
-          bugId,
-          'EXPECTED_RESULT',
-          parsed.expectedResultAttachmentIds,
-          now,
-        );
+        this.bindReportAttachments(bugId, parsed, now);
         const revision = this.writes.bumpRevision(submissionId, now);
         const bug = this.queries.requireBug(bugId);
         return {
@@ -382,24 +371,25 @@ export class BugService {
     );
   }
 
+  private bindReportAttachments(
+    bugId: string,
+    attachmentIds: ReportAttachmentIds,
+    now: string,
+  ): void {
+    for (const [role, fileIds] of [
+      ['ACTUAL_RESULT', attachmentIds.actualResultAttachmentIds],
+      ['EXPECTED_RESULT', attachmentIds.expectedResultAttachmentIds],
+    ] as const)
+      this.bindAttachments(bugId, role, fileIds, now);
+  }
+
   private replaceReportAttachments(
     bugId: string,
     attachmentIds: ReportAttachmentIds,
     now: string,
   ): void {
     this.db.run(`DELETE FROM cooking_bug_attachment WHERE bug_id = ?`, [bugId]);
-    this.bindAttachments(
-      bugId,
-      'ACTUAL_RESULT',
-      attachmentIds.actualResultAttachmentIds,
-      now,
-    );
-    this.bindAttachments(
-      bugId,
-      'EXPECTED_RESULT',
-      attachmentIds.expectedResultAttachmentIds,
-      now,
-    );
+    this.bindReportAttachments(bugId, attachmentIds, now);
   }
 
   deleteBugs(input: BugDeleteRequest): BugDeleteResponse {

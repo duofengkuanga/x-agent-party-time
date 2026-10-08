@@ -1,4 +1,4 @@
-import { type DatabaseRow } from '@/platform/database/row-mapper';
+import { parseRow, type DatabaseRow } from '@/platform/database/row-mapper';
 import { environmentReady } from '@/cooking/submissions/server/environment-access';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
@@ -101,7 +101,7 @@ export class BugQueries {
                 responsibleUser: itemUser(item),
               }
             : null,
-          availableActions: this.availableActions(userId, access, bug, item),
+          availableActions: this.availableActions(userId, access, bug),
           presentation: {
             stageLabel: STAGE_LABELS[bug.stage],
             assignmentLabel: item
@@ -265,16 +265,7 @@ export class BugQueries {
       role,
     );
     return rows.map((row) => {
-      const file = StoredFileSchema.parse({
-        id: row.id,
-        storageKey: row.storage_key,
-        originalName: row.original_name,
-        mediaType: row.media_type,
-        sizeBytes: row.size_bytes,
-        sha256: row.sha256,
-        uploadedByUserId: row.uploaded_by_user_id,
-        createdAt: row.created_at,
-      });
+      const file = parseRow(StoredFileSchema, row);
       return {
         id: file.id,
         originalName: file.originalName,
@@ -285,12 +276,7 @@ export class BugQueries {
     });
   }
 
-  private availableActions(
-    userId: string,
-    access: AccessRow,
-    bug: Bug,
-    _item: ItemRow | null,
-  ) {
+  private availableActions(userId: string, access: AccessRow, bug: Bug) {
     if (access.submission_status !== 'ACTIVE') return [];
     const tester = userId === access.tester_user_id;
     const anyResponsible = this.isAnyResponsible(userId, bug.submissionId);
@@ -336,21 +322,9 @@ export class BugQueries {
       `SELECT id, username, display_name, created_at
          FROM platform_user WHERE id = ?`,
       userId,
-    ) as
-      | {
-          id: string;
-          username: string;
-          display_name: string;
-          created_at: string;
-        }
-      | undefined;
+    ) as DatabaseRow<User> | undefined;
     if (!row) throw new PlatformError('INTERNAL_ERROR', '缺陷用户快照无效');
-    return UserSchema.parse({
-      id: row.id,
-      username: row.username,
-      displayName: row.display_name,
-      createdAt: row.created_at,
-    });
+    return parseRow(UserSchema, row);
   }
 }
 
