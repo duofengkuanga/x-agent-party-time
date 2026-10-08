@@ -36,10 +36,7 @@ export class SubmissionClosure {
       operation: 'SUBMISSION_CLOSE',
       resourceType: 'TEST_SUBMISSION',
       resultSchema: CloseSubmissionMutationResultSchema,
-      invalidation: (mutation) => ({
-        submissionId: mutation.submissionId,
-        revision: mutation.revision,
-      }),
+      submissionId: (mutation) => mutation.submissionId,
       perform: () => {
         const submission = this.requireSubmissionTester(
           actorUserId,

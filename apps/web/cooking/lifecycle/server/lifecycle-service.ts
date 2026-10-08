@@ -427,10 +427,7 @@ export class LifecycleService {
       operation,
       resourceType: 'BUG',
       resultSchema: BugLifecycleMutationResultSchema,
-      invalidation: (result) => ({
-        submissionId: this.queries.bugSource(bugId).submission_id,
-        revision: result.revision,
-      }),
+      submissionId: () => this.queries.bugSource(bugId).submission_id,
       perform: () => {
         const source = this.requireTester(actorUserId, bugId);
         const outcome = perform(source);

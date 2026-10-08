@@ -98,10 +98,7 @@ export class SubmissionService {
       operation: 'SUBMISSION_CREATE',
       resourceType: 'TEST_SUBMISSION',
       resultSchema: TestSubmissionSchema,
-      invalidation: (submission) => ({
-        submissionId: submission.id,
-        revision: submission.workspaceRevision,
-      }),
+      submissionId: (submission) => submission.id,
       perform: () => {
         requireProjectMember(this.db, actorUserId, projectId);
         requireProjectMember(this.db, parsed.testerUserId, projectId);
@@ -225,10 +222,7 @@ export class SubmissionService {
       operation: 'SUBMISSION_ENVIRONMENT_CHANGE',
       resourceType: 'TEST_SUBMISSION',
       resultSchema: TestSubmissionSchema,
-      invalidation: (result) => ({
-        submissionId: result.id,
-        revision: result.workspaceRevision,
-      }),
+      submissionId: (result) => result.id,
       perform: () => {
         const item = this.db.get(
           'SELECT * FROM cooking_submission_item WHERE id = ?',
@@ -365,10 +359,7 @@ export class SubmissionService {
       operation: 'SUBMISSION_UPDATE',
       resourceType: 'TEST_SUBMISSION',
       resultSchema: TestSubmissionSchema,
-      invalidation: (submission) => ({
-        submissionId: submission.id,
-        revision: submission.workspaceRevision,
-      }),
+      submissionId: (submission) => submission.id,
       perform: () => {
         const current = this.requireSubmissionAccess(actorUserId, submissionId);
         const canEditDetails =

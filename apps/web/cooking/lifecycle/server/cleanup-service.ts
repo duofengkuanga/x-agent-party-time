@@ -47,10 +47,7 @@ export class CleanupService {
       operation: 'CLEANUP_RETRY',
       resourceType: 'CLEANUP',
       resultSchema: CleanupMutationResultSchema,
-      invalidation: (mutation) => ({
-        submissionId: this.queries.cleanupSource(cleanupId).submission_id,
-        revision: mutation.revision,
-      }),
+      submissionId: () => this.queries.cleanupSource(cleanupId).submission_id,
       perform: () => {
         const cleanup = this.requireCleanupResponsible(actorUserId, cleanupId);
         if (cleanup.version !== input.expectedVersion)
@@ -132,11 +129,8 @@ export class CleanupService {
       operation: 'CLEANUP_INTERACTION_RESOLVE',
       resourceType: 'EXECUTION_INTERACTION',
       resultSchema: CleanupMutationResultSchema,
-      invalidation: (mutation) => ({
-        submissionId: this.queries.cleanupSource(source.cleanup_id)
-          .submission_id,
-        revision: mutation.revision,
-      }),
+      submissionId: () =>
+        this.queries.cleanupSource(source.cleanup_id).submission_id,
       perform: () => {
         const cleanup = this.requireCleanupResponsible(
           actorUserId,

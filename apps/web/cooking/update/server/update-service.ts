@@ -113,10 +113,8 @@ export class UpdateService {
       operation: 'UPDATE_BATCH_FREEZE',
       resourceType: 'UPDATE_BATCH',
       resultSchema: UpdateMutationResultSchema,
-      invalidation: (mutation) => ({
-        submissionId: this.queries.itemSource(submissionItemId).submission_id,
-        revision: mutation.revision,
-      }),
+      submissionId: () =>
+        this.queries.itemSource(submissionItemId).submission_id,
       perform: () => {
         const source = this.requireResponsible(actorUserId, submissionItemId);
         DeploymentMethodSchema.parse(JSON.parse(source.deployment_json));
@@ -157,10 +155,7 @@ export class UpdateService {
       operation: 'UPDATE_BATCH_RETRY',
       resourceType: 'UPDATE_BATCH',
       resultSchema: UpdateMutationResultSchema,
-      invalidation: (mutation) => ({
-        submissionId: this.queries.batch(batchId).submission_id,
-        revision: mutation.revision,
-      }),
+      submissionId: () => this.queries.batch(batchId).submission_id,
       perform: () => {
         const batch = this.requireBatchResponsible(actorUserId, batchId);
         this.requireBatchVersion(batch, input.expectedVersion);
@@ -284,10 +279,7 @@ export class UpdateService {
       operation: 'UPDATE_SESSION_SYNC',
       resourceType: 'UPDATE_BATCH',
       resultSchema: UpdateMutationResultSchema,
-      invalidation: (mutation) => ({
-        submissionId: this.queries.batch(batchId).submission_id,
-        revision: mutation.revision,
-      }),
+      submissionId: () => this.queries.batch(batchId).submission_id,
       perform: () => {
         const batch = this.requireBatchResponsible(actorUserId, batchId);
         this.requireBatchVersion(batch, input.expectedVersion);
@@ -367,10 +359,7 @@ export class UpdateService {
       operation: 'UPDATE_BATCH_REPORT_EXTERNAL',
       resourceType: 'UPDATE_BATCH',
       resultSchema: UpdateMutationResultSchema,
-      invalidation: (mutation) => ({
-        submissionId: this.queries.batch(batchId).submission_id,
-        revision: mutation.revision,
-      }),
+      submissionId: () => this.queries.batch(batchId).submission_id,
       perform: () => {
         const batch = this.requireBatchResponsible(actorUserId, batchId);
         this.requireBatchVersion(batch, input.expectedVersion);
@@ -465,10 +454,7 @@ export class UpdateService {
       operation: 'UPDATE_INTERACTION_RESOLVE',
       resourceType: 'EXECUTION_INTERACTION',
       resultSchema: UpdateMutationResultSchema,
-      invalidation: (mutation) => ({
-        submissionId: this.queries.batch(source.batch_id).submission_id,
-        revision: mutation.revision,
-      }),
+      submissionId: () => this.queries.batch(source.batch_id).submission_id,
       perform: () => {
         const batch = this.requireBatchResponsible(
           actorUserId,

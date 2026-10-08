@@ -248,10 +248,7 @@ export class RepairService {
       operation: 'REPAIR_CONTINUE',
       resourceType: 'BUG',
       resultSchema: RepairMutationResultSchema,
-      invalidation: (mutation) => ({
-        submissionId: this.queries.source(bugId).submission_id,
-        revision: mutation.revision,
-      }),
+      submissionId: () => this.queries.source(bugId).submission_id,
       perform: () => {
         const source = this.requireResponsible(actorUserId, bugId);
         this.requireActiveVersion(source, input.expectedVersion);
@@ -313,10 +310,7 @@ export class RepairService {
       operation: 'REPAIR_SESSION_SYNC',
       resourceType: 'BUG',
       resultSchema: RepairMutationResultSchema,
-      invalidation: (mutation) => ({
-        submissionId: this.queries.source(bugId).submission_id,
-        revision: mutation.revision,
-      }),
+      submissionId: () => this.queries.source(bugId).submission_id,
       perform: () => {
         const source = this.requireResponsible(actorUserId, bugId);
         this.requireActiveVersion(source, input.expectedVersion);
@@ -400,10 +394,7 @@ export class RepairService {
       operation: 'REPAIR_INTERACTION_RESOLVE',
       resourceType: 'EXECUTION_INTERACTION',
       resultSchema: RepairMutationResultSchema,
-      invalidation: (mutation) => ({
-        submissionId: this.queries.source(row.bug_id).submission_id,
-        revision: mutation.revision,
-      }),
+      submissionId: () => this.queries.source(row.bug_id).submission_id,
       perform: () => {
         const source = this.requireResponsible(actorUserId, row.bug_id);
         this.requireActiveVersion(source, input.expectedVersion);

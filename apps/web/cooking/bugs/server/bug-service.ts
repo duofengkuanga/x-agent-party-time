@@ -67,10 +67,7 @@ export class BugService {
       operation: 'BUG_CREATE',
       resourceType: 'BUG',
       resultSchema: BugMutationResultSchema,
-      invalidation: (mutation) => ({
-        submissionId: mutation.bug.submissionId,
-        revision: mutation.revision,
-      }),
+      submissionId: (mutation) => mutation.bug.submissionId,
       perform: () => {
         const access = this.queries.requireAccess(actorUserId, submissionId);
         this.requireActive(access);
@@ -299,10 +296,7 @@ export class BugService {
       operation,
       resourceType: 'BUG',
       resultSchema: BugMutationResultSchema,
-      invalidation: (mutation) => ({
-        submissionId: mutation.bug.submissionId,
-        revision: mutation.revision,
-      }),
+      submissionId: (mutation) => mutation.bug.submissionId,
       perform: () => {
         const bug = this.queries.requireBug(bugId);
         const access = this.queries.requireAccess(

@@ -113,10 +113,7 @@ test('TestSubmissionWriteStore 只在首次成功提交后发布 Revision', asyn
       operation: 'TEST_SUBMISSION_WRITE',
       resourceType: 'TEST_SUBMISSION',
       resultSchema: z.object({ revision: z.number().int() }),
-      invalidation: (result) => ({
-        submissionId,
-        revision: result.revision,
-      }),
+      submissionId: () => submissionId,
       perform: () => {
         executions += 1;
         const revision = store.bumpRevision(submissionId, createdAt);
@@ -146,7 +143,7 @@ test('TestSubmissionWriteStore 只在首次成功提交后发布 Revision', asyn
       operation: 'TEST_SUBMISSION_FAILURE',
       resourceType: 'TEST_SUBMISSION',
       resultSchema: z.object({ revision: z.number().int() }),
-      invalidation: (result) => ({ submissionId, revision: result.revision }),
+      submissionId: () => submissionId,
       perform: () => {
         store.bumpRevision(submissionId, createdAt);
         throw new Error('rollback');
