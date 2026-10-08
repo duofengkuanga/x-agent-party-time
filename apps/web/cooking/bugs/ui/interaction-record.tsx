@@ -7,6 +7,27 @@ import type { WorkspaceActionResult } from './board-model';
 import { formatDateTime } from './board-model';
 import { Detail } from './detail-fields';
 
+const APPROVAL_CHOICES = [
+  {
+    decision: 'DECLINED',
+    label: '拒绝',
+    resolvedLabel: '已拒绝',
+    feedback: '已拒绝 Codex 请求。',
+  },
+  {
+    decision: 'ACCEPTED_ONCE',
+    label: '仅允许这一次',
+    resolvedLabel: '仅允许这一次',
+    feedback: '已仅允许这一次。',
+  },
+  {
+    decision: 'ACCEPTED_FOR_SESSION',
+    label: '本次会话允许',
+    resolvedLabel: '本次会话允许',
+    feedback: '已允许本次 Codex 会话。',
+  },
+] as const;
+
 export function CookingInteractionRecord({
   interaction,
   onResolve,
@@ -72,47 +93,27 @@ export function CookingInteractionRecord({
           </p>
         ) : interaction.canResolve ? (
           <div className="collab-interaction-actions">
-            <button
-              disabled={pending}
-              onClick={() =>
-                run(
-                  () => onResolve(approvalResolution(request, 'DECLINED')),
-                  '已拒绝 Codex 请求。',
-                )
-              }
-              type="button"
-            >
-              拒绝
-            </button>
-            <button
-              data-primary="true"
-              disabled={pending}
-              onClick={() =>
-                run(
-                  () => onResolve(approvalResolution(request, 'ACCEPTED_ONCE')),
-                  '已仅允许这一次。',
-                )
-              }
-              type="button"
-            >
-              仅允许这一次
-            </button>
-            <button
-              aria-describedby={`session-scope-${interaction.id}`}
-              disabled={pending}
-              onClick={() =>
-                run(
-                  () =>
-                    onResolve(
-                      approvalResolution(request, 'ACCEPTED_FOR_SESSION'),
-                    ),
-                  '已允许本次 Codex 会话。',
-                )
-              }
-              type="button"
-            >
-              本次会话允许
-            </button>
+            {APPROVAL_CHOICES.map(({ decision, label, feedback }) => (
+              <button
+                aria-describedby={
+                  decision === 'ACCEPTED_FOR_SESSION'
+                    ? `session-scope-${interaction.id}`
+                    : undefined
+                }
+                data-primary={decision === 'ACCEPTED_ONCE' ? 'true' : undefined}
+                disabled={pending}
+                key={decision}
+                onClick={() =>
+                  run(
+                    () => onResolve(approvalResolution(request, decision)),
+                    feedback,
+                  )
+                }
+                type="button"
+              >
+                {label}
+              </button>
+            ))}
             <small id={`session-scope-${interaction.id}`}>
               仅对当前修复或更新会话后续同类请求生效。
             </small>
@@ -279,13 +280,10 @@ function approvalResolution(
 function approvalResolutionLabel(
   resolution: 'DECLINED' | 'ACCEPTED_ONCE' | 'ACCEPTED_FOR_SESSION' | null,
 ): string {
-  return resolution
-    ? {
-        DECLINED: '已拒绝',
-        ACCEPTED_ONCE: '仅允许这一次',
-        ACCEPTED_FOR_SESSION: '本次会话允许',
-      }[resolution]
-    : '已由工程负责人处理';
+  return (
+    APPROVAL_CHOICES.find(({ decision }) => decision === resolution)
+      ?.resolvedLabel ?? '已由工程负责人处理'
+  );
 }
 
 function permissionSummary(value: JsonValue): string[] {
