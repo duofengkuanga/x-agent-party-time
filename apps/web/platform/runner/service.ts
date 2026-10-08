@@ -357,6 +357,7 @@ export class RunnerService {
       const credential = RunnerCredentialSchema.parse(
         this.secrets.credential(),
       );
+      const credentialHash = hashSecret(credential);
       const existing = this.db.get(
         `SELECT id, owner_user_id, name, credential_hash, version,
                   last_seen_at, revoked_at, created_at
@@ -367,37 +368,35 @@ export class RunnerService {
       ) as RunnerRow | undefined;
       const runnerId = existing?.id ?? this.createId();
       const version = existing ? existing.version + 1 : 1;
+      let stored: RunnerRow;
       if (existing) {
-        const update = this.db.run(
+        const updated = this.db.get<RunnerRow>(
           `UPDATE platform_runner
              SET name = ?, credential_hash = ?, version = ?,
                  available_slots = 3, last_seen_at = NULL, revoked_at = NULL
-             WHERE id = ? AND version = ?`,
-          [
-            row.approved_name,
-            hashSecret(credential),
-            version,
-            existing.id,
-            existing.version,
-          ],
+             WHERE id = ? AND version = ? RETURNING *`,
+          row.approved_name,
+          credentialHash,
+          version,
+          existing.id,
+          existing.version,
         );
-        if (update.changes !== 1)
+        if (!updated)
           throw new PlatformError('STALE_STATE', 'Agent 已更新，请重试授权');
+        stored = updated;
       } else {
-        this.db.run(
+        stored = this.db.get<RunnerRow>(
           `INSERT INTO platform_runner(
                id, owner_user_id, installation_id, name, credential_hash,
                version, last_seen_at, revoked_at, created_at
-             ) VALUES (?, ?, ?, ?, ?, 1, NULL, NULL, ?)`,
-          [
-            runnerId,
-            row.owner_user_id,
-            row.installation_id,
-            row.approved_name,
-            hashSecret(credential),
-            now.toISOString(),
-          ],
-        );
+             ) VALUES (?, ?, ?, ?, ?, 1, NULL, NULL, ?) RETURNING *`,
+          runnerId,
+          row.owner_user_id,
+          row.installation_id,
+          row.approved_name,
+          credentialHash,
+          now.toISOString(),
+        )!;
       }
       const consumed = this.db.run(
         `UPDATE platform_runner_authorization_request
@@ -409,15 +408,7 @@ export class RunnerService {
         throw new PlatformError('STALE_STATE', 'Agent 授权凭据已经领取');
       return RunnerAuthorizationClaimResponseSchema.parse({
         state: 'AUTHORIZED',
-        runner: {
-          id: runnerId,
-          ownerUserId: row.owner_user_id,
-          name: row.approved_name,
-          version,
-          lastSeenAt: null,
-          revokedAt: null,
-          createdAt: existing?.created_at ?? now.toISOString(),
-        },
+        runner: mapRunner(stored),
         credential,
       });
     })();
