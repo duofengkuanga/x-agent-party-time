@@ -78,27 +78,8 @@ describe('SkillBundleManager', () => {
   });
 
   test('更新后当前解析使用新 Bundle，已有 Task 仍解析原 Bundle', async () => {
-    const home = await temporaryHome();
-    const paths = xaptPaths(home);
-    let snapshot = generation('a'.repeat(40));
-    const manager = new SkillBundleManager(
-      paths,
-      githubFixture(() => snapshot),
-    );
-    await manager.update();
-    const original = await manager.resolveCurrent(
-      'agent-party-time-repair-bug',
-    );
-
-    snapshot = generation('c'.repeat(40), {
-      'agent-party-time-repair-bug': {
-        'SKILL.md': `${skillMarkdown('agent-party-time-repair-bug')}\nUpdated.\n`,
-        'agents/openai.yaml': openaiYaml('agent-party-time-repair-bug'),
-      },
-    });
-    await manager.update();
-
-    const current = await manager.resolveCurrent('agent-party-time-repair-bug');
+    const { paths, manager, original, current, snapshot } =
+      await updatedRepairBundle();
     const restarted = new SkillBundleManager(
       paths,
       githubFixture(() => snapshot),
@@ -197,25 +178,7 @@ describe('SkillBundleManager', () => {
   });
 
   test('用户删除旧 Bundle 后恢复失败且不回退当前 Bundle', async () => {
-    const home = await temporaryHome();
-    const paths = xaptPaths(home);
-    let snapshot = generation('a'.repeat(40));
-    const manager = new SkillBundleManager(
-      paths,
-      githubFixture(() => snapshot),
-    );
-    await manager.update();
-    const original = await manager.resolveCurrent(
-      'agent-party-time-repair-bug',
-    );
-    snapshot = generation('c'.repeat(40), {
-      'agent-party-time-repair-bug': {
-        'SKILL.md': `${skillMarkdown('agent-party-time-repair-bug')}\nUpdated.\n`,
-        'agents/openai.yaml': openaiYaml('agent-party-time-repair-bug'),
-      },
-    });
-    await manager.update();
-    const current = await manager.resolveCurrent('agent-party-time-repair-bug');
+    const { manager, original, current } = await updatedRepairBundle();
     await rm(original.path, { recursive: true });
 
     await expect(manager.resolveBound(original)).rejects.toThrow(
@@ -226,6 +189,27 @@ describe('SkillBundleManager', () => {
     );
   });
 });
+
+async function updatedRepairBundle() {
+  const home = await temporaryHome();
+  const paths = xaptPaths(home);
+  let snapshot = generation('a'.repeat(40));
+  const manager = new SkillBundleManager(
+    paths,
+    githubFixture(() => snapshot),
+  );
+  await manager.update();
+  const original = await manager.resolveCurrent('agent-party-time-repair-bug');
+  snapshot = generation('c'.repeat(40), {
+    'agent-party-time-repair-bug': {
+      'SKILL.md': `${skillMarkdown('agent-party-time-repair-bug')}\nUpdated.\n`,
+      'agents/openai.yaml': openaiYaml('agent-party-time-repair-bug'),
+    },
+  });
+  await manager.update();
+  const current = await manager.resolveCurrent('agent-party-time-repair-bug');
+  return { paths, manager, original, current, snapshot };
+}
 
 type FixtureFile = { content: string; mode: string };
 type FixtureGeneration = {
