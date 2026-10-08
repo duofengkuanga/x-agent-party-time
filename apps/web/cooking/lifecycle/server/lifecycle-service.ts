@@ -28,7 +28,8 @@ import { CleanupService } from './cleanup-service';
 import { SubmissionClosure } from './submission-closure';
 import { LifecycleQueries } from './lifecycle-queries';
 import type { BugSourceRow } from './records';
-import { isTerminal, staleLifecycle } from './results';
+import { isTerminal } from '@/cooking/shared/server/execution-state';
+import { staleLifecycle } from './results';
 
 export class LifecycleService {
   private readonly writes: TestSubmissionWriteStore;

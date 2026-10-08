@@ -78,24 +78,6 @@ export function isUpdateExecution(execution: Execution): boolean {
   );
 }
 
-export function requireTaskSkillBinding(execution: Execution) {
-  const binding =
-    execution.codexTurn?.kind === 'CONTINUATION' ||
-    execution.codexTurn?.kind === 'INITIAL'
-      ? execution.codexTurn.taskSkillBinding
-      : null;
-  if (!binding)
-    throw new PlatformError(
-      'INVALID_TRANSITION',
-      '原更新任务缺少规则关联，不能继续',
-    );
-  return binding;
-}
-
-export function isTerminal(state: Execution['state']): boolean {
-  return state === 'SUCCEEDED' || state === 'FAILED' || state === 'CANCELLED';
-}
-
 export function batchStateLabel(state: BatchRow['state']): string {
   return {
     READY: '等待 Agent',
@@ -144,10 +126,4 @@ export function updateVisual(
 
 export function staleBatch(): PlatformError {
   return new PlatformError('STALE_STATE', '更新批次已变化，请刷新后重试');
-}
-
-export function asDetails(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
 }

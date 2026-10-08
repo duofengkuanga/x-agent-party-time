@@ -15,10 +15,10 @@ import {
 } from '../contract';
 import { LifecycleQueries } from './lifecycle-queries';
 import type { CleanupSourceRow } from './records';
+import { isTerminal } from '@/cooking/shared/server/execution-state';
 import {
   interpretCleanup,
   isCleanupExecution,
-  isTerminal,
   parseWorkspaceKeys,
   staleLifecycle,
 } from './results';

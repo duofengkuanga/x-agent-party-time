@@ -8,6 +8,7 @@ import { environmentOwned } from '@/cooking/submissions/server/environment-acces
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
 import { ExecutionService } from '@/platform/execution/service';
+import { isTerminal } from '@/cooking/shared/server/execution-state';
 import {
   UpdateBatchViewSchema,
   UpdateWorkspaceProjectionSchema,
@@ -24,7 +25,6 @@ import type {
 } from './records';
 import {
   batchStateLabel,
-  isTerminal,
   parseCommits,
   parseManualOperations,
   projectUpdateAttemptResult,

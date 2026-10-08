@@ -10,10 +10,6 @@ export function isCleanupExecution(execution: Execution): boolean {
   );
 }
 
-export function isTerminal(state: Execution['state']): boolean {
-  return state === 'SUCCEEDED' || state === 'FAILED' || state === 'CANCELLED';
-}
-
 export function parseWorkspaceKeys(value: string): string[] {
   const parsed: unknown = JSON.parse(value);
   if (

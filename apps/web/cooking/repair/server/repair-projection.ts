@@ -1,4 +1,5 @@
 import { TestSubmissionWriteStore } from '@/cooking/submissions/server/test-submission-write-store';
+import { asDetails } from '@/cooking/shared/server/execution-state';
 import type { AppDatabase } from '@/platform/database';
 import { executionProjector } from '@/platform/execution/projection';
 import type {
@@ -10,7 +11,6 @@ import type { AttemptRow, ContextRow } from './records';
 import { RepairQueries } from './repair-queries';
 import type { RepairDeliveryHooks } from './repair-service';
 import {
-  asDetails,
   formatRepairContractIssues,
   isFailedAttemptOutcome,
   isRepairExecution,

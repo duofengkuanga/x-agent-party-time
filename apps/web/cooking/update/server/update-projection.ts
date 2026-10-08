@@ -1,5 +1,6 @@
 import { DeploymentMethodSchema } from '@/cooking/engineering/contract';
 import { TestSubmissionWriteStore } from '@/cooking/submissions/server/test-submission-write-store';
+import { asDetails, isTerminal } from '@/cooking/shared/server/execution-state';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
 import { executionProjector } from '@/platform/execution/projection';
@@ -12,12 +13,7 @@ import {
   LocalScriptUpdateExecutionResultSchema,
 } from '../contract';
 import type { BatchRow } from './records';
-import {
-  asDetails,
-  isTerminal,
-  isUpdateExecution,
-  staleBatch,
-} from './results';
+import { isUpdateExecution, staleBatch } from './results';
 import { UpdateQueries } from './update-queries';
 export class UpdateProjection {
   constructor(

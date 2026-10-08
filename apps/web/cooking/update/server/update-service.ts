@@ -1,6 +1,10 @@
 import { DeploymentMethodSchema } from '@/cooking/engineering/contract';
 import type { CookingExecutionProjectionEvent } from '@/cooking/runtime/execution-projection';
 import { requireSubmissionAccess } from '@/cooking/shared/server/access';
+import {
+  isTerminal,
+  requireTaskSkillBinding,
+} from '@/cooking/shared/server/execution-state';
 import { requireBindableFiles } from '@/cooking/shared/server/attachments';
 import { requireEnvironment } from '@/cooking/submissions/server/environment-access';
 import { TestSubmissionWriteStore } from '@/cooking/submissions/server/test-submission-write-store';
@@ -35,7 +39,7 @@ import { UpdateProjection } from './update-projection';
 import { UpdateQueries } from './update-queries';
 import { UpdateDelivery } from './update-delivery';
 
-import { isTerminal, requireTaskSkillBinding, staleBatch } from './results';
+import { staleBatch } from './results';
 
 export class UpdateService {
   private readonly writes: TestSubmissionWriteStore;
@@ -212,7 +216,10 @@ export class UpdateService {
           approvalPolicy: 'never',
           codexTurn: createContinuationCodexTurn({
             taskId: batch.session_id,
-            taskSkillBinding: requireTaskSkillBinding(previousExecution),
+            taskSkillBinding: requireTaskSkillBinding(
+              previousExecution,
+              '更新',
+            ),
             text: continuationInput,
             outputJsonSchema:
               deployment.kind === 'LOCAL_SCRIPT'

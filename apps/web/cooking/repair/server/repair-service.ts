@@ -1,6 +1,10 @@
 import { BugRepairContextService } from '@/cooking/bugs/server/repair-context';
 import type { CookingExecutionProjectionEvent } from '@/cooking/runtime/execution-projection';
 import { requireSubmissionAccess } from '@/cooking/shared/server/access';
+import {
+  isTerminal,
+  requireTaskSkillBinding,
+} from '@/cooking/shared/server/execution-state';
 import { TestSubmissionWriteStore } from '@/cooking/submissions/server/test-submission-write-store';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
@@ -33,13 +37,7 @@ import {
 import type { RepairSourceRow } from './records';
 import { RepairProjection } from './repair-projection';
 import { RepairQueries } from './repair-queries';
-import {
-  isFailedAttemptOutcome,
-  isTerminal,
-  parseCommits,
-  requireTaskSkillBinding,
-  staleRepair,
-} from './results';
+import { isFailedAttemptOutcome, parseCommits, staleRepair } from './results';
 
 const REPAIR_RESULT_ASSERTIONS: ExecutionResultAssertion[] = [
   {
@@ -205,7 +203,7 @@ export class RepairService {
     const previousExecution = this.executions.get(latest.execution_id);
     const codexTurn = createContinuationCodexTurn({
       taskId: context.session_id,
-      taskSkillBinding: requireTaskSkillBinding(previousExecution),
+      taskSkillBinding: requireTaskSkillBinding(previousExecution, '修复'),
       text: buildRepairContinuationInput({
         lifecycleContext: lifecycleContext || undefined,
       }),
