@@ -40,7 +40,7 @@ export class CleanupService {
     inputValue: LifecycleCommandInput,
   ): CleanupMutationResult {
     const input = LifecycleCommandInputSchema.parse(inputValue);
-    const result = this.writes.run({
+    return this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
       operation: 'CLEANUP_RETRY',
@@ -116,7 +116,6 @@ export class CleanupService {
         };
       },
     });
-    return result;
   }
 
   resolveCleanupInteraction(
@@ -126,7 +125,7 @@ export class CleanupService {
   ): CleanupMutationResult {
     const input = ResolveCleanupInteractionInputSchema.parse(inputValue);
     const source = this.queries.cleanupInteractionSource(interactionId);
-    const result = this.writes.run({
+    return this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
       operation: 'CLEANUP_INTERACTION_RESOLVE',
@@ -179,7 +178,6 @@ export class CleanupService {
         };
       },
     });
-    return result;
   }
 
   readonly projectExecution = executionProjector({

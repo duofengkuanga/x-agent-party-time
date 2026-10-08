@@ -369,7 +369,7 @@ export class SubmissionService {
         'VALIDATION_FAILED',
         '同一提测工程不能重复提交目标分支',
       );
-    const result = this.writes.run({
+    return this.writes.run({
       mutationId: parsed.mutationId,
       actorUserId,
       operation: 'SUBMISSION_UPDATE',
@@ -503,7 +503,6 @@ export class SubmissionService {
         };
       },
     });
-    return result;
   }
 
   private ensureDistinctItems(input: CreateSubmissionInput): void {

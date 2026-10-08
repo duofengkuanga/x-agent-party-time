@@ -244,7 +244,7 @@ export class RepairService {
     inputValue: ContinueRepairInput,
   ): RepairMutationResult {
     const input = ContinueRepairInputSchema.parse(inputValue);
-    const result = this.writes.run({
+    return this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
       operation: 'REPAIR_CONTINUE',
@@ -301,7 +301,6 @@ export class RepairService {
         };
       },
     });
-    return result;
   }
 
   synchronizeSession(
@@ -397,7 +396,7 @@ export class RepairService {
   ): RepairMutationResult {
     const input = ResolveRepairInteractionInputSchema.parse(inputValue);
     const row = this.queries.interactionSource(interactionId);
-    const result = this.writes.run({
+    return this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
       operation: 'REPAIR_INTERACTION_RESOLVE',
@@ -437,7 +436,6 @@ export class RepairService {
         };
       },
     });
-    return result;
   }
 
   private requireResponsible(userId: string, bugId: string): RepairSourceRow {

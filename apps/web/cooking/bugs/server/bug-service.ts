@@ -61,7 +61,7 @@ export class BugService {
     input: CreateBugInput,
   ): BugMutationResult {
     const parsed = CreateBugInputSchema.parse(input);
-    const result = this.writes.run({
+    return this.writes.run({
       mutationId: parsed.mutationId,
       actorUserId,
       operation: 'BUG_CREATE',
@@ -129,7 +129,6 @@ export class BugService {
         };
       },
     });
-    return result;
   }
 
   updateReport(
@@ -294,7 +293,7 @@ export class BugService {
       unboundAttachmentIds?: string[];
     },
   ): BugMutationResult {
-    const result = this.writes.run({
+    return this.writes.run({
       mutationId,
       actorUserId,
       operation,
@@ -330,7 +329,6 @@ export class BugService {
         };
       },
     });
-    return result;
   }
 
   private requireActive(access: AccessRow): void {

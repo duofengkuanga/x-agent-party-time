@@ -108,7 +108,7 @@ export class UpdateService {
     inputValue: { mutationId: string },
   ): UpdateMutationResult {
     const input = FreezeUpdateInputSchema.parse(inputValue);
-    const result = this.writes.run({
+    return this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
       operation: 'UPDATE_BATCH_FREEZE',
@@ -144,7 +144,6 @@ export class UpdateService {
         };
       },
     });
-    return result;
   }
 
   retryUpdate(
@@ -153,7 +152,7 @@ export class UpdateService {
     inputValue: RetryUpdateInput,
   ): UpdateMutationResult {
     const input = RetryUpdateInputSchema.parse(inputValue);
-    const result = this.writes.run({
+    return this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
       operation: 'UPDATE_BATCH_RETRY',
@@ -272,7 +271,6 @@ export class UpdateService {
         };
       },
     });
-    return result;
   }
 
   synchronizeSession(
@@ -364,7 +362,7 @@ export class UpdateService {
     inputValue: ExternalDeploymentReportInput,
   ): UpdateMutationResult {
     const input = ExternalDeploymentReportInputSchema.parse(inputValue);
-    const result = this.writes.run({
+    return this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
       operation: 'UPDATE_BATCH_REPORT_EXTERNAL',
@@ -453,7 +451,6 @@ export class UpdateService {
         };
       },
     });
-    return result;
   }
 
   resolveInteraction(
@@ -463,7 +460,7 @@ export class UpdateService {
   ): UpdateMutationResult {
     const input = ResolveUpdateInteractionInputSchema.parse(inputValue);
     const source = this.queries.interactionSource(interactionId);
-    const result = this.writes.run({
+    return this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
       operation: 'UPDATE_INTERACTION_RESOLVE',
@@ -508,7 +505,6 @@ export class UpdateService {
         };
       },
     });
-    return result;
   }
 
   private requireResponsible(
