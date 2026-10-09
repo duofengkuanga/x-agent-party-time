@@ -127,60 +127,6 @@ export class UpdateDelivery {
     return { executionId: execution.id, revision };
   }
 
-  synchronizeFailedBatch(batch: BatchRow & { source: ItemSourceRow }): {
-    executionId: string;
-    revision: number;
-  } {
-    const batchId = batch.id;
-    const latest = this.queries.latestAttempt(batchId);
-    if (
-      batch.state !== 'FAILED' ||
-      !latest ||
-      !isTerminal(latest.state) ||
-      !batch.session_id
-    )
-      throw new PlatformError(
-        'INVALID_TRANSITION',
-        '当前没有可同步的失败更新会话',
-      );
-    if (this.queries.hasActiveSessionSync(batchId))
-      throw new PlatformError('RESOURCE_CONFLICT', '更新会话正在同步');
-    const source = batch.source;
-    const previousExecution = this.executions.get(latest.execution_id);
-    if (!previousExecution.codexTurn)
-      throw new PlatformError(
-        'INVALID_TRANSITION',
-        '原更新任务缺少结果约束，不能同步',
-      );
-    const syncId = this.createId();
-    const execution = this.executions.enqueue({
-      id: this.createId(),
-      owner: { namespace: 'cooking', kind: 'SESSION_SYNC', id: syncId },
-      attempt: 1,
-      previousExecutionId: latest.execution_id,
-      runnerId: source.runner_id,
-      bindingId: source.binding_id,
-      priority: 0,
-      approvalPolicy: 'never',
-      codexTurn: {
-        kind: 'READ_SESSION',
-        taskId: batch.session_id,
-        outputJsonSchema: previousExecution.codexTurn.outputJsonSchema,
-        resultAssertions: previousExecution.codexTurn.resultAssertions,
-      },
-      workspace: null,
-      attachmentIds: [],
-    });
-    const now = this.now().toISOString();
-    this.db.run(
-      `INSERT INTO cooking_update_session_sync(id, batch_id, execution_id, session_id, created_at)
-       VALUES (?, ?, ?, ?, ?)`,
-      [syncId, batchId, execution.id, batch.session_id, now],
-    );
-    const revision = this.writes.bumpRevision(batch.submission_id, now);
-    return { executionId: execution.id, revision };
-  }
-
   recordCandidateAvailable(bugId: string, candidateAt: string): void {
     const row = this.db.get(
       `SELECT submission_item_id FROM cooking_bug
