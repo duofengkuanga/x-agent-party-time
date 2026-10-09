@@ -68,9 +68,5 @@ export type ProjectMembership = z.infer<typeof ProjectMembershipSchema>;
 export type ProjectInvitation = z.infer<typeof ProjectInvitationSchema>;
 export type ProjectSummary = z.infer<typeof ProjectSummarySchema>;
 export type ProjectMember = z.infer<typeof ProjectMemberSchema>;
-export type ReceivedProjectInvitation = z.infer<
-  typeof ReceivedProjectInvitationSchema
->;
-export type ProjectInvitationDetail = z.infer<
-  typeof ProjectInvitationDetailSchema
->;
+export type ReceivedProjectInvitation = z.infer<typeof ReceivedProjectInvitationSchema>;
+export type ProjectInvitationDetail = z.infer<typeof ProjectInvitationDetailSchema>;

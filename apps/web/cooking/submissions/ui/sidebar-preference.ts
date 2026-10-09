@@ -17,8 +17,7 @@ import {
 
 export const SIDEBAR_STORAGE_KEY = 'agent-party-time:collab-sidebar-width';
 
-export const SIDEBAR_CHANGE_EVENT =
-  'agent-party-time:collab-sidebar-width-change';
+export const SIDEBAR_CHANGE_EVENT = 'agent-party-time:collab-sidebar-width-change';
 
 export function subscribeSidebarWidth(onStoreChange: () => void) {
   window.addEventListener(SIDEBAR_CHANGE_EVENT, onStoreChange);
@@ -34,9 +33,7 @@ export function subscribeSidebarWidth(onStoreChange: () => void) {
 export function getSidebarWidthSnapshot(serverFallback: number): number {
   const storedWidth = Number(window.localStorage.getItem(SIDEBAR_STORAGE_KEY));
   const base =
-    Number.isFinite(storedWidth) && storedWidth > 0
-      ? storedWidth
-      : serverFallback;
+    Number.isFinite(storedWidth) && storedWidth > 0 ? storedWidth : serverFallback;
   return clampSidebarWidth(base);
 }
 
@@ -50,9 +47,7 @@ export function useSidebarWidth(initialSidebarWidth: number) {
     () => getSidebarWidthSnapshot(initialSidebarWidth),
     () => initialSidebarWidth,
   );
-  const [sidebarWidthOverride, setSidebarWidthOverride] = useState<
-    number | null
-  >(null);
+  const [sidebarWidthOverride, setSidebarWidthOverride] = useState<number | null>(null);
   const sidebarWidth = sidebarWidthOverride ?? storedSidebarWidth;
   const [sidebarResizing, setSidebarResizing] = useState(false);
   const sidebarDrag = useRef<{
@@ -76,8 +71,7 @@ export function useSidebarWidth(initialSidebarWidth: number) {
   }
 
   function beginSidebarResize(event: ReactPointerEvent<HTMLDivElement>) {
-    if (event.button !== 0 || window.matchMedia('(max-width: 760px)').matches)
-      return;
+    if (event.button !== 0 || window.matchMedia('(max-width: 760px)').matches) return;
     sidebarDrag.current = {
       currentWidth: sidebarWidth,
       startWidth: sidebarWidth,
@@ -90,9 +84,7 @@ export function useSidebarWidth(initialSidebarWidth: number) {
   function resizeSidebar(event: ReactPointerEvent<HTMLDivElement>) {
     if (!sidebarDrag.current) return;
     const nextWidth = clampSidebarWidth(
-      sidebarDrag.current.startWidth +
-        event.clientX -
-        sidebarDrag.current.startX,
+      sidebarDrag.current.startWidth + event.clientX - sidebarDrag.current.startX,
     );
     sidebarDrag.current.currentWidth = nextWidth;
     setSidebarWidthOverride(nextWidth);
@@ -118,9 +110,7 @@ export function useSidebarWidth(initialSidebarWidth: number) {
     setSidebarResizing(false);
   }
 
-  function resizeSidebarWithKeyboard(
-    event: ReactKeyboardEvent<HTMLDivElement>,
-  ) {
+  function resizeSidebarWithKeyboard(event: ReactKeyboardEvent<HTMLDivElement>) {
     const step = event.shiftKey ? 32 : 16;
     const nextWidth =
       event.key === 'Home'

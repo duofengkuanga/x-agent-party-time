@@ -46,12 +46,7 @@ export class BugService {
     onInvalidated: (submissionId: string, revision: number) => void = () => {},
     private readonly repairHooks: BugRepairHooks = NOOP_REPAIR_HOOKS,
   ) {
-    this.writes = new TestSubmissionWriteStore(
-      db,
-      now,
-      createId,
-      onInvalidated,
-    );
+    this.writes = new TestSubmissionWriteStore(db, now, createId, onInvalidated);
     this.queries = new BugQueries(db);
   }
 
@@ -72,10 +67,7 @@ export class BugService {
         const access = this.queries.requireAccess(actorUserId, submissionId);
         this.requireActive(access);
         if (actorUserId !== access.tester_user_id)
-          throw new PlatformError(
-            'PERMISSION_DENIED',
-            '只有测试负责人可以登记缺陷',
-          );
+          throw new PlatformError('PERMISSION_DENIED', '只有测试负责人可以登记缺陷');
         this.queries.requireItem(submissionId, parsed.submissionItemId);
         const attachmentIds = reportAttachmentIds(parsed);
         requireBindableFiles(this.db, actorUserId, attachmentIds);
@@ -141,10 +133,7 @@ export class BugService {
       'BUG_REPORT_UPDATE',
       (bug, access, now) => {
         if (actorUserId !== access.tester_user_id)
-          throw new PlatformError(
-            'PERMISSION_DENIED',
-            '只有测试负责人可以编辑缺陷报告',
-          );
+          throw new PlatformError('PERMISSION_DENIED', '只有测试负责人可以编辑缺陷报告');
         this.requireEditableReport(bug, parsed.expectedVersion);
         this.queries.requireItem(bug.submissionId, parsed.submissionItemId);
         const attachmentIds = reportAttachmentIds(parsed);
@@ -203,10 +192,7 @@ export class BugService {
           access.membership_role !== 'OWNER' &&
           !this.queries.isAnyResponsible(actorUserId, bug.submissionId)
         )
-          throw new PlatformError(
-            'PERMISSION_DENIED',
-            '当前成员不能分诊此缺陷',
-          );
+          throw new PlatformError('PERMISSION_DENIED', '当前成员不能分诊此缺陷');
         this.queries.requireItem(bug.submissionId, parsed.submissionItemId);
         const update = this.db.run(
           `UPDATE cooking_bug
@@ -237,18 +223,12 @@ export class BugService {
       (bug, access, now) => {
         if (bug.version !== parsed.expectedVersion) throw staleBug();
         if (bug.stage !== 'WAITING_FOR_REPAIR')
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '只有待修复缺陷可以开始自动修复',
-          );
+          throw new PlatformError('INVALID_TRANSITION', '只有待修复缺陷可以开始自动修复');
         if (!bug.submissionItemId)
           throw new PlatformError('VALIDATION_FAILED', '请先确定缺陷所属工程');
         this.queries.requireItem(bug.submissionId, bug.submissionItemId);
         if (actorUserId !== access.tester_user_id)
-          throw new PlatformError(
-            'PERMISSION_DENIED',
-            '只有测试负责人可以开始自动修复',
-          );
+          throw new PlatformError('PERMISSION_DENIED', '只有测试负责人可以开始自动修复');
         const update = this.db.run(
           `UPDATE cooking_bug
              SET stage = 'REPAIRING', report_locked_at = COALESCE(report_locked_at, ?),
@@ -299,10 +279,7 @@ export class BugService {
       submissionId: (mutation) => mutation.bug.submissionId,
       perform: () => {
         const bug = this.queries.requireBug(bugId);
-        const access = this.queries.requireAccess(
-          actorUserId,
-          bug.submissionId,
-        );
+        const access = this.queries.requireAccess(actorUserId, bug.submissionId);
         this.requireActive(access);
         const now = this.now().toISOString();
         const audit = perform(bug, access, now);
@@ -333,10 +310,7 @@ export class BugService {
   private requireEditableReport(bug: Bug, expectedVersion: number): void {
     if (bug.version !== expectedVersion) throw staleBug();
     if (bug.reportLockedAt)
-      throw new PlatformError(
-        'INVALID_TRANSITION',
-        '首次修复后原始缺陷报告不能修改',
-      );
+      throw new PlatformError('INVALID_TRANSITION', '首次修复后原始缺陷报告不能修改');
   }
 
   private bindAttachments(
@@ -406,10 +380,7 @@ function normalizedOptional(value: string | undefined): string | undefined {
 }
 
 function reportAttachmentIds(report: ReportAttachmentIds): string[] {
-  return [
-    ...report.actualResultAttachmentIds,
-    ...report.expectedResultAttachmentIds,
-  ];
+  return [...report.actualResultAttachmentIds, ...report.expectedResultAttachmentIds];
 }
 
 function staleBug(): PlatformError {

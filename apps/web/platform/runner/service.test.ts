@@ -24,10 +24,8 @@ async function setup() {
     () => now,
     undefined,
     {
-      pairingCode: () =>
-        ['A1B2-C3D4-E5F6-A7B8', 'C9D0-E1F2-A3B4-C5D6'][codeIndex++]!,
-      credential: () =>
-        `credential-${String(++credentialIndex).padStart(32, 'x')}`,
+      pairingCode: () => ['A1B2-C3D4-E5F6-A7B8', 'C9D0-E1F2-A3B4-C5D6'][codeIndex++]!,
+      credential: () => `credential-${String(++credentialIndex).padStart(32, 'x')}`,
     },
     30_000,
   );
@@ -150,9 +148,9 @@ describe('Agent 浏览器授权', () => {
         name: '我的 Mac Agent',
       },
     });
-    expect(service.claimAuthorization(issue.requestId, verifier)).toMatchObject(
-      { state: 'REJECTED' },
-    );
+    expect(service.claimAuthorization(issue.requestId, verifier)).toMatchObject({
+      state: 'REJECTED',
+    });
   });
 
   test('拒绝、过期和过快轮询不会创建 Agent', async () => {
@@ -171,19 +169,15 @@ describe('Agent 浏览器授权', () => {
       users.owner.id,
       issue.requestId,
     );
-    service.rejectAuthorization(
-      users.owner.id,
-      issue.requestId,
-      approval.approvalToken!,
-    );
-    expect(service.claimAuthorization(issue.requestId, verifier)).toMatchObject(
-      { state: 'REJECTED' },
-    );
+    service.rejectAuthorization(users.owner.id, issue.requestId, approval.approvalToken!);
+    expect(service.claimAuthorization(issue.requestId, verifier)).toMatchObject({
+      state: 'REJECTED',
+    });
     expectRowCount(database, 'platform_runner').toBe(0);
     setNow('2026-07-26T10:00:02Z');
-    expect(service.claimAuthorization(issue.requestId, verifier)).toMatchObject(
-      { state: 'REJECTED' },
-    );
+    expect(service.claimAuthorization(issue.requestId, verifier)).toMatchObject({
+      state: 'REJECTED',
+    });
   });
 
   test('同一安装重新授权复用 Agent 并轮换 Credential', async () => {
@@ -247,9 +241,9 @@ describe('Runner credential and heartbeat', () => {
     expect(service.listRunners(users.owner.id)[0]?.online).toBe(true);
     setNow('2026-07-26T10:00:31Z');
     expect(service.listRunners(users.owner.id)[0]?.online).toBe(false);
-    expect(() =>
-      service.heartbeat('forged-credential-value-xxxxxxxxxxxxxxxx'),
-    ).toThrow(expect.objectContaining({ code: 'NOT_AUTHENTICATED' }));
+    expect(() => service.heartbeat('forged-credential-value-xxxxxxxxxxxxxxxx')).toThrow(
+      expect.objectContaining({ code: 'NOT_AUTHENTICATED' }),
+    );
   });
 
   test('只有 Owner 可撤销，撤销后 Credential 立即失效', async () => {
@@ -259,11 +253,7 @@ describe('Runner credential and heartbeat', () => {
       '可撤销 Runner',
     );
     expect(() =>
-      service.revokeRunner(
-        users.other.id,
-        paired.runner.id,
-        paired.runner.version,
-      ),
+      service.revokeRunner(users.other.id, paired.runner.id, paired.runner.version),
     ).toThrow(expect.objectContaining({ code: 'NOT_FOUND' }));
     const revoked = service.revokeRunner(
       users.owner.id,

@@ -14,10 +14,7 @@ export function testRunnerFetch(fixture: {
   return cookingRunnerFetch(fixture.database, {
     runners: fixture.runners,
     executions: fixture.executions,
-    files: new LocalFileStore(
-      fixture.database,
-      join(fixture.directory, 'files'),
-    ),
+    files: new LocalFileStore(fixture.database, join(fixture.directory, 'files')),
     prepare: () => {},
   });
 }

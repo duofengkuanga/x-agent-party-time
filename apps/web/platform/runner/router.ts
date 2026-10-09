@@ -46,10 +46,7 @@ export function runnerFetch({
   prepare,
 }: RunnerHttpServices) {
   const routes: Array<[RegExp, Record<string, Endpoint>]> = [
-    [
-      /^\/api\/runner$/,
-      { DELETE: (r) => handleRunnerSelfRevocation(r, runners) },
-    ],
+    [/^\/api\/runner$/, { DELETE: (r) => handleRunnerSelfRevocation(r, runners) }],
     [/^\/api\/runner\/pair$/, { POST: (r) => handleRunnerPair(r, runners) }],
     [
       /^\/api\/runner\/authorizations$/,
@@ -59,16 +56,12 @@ export function runnerFetch({
       /^\/api\/runner\/authorizations\/([^/]+)\/claim$/,
       { POST: (r, [id]) => handleRunnerAuthorizationClaim(r, id!, runners) },
     ],
-    [
-      /^\/api\/runner\/heartbeat$/,
-      { POST: (r) => handleRunnerHeartbeat(r, runners) },
-    ],
+    [/^\/api\/runner\/heartbeat$/, { POST: (r) => handleRunnerHeartbeat(r, runners) }],
     [
       /^\/api\/runner\/bindings$/,
       {
         GET: (r) => handleRunnerBindings(r, runners, bindings.list),
-        POST: (r) =>
-          handleRunnerBindingConfirmation(r, runners, bindings.confirm),
+        POST: (r) => handleRunnerBindingConfirmation(r, runners, bindings.confirm),
       },
     ],
     [
@@ -117,16 +110,13 @@ export function runnerFetch({
     ],
   ];
   return async (input: string | URL | Request, init?: RequestInit) => {
-    const request =
-      input instanceof Request ? input : new Request(String(input), init);
+    const request = input instanceof Request ? input : new Request(String(input), init);
     const path = new URL(request.url).pathname;
     for (const [pattern, methods] of routes) {
       const match = pattern.exec(path);
       if (!match) continue;
       const method = request.method === 'HEAD' ? 'GET' : request.method;
-      const handle = Object.hasOwn(methods, method)
-        ? methods[method]
-        : undefined;
+      const handle = Object.hasOwn(methods, method) ? methods[method] : undefined;
       if (!handle) return new Response(null, { status: 405 });
       let params: string[];
       try {
@@ -135,9 +125,7 @@ export function runnerFetch({
         return new Response(null, { status: 400 });
       }
       const response = await handle(request, params);
-      return request.method === 'HEAD'
-        ? new Response(null, response)
-        : response;
+      return request.method === 'HEAD' ? new Response(null, response) : response;
     }
     return Response.json(
       { error: { code: 'NOT_FOUND', message: '未找到' } },

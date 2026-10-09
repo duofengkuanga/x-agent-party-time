@@ -198,9 +198,7 @@ test('同步会话不泄露原工作区解析错误', async () => {
     readResultAssertions: commitAssertions,
     previousExecutionId: '00000000-0000-4000-8000-000000000396',
     workspace: branchWorkspace,
-    workspaceResolveFailure: new Error(
-      '/Users/example/private-worktree 不可读取',
-    ),
+    workspaceResolveFailure: new Error('/Users/example/private-worktree 不可读取'),
   });
 
   await cycleToIdle(fixture);
@@ -440,11 +438,10 @@ test('续租将最新 Lease 过期时间写入崩溃恢复记录', async () => {
   });
 
   fixture.http.renewedExpiresAt = '2026-08-03T10:00:00.000Z';
-  await new ExecutionRecovery(
-    fixture.http,
-    fixture.state,
-    () => new Date(),
-  ).renew(session, execution);
+  await new ExecutionRecovery(fixture.http, fixture.state, () => new Date()).renew(
+    session,
+    execution,
+  );
   fixture.setNow('2026-08-03T09:30:00.000Z');
 
   const restarted = fixture.restartedService();

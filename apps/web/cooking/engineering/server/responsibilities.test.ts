@@ -46,12 +46,9 @@ test('工程成员关系接入 Project 成员活动职责保护', async () => {
       identifier: 'responsibility-api',
     },
   );
-  new EngineeringService(database).addMember(
-    owner.id,
-    engineering.id,
-    member.id,
-    { mutationId: randomUUID() },
-  );
+  new EngineeringService(database).addMember(owner.id, engineering.id, member.id, {
+    mutationId: randomUUID(),
+  });
   const projectMember = projects
     .listMembers(owner.id, project.project.id)
     .find(({ user }) => user.id === member.id)!;

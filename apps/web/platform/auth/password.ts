@@ -1,9 +1,5 @@
 import { promisify } from 'node:util';
-import {
-  randomBytes,
-  scrypt as scryptCallback,
-  timingSafeEqual,
-} from 'node:crypto';
+import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto';
 
 const scrypt = promisify(scryptCallback);
 const FORMAT = 'scrypt';
@@ -25,8 +21,7 @@ export async function verifyPassword(
   password: string,
   encodedHash: string,
 ): Promise<boolean> {
-  const [format, version, encodedSalt, encodedDerived, extra] =
-    encodedHash.split('$');
+  const [format, version, encodedSalt, encodedDerived, extra] = encodedHash.split('$');
   if (
     format !== FORMAT ||
     version !== VERSION ||
@@ -40,9 +35,7 @@ export async function verifyPassword(
     const salt = Buffer.from(encodedSalt, 'base64url');
     const expected = Buffer.from(encodedDerived, 'base64url');
     const actual = (await scrypt(password, salt, expected.length)) as Buffer;
-    return (
-      expected.length === actual.length && timingSafeEqual(expected, actual)
-    );
+    return expected.length === actual.length && timingSafeEqual(expected, actual);
   } catch {
     return false;
   }

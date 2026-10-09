@@ -8,9 +8,7 @@ import {
 describe('EngineeringIdentifier', () => {
   test('接受中文或稳定短标识并拒绝大写、空格和连续分隔符', () => {
     expect(EngineeringIdentifierSchema.parse('大屏')).toBe('大屏');
-    expect(EngineeringIdentifierSchema.parse('土壤大屏-85')).toBe(
-      '土壤大屏-85',
-    );
+    expect(EngineeringIdentifierSchema.parse('土壤大屏-85')).toBe('土壤大屏-85');
     expect(EngineeringIdentifierSchema.parse('web')).toBe('web');
     expect(EngineeringIdentifierSchema.parse('admin-web')).toBe('admin-web');
     expect(() => EngineeringIdentifierSchema.parse('Web')).toThrow();
@@ -27,9 +25,7 @@ describe('DeploymentMethod', () => {
         command: 'bun run deploy:test',
       }),
     ).toEqual({ kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' });
-    expect(() =>
-      DeploymentMethodSchema.parse({ kind: 'LOCAL_SCRIPT' }),
-    ).toThrow();
+    expect(() => DeploymentMethodSchema.parse({ kind: 'LOCAL_SCRIPT' })).toThrow();
     expect(() =>
       DeploymentMethodSchema.parse({ kind: 'LOCAL_SCRIPT', command: '   ' }),
     ).toThrow();

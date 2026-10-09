@@ -15,9 +15,7 @@ export async function approveAgentAuthorizationAction(
   return authorizationDecision(formData, 'approve');
 }
 
-export async function rejectAgentAuthorizationAction(
-  formData: FormData,
-): Promise<never> {
+export async function rejectAgentAuthorizationAction(formData: FormData): Promise<never> {
   return authorizationDecision(formData, 'reject');
 }
 
@@ -42,19 +40,13 @@ async function authorizationDecision(
       messageRedirectPath(
         connectPath(requestId),
         'success',
-        decision === 'approve'
-          ? 'Agent 已确认，正在建立连接'
-          : '已暂不连接这台 Agent',
+        decision === 'approve' ? 'Agent 已确认，正在建立连接' : '已暂不连接这台 Agent',
       ),
     );
   } catch (error) {
     rethrowRedirectError(error);
     redirect(
-      messageRedirectPath(
-        connectPath(requestId),
-        'error',
-        publicError(error).message,
-      ),
+      messageRedirectPath(connectPath(requestId), 'error', publicError(error).message),
     );
   }
 }

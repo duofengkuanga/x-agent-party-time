@@ -33,8 +33,7 @@ export function requireLeasedExecution(
   states: Execution['state'][],
 ): ExecutionRow {
   const row = records.getRow(executionId);
-  if (row.runner_id !== runnerId)
-    throw new PlatformError('NOT_FOUND', '处理任务不存在');
+  if (row.runner_id !== runnerId) throw new PlatformError('NOT_FOUND', '处理任务不存在');
   requireLeasedRow(now, row, leaseToken, states);
   return row;
 }

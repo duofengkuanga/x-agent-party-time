@@ -3,10 +3,7 @@ import { existsSync, readlinkSync, realpathSync } from 'node:fs';
 import { dirname, normalize, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DaemonControlClient } from '../apps/xapt/src/daemon/control.js';
-import {
-  stoppedSnapshot,
-  type DaemonSnapshot,
-} from '../apps/xapt/src/daemon/status.js';
+import { stoppedSnapshot, type DaemonSnapshot } from '../apps/xapt/src/daemon/status.js';
 import { xaptPaths } from '../apps/xapt/src/platform/paths.js';
 
 export type ServiceKey = 'app' | 'agent';
@@ -34,9 +31,7 @@ type ServiceDefinition = {
   matchers: readonly ServiceMatcher[];
 };
 
-const PROJECT_ROOT = realpathSync(
-  resolve(dirname(fileURLToPath(import.meta.url)), '..'),
-);
+const PROJECT_ROOT = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), '..'));
 
 const BUN = String.raw`(?:^|\s)(?:\S*\/)?bun`;
 
@@ -50,9 +45,7 @@ const SERVICE_DEFINITIONS: readonly ServiceDefinition[] = [
         relativeCwds: ['.'],
       },
       {
-        pattern: new RegExp(
-          `${BUN}\\s+--cwd\\s+(?:\\S*\/)?apps/web\\s+dev(?:\\s|$)`,
-        ),
+        pattern: new RegExp(`${BUN}\\s+--cwd\\s+(?:\\S*\/)?apps/web\\s+dev(?:\\s|$)`),
         relativeCwds: ['.', 'apps/web'],
       },
       {
@@ -104,15 +97,11 @@ function readProcessCwd(pid: number): string | null {
   }
 
   if (process.platform === 'darwin') {
-    const result = spawnSync(
-      'lsof',
-      ['-a', '-p', String(pid), '-d', 'cwd', '-Fn'],
-      { encoding: 'utf8' },
-    );
+    const result = spawnSync('lsof', ['-a', '-p', String(pid), '-d', 'cwd', '-Fn'], {
+      encoding: 'utf8',
+    });
     if (result.error || result.status !== 0) return null;
-    const pathLine = result.stdout
-      .split('\n')
-      .find((line) => line.startsWith('n'));
+    const pathLine = result.stdout.split('\n').find((line) => line.startsWith('n'));
     return pathLine?.slice(1) || null;
   }
 
@@ -151,8 +140,7 @@ export function discoverServiceProcesses(
     const definition = SERVICE_DEFINITIONS.find((candidate) =>
       candidate.matchers.some(
         (matcher) =>
-          matcher.relativeCwds.includes(relativeCwd) &&
-          matcher.pattern.test(row.command),
+          matcher.relativeCwds.includes(relativeCwd) && matcher.pattern.test(row.command),
       ),
     );
     if (definition) matches.push({ ...row, service: definition.key, cwd });
@@ -181,9 +169,7 @@ export function collectDescendantPids(
   return selected;
 }
 
-export function findServiceRoots(
-  processes: readonly ServiceProcess[],
-): ServiceProcess[] {
+export function findServiceRoots(processes: readonly ServiceProcess[]): ServiceProcess[] {
   const byPid = new Map(processes.map((entry) => [entry.pid, entry]));
 
   return processes.filter((entry) => {
@@ -196,17 +182,12 @@ export function findServiceRoots(
   });
 }
 
-function printStatus(
-  processes: readonly ServiceProcess[],
-  agent: DaemonSnapshot,
-): void {
+function printStatus(processes: readonly ServiceProcess[], agent: DaemonSnapshot): void {
   const roots = findServiceRoots(processes);
   console.log('开发服务状态：');
 
   for (const definition of SERVICE_DEFINITIONS) {
-    const serviceRoots = roots.filter(
-      (entry) => entry.service === definition.key,
-    );
+    const serviceRoots = roots.filter((entry) => entry.service === definition.key);
     if (serviceRoots.length === 0) {
       console.log(`- ${definition.label}：未运行`);
       continue;
@@ -250,10 +231,7 @@ async function waitForExit(
   return remaining;
 }
 
-function signalProcesses(
-  pids: Iterable<number>,
-  signal: NodeJS.Signals,
-): string[] {
+function signalProcesses(pids: Iterable<number>, signal: NodeJS.Signals): string[] {
   const errors: string[] = [];
 
   for (const pid of pids) {
@@ -261,8 +239,7 @@ function signalProcesses(
       process.kill(pid, signal);
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
-      if (code !== 'ESRCH')
-        errors.push(`PID ${pid}: ${(error as Error).message}`);
+      if (code !== 'ESRCH') errors.push(`PID ${pid}: ${(error as Error).message}`);
     }
   }
 
@@ -302,9 +279,7 @@ async function stopServices(
 
   const serviceRoots = findServiceRoots(processes);
   const grouped = SERVICE_DEFINITIONS.map((definition) => {
-    const count = serviceRoots.filter(
-      (entry) => entry.service === definition.key,
-    ).length;
+    const count = serviceRoots.filter((entry) => entry.service === definition.key).length;
     return count > 0 ? `${definition.label} ${count} 组` : null;
   }).filter((value): value is string => value !== null);
   if (agent.service === 'RUNNING') grouped.push('Agent 1 组');
@@ -323,8 +298,7 @@ async function stopServices(
 
   if (errors.length > 0 || remaining.size > 0) {
     for (const error of errors) console.error(`停止失败：${error}`);
-    if (remaining.size > 0)
-      console.error(`仍在运行：${[...remaining].join(', ')}`);
+    if (remaining.size > 0) console.error(`仍在运行：${[...remaining].join(', ')}`);
     return 1;
   }
 
@@ -342,9 +316,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
   const rows = readProcessTable();
   const processes = discoverServiceProcesses(rows, readProcessCwd);
   const developmentHome = resolve(PROJECT_ROOT, '.scratch/xapt-development');
-  const control = new DaemonControlClient(
-    xaptPaths(developmentHome).controlSocket,
-  );
+  const control = new DaemonControlClient(xaptPaths(developmentHome).controlSocket);
   let agent: DaemonSnapshot;
   const controlSocket = xaptPaths(developmentHome).controlSocket;
   if (!existsSync(controlSocket)) {
@@ -370,5 +342,4 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
 }
 
 const invokedPath = process.argv[1] ? resolve(process.argv[1]) : '';
-if (invokedPath === fileURLToPath(import.meta.url))
-  process.exitCode = await main();
+if (invokedPath === fileURLToPath(import.meta.url)) process.exitCode = await main();

@@ -48,12 +48,15 @@ export class RunnerService {
     (...args) => this.authorizations.createAuthorizationRequest(...args);
   readonly prepareAuthorizationApproval: RunnerAuthorizationRequests['prepareAuthorizationApproval'] =
     (...args) => this.authorizations.prepareAuthorizationApproval(...args);
-  readonly approveAuthorization: RunnerAuthorizationRequests['approveAuthorization'] =
-    (...args) => this.authorizations.approveAuthorization(...args);
-  readonly rejectAuthorization: RunnerAuthorizationRequests['rejectAuthorization'] =
-    (...args) => this.authorizations.rejectAuthorization(...args);
-  readonly claimAuthorization: RunnerAuthorizationRequests['claimAuthorization'] =
-    (...args) => this.authorizations.claimAuthorization(...args);
+  readonly approveAuthorization: RunnerAuthorizationRequests['approveAuthorization'] = (
+    ...args
+  ) => this.authorizations.approveAuthorization(...args);
+  readonly rejectAuthorization: RunnerAuthorizationRequests['rejectAuthorization'] = (
+    ...args
+  ) => this.authorizations.rejectAuthorization(...args);
+  readonly claimAuthorization: RunnerAuthorizationRequests['claimAuthorization'] = (
+    ...args
+  ) => this.authorizations.claimAuthorization(...args);
 
   constructor(
     private readonly db: AppDatabase,
@@ -61,14 +64,10 @@ export class RunnerService {
     private readonly createId: () => string = randomUUID,
     private readonly secrets: RunnerSecrets = DEFAULT_SECRETS,
     private readonly offlineAfterMs: number = DEFAULT_OFFLINE_AFTER_MS,
-    private readonly hasActiveExecutions: (runnerId: string) => boolean = () =>
-      false,
+    private readonly hasActiveExecutions: (runnerId: string) => boolean = () => false,
   ) {
-    this.authorizations = new RunnerAuthorizationRequests(
-      db,
-      now,
-      createId,
-      () => secrets.credential(),
+    this.authorizations = new RunnerAuthorizationRequests(db, now, createId, () =>
+      secrets.credential(),
     );
   }
 
@@ -97,9 +96,7 @@ export class RunnerService {
   }
 
   pair(codeInput: string, nameInput: string): RunnerPairingResult {
-    const parsedCode = PairingCodeSchema.safeParse(
-      codeInput.trim().toUpperCase(),
-    );
+    const parsedCode = PairingCodeSchema.safeParse(codeInput.trim().toUpperCase());
     const name = RunnerNameSchema.parse(nameInput);
     if (!parsedCode.success) throw invalidPairingCode();
     const codeHash = hashSecret(parsedCode.data);
@@ -111,11 +108,7 @@ export class RunnerService {
         codeHash,
       ) as PairingCodeRow | undefined;
       const now = this.now();
-      if (
-        !pairing ||
-        pairing.used_at ||
-        Date.parse(pairing.expires_at) <= now.getTime()
-      )
+      if (!pairing || pairing.used_at || Date.parse(pairing.expires_at) <= now.getTime())
         throw invalidPairingCode();
       const use = this.db.run(
         `UPDATE platform_runner_pairing_code SET used_at = ?
@@ -124,9 +117,7 @@ export class RunnerService {
       );
       if (use.changes !== 1) throw invalidPairingCode();
 
-      const credential = RunnerCredentialSchema.parse(
-        this.secrets.credential(),
-      );
+      const credential = RunnerCredentialSchema.parse(this.secrets.credential());
       const runnerId = this.createId();
       const stored = this.db.get<RunnerRow>(
         `INSERT INTO platform_runner(
@@ -198,11 +189,7 @@ export class RunnerService {
       });
   }
 
-  revokeRunner(
-    ownerUserId: string,
-    runnerId: string,
-    expectedVersion: number,
-  ): Runner {
+  revokeRunner(ownerUserId: string, runnerId: string, expectedVersion: number): Runner {
     return this.setRevoked(ownerUserId, runnerId, expectedVersion, true);
   }
 
@@ -234,10 +221,7 @@ export class RunnerService {
       if (row.version !== expectedVersion)
         throw new PlatformError('STALE_STATE', 'Agent 已更新，请刷新后重试');
       if (revoke && this.hasActiveExecutions(runnerId))
-        throw new PlatformError(
-          'RESOURCE_CONFLICT',
-          'Agent 仍有活动执行，暂时不能停用',
-        );
+        throw new PlatformError('RESOURCE_CONFLICT', 'Agent 仍有活动执行，暂时不能停用');
       const revokedAt = revoke ? this.now().toISOString() : null;
       const updated = this.db.get<RunnerRow>(
         `UPDATE platform_runner
@@ -252,8 +236,7 @@ export class RunnerService {
         ownerUserId,
         expectedVersion,
       );
-      if (!updated)
-        throw new PlatformError('STALE_STATE', 'Agent 已更新，请刷新后重试');
+      if (!updated) throw new PlatformError('STALE_STATE', 'Agent 已更新，请刷新后重试');
       return mapRunner(updated);
     })();
   }

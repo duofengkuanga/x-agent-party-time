@@ -1,9 +1,6 @@
 import { z } from 'zod';
 import { UserSchema } from '@/platform/auth/contract';
-import {
-  RunnerIdSchema,
-  RunnerSchema,
-} from '@agent-party-time/runner-contract';
+import { RunnerIdSchema, RunnerSchema } from '@agent-party-time/runner-contract';
 import { EngineeringIdSchema } from '@/cooking/engineering/contract';
 
 export const BindingIdSchema = z.uuid();
@@ -35,7 +32,5 @@ export const BindingRequestSchema = z.object({
 });
 
 export type EngineeringBinding = z.infer<typeof EngineeringBindingSchema>;
-export type EngineeringBindingSummary = z.infer<
-  typeof EngineeringBindingSummarySchema
->;
+export type EngineeringBindingSummary = z.infer<typeof EngineeringBindingSummarySchema>;
 export type BindingRequest = z.infer<typeof BindingRequestSchema>;

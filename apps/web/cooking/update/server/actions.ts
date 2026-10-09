@@ -31,9 +31,7 @@ export async function retryUpdateAction(
   batchId: string,
   input: RetryUpdateInput,
 ): Promise<UpdateActionResult> {
-  return runUpdateAction((userId) =>
-    updateService().retryUpdate(userId, batchId, input),
-  );
+  return runUpdateAction((userId) => updateService().retryUpdate(userId, batchId, input));
 }
 
 export async function synchronizeUpdateSessionAction(
@@ -74,11 +72,7 @@ export async function reportExternalDeploymentAction(
               attachmentIds,
             };
       return {
-        result: updateService().reportExternalDeployment(
-          userId,
-          batchId,
-          input,
-        ),
+        result: updateService().reportExternalDeployment(userId, batchId, input),
         boundFileIds: attachmentIds,
         refreshPaths: ['/cooking'],
       };
@@ -95,6 +89,4 @@ export async function resolveUpdateInteractionAction(
   );
 }
 
-const runUpdateAction = cookingMutationAction(
-  'cooking_update_action_validation_failed',
-);
+const runUpdateAction = cookingMutationAction('cooking_update_action_validation_failed');

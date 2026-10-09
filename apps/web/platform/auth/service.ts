@@ -80,8 +80,7 @@ export class AuthService {
          WHERE username = ? COLLATE NOCASE`,
       parsedUsername.data,
     ) as UserRow | undefined;
-    if (!row || !(await verifyPassword(password, row.password_hash)))
-      return null;
+    if (!row || !(await verifyPassword(password, row.password_hash))) return null;
     return mapUser(row);
   }
 
@@ -130,9 +129,7 @@ export class AuthService {
 
   revokeSession(token: string | undefined): void {
     if (!token) return;
-    this.db.run('DELETE FROM platform_session WHERE token_hash = ?', [
-      hashToken(token),
-    ]);
+    this.db.run('DELETE FROM platform_session WHERE token_hash = ?', [hashToken(token)]);
   }
 }
 

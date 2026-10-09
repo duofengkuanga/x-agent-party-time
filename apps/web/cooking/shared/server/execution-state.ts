@@ -1,20 +1,14 @@
 import { PlatformError } from '@/platform/errors';
 import type { Execution } from '@agent-party-time/execution-contract';
 
-export function requireTaskSkillBinding(
-  execution: Execution,
-  task: '修复' | '更新',
-) {
+export function requireTaskSkillBinding(execution: Execution, task: '修复' | '更新') {
   const binding =
     execution.codexTurn?.kind === 'CONTINUATION' ||
     execution.codexTurn?.kind === 'INITIAL'
       ? execution.codexTurn.taskSkillBinding
       : null;
   if (!binding)
-    throw new PlatformError(
-      'INVALID_TRANSITION',
-      `原${task}任务缺少规则关联，不能继续`,
-    );
+    throw new PlatformError('INVALID_TRANSITION', `原${task}任务缺少规则关联，不能继续`);
   return binding;
 }
 

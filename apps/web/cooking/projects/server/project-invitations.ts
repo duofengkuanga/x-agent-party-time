@@ -51,15 +51,13 @@ export class ProjectInvitations {
           'SELECT id FROM platform_user WHERE username = ? COLLATE NOCASE',
           username,
         ) as { id: string } | undefined;
-        if (!user)
-          throw new PlatformError('VALIDATION_FAILED', '邀请用户不存在');
+        if (!user) throw new PlatformError('VALIDATION_FAILED', '邀请用户不存在');
         const member = this.db.get(
           'SELECT 1 present FROM cooking_project_membership WHERE project_id = ? AND user_id = ?',
           projectId,
           user.id,
         );
-        if (member)
-          throw new PlatformError('RESOURCE_CONFLICT', '该用户已经是项目成员');
+        if (member) throw new PlatformError('RESOURCE_CONFLICT', '该用户已经是项目成员');
         const pending = this.db.get(
           `SELECT * FROM cooking_project_invitation
            WHERE project_id = ? AND invited_user_id = ? AND status = 'PENDING'`,
@@ -82,10 +80,7 @@ export class ProjectInvitations {
     });
   }
 
-  listProjectInvitations(
-    userId: string,
-    projectId: string,
-  ): ProjectInvitationDetail[] {
+  listProjectInvitations(userId: string, projectId: string): ProjectInvitationDetail[] {
     this.requireOwner(userId, projectId);
     return this.db
       .all(
@@ -195,17 +190,12 @@ export class ProjectInvitations {
           if (row.status !== targetStatus)
             throw new PlatformError(
               'INVALID_TRANSITION',
-              decision === 'REVOKE'
-                ? '邀请已完成，无法撤销'
-                : '邀请已完成其他处理',
+              decision === 'REVOKE' ? '邀请已完成，无法撤销' : '邀请已完成其他处理',
             );
           return { result: mapInvitation(row), resourceId: invitationId };
         }
         if (row.version !== input.expectedVersion)
-          throw new PlatformError(
-            'STALE_STATE',
-            '邀请状态已更新，请刷新后重试',
-          );
+          throw new PlatformError('STALE_STATE', '邀请状态已更新，请刷新后重试');
         const respondedAt = this.now().toISOString();
         const updated = this.db.get<InvitationRow>(
           `UPDATE cooking_project_invitation
@@ -217,10 +207,7 @@ export class ProjectInvitations {
           input.expectedVersion,
         );
         if (!updated)
-          throw new PlatformError(
-            'STALE_STATE',
-            '邀请状态已更新，请刷新后重试',
-          );
+          throw new PlatformError('STALE_STATE', '邀请状态已更新，请刷新后重试');
         if (decision === 'ACCEPT')
           this.db.run(
             `INSERT OR IGNORE INTO cooking_project_membership(

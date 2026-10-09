@@ -25,8 +25,7 @@ export class BugDeletion {
           }>('SELECT id FROM cooking_bug ORDER BY id')
           .map(({ id }) => id)
       : [...new Set(parsed.bugIds!)];
-    if (bugIds.length === 0)
-      throw new PlatformError('NOT_FOUND', '没有可删除的缺陷');
+    if (bugIds.length === 0) throw new PlatformError('NOT_FOUND', '没有可删除的缺陷');
     const bugs = bugIds.map((bugId) => this.requireBug(bugId));
     const batchIds = this.updateBatchIds(bugIds);
     const executionIds = this.bugExecutionIds(bugIds, batchIds);
@@ -187,8 +186,7 @@ export class BugDeletion {
     const submissionIds = [...new Set(bugs.map((bug) => bug.submissionId))];
     for (const submissionId of submissionIds) {
       const revision = this.writes.bumpActiveRevision(submissionId, now);
-      if (revision !== null)
-        this.writes.publishInvalidation(submissionId, revision);
+      if (revision !== null) this.writes.publishInvalidation(submissionId, revision);
     }
   }
 }

@@ -1,8 +1,7 @@
 export type ProjectSettingsPanel =
   'invitations' | 'project' | 'collaboration' | 'engineering';
 
-export type EngineeringSettingsMode =
-  'members' | 'environments' | 'information';
+export type EngineeringSettingsMode = 'members' | 'environments' | 'information';
 
 export type ProjectSettingsRoute = {
   projectId?: string;
@@ -63,8 +62,7 @@ export function normalizeProjectSettingsRoute(
     return project.owner
       ? compactRoute({ ...parent, engineeringId: 'new' })
       : compactRoute(parent);
-  if (!access.engineeringIds?.includes(route.engineeringId))
-    return compactRoute(parent);
+  if (!access.engineeringIds?.includes(route.engineeringId)) return compactRoute(parent);
 
   const detail = { ...parent, engineeringId: route.engineeringId };
   if (!route.mode) {
@@ -73,8 +71,7 @@ export function normalizeProjectSettingsRoute(
       bindingRequestId: route.bindingRequestId,
     });
   }
-  if (!project.owner || !isEngineeringMode(route.mode))
-    return compactRoute(detail);
+  if (!project.owner || !isEngineeringMode(route.mode)) return compactRoute(detail);
   return compactRoute({ ...detail, mode: route.mode });
 }
 
@@ -91,8 +88,7 @@ export function projectSettingsPath(route: ProjectSettingsRoute): string {
   if (route.panel) search.set('panel', route.panel);
   if (route.engineeringId) search.set('engineering', route.engineeringId);
   if (route.mode) search.set('mode', route.mode);
-  if (route.bindingRequestId)
-    search.set('bindingRequest', route.bindingRequestId);
+  if (route.bindingRequestId) search.set('bindingRequest', route.bindingRequestId);
   if (route.error) search.set('error', route.error);
   if (route.success) search.set('success', route.success);
   const query = search.toString();
@@ -162,10 +158,6 @@ function isPanel(value: string | undefined): value is ProjectSettingsPanel {
   );
 }
 
-function isEngineeringMode(
-  value: string | undefined,
-): value is EngineeringSettingsMode {
-  return (
-    value === 'members' || value === 'environments' || value === 'information'
-  );
+function isEngineeringMode(value: string | undefined): value is EngineeringSettingsMode {
+  return value === 'members' || value === 'environments' || value === 'information';
 }

@@ -65,9 +65,7 @@ function deriveBugProgress(
         },
       ];
       const updateNodes = updates.updateBatches
-        .filter((batch) =>
-          batch.entries.some((entry) => entry.bugId === bug.id),
-        )
+        .filter((batch) => batch.entries.some((entry) => entry.bugId === bug.id))
         .map((batch) => ({
           id: `update-batch:${batch.id}:${bug.id}`,
           kind: 'UPDATE_BATCH' as const,
@@ -78,15 +76,16 @@ function deriveBugProgress(
           visual: batch.presentation.visual,
           occurredAt: batch.frozenAt,
         }));
-      const verificationNodes = (
-        lifecycle.verificationsByBug[bug.id] ?? []
-      ).map((verification) => ({
-        ...verification,
-        kind: 'VERIFICATION' as const,
-      }));
-      const reopenNodes = (lifecycle.reopensByBug[bug.id] ?? []).map(
-        (reopen) => ({ ...reopen, kind: 'REOPEN' as const }),
+      const verificationNodes = (lifecycle.verificationsByBug[bug.id] ?? []).map(
+        (verification) => ({
+          ...verification,
+          kind: 'VERIFICATION' as const,
+        }),
       );
+      const reopenNodes = (lifecycle.reopensByBug[bug.id] ?? []).map((reopen) => ({
+        ...reopen,
+        kind: 'REOPEN' as const,
+      }));
       const transitionNodes = lifecycle.transitionsByBug[bug.id] ?? [];
       const timeline: BugProgressTimelineNode[] = [
         ...repairTimeline,

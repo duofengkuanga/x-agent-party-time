@@ -20,28 +20,15 @@ test('launchctl Adapter 只操作当前用户 domain 和明确 Label', async () 
       '/tmp/com.agentpartytime.xapt.daemon.plist',
     ],
     ['/bin/launchctl', 'kickstart', 'gui/501/com.agentpartytime.xapt.daemon'],
-    [
-      '/bin/launchctl',
-      'kill',
-      'SIGTERM',
-      'gui/501/com.agentpartytime.xapt.daemon',
-    ],
-    [
-      '/bin/launchctl',
-      'bootout',
-      'gui/501',
-      '/tmp/com.agentpartytime.xapt.daemon.plist',
-    ],
+    ['/bin/launchctl', 'kill', 'SIGTERM', 'gui/501/com.agentpartytime.xapt.daemon'],
+    ['/bin/launchctl', 'bootout', 'gui/501', '/tmp/com.agentpartytime.xapt.daemon.plist'],
   ]);
 });
 
 class RecordingCommands implements CommandRunner {
   readonly calls: string[][] = [];
 
-  async run(
-    executable: string,
-    args: readonly string[],
-  ): Promise<CommandResult> {
+  async run(executable: string, args: readonly string[]): Promise<CommandResult> {
     this.calls.push([executable, ...args]);
     return { exitCode: 0, stdout: '', stderr: '' };
   }

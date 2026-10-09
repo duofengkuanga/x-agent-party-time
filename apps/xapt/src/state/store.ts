@@ -71,10 +71,7 @@ export class LocalStateStore {
   }
 
   async saveConnection(value: ConnectionState): Promise<void> {
-    await this.writeState(
-      this.paths.connection,
-      ConnectionStateSchema.parse(value),
-    );
+    await this.writeState(this.paths.connection, ConnectionStateSchema.parse(value));
   }
 
   async loadConnection(): Promise<ConnectionState | null> {
@@ -146,9 +143,7 @@ export class LocalStateStore {
   }
 
   async resolveBinding(bindingId: string): Promise<string | null> {
-    return (
-      (await this.loadBindings()).bindings[bindingId]?.repositoryPath ?? null
-    );
+    return (await this.loadBindings()).bindings[bindingId]?.repositoryPath ?? null;
   }
 
   async saveExecution(value: ExecutionRecoveryState): Promise<void> {
@@ -180,10 +175,7 @@ export class LocalStateStore {
       executionId,
       baseline,
     });
-    await this.writeState(
-      join(this.paths.resultBaselines, `${executionId}.json`),
-      value,
-    );
+    await this.writeState(join(this.paths.resultBaselines, `${executionId}.json`), value);
   }
 
   async loadExecutionResultBaseline(
@@ -223,10 +215,7 @@ export class LocalStateStore {
   }
 
   async saveInstall(value: InstallState): Promise<void> {
-    await this.writeState(
-      this.paths.installState,
-      InstallStateSchema.parse(value),
-    );
+    await this.writeState(this.paths.installState, InstallStateSchema.parse(value));
   }
 
   async loadInstall(): Promise<InstallState | null> {
@@ -239,8 +228,7 @@ export class LocalStateStore {
   }
 
   async preflight(): Promise<void> {
-    for (const path of this.stateDirectories())
-      await this.requirePrivateDirectory(path);
+    for (const path of this.stateDirectories()) await this.requirePrivateDirectory(path);
     await this.readState(
       this.paths.identity,
       IdentityStateSchema,
@@ -367,11 +355,7 @@ export class LocalStateStore {
 
   private async requirePrivateDirectory(path: string): Promise<void> {
     const info = await this.files.info(path);
-    if (
-      !info ||
-      info.type !== 'directory' ||
-      info.mode !== PRIVATE_DIRECTORY_MODE
-    )
+    if (!info || info.type !== 'directory' || info.mode !== PRIVATE_DIRECTORY_MODE)
       throw new LocalStateError('INSECURE_PERMISSIONS', basename(path));
   }
 }

@@ -1,12 +1,7 @@
 import { spawn } from 'node:child_process';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
-import type {
-  Clock,
-  CommandResult,
-  CommandRunner,
-  UserEnvironment,
-} from './contracts';
+import type { Clock, CommandResult, CommandRunner, UserEnvironment } from './contracts';
 
 export class SystemClock implements Clock {
   now(): Date {

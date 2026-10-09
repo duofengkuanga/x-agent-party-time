@@ -66,8 +66,7 @@ function classifyUnexpectedError(error: unknown): {
       category: 'STORAGE',
       sqliteErrno,
       status: 500,
-      message:
-        '服务无法读写所需数据。请提供诊断编号联系维护者检查存储空间和访问权限。',
+      message: '服务无法读写所需数据。请提供诊断编号联系维护者检查存储空间和访问权限。',
     };
   return {
     category: 'UNKNOWN',

@@ -46,9 +46,7 @@ export async function mirrorIgnoredRepositoryContents(
     await appendFile(excludePath, `\n${additions.join('\n')}\n`, 'utf8');
 }
 
-async function ignoredRepositoryEntries(
-  repositoryPath: string,
-): Promise<string[]> {
+async function ignoredRepositoryEntries(repositoryPath: string): Promise<string[]> {
   const value = await git(repositoryPath, [
     'ls-files',
     '--others',

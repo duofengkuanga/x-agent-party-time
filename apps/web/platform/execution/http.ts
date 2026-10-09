@@ -35,11 +35,7 @@ export async function handleExecutionClaim(
     const body = ExecutionClaimRequestSchema.parse(await request.json());
     prepare();
     return {
-      executions: await executions.claim(
-        runner.id,
-        body.availableSlots,
-        body.waitMs,
-      ),
+      executions: await executions.claim(runner.id, body.availableSlots, body.waitMs),
     };
   });
 }
@@ -132,14 +128,8 @@ export async function handleExecutionFile(
   try {
     const runner = runners.authenticateCredential(bearerCredential(request));
     const leaseToken = request.headers.get('x-execution-lease-token');
-    if (!leaseToken)
-      throw new PlatformError('LEASE_EXPIRED', '任务领取凭据已失效');
-    const allowed = executions.authorizeFile(
-      runner.id,
-      executionId,
-      leaseToken,
-      fileId,
-    );
+    if (!leaseToken) throw new PlatformError('LEASE_EXPIRED', '任务领取凭据已失效');
+    const allowed = executions.authorizeFile(runner.id, executionId, leaseToken, fileId);
     const stored = await files.read(fileId);
     if (
       stored.file.sha256 !== allowed.sha256 ||

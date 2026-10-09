@@ -5,36 +5,26 @@ import type {
   CookingInteractionView,
   CookingVisualPresentation,
 } from '@/cooking/shared/contract';
-import {
-  interactionVisual,
-  queueVisual,
-} from '@/cooking/shared/server/execution-visual';
+import { interactionVisual, queueVisual } from '@/cooking/shared/server/execution-visual';
 import type { BatchRow, AttemptRow } from './records';
 
 export function parseManualOperations(value: string) {
   return parseStoredManualOperations(value, '更新批次的人工操作记录无效');
 }
 
-export function projectUpdateAttemptResult(
-  outcomeJson: string,
-  technical: boolean,
-) {
+export function projectUpdateAttemptResult(outcomeJson: string, technical: boolean) {
   const outcome = JSON.parse(outcomeJson) as Record<string, unknown>;
   if (outcome.outcome === 'COMPLETED' || outcome.outcome === 'PUSHED')
     return {
       outcome: outcome.outcome,
       completedActions: stringArray(outcome.completedActions),
-      validations: Array.isArray(outcome.validations)
-        ? outcome.validations
-        : [],
+      validations: Array.isArray(outcome.validations) ? outcome.validations : [],
       warnings: stringArray(outcome.warnings),
     };
   return {
     outcome: 'FAILED' as const,
     failedStep:
-      typeof outcome.failedStep === 'string'
-        ? outcome.failedStep
-        : '执行统一更新',
+      typeof outcome.failedStep === 'string' ? outcome.failedStep : '执行统一更新',
     reason:
       !technical &&
       typeof outcome.technicalFailure === 'string' &&
@@ -62,8 +52,7 @@ function stringArray(value: unknown): string[] {
 
 export function isUpdateExecution(execution: Execution): boolean {
   return (
-    execution.owner.namespace === 'cooking' &&
-    execution.owner.kind === 'UPDATE_BATCH'
+    execution.owner.namespace === 'cooking' && execution.owner.kind === 'UPDATE_BATCH'
   );
 }
 
@@ -85,12 +74,7 @@ export function updateVisual(
   idleLabel: string,
   queue: { state: Execution['state']; aheadCount: number } | undefined,
 ): CookingVisualPresentation {
-  const interaction = interactionVisual(
-    interactions,
-    latest?.state,
-    responsible,
-    '更新',
-  );
+  const interaction = interactionVisual(interactions, latest?.state, responsible, '更新');
   if (interaction) return interaction;
   if (batch.state === 'FAILED' || latest?.state === 'FAILED')
     return { state: 'FAILED', label: '统一更新未完成', symbol: '×' };
@@ -106,8 +90,7 @@ export function updateVisual(
   )
     return {
       state: 'WAITING_TO_RESUME',
-      label:
-        batch.state === 'WAITING_EXTERNAL' ? '等待部署结果' : '等待重新处理',
+      label: batch.state === 'WAITING_EXTERNAL' ? '等待部署结果' : '等待重新处理',
       symbol: 'Ⅱ',
     };
   return { state: 'IDLE', label: idleLabel, symbol: '·' };

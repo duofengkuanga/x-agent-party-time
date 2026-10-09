@@ -44,9 +44,7 @@ function requireDisjointAttachments(
   context: z.RefinementCtx,
 ): void {
   const actualIds = new Set(groups.actualResultAttachmentIds);
-  if (
-    groups.expectedResultAttachmentIds.some((fileId) => actualIds.has(fileId))
-  )
+  if (groups.expectedResultAttachmentIds.some((fileId) => actualIds.has(fileId)))
     context.addIssue({
       code: 'custom',
       message: '同一附件不能同时属于实际结果和预期结果',
@@ -166,9 +164,7 @@ export type CreateBugInput = z.infer<typeof CreateBugInputSchema>;
 export type UpdateBugReportInput = z.infer<typeof UpdateBugReportInputSchema>;
 export type AssignBugInput = z.infer<typeof AssignBugInputSchema>;
 export type RequestRepairInput = z.infer<typeof RequestRepairInputSchema>;
-export type BugWorkspaceProjection = z.infer<
-  typeof BugWorkspaceProjectionSchema
->;
+export type BugWorkspaceProjection = z.infer<typeof BugWorkspaceProjectionSchema>;
 export type BugMutationResult = z.infer<typeof BugMutationResultSchema>;
 
 export const BugDeleteRequestSchema = z

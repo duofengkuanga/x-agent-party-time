@@ -1,9 +1,6 @@
 import { z } from 'zod';
 import { CookingWorkspaceSnapshotSchema as SubmissionWorkspaceSnapshotSchema } from '@/cooking/submissions/contract';
-import {
-  BugWorkspaceProjectionSchema,
-  BugIdSchema,
-} from '@/cooking/bugs/contract';
+import { BugWorkspaceProjectionSchema, BugIdSchema } from '@/cooking/bugs/contract';
 import {
   RepairTimelineNodeSchema,
   RepairWorkspaceProjectionSchema,
@@ -39,22 +36,16 @@ export const BugProgressTimelineNodeSchema = z.union([
   BugLifecycleTransitionViewSchema,
 ]);
 
-export const CookingWorkspaceSnapshotSchema =
-  SubmissionWorkspaceSnapshotSchema.extend(BugWorkspaceProjectionSchema.shape)
-    .extend(RepairWorkspaceProjectionSchema.shape)
-    .extend(UpdateWorkspaceProjectionSchema.shape)
-    .extend(LifecycleWorkspaceProjectionSchema.shape)
-    .extend({
-      visualByBug: z.record(BugIdSchema, CookingVisualPresentationSchema),
-      progressByBug: z.record(
-        BugIdSchema,
-        z.array(BugProgressTimelineNodeSchema),
-      ),
-    });
+export const CookingWorkspaceSnapshotSchema = SubmissionWorkspaceSnapshotSchema.extend(
+  BugWorkspaceProjectionSchema.shape,
+)
+  .extend(RepairWorkspaceProjectionSchema.shape)
+  .extend(UpdateWorkspaceProjectionSchema.shape)
+  .extend(LifecycleWorkspaceProjectionSchema.shape)
+  .extend({
+    visualByBug: z.record(BugIdSchema, CookingVisualPresentationSchema),
+    progressByBug: z.record(BugIdSchema, z.array(BugProgressTimelineNodeSchema)),
+  });
 
-export type CookingWorkspaceSnapshot = z.infer<
-  typeof CookingWorkspaceSnapshotSchema
->;
-export type BugProgressTimelineNode = z.infer<
-  typeof BugProgressTimelineNodeSchema
->;
+export type CookingWorkspaceSnapshot = z.infer<typeof CookingWorkspaceSnapshotSchema>;
+export type BugProgressTimelineNode = z.infer<typeof BugProgressTimelineNodeSchema>;

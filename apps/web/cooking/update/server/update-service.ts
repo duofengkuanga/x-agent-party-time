@@ -40,13 +40,13 @@ export class UpdateService {
     this.queries.batchView(...args);
   readonly requireExternalAttachmentAccess: UpdateQueries['requireExternalAttachmentAccess'] =
     (...args) => this.queries.requireExternalAttachmentAccess(...args);
-  readonly recordCandidateAvailable: UpdateDelivery['recordCandidateAvailable'] =
-    (...args) => this.delivery.recordCandidateAvailable(...args);
+  readonly recordCandidateAvailable: UpdateDelivery['recordCandidateAvailable'] = (
+    ...args
+  ) => this.delivery.recordCandidateAvailable(...args);
   readonly recalculatePendingDeliveryForBug: UpdateDelivery['recalculatePendingDeliveryForBug'] =
     (...args) => this.delivery.recalculatePendingDeliveryForBug(...args);
-  readonly prepareDueExecutions: UpdateDelivery['prepareDueExecutions'] = (
-    ...args
-  ) => this.delivery.prepareDueExecutions(...args);
+  readonly prepareDueExecutions: UpdateDelivery['prepareDueExecutions'] = (...args) =>
+    this.delivery.prepareDueExecutions(...args);
 
   constructor(
     private readonly db: AppDatabase,
@@ -56,12 +56,7 @@ export class UpdateService {
     onInvalidated: (submissionId: string, revision: number) => void = () => {},
   ) {
     this.queries = new UpdateQueries(db, executions);
-    this.writes = new TestSubmissionWriteStore(
-      db,
-      now,
-      createId,
-      onInvalidated,
-    );
+    this.writes = new TestSubmissionWriteStore(db, now, createId, onInvalidated);
     this.delivery = new UpdateDelivery(
       db,
       executions,
@@ -70,13 +65,7 @@ export class UpdateService {
       now,
       createId,
     );
-    this.projection = new UpdateProjection(
-      db,
-      this.queries,
-      this.writes,
-      now,
-      createId,
-    );
+    this.projection = new UpdateProjection(db, this.queries, this.writes, now, createId);
   }
 
   freezeNow(
@@ -91,18 +80,14 @@ export class UpdateService {
       operation: 'UPDATE_BATCH_FREEZE',
       resourceType: 'UPDATE_BATCH',
       resultSchema: UpdateMutationResultSchema,
-      submissionId: () =>
-        this.queries.itemSource(submissionItemId).submission_id,
+      submissionId: () => this.queries.itemSource(submissionItemId).submission_id,
       perform: () => {
         const source = this.requireResponsible(actorUserId, submissionItemId);
         DeploymentMethodSchema.parse(JSON.parse(source.deployment_json));
         const now = this.now().toISOString();
         const frozen = this.delivery.freezeItem(submissionItemId, now, false);
         if (!frozen)
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '当前没有可以冻结的待更新缺陷',
-          );
+          throw new PlatformError('INVALID_TRANSITION', '当前没有可以冻结的待更新缺陷');
         return {
           result: {
             batchId: frozen.batchId,
@@ -138,10 +123,7 @@ export class UpdateService {
         const batch = this.requireBatchResponsible(actorUserId, batchId);
         this.requireBatchVersion(batch, input.expectedVersion);
         if (batch.state !== 'FAILED')
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '只有失败的更新批次可以重新执行',
-          );
+          throw new PlatformError('INVALID_TRANSITION', '只有失败的更新批次可以重新执行');
         const { executionId, revision } = this.delivery.retryFailedBatch(
           batch,
           input.expectedVersion,
@@ -187,10 +169,7 @@ export class UpdateService {
           !isTerminal(latest.state) ||
           !batch.session_id
         )
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '当前没有可同步的失败更新会话',
-          );
+          throw new PlatformError('INVALID_TRANSITION', '当前没有可同步的失败更新会话');
         if (this.queries.hasActiveSessionSync(batchId))
           throw new PlatformError('RESOURCE_CONFLICT', '更新会话正在同步');
         const source = batch.source;
@@ -269,10 +248,7 @@ export class UpdateService {
             '只有 CI/CD 更新批次需要外部结果',
           );
         if (batch.state !== 'WAITING_EXTERNAL')
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '当前更新批次不在等待外部结果',
-          );
+          throw new PlatformError('INVALID_TRANSITION', '当前更新批次不在等待外部结果');
         requireBindableFiles(this.db, actorUserId, input.attachmentIds);
         const now = this.now().toISOString();
         const reportId = this.createId();
@@ -352,10 +328,7 @@ export class UpdateService {
       resultSchema: UpdateMutationResultSchema,
       submissionId: () => this.queries.batch(source.batch_id).submission_id,
       perform: () => {
-        const batch = this.requireBatchResponsible(
-          actorUserId,
-          source.batch_id,
-        );
+        const batch = this.requireBatchResponsible(actorUserId, source.batch_id);
         this.requireBatchVersion(batch, input.expectedVersion);
         if (batch.state !== 'RUNNING')
           throw new PlatformError('INVALID_TRANSITION', '更新批次不在运行中');
@@ -387,17 +360,11 @@ export class UpdateService {
     });
   }
 
-  private requireResponsible(
-    userId: string,
-    submissionItemId: string,
-  ): ItemSourceRow {
+  private requireResponsible(userId: string, submissionItemId: string): ItemSourceRow {
     const source = this.queries.itemSource(submissionItemId);
     requireSubmissionAccess(this.db, userId, source.submission_id);
     if (source.responsible_user_id !== userId)
-      throw new PlatformError(
-        'PERMISSION_DENIED',
-        '只有该工程负责人可以操作更新批次',
-      );
+      throw new PlatformError('PERMISSION_DENIED', '只有该工程负责人可以操作更新批次');
     if (source.submission_status !== 'ACTIVE')
       throw new PlatformError('INVALID_TRANSITION', '已关闭提测单不能更新');
     requireEnvironment(this.db, submissionItemId);

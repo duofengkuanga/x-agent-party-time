@@ -14,10 +14,7 @@ import {
 import { ExecutionService } from '@/platform/execution/service';
 import type { ExecutionResultAssertion } from '@agent-party-time/execution-contract';
 import { randomUUID } from 'node:crypto';
-import {
-  buildInitialRepairBrief,
-  buildRepairContinuationInput,
-} from '../brief';
+import { buildInitialRepairBrief, buildRepairContinuationInput } from '../brief';
 import {
   ContinueRepairInputSchema,
   RepairMutationResultSchema,
@@ -74,12 +71,7 @@ export class RepairService {
     ),
   ) {
     this.queries = new RepairQueries(db, executions);
-    this.writes = new TestSubmissionWriteStore(
-      db,
-      now,
-      createId,
-      onInvalidated,
-    );
+    this.writes = new TestSubmissionWriteStore(db, now, createId, onInvalidated);
     this.projection = new RepairProjection(
       db,
       this.queries,
@@ -93,9 +85,7 @@ export class RepairService {
   createInitialExecution(bugId: string): string {
     const repairContext = this.bugContexts.get(bugId);
     const existingContext = this.queries.context(bugId);
-    const latest = existingContext
-      ? this.queries.latestAttempt(bugId)
-      : undefined;
+    const latest = existingContext ? this.queries.latestAttempt(bugId) : undefined;
     if (latest && !isTerminal(latest.state))
       throw new PlatformError('RESOURCE_CONFLICT', '该缺陷已有正在进行的修复');
     const now = this.now().toISOString();
@@ -119,13 +109,11 @@ export class RepairService {
       actualResult: repairContext.report.actualResult,
       expectedResult: repairContext.report.expectedResult,
       attachments: [
-        ...repairContext.report.attachments.actualResult.map(
-          ({ id, originalName }) => ({
-            fileId: id,
-            originalName,
-            role: 'ACTUAL_RESULT' as const,
-          }),
-        ),
+        ...repairContext.report.attachments.actualResult.map(({ id, originalName }) => ({
+          fileId: id,
+          originalName,
+          role: 'ACTUAL_RESULT' as const,
+        })),
         ...repairContext.report.attachments.expectedResult.map(
           ({ id, originalName }) => ({
             fileId: id,
@@ -188,10 +176,7 @@ export class RepairService {
     const attemptId = this.createId();
     const executionId = this.createId();
     if (!context.session_id)
-      throw new PlatformError(
-        'INVALID_TRANSITION',
-        '原修复任务不存在，不能自动重建',
-      );
+      throw new PlatformError('INVALID_TRANSITION', '原修复任务不存在，不能自动重建');
     const previousExecution = this.executions.get(latest.execution_id);
     const codexTurn = createContinuationCodexTurn({
       taskId: context.session_id,
@@ -247,10 +232,7 @@ export class RepairService {
         const source = this.requireResponsible(actorUserId, bugId);
         this.requireActiveVersion(source, input.expectedVersion);
         if (source.stage !== 'REPAIRING')
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '仅未完成的修复可以重新执行',
-          );
+          throw new PlatformError('INVALID_TRANSITION', '仅未完成的修复可以重新执行');
         const latest = this.queries.latestAttempt(bugId);
         if (
           !latest ||
@@ -258,10 +240,7 @@ export class RepairService {
           !latest.outcome_json ||
           !isFailedAttemptOutcome(latest.outcome_json)
         )
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '当前没有可重新执行的失败修复',
-          );
+          throw new PlatformError('INVALID_TRANSITION', '当前没有可重新执行的失败修复');
         const now = this.now().toISOString();
         const executionId = this.createContinuationExecution(bugId);
         const update = this.db.run(
@@ -317,10 +296,7 @@ export class RepairService {
           !isFailedAttemptOutcome(latest.outcome_json) ||
           !context.session_id
         )
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '当前没有可同步的失败修复会话',
-          );
+          throw new PlatformError('INVALID_TRANSITION', '当前没有可同步的失败修复会话');
         if (this.queries.hasActiveSessionSync(bugId))
           throw new PlatformError('RESOURCE_CONFLICT', '修复会话正在同步');
         const previousExecution = this.executions.get(latest.execution_id);
@@ -425,17 +401,11 @@ export class RepairService {
     const source = this.queries.source(bugId);
     requireSubmissionAccess(this.db, userId, source.submission_id);
     if (source.responsible_user_id !== userId)
-      throw new PlatformError(
-        'PERMISSION_DENIED',
-        '只有该工程负责人可以处理修复执行',
-      );
+      throw new PlatformError('PERMISSION_DENIED', '只有该工程负责人可以处理修复执行');
     return source;
   }
 
-  private requireActiveVersion(
-    source: RepairSourceRow,
-    expectedVersion: number,
-  ): void {
+  private requireActiveVersion(source: RepairSourceRow, expectedVersion: number): void {
     if (source.submission_status !== 'ACTIVE')
       throw new PlatformError('INVALID_TRANSITION', '已关闭提测单不能修改');
     if (source.bug_version !== expectedVersion) throw staleRepair();

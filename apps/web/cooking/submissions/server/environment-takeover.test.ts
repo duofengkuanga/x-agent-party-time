@@ -1,11 +1,7 @@
 import { expectRowCount, testDatabases } from '@/testing/database';
 import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
-import {
-  createSubmission,
-  item,
-  submissionFixture,
-} from './submission-fixture';
+import { createSubmission, item, submissionFixture } from './submission-fixture';
 
 const setup = submissionFixture(testDatabases());
 
@@ -23,11 +19,7 @@ describe('环境使用权切换', () => {
       items: [front],
     };
     expect(() =>
-      fixture.service.createSubmission(
-        fixture.users.owner.id,
-        fixture.project.id,
-        input,
-      ),
+      fixture.service.createSubmission(fixture.users.owner.id, fixture.project.id, input),
     ).toThrow('所选环境');
     const conflicts = fixture.service.environmentConflicts(
       fixture.users.owner.id,
@@ -46,19 +38,15 @@ describe('环境使用权切换', () => {
       fixture.project.id,
       confirmed,
     );
-    expect(
-      fixture.events.map(({ submissionId }) => submissionId).sort(),
-    ).toEqual([next.id, original.id].sort());
-    const oldItems = fixture.service.getWorkspace(
-      fixture.users.owner.id,
-      original.id,
-    ).submission.items;
+    expect(fixture.events.map(({ submissionId }) => submissionId).sort()).toEqual(
+      [next.id, original.id].sort(),
+    );
+    const oldItems = fixture.service.getWorkspace(fixture.users.owner.id, original.id)
+      .submission.items;
     expect(oldItems[0]!.environmentAccess.owned).toBe(false);
     expect(oldItems[1]!.environmentAccess.owned).toBe(true);
-    const nextItem = fixture.service.getWorkspace(
-      fixture.users.developerA.id,
-      next.id,
-    ).submission.items[0]!;
+    const nextItem = fixture.service.getWorkspace(fixture.users.developerA.id, next.id)
+      .submission.items[0]!;
     expect(nextItem.environmentAccess).toMatchObject({
       owned: true,
       deploymentConfirmed: false,
@@ -73,10 +61,7 @@ describe('环境使用权切换', () => {
       ).id,
     ).toBe(next.id);
     expect(fixture.events).toHaveLength(eventCount);
-    expectRowCount(
-      fixture.database,
-      'cooking_submission_environment_lock',
-    ).toBe(2);
+    expectRowCount(fixture.database, 'cooking_submission_environment_lock').toBe(2);
     const competing = { ...confirmed, mutationId: randomUUID() };
     expect(() =>
       fixture.service.createSubmission(
@@ -93,18 +78,14 @@ describe('环境使用权切换', () => {
         action: 'CONFIRM_DEPLOYMENT',
       }),
     ).toThrow('只有对应工程负责人');
-    fixture.service.changeEnvironment(
-      fixture.users.developerA.id,
-      nextItem.id,
-      {
-        mutationId: randomUUID(),
-        expectedRevision: next.workspaceRevision,
-        action: 'CONFIRM_DEPLOYMENT',
-      },
-    );
+    fixture.service.changeEnvironment(fixture.users.developerA.id, nextItem.id, {
+      mutationId: randomUUID(),
+      expectedRevision: next.workspaceRevision,
+      action: 'CONFIRM_DEPLOYMENT',
+    });
     expect(
-      fixture.service.getWorkspace(fixture.users.tester.id, next.id).submission
-        .items[0]!.environmentAccess.deploymentConfirmed,
+      fixture.service.getWorkspace(fixture.users.tester.id, next.id).submission.items[0]!
+        .environmentAccess.deploymentConfirmed,
     ).toBe(true);
   });
 
@@ -133,11 +114,10 @@ describe('环境使用权切换', () => {
     }));
     const eventCount = fixture.events.length;
     expect(() =>
-      fixture.service.createSubmission(
-        fixture.users.owner.id,
-        fixture.project.id,
-        { ...input, environmentTakeovers: invalid },
-      ),
+      fixture.service.createSubmission(fixture.users.owner.id, fixture.project.id, {
+        ...input,
+        environmentTakeovers: invalid,
+      }),
     ).toThrow('环境使用情况已变化');
     expect(fixture.events).toHaveLength(eventCount);
     expectRowCount(fixture.database, 'cooking_test_submission').toBe(1);
@@ -176,11 +156,10 @@ describe('环境使用权切换', () => {
     );
     expect(conflicts[0]!.blockedReason).toContain('只有项目所有者');
     expect(() =>
-      fixture.service.createSubmission(
-        fixture.users.member.id,
-        fixture.project.id,
-        { ...input, environmentTakeovers: conflicts },
-      ),
+      fixture.service.createSubmission(fixture.users.member.id, fixture.project.id, {
+        ...input,
+        environmentTakeovers: conflicts,
+      }),
     ).toThrow('只有项目所有者');
     expect(() =>
       fixture.service.environmentConflicts(

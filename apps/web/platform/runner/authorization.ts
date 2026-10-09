@@ -72,10 +72,7 @@ export class RunnerAuthorizationRequests {
       recentSince,
     ) as { count: number };
     if (recent.count >= 100)
-      throw new PlatformError(
-        'RESOURCE_CONFLICT',
-        '授权请求过于频繁，请稍后重试',
-      );
+      throw new PlatformError('RESOURCE_CONFLICT', '授权请求过于频繁，请稍后重试');
     const duplicate = this.db.get(
       `SELECT COUNT(*) count
          FROM platform_runner_authorization_request
@@ -84,10 +81,7 @@ export class RunnerAuthorizationRequests {
       now.toISOString(),
     ) as { count: number };
     if (duplicate.count >= 3)
-      throw new PlatformError(
-        'RESOURCE_CONFLICT',
-        '这台 Agent 的待处理授权请求过多',
-      );
+      throw new PlatformError('RESOURCE_CONFLICT', '这台 Agent 的待处理授权请求过多');
     const requestId = randomBytes(24).toString('base64url');
     const expiresAt = new Date(now.getTime() + durationMs).toISOString();
     this.db.run(
@@ -126,10 +120,7 @@ export class RunnerAuthorizationRequests {
       [hashSecret(approvalToken), ownerUserId, requestId, ownerUserId],
     );
     if (update.changes !== 1)
-      throw new PlatformError(
-        'PERMISSION_DENIED',
-        '这台 Agent 已由其他账号处理',
-      );
+      throw new PlatformError('PERMISSION_DENIED', '这台 Agent 已由其他账号处理');
     return { ...view, approvalToken };
   }
 
@@ -217,8 +208,7 @@ export class RunnerAuthorizationRequests {
         });
       if (
         row.last_polled_at &&
-        now.getTime() - Date.parse(row.last_polled_at) <
-          MIN_AUTHORIZATION_POLL_MS
+        now.getTime() - Date.parse(row.last_polled_at) < MIN_AUTHORIZATION_POLL_MS
       )
         return RunnerAuthorizationClaimResponseSchema.parse({
           state: 'WAITING',
@@ -274,8 +264,7 @@ export class RunnerAuthorizationRequests {
         now.toISOString(),
         existing?.version ?? 0,
       );
-      if (!stored)
-        throw new PlatformError('STALE_STATE', 'Agent 已更新，请重试授权');
+      if (!stored) throw new PlatformError('STALE_STATE', 'Agent 已更新，请重试授权');
       const consumed = this.db.run(
         `UPDATE platform_runner_authorization_request
            SET state = 'CONSUMED', consumed_at = ?
@@ -300,8 +289,7 @@ export class RunnerAuthorizationRequests {
          FROM platform_runner_authorization_request WHERE id = ?`,
       requestId,
     ) as AuthorizationRequestRow | undefined;
-    if (!row)
-      throw new PlatformError('NOT_FOUND', 'Agent 授权请求不存在或已失效');
+    if (!row) throw new PlatformError('NOT_FOUND', 'Agent 授权请求不存在或已失效');
     return row;
   }
 
@@ -310,10 +298,7 @@ export class RunnerAuthorizationRequests {
     ownerUserId: string,
     approvalToken: string,
   ): void {
-    if (
-      row.state !== 'PENDING' ||
-      Date.parse(row.expires_at) <= this.now().getTime()
-    )
+    if (row.state !== 'PENDING' || Date.parse(row.expires_at) <= this.now().getTime())
       throw new PlatformError('INVALID_TRANSITION', 'Agent 授权请求已失效');
     if (
       row.owner_user_id !== ownerUserId ||

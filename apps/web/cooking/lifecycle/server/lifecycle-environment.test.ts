@@ -51,24 +51,18 @@ describe('环境切换与验证、关闭', () => {
       },
     );
     expect(verify).toThrow('先确认当前提测版本已部署');
-    fixture.submissions.changeEnvironment(
-      fixture.users.developer.id,
-      originalItem.id,
-      {
-        mutationId: randomUUID(),
-        expectedRevision: restored.workspaceRevision,
-        action: 'CONFIRM_DEPLOYMENT',
-      },
-    );
+    fixture.submissions.changeEnvironment(fixture.users.developer.id, originalItem.id, {
+      mutationId: randomUUID(),
+      expectedRevision: restored.workspaceRevision,
+      action: 'CONFIRM_DEPLOYMENT',
+    });
     verify();
     fixture.lifecycle.closeSubmission(fixture.users.tester.id, next.id, {
       ...mutation(next.version),
     });
     expect(
-      fixture.submissions.getWorkspace(
-        fixture.users.owner.id,
-        fixture.submission.id,
-      ).submission.items[0]!.environmentAccess.owned,
+      fixture.submissions.getWorkspace(fixture.users.owner.id, fixture.submission.id)
+        .submission.items[0]!.environmentAccess.owned,
     ).toBe(true);
   });
 });
@@ -103,9 +97,7 @@ test('占用单关闭后暂停单收到新版本，可重新取得空闲环境�
     action: 'ACQUIRE',
   });
   expect(
-    fixture.submissions.getWorkspace(
-      fixture.users.developer.id,
-      fixture.submission.id,
-    ).submission.items[0]!.environmentAccess,
+    fixture.submissions.getWorkspace(fixture.users.developer.id, fixture.submission.id)
+      .submission.items[0]!.environmentAccess,
   ).toMatchObject({ owned: true, deploymentConfirmed: false });
 });

@@ -6,10 +6,7 @@ import {
   runInteractiveMutation,
   type InteractiveActionResult,
 } from '@/cooking/shared/server/action-transport';
-import {
-  submissionCreationCatalog,
-  submissionService,
-} from '@/cooking/runtime/services';
+import { submissionCreationCatalog, submissionService } from '@/cooking/runtime/services';
 import type {
   CreateSubmissionInput,
   SubmissionCreationCatalog,
@@ -48,30 +45,19 @@ export async function createSubmissionAction(
   const result = await runInteractiveMutation({
     validationEvent: 'cooking_submission_action_validation_failed',
     command: ({ userId }) => {
-      const result = submissionService().createSubmission(
-        userId,
-        projectId,
-        input,
-      );
+      const result = submissionService().createSubmission(userId, projectId, input);
       return {
         result,
         refreshPaths: ['/cooking', `/cooking/${result.id}`],
       };
     },
   });
-  if (
-    !result.ok &&
-    ['RESOURCE_CONFLICT', 'STALE_STATE'].includes(result.error.code)
-  ) {
+  if (!result.ok && ['RESOURCE_CONFLICT', 'STALE_STATE'].includes(result.error.code)) {
     const user = await requireCurrentUser();
     try {
       return {
         ...result,
-        conflicts: submissionService().environmentConflicts(
-          user.id,
-          projectId,
-          input,
-        ),
+        conflicts: submissionService().environmentConflicts(user.id, projectId, input),
       };
     } catch (error) {
       return actionError(error);
@@ -87,11 +73,7 @@ export async function changeSubmissionEnvironmentAction(
   return runInteractiveMutation({
     validationEvent: 'cooking_environment_action_validation_failed',
     command: ({ userId }) => {
-      const result = submissionService().changeEnvironment(
-        userId,
-        itemId,
-        input,
-      );
+      const result = submissionService().changeEnvironment(userId, itemId, input);
       return { result, refreshPaths: ['/cooking', `/cooking/${result.id}`] };
     },
   });
@@ -104,11 +86,7 @@ export async function updateSubmissionAction(
   return runInteractiveMutation({
     validationEvent: 'cooking_submission_action_validation_failed',
     command: ({ userId }) => {
-      const result = submissionService().updateSubmission(
-        userId,
-        submissionId,
-        input,
-      );
+      const result = submissionService().updateSubmission(userId, submissionId, input);
       return {
         result,
         refreshPaths: ['/cooking', `/cooking/${result.id}`],

@@ -9,10 +9,7 @@ const createDatabase = testDatabases();
 describe('AuthService', () => {
   test('Seed 幂等且数据库不保存明文密码', async () => {
     const { database } = await createDatabase();
-    const auth = new AuthService(
-      database,
-      () => new Date('2026-07-26T00:00:00Z'),
-    );
+    const auth = new AuthService(database, () => new Date('2026-07-26T00:00:00Z'));
 
     const first = await auth.seedUser({
       id: 'user-one',
@@ -35,12 +32,8 @@ describe('AuthService', () => {
     );
     expect(row?.password_hash).toStartWith('scrypt$1$');
     expect(row?.password_hash).not.toContain('first-password');
-    expect(await auth.authenticate('USER.ONE', 'first-password')).toEqual(
-      first,
-    );
-    expect(
-      await auth.authenticate('user.one', 'different-password'),
-    ).toBeNull();
+    expect(await auth.authenticate('USER.ONE', 'first-password')).toEqual(first);
+    expect(await auth.authenticate('user.one', 'different-password')).toBeNull();
     expect(await auth.authenticate('missing', 'first-password')).toBeNull();
   });
 
@@ -64,9 +57,7 @@ describe('AuthService', () => {
     expect(auth.currentUser(session.token)).toEqual(user);
 
     database.close();
-    const reopened = trackDatabase(
-      openDatabase(join(directory, 'server.sqlite')),
-    );
+    const reopened = trackDatabase(openDatabase(join(directory, 'server.sqlite')));
     const afterRestart = new AuthService(reopened, () => now);
     expect(afterRestart.currentUser(session.token)).toEqual(user);
     afterRestart.revokeSession(session.token);

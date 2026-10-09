@@ -1,11 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { CommandResult, CommandRunner } from '../contracts';
 import { MemoryKeychain } from '../../testing/memory-keychain';
-import {
-  MacOsKeychain,
-  XAPT_KEYCHAIN_SERVICE,
-  keychainAccount,
-} from './keychain';
+import { MacOsKeychain, XAPT_KEYCHAIN_SERVICE, keychainAccount } from './keychain';
 
 class FakeCommandRunner implements CommandRunner {
   readonly calls: Array<{
@@ -68,9 +64,7 @@ describe('Keychain Adapter', () => {
       ],
       stdin: 'credential-secret\ncredential-secret\n',
     });
-    expect(JSON.stringify(commands.calls[0]!.args)).not.toContain(
-      'credential-secret',
-    );
+    expect(JSON.stringify(commands.calls[0]!.args)).not.toContain('credential-secret');
   });
 
   test('Fake Adapter 支持隔离写入、读取和删除', async () => {

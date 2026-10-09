@@ -1,7 +1,4 @@
-import {
-  WorkspaceInvalidationSchema,
-  type WorkspaceInvalidation,
-} from '../contract';
+import { WorkspaceInvalidationSchema, type WorkspaceInvalidation } from '../contract';
 import { logger } from '@/platform/logging';
 
 type WorkspaceEventListener = (event: WorkspaceInvalidation) => void;

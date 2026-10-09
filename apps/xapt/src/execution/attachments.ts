@@ -31,11 +31,7 @@ export class AttachmentMaterializer {
     credential: string,
     execution: ClaimedExecution,
   ): Promise<MaterializedAttachment[]> {
-    const directory = join(
-      this.paths.attachmentCache,
-      execution.id,
-      'attachments',
-    );
+    const directory = join(this.paths.attachmentCache, execution.id, 'attachments');
     await rm(directory, { recursive: true, force: true });
     await mkdir(directory, { recursive: true, mode: 0o700 });
     const result: MaterializedAttachment[] = [];

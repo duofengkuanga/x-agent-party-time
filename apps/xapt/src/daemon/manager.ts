@@ -10,11 +10,7 @@ import type { LocalStateStore } from '../state/store';
 import { XAPT_VERSION } from '../version';
 import type { CodexPreflight } from '../codex/preflight';
 import type { DaemonControlClient } from './control';
-import {
-  stoppedSnapshot,
-  type DaemonSnapshot,
-  unresponsiveSnapshot,
-} from './status';
+import { stoppedSnapshot, type DaemonSnapshot, unresponsiveSnapshot } from './status';
 
 export interface DaemonManagerOptions {
   paths: XaptPaths;
@@ -46,9 +42,7 @@ export class DaemonManager {
         'xapt 0.x 只支持 Apple Silicon macOS',
         '请在 macOS arm64 设备上运行',
       );
-    const socket = await this.options.files.info(
-      this.options.paths.controlSocket,
-    );
+    const socket = await this.options.files.info(this.options.paths.controlSocket);
     if (socket) {
       if (socket.type !== 'socket')
         throw new DaemonLifecycleError(
@@ -69,14 +63,8 @@ export class DaemonManager {
       }
     }
 
-    const executable = await this.options.files.info(
-      this.options.stableExecutable,
-    );
-    if (
-      !executable ||
-      executable.type !== 'file' ||
-      (executable.mode & 0o111) === 0
-    )
+    const executable = await this.options.files.info(this.options.stableExecutable);
+    if (!executable || executable.type !== 'file' || (executable.mode & 0o111) === 0)
       throw new DaemonLifecycleError(
         'EXECUTABLE_MISSING',
         'xapt 稳定执行入口不可用',
@@ -93,9 +81,7 @@ export class DaemonManager {
       0o644,
       0o700,
     );
-    await this.options.launchAgent.register(
-      this.options.paths.launchAgentPlist,
-    );
+    await this.options.launchAgent.register(this.options.paths.launchAgentPlist);
     try {
       await this.options.launchAgent.start(XAPT_LAUNCH_AGENT_LABEL);
       return {
@@ -104,9 +90,7 @@ export class DaemonManager {
       };
     } catch (error) {
       try {
-        await this.options.launchAgent.unregister(
-          this.options.paths.launchAgentPlist,
-        );
+        await this.options.launchAgent.unregister(this.options.paths.launchAgentPlist);
       } catch (cleanupError) {
         throw new AggregateError(
           [error, cleanupError],
@@ -118,9 +102,7 @@ export class DaemonManager {
   }
 
   async status(): Promise<DaemonSnapshot> {
-    const socket = await this.options.files.info(
-      this.options.paths.controlSocket,
-    );
+    const socket = await this.options.files.info(this.options.paths.controlSocket);
     if (!socket) return stoppedSnapshot(XAPT_VERSION);
     if (socket.type !== 'socket') return unresponsiveSnapshot(XAPT_VERSION);
     try {
@@ -147,13 +129,9 @@ export class DaemonManager {
       )
         throw new DaemonLifecycleError('CANCELLED', '已取消强制停止');
     }
-    const socket = await this.options.files.info(
-      this.options.paths.controlSocket,
-    );
+    const socket = await this.options.files.info(this.options.paths.controlSocket);
     if (!socket) {
-      await this.options.launchAgent.unregister(
-        this.options.paths.launchAgentPlist,
-      );
+      await this.options.launchAgent.unregister(this.options.paths.launchAgentPlist);
       return { alreadyStopped: true };
     }
     if (socket.type !== 'socket')
@@ -181,15 +159,10 @@ export class DaemonManager {
         `daemon 仍有 ${snapshot.outboxCount} 条未发送 Outcome，不能安全停止`,
       );
     if (snapshot.activity === 'BUSY' && !force)
-      throw new DaemonLifecycleError(
-        'BUSY',
-        '本机服务正在处理任务，不能安全停止',
-      );
+      throw new DaemonLifecycleError('BUSY', '本机服务正在处理任务，不能安全停止');
     await this.options.control.stop(force);
     await this.waitUntilStopped();
-    await this.options.launchAgent.unregister(
-      this.options.paths.launchAgentPlist,
-    );
+    await this.options.launchAgent.unregister(this.options.paths.launchAgentPlist);
     return { alreadyStopped: false };
   }
 
@@ -201,15 +174,11 @@ export class DaemonManager {
       errors.push(error);
     }
     try {
-      await this.options.launchAgent.unregister(
-        this.options.paths.launchAgentPlist,
-      );
+      await this.options.launchAgent.unregister(this.options.paths.launchAgentPlist);
     } catch (error) {
       errors.push(error);
     }
-    const socket = await this.options.files.info(
-      this.options.paths.controlSocket,
-    );
+    const socket = await this.options.files.info(this.options.paths.controlSocket);
     if (socket?.type === 'socket')
       await this.options.files.remove(this.options.paths.controlSocket);
     if (errors.length > 0)
@@ -218,8 +187,7 @@ export class DaemonManager {
 
   private async waitUntilReady(): Promise<DaemonSnapshot> {
     const deadline =
-      this.options.clock.now().getTime() +
-      (this.options.startupTimeoutMs ?? 5_000);
+      this.options.clock.now().getTime() + (this.options.startupTimeoutMs ?? 5_000);
     let lastError: unknown;
     do {
       try {
@@ -240,8 +208,7 @@ export class DaemonManager {
   private async waitUntilStopped(): Promise<void> {
     const deadline = this.options.clock.now().getTime() + 2_000;
     do {
-      if (!(await this.options.files.info(this.options.paths.controlSocket)))
-        return;
+      if (!(await this.options.files.info(this.options.paths.controlSocket))) return;
       await this.options.clock.sleep(25);
     } while (this.options.clock.now().getTime() < deadline);
     throw new DaemonLifecycleError(
@@ -252,15 +219,9 @@ export class DaemonManager {
   }
 }
 
-export function launchAgentPlist(
-  paths: XaptPaths,
-  stableExecutable: string,
-): string {
+export function launchAgentPlist(paths: XaptPaths, stableExecutable: string): string {
   const escape = (value: string) =>
-    value
-      .replaceAll('&', '&amp;')
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;');
+    value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -294,8 +255,7 @@ async function prepareDaemonLogs(
   await files.ensureDirectory(paths.logs, 0o700);
   for (const path of [paths.daemonLog, paths.daemonErrorLog]) {
     const info = await files.info(path);
-    if (!info || info.size > 5 * 1024 * 1024)
-      await files.writeAtomic(path, '', 0o600);
+    if (!info || info.size > 5 * 1024 * 1024) await files.writeAtomic(path, '', 0o600);
   }
 }
 

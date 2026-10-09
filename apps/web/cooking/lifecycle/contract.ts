@@ -97,15 +97,9 @@ export const TimelineEntrySchema = z.object({
 });
 
 export const LifecycleWorkspaceProjectionSchema = z.object({
-  verificationsByBug: z.record(
-    BugIdSchema,
-    z.array(VerificationRecordViewSchema),
-  ),
+  verificationsByBug: z.record(BugIdSchema, z.array(VerificationRecordViewSchema)),
   reopensByBug: z.record(BugIdSchema, z.array(ReopenRecordViewSchema)),
-  transitionsByBug: z.record(
-    BugIdSchema,
-    z.array(BugLifecycleTransitionViewSchema),
-  ),
+  transitionsByBug: z.record(BugIdSchema, z.array(BugLifecycleTransitionViewSchema)),
   cleanups: z.array(CleanupViewSchema),
   cleanupInteractions: z.array(CleanupInteractionViewSchema),
   timeline: z.array(TimelineEntrySchema),
@@ -131,10 +125,11 @@ export const ReopenBugInputSchema = VersionedCookingMutationSchema.extend({
 
 export const LifecycleCommandInputSchema = VersionedCookingMutationSchema;
 
-export const ResolveCleanupInteractionInputSchema =
-  VersionedCookingMutationSchema.extend({
+export const ResolveCleanupInteractionInputSchema = VersionedCookingMutationSchema.extend(
+  {
     resolution: z.json(),
-  });
+  },
+);
 
 export const BugLifecycleMutationResultSchema = z.object({
   bugId: BugIdSchema,
@@ -174,16 +169,12 @@ export type LifecycleCommandInput = z.infer<typeof LifecycleCommandInputSchema>;
 export type ResolveCleanupInteractionInput = z.infer<
   typeof ResolveCleanupInteractionInputSchema
 >;
-export type BugLifecycleMutationResult = z.infer<
-  typeof BugLifecycleMutationResultSchema
->;
+export type BugLifecycleMutationResult = z.infer<typeof BugLifecycleMutationResultSchema>;
 export type CloseSubmissionMutationResult = z.infer<
   typeof CloseSubmissionMutationResultSchema
 >;
 export type CleanupMutationResult = z.infer<typeof CleanupMutationResultSchema>;
-export type CleanupInteractionView = z.infer<
-  typeof CleanupInteractionViewSchema
->;
+export type CleanupInteractionView = z.infer<typeof CleanupInteractionViewSchema>;
 export type LifecycleWorkspaceProjection = z.infer<
   typeof LifecycleWorkspaceProjectionSchema
 >;

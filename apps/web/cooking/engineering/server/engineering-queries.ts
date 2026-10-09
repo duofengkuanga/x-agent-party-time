@@ -22,10 +22,9 @@ export type EngineeringRow = DatabaseRow<Engineering> & {
 
 export type EngineeringMembershipRow = DatabaseRow<EngineeringMembership>;
 
-export type EnvironmentRow = Omit<
-  DatabaseRow<TestEnvironment>,
-  'deployment'
-> & { deployment_json: string };
+export type EnvironmentRow = Omit<DatabaseRow<TestEnvironment>, 'deployment'> & {
+  deployment_json: string;
+};
 
 export class EngineeringQueries {
   constructor(private readonly db: AppDatabase) {}
@@ -106,10 +105,7 @@ export class EngineeringQueries {
   requireProjectOwner(userId: string, projectId: string): void {
     const membership = requireProjectMember(this.db, userId, projectId);
     if (membership.role !== 'OWNER')
-      throw new PlatformError(
-        'PERMISSION_DENIED',
-        '只有项目所有者可以管理工程',
-      );
+      throw new PlatformError('PERMISSION_DENIED', '只有项目所有者可以管理工程');
   }
 
   private engineeringForProjectMember(
@@ -134,17 +130,11 @@ export class EngineeringQueries {
   requireEngineeringOwner(userId: string, engineeringId: string): Engineering {
     const row = this.engineeringForProjectMember(userId, engineeringId);
     if (row.role !== 'OWNER')
-      throw new PlatformError(
-        'PERMISSION_DENIED',
-        '只有项目所有者可以管理工程',
-      );
+      throw new PlatformError('PERMISSION_DENIED', '只有项目所有者可以管理工程');
     return mapEngineering(row);
   }
 
-  requireEnvironmentOwner(
-    userId: string,
-    environmentId: string,
-  ): TestEnvironment {
+  requireEnvironmentOwner(userId: string, environmentId: string): TestEnvironment {
     const row = this.db.get(
       `SELECT env.id, env.engineering_id, env.name, env.deployment_json,
                 env.version, env.created_at, env.updated_at, p.role
@@ -158,10 +148,7 @@ export class EngineeringQueries {
     ) as (EnvironmentRow & { role: 'OWNER' | 'MEMBER' }) | undefined;
     if (!row) throw new PlatformError('NOT_FOUND', '环境不存在或无权访问');
     if (row.role !== 'OWNER')
-      throw new PlatformError(
-        'PERMISSION_DENIED',
-        '只有项目所有者可以管理环境',
-      );
+      throw new PlatformError('PERMISSION_DENIED', '只有项目所有者可以管理环境');
     return mapEnvironment(row);
   }
 
@@ -172,8 +159,7 @@ export class EngineeringQueries {
       projectId,
       name,
     );
-    if (existing)
-      throw new PlatformError('RESOURCE_CONFLICT', '项目中已存在同名工程');
+    if (existing) throw new PlatformError('RESOURCE_CONFLICT', '项目中已存在同名工程');
   }
 
   ensureEngineeringIdentifierAvailable(
@@ -201,8 +187,7 @@ export class EngineeringQueries {
       engineeringId,
       name,
     );
-    if (existing)
-      throw new PlatformError('RESOURCE_CONFLICT', '工程中已存在同名环境');
+    if (existing) throw new PlatformError('RESOURCE_CONFLICT', '工程中已存在同名环境');
   }
 }
 
@@ -224,9 +209,7 @@ export function mapEngineering(row: EngineeringRow): Engineering {
   });
 }
 
-export function mapMembership(
-  row: EngineeringMembershipRow,
-): EngineeringMembership {
+export function mapMembership(row: EngineeringMembershipRow): EngineeringMembership {
   return parseRow(EngineeringMembershipSchema, row);
 }
 

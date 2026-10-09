@@ -63,8 +63,8 @@ describe('SubmissionService create', () => {
         fixture.users.member.id,
       );
       expect(
-        fixture.service.getWorkspace(fixture.users.creator.id, submission.id)
-          .submission.items,
+        fixture.service.getWorkspace(fixture.users.creator.id, submission.id).submission
+          .items,
       ).toHaveLength(1);
     }
   });
@@ -84,20 +84,16 @@ describe('SubmissionService create', () => {
       fixture.users.owner.id,
       fixture.engineering.front.id,
     );
-    engineering.updateEngineering(
-      fixture.users.owner.id,
-      fixture.engineering.front.id,
-      {
-        ...mutation(current.version),
-        name: '改名后的工程',
-        type: 'BACKEND',
-        identifier: current.identifier,
-      },
-    );
+    engineering.updateEngineering(fixture.users.owner.id, fixture.engineering.front.id, {
+      ...mutation(current.version),
+      name: '改名后的工程',
+      type: 'BACKEND',
+      identifier: current.identifier,
+    });
 
     expect(
-      fixture.service.getWorkspace(fixture.users.creator.id, submission.id)
-        .submission.items[0]?.engineering,
+      fixture.service.getWorkspace(fixture.users.creator.id, submission.id).submission
+        .items[0]?.engineering,
     ).toMatchObject({
       name: '前端工程',
       type: 'FRONTEND',
@@ -117,25 +113,14 @@ describe('SubmissionService create', () => {
     expectRowCount(fixture.database, 'cooking_test_submission').toBe(0);
     const invalidInputs = [
       [item(fixture, 'front', 'tester', 'frontA', 'feature/tester-conflict')],
-      [
-        item(
-          fixture,
-          'front',
-          'member',
-          'frontA',
-          'feature/not-engineering-member',
-        ),
-      ],
+      [item(fixture, 'front', 'member', 'frontA', 'feature/not-engineering-member')],
       [item(fixture, 'front', 'developerA', 'backA', 'feature/wrong-binding')],
     ];
     for (const items of invalidInputs) {
       expect(() => createSubmission(fixture, items)).toThrow(PlatformErrorLike);
       expectRowCount(fixture.database, 'cooking_test_submission').toBe(0);
       expectRowCount(fixture.database, 'cooking_submission_item').toBe(0);
-      expectRowCount(
-        fixture.database,
-        'cooking_submission_environment_lock',
-      ).toBe(0);
+      expectRowCount(fixture.database, 'cooking_submission_environment_lock').toBe(0);
     }
 
     fixture.database.run(
@@ -147,13 +132,7 @@ describe('SubmissionService create', () => {
     expect(() =>
       createSubmission(fixture, [
         {
-          ...item(
-            fixture,
-            'front',
-            'developerA',
-            'frontA',
-            'feature/forged-runner',
-          ),
+          ...item(fixture, 'front', 'developerA', 'frontA', 'feature/forged-runner'),
           bindingId: fixture.bindings.frontA.id,
         },
       ]),
@@ -187,9 +166,7 @@ describe('SubmissionService create', () => {
       title: '幂等提测',
       requirementDescription: '验证重复请求没有重复副作用',
       testerUserId: fixture.users.tester.id,
-      items: [
-        item(fixture, 'front', 'developerA', 'frontA', 'feature/idempotency'),
-      ],
+      items: [item(fixture, 'front', 'developerA', 'frontA', 'feature/idempotency')],
     };
     const created = fixture.service.createSubmission(
       fixture.users.owner.id,
@@ -217,11 +194,7 @@ describe('SubmissionService create', () => {
       updateInput,
     );
     expect(
-      fixture.service.updateSubmission(
-        fixture.users.owner.id,
-        created.id,
-        updateInput,
-      ),
+      fixture.service.updateSubmission(fixture.users.owner.id, created.id, updateInput),
     ).toEqual(updated);
     expect(fixture.events).toEqual([{ submissionId: created.id, revision: 2 }]);
   });
@@ -251,16 +224,12 @@ describe('Submission workspace', () => {
     expect(developer.submission.items[1]?.targetBranch).toBe('feature/back');
     expect(developer.submission.items[1]?.technical).toBeNull();
     expect(developer.submission.items[1]?.availableActions).toEqual([]);
-    const tester = fixture.service.getWorkspace(
-      fixture.users.tester.id,
-      submission.id,
-    );
-    expect(
-      tester.submission.items.map(({ targetBranch }) => targetBranch),
-    ).toEqual(['feature/front', 'feature/back']);
-    expect(tester.submission.items.every(({ technical }) => !technical)).toBe(
-      true,
-    );
+    const tester = fixture.service.getWorkspace(fixture.users.tester.id, submission.id);
+    expect(tester.submission.items.map(({ targetBranch }) => targetBranch)).toEqual([
+      'feature/front',
+      'feature/back',
+    ]);
+    expect(tester.submission.items.every(({ technical }) => !technical)).toBe(true);
     expect(
       tester.submission.items.every(
         ({ availableActions }) => availableActions.length === 0,
@@ -307,26 +276,18 @@ describe('Submission workspace', () => {
     );
     expect(updated).toMatchObject({ version: 2, workspaceRevision: 2 });
     expect(
-      fixture.service.getWorkspace(fixture.users.developerA.id, submission.id)
-        .submission.items[0]?.targetBranch,
+      fixture.service.getWorkspace(fixture.users.developerA.id, submission.id).submission
+        .items[0]?.targetBranch,
     ).toBe('feature/front-next');
-    expect(fixture.events).toEqual([
-      { submissionId: submission.id, revision: 2 },
-    ]);
+    expect(fixture.events).toEqual([{ submissionId: submission.id, revision: 2 }]);
 
     expect(() =>
-      fixture.service.updateSubmission(
-        fixture.users.developerA.id,
-        submission.id,
-        {
-          ...mutation(2),
-          title: submission.title,
-          requirementDescription: submission.requirementDescription,
-          targetBranches: [
-            { submissionItemId: back.id, targetBranch: 'feature/forged' },
-          ],
-        },
-      ),
+      fixture.service.updateSubmission(fixture.users.developerA.id, submission.id, {
+        ...mutation(2),
+        title: submission.title,
+        requirementDescription: submission.requirementDescription,
+        targetBranches: [{ submissionItemId: back.id, targetBranch: 'feature/forged' }],
+      }),
     ).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
     expect(() =>
       fixture.service.updateSubmission(fixture.users.owner.id, submission.id, {
@@ -341,22 +302,18 @@ describe('Submission workspace', () => {
 
     insertBug(fixture, submission.id, front.id);
     expect(
-      fixture.service.getWorkspace(fixture.users.developerA.id, submission.id)
-        .submission.items[0]?.availableActions,
+      fixture.service.getWorkspace(fixture.users.developerA.id, submission.id).submission
+        .items[0]?.availableActions,
     ).toEqual([]);
     expect(() =>
-      fixture.service.updateSubmission(
-        fixture.users.developerA.id,
-        submission.id,
-        {
-          ...mutation(2),
-          title: submission.title,
-          requirementDescription: submission.requirementDescription,
-          targetBranches: [
-            { submissionItemId: front.id, targetBranch: 'feature/too-late' },
-          ],
-        },
-      ),
+      fixture.service.updateSubmission(fixture.users.developerA.id, submission.id, {
+        ...mutation(2),
+        title: submission.title,
+        requirementDescription: submission.requirementDescription,
+        targetBranches: [
+          { submissionItemId: front.id, targetBranch: 'feature/too-late' },
+        ],
+      }),
     ).toThrow(expect.objectContaining({ code: 'INVALID_TRANSITION' }));
   });
 
@@ -424,11 +381,7 @@ describe('Submission workspace', () => {
       undefined,
       undefined,
       (projectId, userId) =>
-        projectMemberHasSubmissionResponsibilities(
-          fixture.database,
-          projectId,
-          userId,
-        ),
+        projectMemberHasSubmissionResponsibilities(fixture.database, projectId, userId),
     );
     const testerMembership = projects
       .listMembers(fixture.users.owner.id, fixture.project.id)
@@ -463,23 +416,16 @@ describe('Submission workspace', () => {
       },
     );
     expect(creatorUpdate).toMatchObject({ version: 2, workspaceRevision: 2 });
-    expect(fixture.events).toEqual([
-      { submissionId: submission.id, revision: 2 },
-    ]);
+    expect(fixture.events).toEqual([{ submissionId: submission.id, revision: 2 }]);
     expect(() =>
-      fixture.service.updateSubmission(
-        fixture.users.creator.id,
-        submission.id,
-        {
-          ...mutation(1),
-          title: '旧版本',
-          requirementDescription: '不能覆盖',
-        },
-      ),
+      fixture.service.updateSubmission(fixture.users.creator.id, submission.id, {
+        ...mutation(1),
+        title: '旧版本',
+        requirementDescription: '不能覆盖',
+      }),
     ).toThrow(expect.objectContaining({ code: 'STALE_STATE' }));
     expect(
-      fixture.service.getWorkspace(fixture.users.creator.id, submission.id)
-        .revision,
+      fixture.service.getWorkspace(fixture.users.creator.id, submission.id).revision,
     ).toBe(2);
     expect(() =>
       fixture.service.updateSubmission(fixture.users.member.id, submission.id, {

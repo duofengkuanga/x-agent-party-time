@@ -11,10 +11,7 @@ export function settingsHref(
   return projectPanelPath(projectId, panel);
 }
 
-export function engineeringHref(
-  projectId: string,
-  engineeringId: string,
-): string {
+export function engineeringHref(projectId: string, engineeringId: string): string {
   return engineeringSettingsPath(projectId, engineeringId);
 }
 

@@ -1,24 +1,14 @@
 import { createCooking } from '@/cooking/runtime/create-cooking';
-import {
-  completeRepairExecution,
-  testSkillBinding,
-} from '@/cooking/testing/execution';
-import {
-  deliveryProject,
-  mutableClock,
-  mutation,
-} from '@/cooking/testing/project';
+import { completeRepairExecution, testSkillBinding } from '@/cooking/testing/execution';
+import { deliveryProject, mutableClock, mutation } from '@/cooking/testing/project';
 import type { AppDatabase } from '@/platform/database';
 import { testDatabases } from '@/testing/database';
 import { expect } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 
 /** Each test file owns its database factory and cleanup hook. */
-export function updateFixture(
-  createDatabase: ReturnType<typeof testDatabases>,
-) {
-  return (options: Parameters<typeof setup>[1] = {}) =>
-    setup(createDatabase, options);
+export function updateFixture(createDatabase: ReturnType<typeof testDatabases>) {
+  return (options: Parameters<typeof setup>[1] = {}) => setup(createDatabase, options);
 }
 
 async function setup(
@@ -73,15 +63,11 @@ async function setup(
   const item = items[0]!;
   const secondItem = items[1] ?? null;
   const events: Array<{ submissionId: string; revision: number }> = [];
-  const { repairs, updates, lifecycle, bugs, executions } = createCooking(
-    database,
-    {
-      now: clock.now,
-      publish: (submissionId, revision) =>
-        events.push({ submissionId, revision }),
-      ids: { update: options.updateCreateId },
-    },
-  );
+  const { repairs, updates, lifecycle, bugs, executions } = createCooking(database, {
+    now: clock.now,
+    publish: (submissionId, revision) => events.push({ submissionId, revision }),
+    ids: { update: options.updateCreateId },
+  });
 
   function createBugFor(submissionItemId: string, title: string) {
     const created = bugs.createBug(users.tester.id, submission.id, {
@@ -131,9 +117,7 @@ export function completedUpdate() {
     result: {
       outcome: 'COMPLETED' as const,
       completedActions: ['集成候选并完成部署'],
-      validations: [
-        { name: '定向检查', status: 'PASSED' as const, detail: '' },
-      ],
+      validations: [{ name: '定向检查', status: 'PASSED' as const, detail: '' }],
       warnings: [],
     },
   };
@@ -144,9 +128,7 @@ export function pushedUpdate() {
     result: {
       outcome: 'PUSHED' as const,
       completedActions: ['集成候选并普通 Push'],
-      validations: [
-        { name: '定向检查', status: 'PASSED' as const, detail: '' },
-      ],
+      validations: [{ name: '定向检查', status: 'PASSED' as const, detail: '' }],
       warnings: [],
     },
   };
@@ -187,11 +169,9 @@ export function freezeUpdate(
   fixture: Awaited<ReturnType<typeof setup>>,
   submissionItemId = fixture.item.id,
 ) {
-  return fixture.updates.freezeNow(
-    fixture.users.developer.id,
-    submissionItemId,
-    { mutationId: randomUUID() },
-  );
+  return fixture.updates.freezeNow(fixture.users.developer.id, submissionItemId, {
+    mutationId: randomUUID(),
+  });
 }
 
 export async function startCandidateUpdate(
@@ -205,11 +185,7 @@ export async function startCandidateUpdate(
   const bug = fixture.createBug(title);
   await completeNextRepair(fixture, repairSessionId, commits, manualOperations);
   const frozen = freezeUpdate(fixture);
-  const started = await startExecution(
-    fixture,
-    frozen.executionId!,
-    updateSessionId,
-  );
+  const started = await startExecution(fixture, frozen.executionId!, updateSessionId);
   return { bug, started };
 }
 
@@ -224,9 +200,7 @@ export async function startExecution(
     kind: 'STARTED',
     leaseToken: claimed.lease.token,
     sessionId,
-    taskSkillBinding: testSkillBinding(
-      'agent-party-time-integrate-update-batch',
-    ),
+    taskSkillBinding: testSkillBinding('agent-party-time-integrate-update-batch'),
   });
   return {
     executionId,
@@ -271,10 +245,10 @@ export function batchEntries(database: AppDatabase, batchId: string) {
 }
 
 export function currentBug(database: AppDatabase, bugId: string) {
-  return database.get(
-    'SELECT stage, version FROM cooking_bug WHERE id = ?',
-    bugId,
-  ) as { stage: string; version: number };
+  return database.get('SELECT stage, version FROM cooking_bug WHERE id = ?', bugId) as {
+    stage: string;
+    version: number;
+  };
 }
 
 export function pendingCommits(database: AppDatabase, bugId: string): string[] {

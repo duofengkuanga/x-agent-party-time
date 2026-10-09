@@ -118,12 +118,7 @@ export class ProtocolAgent {
   }
 
   startExecution(executionId: string, input: ExecutionStartRequest) {
-    return this.http.startExecution(
-      this.serverUrl,
-      this.credential,
-      executionId,
-      input,
-    );
+    return this.http.startExecution(this.serverUrl, this.credential, executionId, input);
   }
 
   renewExecution(executionId: string, leaseToken: string) {
@@ -136,12 +131,7 @@ export class ProtocolAgent {
   }
 
   openInteraction(executionId: string, input: OpenInteractionRequest) {
-    return this.http.openInteraction(
-      this.serverUrl,
-      this.credential,
-      executionId,
-      input,
-    );
+    return this.http.openInteraction(this.serverUrl, this.credential, executionId, input);
   }
 
   waitInteraction(
@@ -179,9 +169,7 @@ export class ProtocolAgent {
     if (!claimed) return null;
     const sessionId =
       options.sessionId?.(claimed) ??
-      (claimed.codexTurn?.kind === 'CONTINUATION'
-        ? claimed.codexTurn.taskId
-        : null) ??
+      (claimed.codexTurn?.kind === 'CONTINUATION' ? claimed.codexTurn.taskId : null) ??
       `conformance-${claimed.id}`;
     await this.startExecution(claimed.id, {
       kind: 'STARTED',
@@ -206,11 +194,7 @@ export class ProtocolAgent {
     });
   }
 
-  downloadExecutionFile(
-    executionId: string,
-    fileId: string,
-    leaseToken: string,
-  ) {
+  downloadExecutionFile(executionId: string, fileId: string, leaseToken: string) {
     return this.http.downloadExecutionFile(
       this.serverUrl,
       this.credential,

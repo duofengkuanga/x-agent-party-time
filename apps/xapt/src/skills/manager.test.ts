@@ -102,9 +102,7 @@ describe('SkillBundleManager', () => {
     snapshot = generation('c'.repeat(40), {
       'agent-party-time-integrate-update-batch': {
         'SKILL.md': 'invalid',
-        'agents/openai.yaml': openaiYaml(
-          'agent-party-time-integrate-update-batch',
-        ),
+        'agents/openai.yaml': openaiYaml('agent-party-time-integrate-update-batch'),
       },
     });
 
@@ -126,9 +124,9 @@ describe('SkillBundleManager', () => {
 
     expect(result.installed).toBe(false);
     expect(result.warning).toContain('不由 xapt 管理');
-    expect(
-      await readFile(join(paths.skillNamespaceLink, 'mine.txt'), 'utf8'),
-    ).toBe('keep');
+    expect(await readFile(join(paths.skillNamespaceLink, 'mine.txt'), 'utf8')).toBe(
+      'keep',
+    );
   });
 
   test('GitHub 不可用时初始化返回可操作警告', async () => {
@@ -180,12 +178,8 @@ describe('SkillBundleManager', () => {
     const { manager, original, current } = await updatedRepairBundle();
     await rm(original.path, { recursive: true });
 
-    await expect(manager.resolveBound(original)).rejects.toThrow(
-      '规则包不存在',
-    );
-    expect(await manager.resolveCurrent('agent-party-time-repair-bug')).toEqual(
-      current,
-    );
+    await expect(manager.resolveBound(original)).rejects.toThrow('规则包不存在');
+    expect(await manager.resolveCurrent('agent-party-time-repair-bug')).toEqual(current);
   });
 });
 

@@ -8,12 +8,7 @@ import {
   type ExecutionOutcome,
   type RunnerActivity,
 } from '@agent-party-time/execution-contract';
-import {
-  ACTIVE_STATES,
-  LEASED_STATES,
-  hashSecret,
-  newLeaseExpiry,
-} from './lease';
+import { ACTIVE_STATES, LEASED_STATES, hashSecret, newLeaseExpiry } from './lease';
 import { projectTransaction, type ExecutionProjector } from './projection';
 import { ExecutionRecords, type ExecutionRow } from './records';
 export class ExecutionQueue {
@@ -37,8 +32,7 @@ export class ExecutionQueue {
              THEN 1 ELSE 0 END) waiting_count
          FROM platform_execution WHERE runner_id = ?`,
       runnerId,
-    ) as
-      { active_count: number | null; waiting_count: number | null } | undefined;
+    ) as { active_count: number | null; waiting_count: number | null } | undefined;
     return RunnerActivitySchema.parse({
       activeExecutionCount: row?.active_count ?? 0,
       waitingInteractionCount: row?.waiting_count ?? 0,
@@ -269,11 +263,7 @@ export class ExecutionQueue {
 }
 function codexTurnForClaim(execution: Execution): CodexTurn | null {
   const turn = execution.codexTurn;
-  if (
-    turn?.kind !== 'INITIAL' ||
-    !execution.sessionId ||
-    !turn.taskSkillBinding
-  )
+  if (turn?.kind !== 'INITIAL' || !execution.sessionId || !turn.taskSkillBinding)
     return turn;
   return {
     kind: 'CONTINUATION',

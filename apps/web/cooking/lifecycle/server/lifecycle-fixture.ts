@@ -1,22 +1,13 @@
 import { createCooking } from '@/cooking/runtime/create-cooking';
-import {
-  completeRepairExecution,
-  testSkillBinding,
-} from '@/cooking/testing/execution';
-import {
-  deliveryProject,
-  mutableClock,
-  mutation,
-} from '@/cooking/testing/project';
+import { completeRepairExecution, testSkillBinding } from '@/cooking/testing/execution';
+import { deliveryProject, mutableClock, mutation } from '@/cooking/testing/project';
 import type { AppDatabase } from '@/platform/database';
 import { testDatabases } from '@/testing/database';
 import { expect } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 
 /** Each scenario file owns its database factory and cleanup hook. */
-export function lifecycleFixture(
-  createDatabase: ReturnType<typeof testDatabases>,
-) {
+export function lifecycleFixture(createDatabase: ReturnType<typeof testDatabases>) {
   return () => setup(createDatabase);
 }
 
@@ -59,18 +50,13 @@ async function setup(createDatabase: ReturnType<typeof testDatabases>) {
       },
     ],
   });
-  const { source: localEngineering, environment: localEnvironment } =
-    sources[0]!;
+  const { source: localEngineering, environment: localEnvironment } = sources[0]!;
   const { source: ciEngineering, environment: ciEnvironment } = sources[1]!;
   const events: Array<{ submissionId: string; revision: number }> = [];
-  const { repairs, updates, lifecycle, bugs, executions } = createCooking(
-    database,
-    {
-      now: clock.now,
-      publish: (submissionId, revision) =>
-        events.push({ submissionId, revision }),
-    },
-  );
+  const { repairs, updates, lifecycle, bugs, executions } = createCooking(database, {
+    now: clock.now,
+    publish: (submissionId, revision) => events.push({ submissionId, revision }),
+  });
 
   return {
     bugs,
@@ -102,17 +88,13 @@ export function createBug(
   submissionItemId: string,
   title: string,
 ) {
-  return fixture.bugs.createBug(
-    fixture.users.tester.id,
-    fixture.submission.id,
-    {
-      mutationId: randomUUID(),
-      submissionItemId,
-      title,
-      actualResultAttachmentIds: [],
-      expectedResultAttachmentIds: [],
-    },
-  ).bug;
+  return fixture.bugs.createBug(fixture.users.tester.id, fixture.submission.id, {
+    mutationId: randomUUID(),
+    submissionItemId,
+    title,
+    actualResultAttachmentIds: [],
+    expectedResultAttachmentIds: [],
+  }).bug;
 }
 
 export function createAndRequestBug(
@@ -164,20 +146,16 @@ export async function completeUpdate(
   submissionItemId: string,
   result: { outcome: 'COMPLETED' | 'PUSHED'; summary: string },
 ) {
-  const frozen = fixture.updates.freezeNow(
-    fixture.users.developer.id,
-    submissionItemId,
-    { mutationId: randomUUID() },
-  );
+  const frozen = fixture.updates.freezeNow(fixture.users.developer.id, submissionItemId, {
+    mutationId: randomUUID(),
+  });
   const claimed = (await fixture.executions.claim(fixture.runner.id, 1, 0))[0]!;
   expect(claimed.id).toBe(frozen.executionId!);
   fixture.executions.start(fixture.runner.id, claimed.id, {
     kind: 'STARTED',
     leaseToken: claimed.lease.token,
     sessionId: `update-${submissionItemId}`,
-    taskSkillBinding: testSkillBinding(
-      'agent-party-time-integrate-update-batch',
-    ),
+    taskSkillBinding: testSkillBinding('agent-party-time-integrate-update-batch'),
   });
   fixture.executions.complete(fixture.runner.id, claimed.id, {
     leaseToken: claimed.lease.token,
@@ -203,9 +181,9 @@ export async function completeCleanup(
   sessionId: string,
   result: { outcome: 'COMPLETED' | 'FAILED'; summary: string },
 ) {
-  const claimed = (
-    await fixture.executions.claim(fixture.runner.id, 1, 0)
-  ).find(({ id }) => id === executionId);
+  const claimed = (await fixture.executions.claim(fixture.runner.id, 1, 0)).find(
+    ({ id }) => id === executionId,
+  );
   if (!claimed) throw new Error('未领取到指定清理执行');
   fixture.executions.start(fixture.runner.id, executionId, {
     kind: 'STARTED',
@@ -259,10 +237,7 @@ export function submissionRow(database: AppDatabase, submissionId: string) {
   };
 }
 
-export function bindingForItem(
-  database: AppDatabase,
-  submissionItemId: string,
-): string {
+export function bindingForItem(database: AppDatabase, submissionItemId: string): string {
   return (
     database.get(
       'SELECT binding_id FROM cooking_submission_item WHERE id = ?',

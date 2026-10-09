@@ -23,24 +23,14 @@ describe('LifecycleService', () => {
         ...mutation(waiting.version),
       }),
     ).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
-    const cancelled = fixture.lifecycle.cancelBug(
-      fixture.users.tester.id,
-      waiting.id,
-      {
-        ...mutation(waiting.version),
-      },
-    );
+    const cancelled = fixture.lifecycle.cancelBug(fixture.users.tester.id, waiting.id, {
+      ...mutation(waiting.version),
+    });
     expect(currentBug(fixture.database, waiting.id).stage).toBe('CANCELLED');
-    const restored = fixture.lifecycle.restoreBug(
-      fixture.users.tester.id,
-      waiting.id,
-      {
-        ...mutation(cancelled.bugVersion),
-      },
-    );
-    expect(currentBug(fixture.database, waiting.id).stage).toBe(
-      'WAITING_FOR_REPAIR',
-    );
+    const restored = fixture.lifecycle.restoreBug(fixture.users.tester.id, waiting.id, {
+      ...mutation(cancelled.bugVersion),
+    });
+    expect(currentBug(fixture.database, waiting.id).stage).toBe('WAITING_FOR_REPAIR');
     expect(() =>
       fixture.lifecycle.restoreBug(fixture.users.tester.id, waiting.id, {
         ...mutation(restored.bugVersion),
@@ -52,19 +42,13 @@ describe('LifecycleService', () => {
       }),
     );
     expect(
-      fixture.lifecycle.workspace(
-        fixture.users.tester.id,
-        fixture.submission.id,
-      ).transitionsByBug[waiting.id],
+      fixture.lifecycle.workspace(fixture.users.tester.id, fixture.submission.id)
+        .transitionsByBug[waiting.id],
     ).toMatchObject([{ kind: 'CANCELLED' }, { kind: 'RESTORED' }]);
 
-    const repairing = fixture.bugs.requestRepair(
-      fixture.users.tester.id,
-      waiting.id,
-      {
-        ...mutation(restored.bugVersion),
-      },
-    ).bug;
+    const repairing = fixture.bugs.requestRepair(fixture.users.tester.id, waiting.id, {
+      ...mutation(restored.bugVersion),
+    }).bug;
     expect(() =>
       fixture.lifecycle.cancelBug(fixture.users.tester.id, waiting.id, {
         ...mutation(repairing.version),
@@ -80,13 +64,9 @@ describe('LifecycleService', () => {
       result: 'PASSED',
       attachmentIds: [],
     });
-    const archived = fixture.lifecycle.archiveBug(
-      fixture.users.tester.id,
-      waiting.id,
-      {
-        ...mutation(currentBug(fixture.database, waiting.id).version),
-      },
-    );
+    const archived = fixture.lifecycle.archiveBug(fixture.users.tester.id, waiting.id, {
+      ...mutation(currentBug(fixture.database, waiting.id).version),
+    });
     expect(currentBug(fixture.database, waiting.id)).toMatchObject({
       stage: 'DONE',
       archived_at: '2026-07-27T12:00:00.000Z',
@@ -113,34 +93,26 @@ describe('LifecycleService', () => {
       result: 'PASSED',
       attachmentIds: [],
     });
-    const reopened = fixture.lifecycle.reopenBug(
-      fixture.users.tester.id,
-      bug.id,
-      {
-        ...mutation(currentBug(fixture.database, bug.id).version),
-        feedback: '回归时发现新证据',
-        attachmentIds: [],
-      },
-    );
+    const reopened = fixture.lifecycle.reopenBug(fixture.users.tester.id, bug.id, {
+      ...mutation(currentBug(fixture.database, bug.id).version),
+      feedback: '回归时发现新证据',
+      attachmentIds: [],
+    });
     expect(currentBug(fixture.database, bug.id).stage).toBe('REPAIRING');
+    expect(fixture.executions.get(reopened.executionId!).codexTurn).toMatchObject({
+      kind: 'CONTINUATION',
+      taskId: 'repair-reopen',
+    });
     expect(
-      fixture.executions.get(reopened.executionId!).codexTurn,
-    ).toMatchObject({ kind: 'CONTINUATION', taskId: 'repair-reopen' });
-    expect(
-      fixture.lifecycle.workspace(
-        fixture.users.tester.id,
-        fixture.submission.id,
-      ).reopensByBug[bug.id]?.[0],
+      fixture.lifecycle.workspace(fixture.users.tester.id, fixture.submission.id)
+        .reopensByBug[bug.id]?.[0],
     ).toMatchObject({
       feedback: '回归时发现新证据',
       repairAttempt: 2,
     });
-    await completeClaimedRepair(
-      fixture,
-      reopened.executionId!,
-      'repair-reopen',
-      ['5555555'],
-    );
+    await completeClaimedRepair(fixture, reopened.executionId!, 'repair-reopen', [
+      '5555555',
+    ]);
     await completeUpdate(fixture, fixture.items[0]!.id, {
       outcome: 'COMPLETED',
       summary: '重开后部署完成',
@@ -156,13 +128,9 @@ describe('LifecycleService', () => {
     });
     expect(currentBug(fixture.database, other.id).stage).toBe('CANCELLED');
     const beforeClose = submissionRow(fixture.database, fixture.submission.id);
-    fixture.lifecycle.closeSubmission(
-      fixture.users.tester.id,
-      fixture.submission.id,
-      {
-        ...mutation(beforeClose.version),
-      },
-    );
+    fixture.lifecycle.closeSubmission(fixture.users.tester.id, fixture.submission.id, {
+      ...mutation(beforeClose.version),
+    });
     expect(() =>
       fixture.lifecycle.reopenBug(fixture.users.tester.id, bug.id, {
         ...mutation(currentBug(fixture.database, bug.id).version),
@@ -170,8 +138,8 @@ describe('LifecycleService', () => {
         attachmentIds: [],
       }),
     ).toThrow(expect.objectContaining({ code: 'INVALID_TRANSITION' }));
-    expect(() =>
-      createBug(fixture, fixture.items[0]!.id, '关闭后新增'),
-    ).toThrow(expect.objectContaining({ code: 'INVALID_TRANSITION' }));
+    expect(() => createBug(fixture, fixture.items[0]!.id, '关闭后新增')).toThrow(
+      expect.objectContaining({ code: 'INVALID_TRANSITION' }),
+    );
   });
 });

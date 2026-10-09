@@ -51,14 +51,7 @@ try {
   );
   await waitForServer(`${baseUrl}/login`, server);
   const browser = Bun.spawn(
-    [
-      chromeUse,
-      '--launch',
-      '--session',
-      `agent-party-time-${port}`,
-      'test',
-      suitePath,
-    ],
+    [chromeUse, '--launch', '--session', `agent-party-time-${port}`, 'test', suitePath],
     {
       cwd: repositoryRoot,
       env: {
@@ -78,9 +71,7 @@ try {
   await writeFile(nextEnvPath, originalNextEnv);
   const cleanup = [rm(home, { recursive: true, force: true })];
   if (nextDistDir)
-    cleanup.push(
-      rm(join(webRoot, nextDistDir), { recursive: true, force: true }),
-    );
+    cleanup.push(rm(join(webRoot, nextDistDir), { recursive: true, force: true }));
   await Promise.all(cleanup);
 }
 
@@ -97,10 +88,7 @@ async function reservePort(): Promise<number> {
   return port!;
 }
 
-async function waitForServer(
-  url: string,
-  server: Bun.Subprocess,
-): Promise<void> {
+async function waitForServer(url: string, server: Bun.Subprocess): Promise<void> {
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     if (server.exitCode !== null) {

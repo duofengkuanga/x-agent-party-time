@@ -26,13 +26,10 @@ export class DaemonRuntime {
       files: options.files,
       snapshot: () => this.snapshot(),
       connect: options.connection
-        ? (serverUrl, progress) =>
-            options.connection!.connect(serverUrl, progress)
+        ? (serverUrl, progress) => options.connection!.connect(serverUrl, progress)
         : undefined,
       forceStop: () => options.agentService?.forceStop(),
-      revoke: options.connection
-        ? () => options.connection!.revokeSelf()
-        : undefined,
+      revoke: options.connection ? () => options.connection!.revokeSelf() : undefined,
     });
   }
 
@@ -83,17 +80,14 @@ export class DaemonRuntime {
         this.options.connection?.projection.serverOrigin ??
         (connection ? new URL(connection.serverUrl).origin : null),
       agentName: this.options.connection?.projection.agentName ?? null,
-      lastHeartbeatAt:
-        this.options.connection?.projection.lastHeartbeatAt ?? null,
-      activeSlots:
-        this.options.agentService?.projection.activeExecutionCount ?? 0,
+      lastHeartbeatAt: this.options.connection?.projection.lastHeartbeatAt ?? null,
+      activeSlots: this.options.agentService?.projection.activeExecutionCount ?? 0,
       totalSlots: 3,
       waitingInteractions:
         this.options.agentService?.projection.waitingInteractionCount ?? 0,
       outboxCount: outbox.length,
       bindingCount: Object.keys(bindings.bindings).length,
-      bindingActive:
-        this.options.agentService?.projection.bindingActive ?? false,
+      bindingActive: this.options.agentService?.projection.bindingActive ?? false,
     };
   }
 }

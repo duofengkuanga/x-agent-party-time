@@ -97,9 +97,7 @@ export const CookingInteractionViewSchema = z.discriminatedUnion('kind', [
         permissions: z.json().nullable(),
       })
       .nullable(),
-    resolution: z
-      .enum(['DECLINED', 'ACCEPTED_ONCE', 'ACCEPTED_FOR_SESSION'])
-      .nullable(),
+    resolution: z.enum(['DECLINED', 'ACCEPTED_ONCE', 'ACCEPTED_FOR_SESSION']).nullable(),
   }),
   CookingInteractionBaseSchema.extend({
     kind: z.literal('USER_INPUT'),
@@ -116,9 +114,5 @@ export const CookingInteractionViewSchema = z.discriminatedUnion('kind', [
   }),
 ]);
 
-export type CookingVisualPresentation = z.infer<
-  typeof CookingVisualPresentationSchema
->;
-export type CookingInteractionView = z.infer<
-  typeof CookingInteractionViewSchema
->;
+export type CookingVisualPresentation = z.infer<typeof CookingVisualPresentationSchema>;
+export type CookingInteractionView = z.infer<typeof CookingInteractionViewSchema>;

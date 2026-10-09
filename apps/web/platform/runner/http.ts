@@ -35,9 +35,7 @@ export async function handleRunnerAuthorizationCreate(
   return jsonOperation(
     RunnerAuthorizationIssueSchema,
     async () => {
-      const body = RunnerAuthorizationCreateRequestSchema.parse(
-        await request.json(),
-      );
+      const body = RunnerAuthorizationCreateRequestSchema.parse(await request.json());
       return runners.createAuthorizationRequest(body);
     },
     { status: 201 },
@@ -50,9 +48,7 @@ export async function handleRunnerAuthorizationClaim(
   runners: Pick<RunnerService, 'claimAuthorization'>,
 ): Promise<Response> {
   return jsonOperation(RunnerAuthorizationClaimResponseSchema, async () => {
-    const body = RunnerAuthorizationClaimRequestSchema.parse(
-      await request.json(),
-    );
+    const body = RunnerAuthorizationClaimRequestSchema.parse(await request.json());
     return runners.claimAuthorization(requestId, body.verifier);
   });
 }
@@ -98,17 +94,11 @@ export async function handleRunnerBindings(
 export async function handleRunnerBindingConfirmation(
   request: Request,
   runners: Pick<RunnerService, 'authenticateCredential'>,
-  confirm: (
-    runnerId: string,
-    bindingId: string,
-    repositoryUrl: string,
-  ) => string,
+  confirm: (runnerId: string, bindingId: string, repositoryUrl: string) => string,
 ): Promise<Response> {
   return jsonOperation(RunnerBindingConfirmationResponseSchema, async () => {
     const runner = runners.authenticateCredential(bearerCredential(request));
-    const body = RunnerBindingConfirmationRequestSchema.parse(
-      await request.json(),
-    );
+    const body = RunnerBindingConfirmationRequestSchema.parse(await request.json());
     return {
       ...body,
       repositoryUrl: confirm(runner.id, body.bindingId, body.repositoryUrl),
@@ -139,9 +129,7 @@ export async function handleRunnerBindingWorkCompletion(
 ): Promise<Response> {
   return jsonOperation(RunnerBindingWorkCompletionResponseSchema, async () => {
     const runner = runners.authenticateCredential(bearerCredential(request));
-    const completion = RunnerBindingWorkCompletionSchema.parse(
-      await request.json(),
-    );
+    const completion = RunnerBindingWorkCompletionSchema.parse(await request.json());
     return {
       state: complete(runner.id, requestId, completion),
     };

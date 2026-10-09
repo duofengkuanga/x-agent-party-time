@@ -94,13 +94,9 @@ export class ExecutionRecords {
         id: current.owner_id,
       },
       codex_turn: mapCodexTurn(current),
-      workspace: current.workspace_json
-        ? JSON.parse(current.workspace_json)
-        : null,
+      workspace: current.workspace_json ? JSON.parse(current.workspace_json) : null,
       attachments,
-      lease: current.lease_expires_at
-        ? { expiresAt: current.lease_expires_at }
-        : null,
+      lease: current.lease_expires_at ? { expiresAt: current.lease_expires_at } : null,
       outcome: current.outcome_json ? JSON.parse(current.outcome_json) : null,
       cancellation_requested: Boolean(current.cancellation_requested),
     });
@@ -159,9 +155,7 @@ export function mapCodexTurn(row: ExecutionRow): CodexTurn | null {
     ? { ...turn, taskSkillBinding }
     : turn;
 }
-export function persistedSkillBinding(
-  row: ExecutionRow,
-): TaskSkillBinding | null {
+export function persistedSkillBinding(row: ExecutionRow): TaskSkillBinding | null {
   if (!row.skill_name || !row.skill_bundle_hash || !row.skill_source_revision)
     return null;
   return {

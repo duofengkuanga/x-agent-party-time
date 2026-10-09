@@ -52,87 +52,75 @@ export class BugLifecycleCommands {
     inputValue: VerifyBugInput,
   ): BugLifecycleMutationResult {
     const input = VerifyBugInputSchema.parse(inputValue);
-    return this.writeBugTransition(
-      actorUserId,
-      bugId,
-      input,
-      'BUG_VERIFY',
-      (source) => {
-        if (source.submission_item_id)
-          requireEnvironment(this.db, source.submission_item_id, true);
-        this.requireBugVersion(source, input.expectedVersion);
-        if (source.stage !== 'WAITING_FOR_VERIFICATION')
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '当前缺陷不在待验证阶段',
-          );
-        const now = this.now().toISOString();
-        const round = this.nextVerificationRound(bugId);
-        requireBindableFiles(this.db, actorUserId, input.attachmentIds);
-        if (input.result === 'PASSED' && input.attachmentIds.length)
-          throw new PlatformError(
-            'VALIDATION_FAILED',
-            '验证通过不需要上传失败证据',
-          );
-        const verificationId = this.createId();
-        const repairAttempt =
-          input.result === 'FAILED' ? this.nextRepairAttempt(bugId) : null;
-        this.db.run(
-          `INSERT INTO cooking_verification_record(
+    return this.writeBugTransition(actorUserId, bugId, input, 'BUG_VERIFY', (source) => {
+      if (source.submission_item_id)
+        requireEnvironment(this.db, source.submission_item_id, true);
+      this.requireBugVersion(source, input.expectedVersion);
+      if (source.stage !== 'WAITING_FOR_VERIFICATION')
+        throw new PlatformError('INVALID_TRANSITION', '当前缺陷不在待验证阶段');
+      const now = this.now().toISOString();
+      const round = this.nextVerificationRound(bugId);
+      requireBindableFiles(this.db, actorUserId, input.attachmentIds);
+      if (input.result === 'PASSED' && input.attachmentIds.length)
+        throw new PlatformError('VALIDATION_FAILED', '验证通过不需要上传失败证据');
+      const verificationId = this.createId();
+      const repairAttempt =
+        input.result === 'FAILED' ? this.nextRepairAttempt(bugId) : null;
+      this.db.run(
+        `INSERT INTO cooking_verification_record(
                id, bug_id, round, result, comment, repair_attempt,
                verified_by_user_id, created_at
              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            verificationId,
-            bugId,
-            round,
-            input.result,
-            input.result === 'PASSED'
-              ? input.comment?.trim() || null
-              : input.feedback.trim(),
-            repairAttempt,
-            actorUserId,
-            now,
-          ],
-        );
-        if (input.result === 'PASSED') {
-          this.updateBugStage(bugId, 'WAITING_FOR_VERIFICATION', 'DONE', now);
-          const revision = this.writes.bumpRevision(source.submission_id, now);
-          return {
-            revision,
-            action: 'BUG_VERIFICATION_PASSED',
-            details: {
-              round,
-              comment: Boolean(input.comment),
-            },
-          };
-        }
-        this.bindLifecycleAttachments(
-          'cooking_verification_attachment',
-          'verification_id',
+        [
           verificationId,
-          input.attachmentIds,
+          bugId,
+          round,
+          input.result,
+          input.result === 'PASSED'
+            ? input.comment?.trim() || null
+            : input.feedback.trim(),
+          repairAttempt,
+          actorUserId,
           now,
-        );
-        const failure = this.continueRepair(
-          source,
-          'WAITING_FOR_VERIFICATION',
-          `测试负责人第 ${round} 轮验证未通过：${input.feedback.trim()}`,
-          input.attachmentIds,
-          now,
-        );
+        ],
+      );
+      if (input.result === 'PASSED') {
+        this.updateBugStage(bugId, 'WAITING_FOR_VERIFICATION', 'DONE', now);
+        const revision = this.writes.bumpRevision(source.submission_id, now);
         return {
-          revision: failure.revision,
-          executionId: failure.executionId,
-          action: 'BUG_VERIFICATION_FAILED',
+          revision,
+          action: 'BUG_VERIFICATION_PASSED',
           details: {
             round,
-            attachmentCount: input.attachmentIds.length,
-            executionId: failure.executionId,
+            comment: Boolean(input.comment),
           },
         };
-      },
-    );
+      }
+      this.bindLifecycleAttachments(
+        'cooking_verification_attachment',
+        'verification_id',
+        verificationId,
+        input.attachmentIds,
+        now,
+      );
+      const failure = this.continueRepair(
+        source,
+        'WAITING_FOR_VERIFICATION',
+        `测试负责人第 ${round} 轮验证未通过：${input.feedback.trim()}`,
+        input.attachmentIds,
+        now,
+      );
+      return {
+        revision: failure.revision,
+        executionId: failure.executionId,
+        action: 'BUG_VERIFICATION_FAILED',
+        details: {
+          round,
+          attachmentCount: input.attachmentIds.length,
+          executionId: failure.executionId,
+        },
+      };
+    });
   }
 
   reopenBug(
@@ -141,65 +129,48 @@ export class BugLifecycleCommands {
     inputValue: ReopenBugInput,
   ): BugLifecycleMutationResult {
     const input = ReopenBugInputSchema.parse(inputValue);
-    return this.writeBugTransition(
-      actorUserId,
-      bugId,
-      input,
-      'BUG_REOPEN',
-      (source) => {
-        this.requireBugVersion(source, input.expectedVersion);
-        if (source.stage !== 'DONE')
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '只有已完成缺陷可以重开',
-          );
-        const now = this.now().toISOString();
-        const round = this.nextReopenRound(bugId);
-        const repairAttempt = this.nextRepairAttempt(bugId);
-        const reopenId = this.createId();
-        requireBindableFiles(this.db, actorUserId, input.attachmentIds);
-        this.db.run(
-          `INSERT INTO cooking_reopen_record(
+    return this.writeBugTransition(actorUserId, bugId, input, 'BUG_REOPEN', (source) => {
+      this.requireBugVersion(source, input.expectedVersion);
+      if (source.stage !== 'DONE')
+        throw new PlatformError('INVALID_TRANSITION', '只有已完成缺陷可以重开');
+      const now = this.now().toISOString();
+      const round = this.nextReopenRound(bugId);
+      const repairAttempt = this.nextRepairAttempt(bugId);
+      const reopenId = this.createId();
+      requireBindableFiles(this.db, actorUserId, input.attachmentIds);
+      this.db.run(
+        `INSERT INTO cooking_reopen_record(
                id, bug_id, round, feedback, repair_attempt,
                reopened_by_user_id, created_at
              ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          [
-            reopenId,
-            bugId,
-            round,
-            input.feedback.trim(),
-            repairAttempt,
-            actorUserId,
-            now,
-          ],
-        );
-        this.bindLifecycleAttachments(
-          'cooking_reopen_attachment',
-          'reopen_id',
-          reopenId,
-          input.attachmentIds,
-          now,
-        );
-        const continuation = this.continueRepair(
-          source,
-          'DONE',
-          `第 ${round} 次重新打开：${input.feedback.trim()}`,
-          input.attachmentIds,
-          now,
-        );
-        return {
-          revision: continuation.revision,
+        [reopenId, bugId, round, input.feedback.trim(), repairAttempt, actorUserId, now],
+      );
+      this.bindLifecycleAttachments(
+        'cooking_reopen_attachment',
+        'reopen_id',
+        reopenId,
+        input.attachmentIds,
+        now,
+      );
+      const continuation = this.continueRepair(
+        source,
+        'DONE',
+        `第 ${round} 次重新打开：${input.feedback.trim()}`,
+        input.attachmentIds,
+        now,
+      );
+      return {
+        revision: continuation.revision,
+        executionId: continuation.executionId,
+        action: 'BUG_REOPENED',
+        details: {
+          round,
+          repairAttempt,
+          attachmentCount: input.attachmentIds.length,
           executionId: continuation.executionId,
-          action: 'BUG_REOPENED',
-          details: {
-            round,
-            repairAttempt,
-            attachmentCount: input.attachmentIds.length,
-            executionId: continuation.executionId,
-          },
-        };
-      },
-    );
+        },
+      };
+    });
   }
 
   cancelBug(
@@ -250,10 +221,7 @@ export class BugLifecycleCommands {
       (source) => {
         this.requireBugVersion(source, input.expectedVersion);
         if (kind === 'cancel' && source.stage !== transition.from)
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '只有待修复缺陷可以取消',
-          );
+          throw new PlatformError('INVALID_TRANSITION', '只有待修复缺陷可以取消');
         const now = this.now().toISOString();
         const update = this.db.run(
           `UPDATE cooking_bug
@@ -263,10 +231,7 @@ export class BugLifecycleCommands {
         );
         if (update.changes !== 1) {
           if (kind === 'cancel') throw staleLifecycle('缺陷');
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '当前缺陷不能恢复到待修复',
-          );
+          throw new PlatformError('INVALID_TRANSITION', '当前缺陷不能恢复到待修复');
         }
         this.recordBugTransition(bugId, transition.event, actorUserId, now);
         const revision = this.writes.bumpRevision(source.submission_id, now);
@@ -290,10 +255,7 @@ export class BugLifecycleCommands {
       (source) => {
         this.requireBugVersion(source, input.expectedVersion);
         if (source.stage !== 'DONE')
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '只有已完成缺陷可以整理归档',
-          );
+          throw new PlatformError('INVALID_TRANSITION', '只有已完成缺陷可以整理归档');
         if (archived === Boolean(source.archived_at))
           throw new PlatformError(
             'INVALID_TRANSITION',
@@ -413,9 +375,7 @@ export class BugLifecycleCommands {
       `INSERT INTO ${table}(${ownerColumn}, file_id, position, created_at)
        VALUES (?, ?, ?, ?)`,
     );
-    fileIds.forEach((fileId, position) =>
-      statement.run(ownerId, fileId, position, now),
-    );
+    fileIds.forEach((fileId, position) => statement.run(ownerId, fileId, position, now));
   }
 
   private requireTester(userId: string, bugId: string): BugSourceRow {
@@ -428,19 +388,11 @@ export class BugLifecycleCommands {
     return source;
   }
 
-  private requireBugVersion(
-    source: BugSourceRow,
-    expectedVersion: number,
-  ): void {
+  private requireBugVersion(source: BugSourceRow, expectedVersion: number): void {
     if (source.version !== expectedVersion) throw staleLifecycle('缺陷');
   }
 
-  private updateBugStage(
-    bugId: string,
-    from: string,
-    to: string,
-    now: string,
-  ): void {
+  private updateBugStage(bugId: string, from: string, to: string, now: string): void {
     const update = this.db.run(
       `UPDATE cooking_bug
          SET stage = ?, version = version + 1, updated_at = ?

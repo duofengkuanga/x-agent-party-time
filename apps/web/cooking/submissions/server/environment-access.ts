@@ -121,10 +121,7 @@ export function releaseEnvironmentForTakeover(
     return null;
   }
   if (!expected)
-    throw new PlatformError(
-      'RESOURCE_CONFLICT',
-      '所选环境已被其他活动提测单占用',
-    );
+    throw new PlatformError('RESOURCE_CONFLICT', '所选环境已被其他活动提测单占用');
   if (
     expected.submissionItemId !== conflict.submissionItemId ||
     expected.expectedRevision !== conflict.expectedRevision

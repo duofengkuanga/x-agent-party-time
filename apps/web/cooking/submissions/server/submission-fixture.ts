@@ -1,7 +1,4 @@
-import {
-  projectScenario,
-  engineeringScenario,
-} from '@/cooking/testing/scenario';
+import { projectScenario, engineeringScenario } from '@/cooking/testing/scenario';
 import { RunnerService } from '@/platform/runner/service';
 import { testDatabases } from '@/testing/database';
 import { randomUUID } from 'node:crypto';
@@ -10,9 +7,7 @@ import { SubmissionService } from './submission-service';
 type FixtureOptions = { confirmRepositories?: boolean };
 
 /** Each test file supplies its own database factory and cleanup hook. */
-export function submissionFixture(
-  createDatabase: ReturnType<typeof testDatabases>,
-) {
+export function submissionFixture(createDatabase: ReturnType<typeof testDatabases>) {
   return (options: FixtureOptions = {}) => setup(createDatabase, options);
 }
 
@@ -30,15 +25,12 @@ async function setup(
     member: ['submission-member', '普通成员'],
     outsider: ['submission-outsider', '项目外用户'],
   } satisfies Record<string, [string, string]>;
-  const { users, project } = await projectScenario<keyof typeof people>(
-    database,
-    {
-      name: '提测项目',
-      owner: 'owner',
-      members: ['creator', 'tester', 'developerA', 'developerB', 'member'],
-      people,
-    },
-  );
+  const { users, project } = await projectScenario<keyof typeof people>(database, {
+    name: '提测项目',
+    owner: 'owner',
+    members: ['creator', 'tester', 'developerA', 'developerB', 'member'],
+    people,
+  });
   const runners = new RunnerService(database);
   const runnerA = pairRunner(runners, users.developerA.id, '开发甲 Runner');
   const runnerB = pairRunner(runners, users.developerB.id, '开发乙 Runner');
@@ -57,9 +49,7 @@ async function setup(
     environment: '前端测试环境',
     deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' },
     repository:
-      options.confirmRepositories === false
-        ? null
-        : 'https://example.com/front.git',
+      options.confirmRepositories === false ? null : 'https://example.com/front.git',
     developers: { developerA },
   });
   const back = engineeringScenario(database, users.owner.id, project.id, {
@@ -69,9 +59,7 @@ async function setup(
     environment: '后端测试环境',
     deployment: { kind: 'CI_CD' },
     repository:
-      options.confirmRepositories === false
-        ? null
-        : 'https://example.com/back.git',
+      options.confirmRepositories === false ? null : 'https://example.com/back.git',
     developers: { developerA, developerB },
   });
   const events: Array<{ submissionId: string; revision: number }> = [];

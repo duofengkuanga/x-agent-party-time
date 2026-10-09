@@ -31,15 +31,12 @@ export class ExecutionService {
   private readonly records: ExecutionRecords;
   private readonly queue: ExecutionQueue;
   private readonly interactions: ExecutionInteractions;
-  readonly openInteraction: ExecutionInteractions['openInteraction'] = (
-    ...args
-  ) => this.interactions.openInteraction(...args);
-  readonly waitInteraction: ExecutionInteractions['waitInteraction'] = (
-    ...args
-  ) => this.interactions.waitInteraction(...args);
-  readonly resolveInteraction: ExecutionInteractions['resolveInteraction'] = (
-    ...args
-  ) => this.interactions.resolveInteraction(...args);
+  readonly openInteraction: ExecutionInteractions['openInteraction'] = (...args) =>
+    this.interactions.openInteraction(...args);
+  readonly waitInteraction: ExecutionInteractions['waitInteraction'] = (...args) =>
+    this.interactions.waitInteraction(...args);
+  readonly resolveInteraction: ExecutionInteractions['resolveInteraction'] = (...args) =>
+    this.interactions.resolveInteraction(...args);
   get(executionId: string): Execution {
     return this.records.get(executionId);
   }
@@ -57,8 +54,7 @@ export class ExecutionService {
     private readonly db: AppDatabase,
     private readonly now: () => Date = () => new Date(),
     private readonly createId: () => string = randomUUID,
-    createLeaseToken: () => string = () =>
-      randomBytes(32).toString('base64url'),
+    createLeaseToken: () => string = () => randomBytes(32).toString('base64url'),
     private readonly leaseDurationMs: number = DEFAULT_LEASE_DURATION_MS,
     private readonly project: ExecutionProjector = () => {},
   ) {
@@ -86,9 +82,7 @@ export class ExecutionService {
     const executionId = input.id ?? this.createId();
     const createdAt = this.now().toISOString();
     const taskSkillBinding =
-      input.codexTurn?.kind === 'CONTINUATION'
-        ? input.codexTurn.taskSkillBinding
-        : null;
+      input.codexTurn?.kind === 'CONTINUATION' ? input.codexTurn.taskSkillBinding : null;
     const attachments = input.attachmentIds.map((fileId) => {
       const row = this.db.get(
         `SELECT id file_id, original_name, media_type, size_bytes, sha256
@@ -154,11 +148,9 @@ export class ExecutionService {
       })();
     } catch (error) {
       if (isBindingReservationConstraint(error))
-        throw new PlatformError(
-          'RESOURCE_CONFLICT',
-          '该本机关联已有正在处理的任务',
-          { cause: error },
-        );
+        throw new PlatformError('RESOURCE_CONFLICT', '该本机关联已有正在处理的任务', {
+          cause: error,
+        });
       throw error;
     }
     return this.records.get(executionId);
@@ -254,10 +246,10 @@ export class ExecutionService {
         [...LEASED_STATES],
       );
       const expiresAt = newLeaseExpiry(this.now(), this.leaseDurationMs);
-      this.db.run(
-        `UPDATE platform_execution SET lease_expires_at = ? WHERE id = ?`,
-        [expiresAt, executionId],
-      );
+      this.db.run(`UPDATE platform_execution SET lease_expires_at = ? WHERE id = ?`, [
+        expiresAt,
+        executionId,
+      ]);
       return {
         expiresAt,
         cancellationRequested: Boolean(row.cancellation_requested),
@@ -292,14 +284,10 @@ export class ExecutionService {
         'CANCEL_REQUESTED',
       ]);
       if (
-        (row.state === 'WAITING_FOR_INTERACTION' ||
-          row.state === 'WAITING_TO_RESUME') &&
+        (row.state === 'WAITING_FOR_INTERACTION' || row.state === 'WAITING_TO_RESUME') &&
         request.outcome.kind !== 'CANCELLED'
       )
-        throw new PlatformError(
-          'INVALID_TRANSITION',
-          '等待中的任务只能以取消结束',
-        );
+        throw new PlatformError('INVALID_TRANSITION', '等待中的任务只能以取消结束');
       if (row.session_id !== request.sessionId)
         throw new PlatformError('STALE_STATE', '任务会话不匹配');
       const finishedAt = this.now().toISOString();
@@ -337,10 +325,7 @@ export class ExecutionService {
       [JSON.stringify(outcome), finishedAt, executionId],
     );
     if (update.changes !== 1)
-      throw new PlatformError(
-        'INVALID_TRANSITION',
-        '只有尚未领取的任务可以取消',
-      );
+      throw new PlatformError('INVALID_TRANSITION', '只有尚未领取的任务可以取消');
     const execution = this.records.get(executionId);
     this.records.invalidatePendingInteractions(executionId, finishedAt);
     this.project({ phase: 'APPLY', kind: 'TERMINAL', execution: execution });
@@ -391,14 +376,9 @@ export class ExecutionService {
     leaseToken: string,
     fileId: string,
   ): FileRow {
-    requireLeasedExecution(
-      this.records,
-      this.now,
-      runnerId,
-      executionId,
-      leaseToken,
-      [...LEASED_STATES],
-    );
+    requireLeasedExecution(this.records, this.now, runnerId, executionId, leaseToken, [
+      ...LEASED_STATES,
+    ]);
     const row = this.db.get(
       `SELECT a.file_id, a.original_name, a.media_type, a.size_bytes,
                 a.sha256, f.storage_key
@@ -419,18 +399,12 @@ function validateStartedSkillBinding(
 ): void {
   if (!turn || turn.kind === 'READ_SESSION') {
     if (actual)
-      throw new PlatformError(
-        'INVALID_TRANSITION',
-        '非 Codex 任务不能关联规则',
-      );
+      throw new PlatformError('INVALID_TRANSITION', '非 Codex 任务不能关联规则');
     return;
   }
-  if (!actual)
-    throw new PlatformError('INVALID_TRANSITION', 'Codex 任务缺少规则关联');
+  if (!actual) throw new PlatformError('INVALID_TRANSITION', 'Codex 任务缺少规则关联');
   const expectedName =
-    turn.kind === 'INITIAL'
-      ? turn.requiredSkillName
-      : turn.taskSkillBinding.skillName;
+    turn.kind === 'INITIAL' ? turn.requiredSkillName : turn.taskSkillBinding.skillName;
   if (
     actual.skillName !== expectedName ||
     (turn.kind === 'CONTINUATION' &&

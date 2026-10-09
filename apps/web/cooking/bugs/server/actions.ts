@@ -10,11 +10,7 @@ import {
   type InteractiveActionResult,
 } from '@/cooking/shared/server/action-transport';
 import { bugService } from '@/cooking/runtime/services';
-import type {
-  AssignBugInput,
-  BugMutationResult,
-  RequestRepairInput,
-} from '../contract';
+import type { AssignBugInput, BugMutationResult, RequestRepairInput } from '../contract';
 
 export type BugActionResult = InteractiveActionResult<BugMutationResult>;
 
@@ -101,18 +97,14 @@ export async function assignBugAction(
   bugId: string,
   input: AssignBugInput,
 ): Promise<BugActionResult> {
-  return simpleBugAction((userId) =>
-    bugService().assignBug(userId, bugId, input),
-  );
+  return simpleBugAction((userId) => bugService().assignBug(userId, bugId, input));
 }
 
 export async function requestRepairAction(
   bugId: string,
   input: RequestRepairInput,
 ): Promise<BugActionResult> {
-  return simpleBugAction((userId) =>
-    bugService().requestRepair(userId, bugId, input),
-  );
+  return simpleBugAction((userId) => bugService().requestRepair(userId, bugId, input));
 }
 
 function simpleBugAction(

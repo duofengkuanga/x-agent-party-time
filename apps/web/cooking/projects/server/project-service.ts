@@ -62,12 +62,9 @@ export class ProjectService {
       },
     );
     this.inviteUser = invitations.inviteUser.bind(invitations);
-    this.listProjectInvitations =
-      invitations.listProjectInvitations.bind(invitations);
-    this.listReceivedInvitations =
-      invitations.listReceivedInvitations.bind(invitations);
-    this.respondToInvitation =
-      invitations.respondToInvitation.bind(invitations);
+    this.listProjectInvitations = invitations.listProjectInvitations.bind(invitations);
+    this.listReceivedInvitations = invitations.listReceivedInvitations.bind(invitations);
+    this.respondToInvitation = invitations.respondToInvitation.bind(invitations);
     this.revokeInvitation = invitations.revokeInvitation.bind(invitations);
   }
 
@@ -211,8 +208,7 @@ export class ProjectService {
           projectId,
           input.expectedVersion,
         );
-        if (!updated)
-          throw new PlatformError('STALE_STATE', '项目已更新，请刷新后重试');
+        if (!updated) throw new PlatformError('STALE_STATE', '项目已更新，请刷新后重试');
         return {
           result: mapProject(updated),
           resourceId: projectId,
@@ -255,10 +251,7 @@ export class ProjectService {
           return { result: result, resourceId: targetUserId };
         }
         if (row.version !== input.expectedVersion)
-          throw new PlatformError(
-            'STALE_STATE',
-            '成员关系已更新，请刷新后重试',
-          );
+          throw new PlatformError('STALE_STATE', '成员关系已更新，请刷新后重试');
         if (row.role === 'OWNER') {
           const owners = this.db.get(
             `SELECT COUNT(*) count FROM cooking_project_membership
@@ -266,10 +259,7 @@ export class ProjectService {
             projectId,
           ) as { count: number };
           if (owners.count <= 1)
-            throw new PlatformError(
-              'INVALID_TRANSITION',
-              '项目必须至少保留一名所有者',
-            );
+            throw new PlatformError('INVALID_TRANSITION', '项目必须至少保留一名所有者');
         }
         if (this.hasActiveResponsibilities(projectId, targetUserId))
           throw new PlatformError(
@@ -307,10 +297,7 @@ export class ProjectService {
     ) as (ProjectRow & { role: string }) | undefined;
     if (!row) throw hiddenProject();
     if (row.role !== 'OWNER')
-      throw new PlatformError(
-        'PERMISSION_DENIED',
-        '只有项目所有者可以执行此操作',
-      );
+      throw new PlatformError('PERMISSION_DENIED', '只有项目所有者可以执行此操作');
     return mapProject(row);
   }
 }

@@ -125,43 +125,37 @@ rl.on('line', (line) => {
     const persistedSchema = params.input.at(-1);
     expect(persistedSchema?.type).toBe('text');
     expect(persistedSchema?.text).toContain('终态输出 JSON Schema');
-    const schemaText = persistedSchema?.text?.match(
-      /```json\n([\s\S]*?)\n```/u,
-    )?.[1];
+    const schemaText = persistedSchema?.text?.match(/```json\n([\s\S]*?)\n```/u)?.[1];
     expect(JSON.parse(schemaText ?? 'null')).toEqual(params.outputSchema);
   }
-  expect((turns[0]?.params as { input: unknown[] }).input.slice(0, -1)).toEqual(
-    [
-      {
-        type: 'text',
-        text: `$agent-party-time-repair-bug\n\n${JSON.stringify({
-          task: '只返回 JSON',
-          attachments: [
-            {
-              role: 'ACTUAL_RESULT',
-              name: 'evidence.txt',
-              path: join(root, 'evidence.txt'),
-            },
-          ],
-        })}`,
-        text_elements: [],
-      },
-      {
-        type: 'skill',
-        name: 'agent-party-time-repair-bug',
-        path: '/tmp/repair-skill/SKILL.md',
-      },
-    ],
-  );
-  expect((turns[1]?.params as { input: unknown[] }).input.slice(0, -1)).toEqual(
-    [
-      {
-        type: 'text',
-        text: '继续并只返回 JSON',
-        text_elements: [],
-      },
-    ],
-  );
+  expect((turns[0]?.params as { input: unknown[] }).input.slice(0, -1)).toEqual([
+    {
+      type: 'text',
+      text: `$agent-party-time-repair-bug\n\n${JSON.stringify({
+        task: '只返回 JSON',
+        attachments: [
+          {
+            role: 'ACTUAL_RESULT',
+            name: 'evidence.txt',
+            path: join(root, 'evidence.txt'),
+          },
+        ],
+      })}`,
+      text_elements: [],
+    },
+    {
+      type: 'skill',
+      name: 'agent-party-time-repair-bug',
+      path: '/tmp/repair-skill/SKILL.md',
+    },
+  ]);
+  expect((turns[1]?.params as { input: unknown[] }).input.slice(0, -1)).toEqual([
+    {
+      type: 'text',
+      text: '继续并只返回 JSON',
+      text_elements: [],
+    },
+  ]);
   await executor.close();
 
   await new AppServerInitializer().initialize(executable);
@@ -187,16 +181,13 @@ describe('Codex Interaction 安全投影', () => {
   };
 
   test('命令审批不上传 cwd、线程标识或命令中的绝对路径', () => {
-    const payload = publicInteractionPayload(
-      'item/commandExecution/requestApproval',
-      {
-        threadId: 'thread-private',
-        turnId: 'turn-private',
-        cwd: '/Users/example/private-repository',
-        command: 'cat /Users/example/private-repository/secret.txt',
-        reason: '检查 /private/tmp/repair.log',
-      },
-    );
+    const payload = publicInteractionPayload('item/commandExecution/requestApproval', {
+      threadId: 'thread-private',
+      turnId: 'turn-private',
+      cwd: '/Users/example/private-repository',
+      command: 'cat /Users/example/private-repository/secret.txt',
+      reason: '检查 /private/tmp/repair.log',
+    });
     expect(payload).toEqual({
       command: 'cat 本机路径已隐藏',
       reason: '检查 本机路径已隐藏',
@@ -338,10 +329,7 @@ function completeFakeTurn(
   return new Promise((resolve, reject) => {
     (
       executor as unknown as {
-        completeTurn: (
-          active: unknown,
-          params: Record<string, unknown>,
-        ) => void;
+        completeTurn: (active: unknown, params: Record<string, unknown>) => void;
       }
     ).completeTurn(
       { threadId, turnId, log: { write: () => undefined }, reject, resolve },
@@ -394,9 +382,9 @@ describe('Codex Turn 结构化结果解析', () => {
   });
 
   test('未标注 json 的代码块也能解析', async () => {
-    await expect(
-      completeTurnWithMessage('```\n{"ok":true}\n```'),
-    ).resolves.toEqual({ ok: true });
+    await expect(completeTurnWithMessage('```\n{"ok":true}\n```')).resolves.toEqual({
+      ok: true,
+    });
   });
 
   test('多个代码块时取最后一个', async () => {
@@ -407,8 +395,7 @@ describe('Codex Turn 结构化结果解析', () => {
   });
 
   test('无代码块但消息内嵌 JSON 对象时提取解析', async () => {
-    const message =
-      '处理完成，结果如下：{"outcome":"COMPLETED","count":2} 以上。';
+    const message = '处理完成，结果如下：{"outcome":"COMPLETED","count":2} 以上。';
     await expect(completeTurnWithMessage(message)).resolves.toEqual({
       outcome: 'COMPLETED',
       count: 2,

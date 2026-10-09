@@ -20,8 +20,7 @@ function stopAll(exitCode: number, signal: NodeJS.Signals = 'SIGTERM') {
   finalExitCode = exitCode;
 
   for (const child of activeChildren) {
-    if (child.exitCode === null && child.signalCode === null)
-      child.kill(signal);
+    if (child.exitCode === null && child.signalCode === null) child.kill(signal);
   }
 
   finishIfStopped();
@@ -73,9 +72,7 @@ if (seedDevelopmentUsers()) {
         const failed = code !== 0 || signal !== null;
         const outcome = signal ? `信号 ${signal}` : `退出码 ${code ?? 1}`;
         const writer = failed ? console.error : console.log;
-        writer(
-          `[dev] ${command.label} 已退出（${outcome}），正在停止其余进程。`,
-        );
+        writer(`[dev] ${command.label} 已退出（${outcome}），正在停止其余进程。`);
         stopAll(failed ? (code ?? 1) : 0);
         return;
       }

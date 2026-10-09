@@ -12,9 +12,7 @@ export type BrowserFixture = {
   username: string;
 };
 
-export async function seedBrowserFixture(
-  home: string,
-): Promise<BrowserFixture> {
+export async function seedBrowserFixture(home: string): Promise<BrowserFixture> {
   const db = openDatabase(join(home, 'server', 'server.sqlite'));
   try {
     const password = 'browser-test-password';

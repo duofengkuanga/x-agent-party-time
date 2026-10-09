@@ -138,9 +138,7 @@ function commandFixture(
   return {
     run: async (_command, args): Promise<CommandResult> => {
       if (args[0] === 'codex')
-        return options.found === false
-          ? result(1)
-          : result(0, '/opt/bin/codex\n');
+        return options.found === false ? result(1) : result(0, '/opt/bin/codex\n');
       if (args[0] === '--version')
         return result(0, `codex-cli ${options.version ?? '0.146.0'}\n`);
       if (args[0] === 'login')

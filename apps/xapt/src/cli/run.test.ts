@@ -73,16 +73,13 @@ describe('runCli', () => {
     [['daemon', 'status', '--json']],
     [['update', '--force']],
     [['uninstall', '--keep-data']],
-  ] as const)(
-    'invalid command %j uses exit code 2 and a next step',
-    async (args) => {
-      const result = await runCli(args);
+  ] as const)('invalid command %j uses exit code 2 and a next step', async (args) => {
+    const result = await runCli(args);
 
-      expect(result.exitCode).toBe(EXIT_USAGE);
-      expect(result.stderr).toContain('下一步：运行 xapt --help');
-      expect(result.stdout).toBeUndefined();
-    },
-  );
+    expect(result.exitCode).toBe(EXIT_USAGE);
+    expect(result.stderr).toContain('下一步：运行 xapt --help');
+    expect(result.stdout).toBeUndefined();
+  });
 
   test('default output does not expose sensitive values', async () => {
     const output = [
@@ -180,9 +177,7 @@ describe('runCli', () => {
     );
 
     expect(lines).toEqual([
-      expect.stringMatching(
-        /已打开浏览器授权页面：[\s\S]+请核对指纹：ABCD-EF12-3456/,
-      ),
+      expect.stringMatching(/已打开浏览器授权页面：[\s\S]+请核对指纹：ABCD-EF12-3456/),
     ]);
     expect(result).toEqual({
       exitCode: EXIT_SUCCESS,
@@ -238,8 +233,7 @@ function fakeRuntime(snapshot: DaemonSnapshot): CliRuntime {
     daemonStatus: async () => snapshot,
     daemonConnect: async (_serverUrl, progress) => {
       progress({
-        authorizationUrl:
-          'https://apt.example.com/cooking/agents/connect?request=req_1',
+        authorizationUrl: 'https://apt.example.com/cooking/agents/connect?request=req_1',
         fingerprint: 'ABCD-EF12-3456',
         browserOpened: true,
       });
@@ -269,9 +263,7 @@ function fakeRuntime(snapshot: DaemonSnapshot): CliRuntime {
   };
 }
 
-function runningSnapshot(
-  connection: DaemonSnapshot['connection'],
-): DaemonSnapshot {
+function runningSnapshot(connection: DaemonSnapshot['connection']): DaemonSnapshot {
   return {
     service: 'RUNNING',
     connection,
@@ -280,8 +272,7 @@ function runningSnapshot(
     codexVersion: '0.146.0',
     serverOrigin: connection === 'CONNECTED' ? 'https://apt.example.com' : null,
     agentName: connection === 'CONNECTED' ? '测试 Agent' : null,
-    lastHeartbeatAt:
-      connection === 'CONNECTED' ? new Date().toISOString() : null,
+    lastHeartbeatAt: connection === 'CONNECTED' ? new Date().toISOString() : null,
     activeSlots: 0,
     totalSlots: 3,
     waitingInteractions: 0,

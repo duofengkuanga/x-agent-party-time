@@ -21,10 +21,7 @@ export function defaultDecline(method: string): JsonValue {
   return { decision: 'decline' };
 }
 
-export function publicInteractionPayload(
-  method: string,
-  value: unknown,
-): JsonValue {
+export function publicInteractionPayload(method: string, value: unknown): JsonValue {
   return sanitizeExecutionInteractionPayload(method, value);
 }
 
@@ -67,11 +64,7 @@ function restoreSelectedJson(
         isJsonSubset(selectedItem, candidate),
       );
       if (index < 0) throw new Error('权限子集不属于原始请求');
-      return restoreSelectedJson(
-        selectedItem,
-        publicValue[index],
-        privateValue[index],
-      );
+      return restoreSelectedJson(selectedItem, publicValue[index], privateValue[index]);
     });
   }
   if (selected && typeof selected === 'object') {
@@ -81,10 +74,7 @@ function restoreSelectedJson(
       Object.entries(selected).map(([key, child]) => {
         if (!(key in publicRecord) || !(key in privateRecord))
           throw new Error('权限子集不属于原始请求');
-        return [
-          key,
-          restoreSelectedJson(child, publicRecord[key], privateRecord[key]),
-        ];
+        return [key, restoreSelectedJson(child, publicRecord[key], privateRecord[key])];
       }),
     );
   }
@@ -103,10 +93,7 @@ function sanitizeJsonValue(value: unknown): JsonValue {
   if (Array.isArray(value)) return value.map(sanitizeJsonValue);
   if (value && typeof value === 'object')
     return Object.fromEntries(
-      Object.entries(value).map(([key, child]) => [
-        key,
-        sanitizeJsonValue(child),
-      ]),
+      Object.entries(value).map(([key, child]) => [key, sanitizeJsonValue(child)]),
     );
   return null;
 }

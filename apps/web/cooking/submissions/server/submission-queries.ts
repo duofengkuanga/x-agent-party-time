@@ -203,9 +203,7 @@ export class SubmissionQueries {
               !environmentBusy(this.db, item.id),
           },
           availableActions:
-            row.status === 'ACTIVE' &&
-            item.responsibleUser.id === userId &&
-            !hasBug
+            row.status === 'ACTIVE' && item.responsibleUser.id === userId && !hasBug
               ? (['EDIT_TARGET_BRANCH'] as const)
               : [],
           createdAt: item.createdAt,
@@ -223,8 +221,7 @@ export class SubmissionQueries {
       this.requireSubmissionAccess(userId, submissionId);
       return true;
     } catch (error) {
-      if (error instanceof PlatformError && error.code === 'NOT_FOUND')
-        return false;
+      if (error instanceof PlatformError && error.code === 'NOT_FOUND') return false;
       throw error;
     }
   }
@@ -247,10 +244,7 @@ export class SubmissionQueries {
     return !hasActiveSubmissionExecution(this.db, submissionId);
   }
 
-  requireSubmissionAccess(
-    userId: string,
-    submissionId: string,
-  ): SubmissionAccessRow {
+  requireSubmissionAccess(userId: string, submissionId: string): SubmissionAccessRow {
     const row = this.db.get(
       `SELECT submission.*, project.name project_name,
                 membership.role membership_role,
@@ -318,10 +312,7 @@ function mapItem(row: SubmissionItemRow): SubmissionItem {
   });
 }
 
-function mapUser(
-  prefix: 'creator' | 'tester',
-  row: Record<string, unknown>,
-): User {
+function mapUser(prefix: 'creator' | 'tester', row: Record<string, unknown>): User {
   return UserSchema.parse({
     id: prefix === 'tester' ? row.tester_user_id : row.created_by_user_id,
     username: row[`${prefix}_username`],

@@ -90,23 +90,17 @@ export class UpdateQueries {
     const attempts = this.attempts(batchId);
     const latest = attempts.at(-1);
     const entries = this.batchEntries(batchId);
-    const deployment = DeploymentMethodSchema.parse(
-      JSON.parse(batch.deployment_json),
-    );
+    const deployment = DeploymentMethodSchema.parse(JSON.parse(batch.deployment_json));
     const hasManualDatabaseOperation = entries.some((entry) =>
       parseManualOperations(entry.manual_operations_json).some(
         (operation) => operation.kind === 'DATABASE_SQL',
       ),
     );
-    const projectedInteractions = this.interactionsForBatch(batchId).map(
-      (row) => ({
-        executionId: row.execution_id,
-        interaction: projectCookingInteraction(row, technical),
-      }),
-    );
-    const interactions = projectedInteractions.map(
-      ({ interaction }) => interaction,
-    );
+    const projectedInteractions = this.interactionsForBatch(batchId).map((row) => ({
+      executionId: row.execution_id,
+      interaction: projectCookingInteraction(row, technical),
+    }));
+    const interactions = projectedInteractions.map(({ interaction }) => interaction);
     const statusLabel = batchStateLabel(batch.state);
     const timeline = [
       {
@@ -168,9 +162,7 @@ export class UpdateQueries {
       environmentName: source.environment_name,
       deploymentKind: deployment.kind,
       hasManualDatabaseOperation,
-      synchronizationError: technical
-        ? this.sessionSynchronizationError(batch.id)
-        : null,
+      synchronizationError: technical ? this.sessionSynchronizationError(batch.id) : null,
       entries: entries.map((entry) => ({
         bugId: entry.bug_id,
         bugShortId: entry.short_id,
@@ -188,8 +180,7 @@ export class UpdateQueries {
               !this.hasActiveSessionSync(batch.id)
                 ? (['SYNC_SESSION'] as const)
                 : []),
-              ...(batch.state === 'WAITING_EXTERNAL' &&
-              deployment.kind === 'CI_CD'
+              ...(batch.state === 'WAITING_EXTERNAL' && deployment.kind === 'CI_CD'
                 ? (['REPORT_EXTERNAL'] as const)
                 : []),
             ]
@@ -407,9 +398,7 @@ export class UpdateQueries {
     const failure = row?.outcome_json
       ? (JSON.parse(row.outcome_json) as { failure?: { message?: unknown } })
       : null;
-    return typeof failure?.failure?.message === 'string'
-      ? failure.failure.message
-      : null;
+    return typeof failure?.failure?.message === 'string' ? failure.failure.message : null;
   }
 
   attemptForExecution(executionId: string): AttemptRow | undefined {

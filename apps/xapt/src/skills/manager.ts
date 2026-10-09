@@ -99,8 +99,7 @@ export class SkillBundleManager {
     const hashes = Object.fromEntries(
       downloaded.skills.map((skill) => [skill.name, bundleHash(skill.files)]),
     ) as Record<XaptSkillName, string>;
-    for (const skill of downloaded.skills)
-      validateSkill(skill.name, skill.files);
+    for (const skill of downloaded.skills) validateSkill(skill.name, skill.files);
     for (const path of [this.paths.skillBundles, this.paths.skillGenerations])
       await mkdir(path, { recursive: true, mode: 0o700 });
     for (const skill of downloaded.skills)
@@ -114,9 +113,7 @@ export class SkillBundleManager {
     const updated =
       !current ||
       current.sourceRevision !== manifest.sourceRevision ||
-      XAPT_SKILL_NAMES.some(
-        (name) => current.skills[name] !== manifest.skills[name],
-      );
+      XAPT_SKILL_NAMES.some((name) => current.skills[name] !== manifest.skills[name]);
     await this.switchNamespace(generation);
     return {
       installed: true,
@@ -143,10 +140,7 @@ export class SkillBundleManager {
       !COMMIT_PATTERN.test(identity.sourceRevision)
     )
       throw new SkillBundleError('任务规则关联无效');
-    const generation = join(
-      this.paths.skillGenerations,
-      identity.sourceRevision,
-    );
+    const generation = join(this.paths.skillGenerations, identity.sourceRevision);
     const manifest = await readManifest(join(generation, 'manifest.json'));
     if (manifest.skills[identity.skillName] !== identity.bundleHash)
       throw new SkillBundleError('任务规则关联与安装清单不匹配');
@@ -187,11 +181,9 @@ export class SkillBundleManager {
     const tree = await this.githubJson(
       `https://api.github.com/repos/${this.repository}/git/trees/${treeSha}?recursive=1`,
     );
-    if (tree.truncated === true)
-      throw new SkillBundleError('规则包来源文件列表不完整');
+    if (tree.truncated === true) throw new SkillBundleError('规则包来源文件列表不完整');
     const treeEntries = tree.tree;
-    if (!Array.isArray(treeEntries))
-      throw new SkillBundleError('规则包来源文件列表无效');
+    if (!Array.isArray(treeEntries)) throw new SkillBundleError('规则包来源文件列表无效');
     const skills = await Promise.all(
       XAPT_SKILL_NAMES.map(async (name): Promise<DownloadedSkill> => {
         const prefix = `skills/${name}/`;
@@ -201,8 +193,7 @@ export class SkillBundleManager {
             typeof entry.path === 'string' &&
             entry.path.startsWith(prefix),
         );
-        if (entries.length === 0)
-          throw new SkillBundleError(`规则包来源缺少 ${name}`);
+        if (entries.length === 0) throw new SkillBundleError(`规则包来源缺少 ${name}`);
         const files: SkillFile[] = [];
         for (const entry of entries) {
           const fullPath = recordString(entry, 'path');
@@ -239,9 +230,7 @@ export class SkillBundleManager {
       },
     });
     if (!response.ok)
-      throw new SkillBundleError(
-        `规则包来源请求失败（HTTP ${response.status}）`,
-      );
+      throw new SkillBundleError(`规则包来源请求失败（HTTP ${response.status}）`);
     const value: unknown = await response.json();
     if (!isRecord(value)) throw new SkillBundleError('规则包来源响应无效');
     return value;
@@ -257,10 +246,7 @@ export class SkillBundleManager {
         throw new SkillBundleError('已存在的规则包内容不一致');
       return;
     }
-    const temporary = join(
-      this.paths.skillBundles,
-      `.${hash}.${randomUUID()}.tmp`,
-    );
+    const temporary = join(this.paths.skillBundles, `.${hash}.${randomUUID()}.tmp`);
     try {
       await mkdir(temporary, { recursive: false, mode: 0o700 });
       for (const file of files) {
@@ -277,13 +263,8 @@ export class SkillBundleManager {
     }
   }
 
-  private async installGeneration(
-    manifest: GenerationManifest,
-  ): Promise<string> {
-    const destination = join(
-      this.paths.skillGenerations,
-      manifest.sourceRevision,
-    );
+  private async installGeneration(manifest: GenerationManifest): Promise<string> {
+    const destination = join(this.paths.skillGenerations, manifest.sourceRevision);
     const existing = await info(destination);
     if (existing) {
       if (!existing.isDirectory())
@@ -370,8 +351,7 @@ function validateSkill(name: XaptSkillName, files: SkillFile[]): void {
     throw new SkillBundleError(`${name} 缺少 SKILL.md 或 agents/openai.yaml`);
   const skillText = new TextDecoder().decode(skill.bytes);
   const frontmatter = skillText.match(/^---\n([\s\S]*?)\n---(?:\n|$)/u)?.[1];
-  if (!frontmatter)
-    throw new SkillBundleError(`${name} 的 SKILL.md frontmatter 无效`);
+  if (!frontmatter) throw new SkillBundleError(`${name} 的 SKILL.md frontmatter 无效`);
   if (!frontmatter.split('\n').includes(`name: ${name}`))
     throw new SkillBundleError(`${name} 的规则名称不匹配`);
   if (!/^description:\s*\S+/mu.test(frontmatter))
@@ -392,8 +372,7 @@ async function readBundleFiles(root: string): Promise<SkillFile[]> {
     for (const entry of await readdir(directory, { withFileTypes: true })) {
       const path = join(directory, entry.name);
       const entryInfo = await lstat(path);
-      if (entryInfo.isSymbolicLink())
-        throw new SkillBundleError('规则包不允许软链接');
+      if (entryInfo.isSymbolicLink()) throw new SkillBundleError('规则包不允许软链接');
       if (entryInfo.isDirectory()) await visit(path);
       else if (entryInfo.isFile()) {
         const relativePath = relative(root, path).split(sep).join('/');
@@ -406,10 +385,7 @@ async function readBundleFiles(root: string): Promise<SkillFile[]> {
 
 async function readManifest(path: string): Promise<GenerationManifest> {
   const value: unknown = JSON.parse(await readFile(path, 'utf8'));
-  if (
-    !isRecord(value) ||
-    !COMMIT_PATTERN.test(recordString(value, 'sourceRevision'))
-  )
+  if (!isRecord(value) || !COMMIT_PATTERN.test(recordString(value, 'sourceRevision')))
     throw new SkillBundleError('规则包版本清单无效');
   const skills = recordValue(value, 'skills');
   const result = Object.fromEntries(
@@ -433,8 +409,7 @@ async function validateGenerationLinks(
   for (const name of XAPT_SKILL_NAMES) {
     const linkPath = join(generation, name);
     const link = await info(linkPath);
-    if (!link?.isSymbolicLink())
-      throw new SkillBundleError(`规则包版本缺少 ${name}`);
+    if (!link?.isSymbolicLink()) throw new SkillBundleError(`规则包版本缺少 ${name}`);
     const bundle = resolve(dirname(linkPath), await readlink(linkPath));
     if (bundle !== join(paths.skillBundles, manifest.skills[name]))
       throw new SkillBundleError(`规则包版本的 ${name} 映射无效`);
@@ -457,9 +432,7 @@ function requireInside(root: string, path: string): void {
   throw new SkillBundleError('规则包目录不属于 xapt 管理');
 }
 
-async function info(
-  path: string,
-): Promise<Awaited<ReturnType<typeof lstat>> | null> {
+async function info(path: string): Promise<Awaited<ReturnType<typeof lstat>> | null> {
   try {
     return await lstat(path);
   } catch (error) {

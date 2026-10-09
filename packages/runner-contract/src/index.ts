@@ -19,9 +19,7 @@ export function normalizeRepositoryUrl(value: string): string {
 }
 
 function normalizedRepositoryUrl(value: string): string | null {
-  const scp = value.includes('://')
-    ? null
-    : value.match(/^[^\s@]+@([^\s:]+):(.+)$/u);
+  const scp = value.includes('://') ? null : value.match(/^[^\s@]+@([^\s:]+):(.+)$/u);
   if (scp) return canonicalRepositoryUrl(scp[1]!, undefined, scp[2]!);
 
   let url: URL;
@@ -70,9 +68,7 @@ export const RunnerAuthorizationVerifierSchema = z
   .min(43)
   .max(128)
   .regex(/^[A-Za-z0-9_-]+$/u);
-export const RunnerAuthorizationVerifierHashSchema = z
-  .string()
-  .regex(/^[a-f0-9]{64}$/u);
+export const RunnerAuthorizationVerifierHashSchema = z.string().regex(/^[a-f0-9]{64}$/u);
 export const RunnerFingerprintSchema = z
   .string()
   .regex(/^[A-F0-9]{4}(?:-[A-F0-9]{4}){2}$/u);
@@ -128,22 +124,19 @@ export const RunnerAuthorizationClaimRequestSchema = z.strictObject({
   verifier: RunnerAuthorizationVerifierSchema,
 });
 
-export const RunnerAuthorizationClaimResponseSchema = z.discriminatedUnion(
-  'state',
-  [
-    z.object({
-      state: z.literal('WAITING'),
-      retryAfterMs: z.number().int().min(500).max(30_000),
-    }),
-    z.object({
-      state: z.literal('REJECTED'),
-      message: z.string().trim().min(1).max(240),
-    }),
-    RunnerPairingResultSchema.extend({
-      state: z.literal('AUTHORIZED'),
-    }),
-  ],
-);
+export const RunnerAuthorizationClaimResponseSchema = z.discriminatedUnion('state', [
+  z.object({
+    state: z.literal('WAITING'),
+    retryAfterMs: z.number().int().min(500).max(30_000),
+  }),
+  z.object({
+    state: z.literal('REJECTED'),
+    message: z.string().trim().min(1).max(240),
+  }),
+  RunnerPairingResultSchema.extend({
+    state: z.literal('AUTHORIZED'),
+  }),
+]);
 
 export const RunnerHeartbeatRequestSchema = z.strictObject({
   availableSlots: z.number().int().min(0).max(3),
@@ -179,27 +172,24 @@ export const RunnerBindingWorkResponseSchema = z.object({
   request: RunnerBindingWorkSchema.nullable(),
 });
 
-export const RunnerBindingWorkCompletionSchema = z.discriminatedUnion(
-  'outcome',
-  [
-    z.strictObject({
-      outcome: z.literal('SUCCEEDED'),
-      repositoryUrl: RepositoryUrlSchema,
-    }),
-    z.strictObject({
-      outcome: z.literal('FAILED'),
-      code: z.enum([
-        'CANCELLED',
-        'INVALID_DIRECTORY',
-        'NOT_GIT_REPOSITORY',
-        'MISSING_REMOTE',
-        'LOCAL_STATE_FAILED',
-        'UNSUPPORTED_PLATFORM',
-      ]),
-      message: z.string().trim().min(1).max(240),
-    }),
-  ],
-);
+export const RunnerBindingWorkCompletionSchema = z.discriminatedUnion('outcome', [
+  z.strictObject({
+    outcome: z.literal('SUCCEEDED'),
+    repositoryUrl: RepositoryUrlSchema,
+  }),
+  z.strictObject({
+    outcome: z.literal('FAILED'),
+    code: z.enum([
+      'CANCELLED',
+      'INVALID_DIRECTORY',
+      'NOT_GIT_REPOSITORY',
+      'MISSING_REMOTE',
+      'LOCAL_STATE_FAILED',
+      'UNSUPPORTED_PLATFORM',
+    ]),
+    message: z.string().trim().min(1).max(240),
+  }),
+]);
 
 export const RunnerBindingWorkCompletionResponseSchema = z.object({
   state: z.enum(['SUCCEEDED', 'FAILED']),
@@ -212,9 +202,7 @@ export type RunnerPairingResult = z.infer<typeof RunnerPairingResultSchema>;
 export type RunnerAuthorizationCreateRequest = z.infer<
   typeof RunnerAuthorizationCreateRequestSchema
 >;
-export type RunnerAuthorizationIssue = z.infer<
-  typeof RunnerAuthorizationIssueSchema
->;
+export type RunnerAuthorizationIssue = z.infer<typeof RunnerAuthorizationIssueSchema>;
 export type RunnerAuthorizationClaimResponse = z.infer<
   typeof RunnerAuthorizationClaimResponseSchema
 >;

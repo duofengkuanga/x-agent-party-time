@@ -41,8 +41,9 @@ describe('UpdateService', () => {
       async (execution) => {
         if (execution.codexTurn?.kind !== 'INITIAL')
           throw new Error('需要首次 Update Turn');
-        const candidates = execution.codexTurn.executionBrief
-          .frozenCandidates as Array<{ commits: string[] }>;
+        const candidates = execution.codexTurn.executionBrief.frozenCandidates as Array<{
+          commits: string[];
+        }>;
         claimedCommits = candidates.flatMap((candidate) => candidate.commits);
         return {
           kind: 'SUCCEEDED',
@@ -54,9 +55,7 @@ describe('UpdateService', () => {
 
     expect(completed?.id).toBe(frozen.executionId);
     expect(claimedCommits).toEqual(commits);
-    expect(latestBatch(fixture.database, fixture.item.id).state).toBe(
-      'COMPLETED',
-    );
+    expect(latestBatch(fixture.database, fixture.item.id).state).toBe('COMPLETED');
   });
 });
 
@@ -68,11 +67,7 @@ test('统一装配只向 Update 投影更新会话同步，保留原失败尝试
   const frozen = updates.freezeNow(users.developer.id, item.id, {
     mutationId: randomUUID(),
   });
-  const started = await startExecution(
-    fixture,
-    frozen.executionId,
-    'update-to-sync',
-  );
+  const started = await startExecution(fixture, frozen.executionId, 'update-to-sync');
   executions.complete(runner.id, started.executionId, {
     leaseToken: started.leaseToken,
     sessionId: started.sessionId,
@@ -119,14 +114,8 @@ describe('更新遵守环境使用权', () => {
     const fixture = await setup();
     fixture.createBug('切换期间保留候选');
     await completeNextRepair(fixture, 'environment-repair', ['aaaaaaa']);
-    const submissions = new SubmissionService(
-      fixture.database,
-      fixture.clock.now,
-    );
-    const view = submissions.getWorkspace(
-      fixture.users.owner.id,
-      fixture.submission.id,
-    );
+    const submissions = new SubmissionService(fixture.database, fixture.clock.now);
+    const view = submissions.getWorkspace(fixture.users.owner.id, fixture.submission.id);
     const originalItem = view.submission.items[0]!;
     const input = {
       mutationId: randomUUID(),
@@ -157,10 +146,8 @@ describe('更新遵守环境使用权', () => {
     expect(fixture.updates.prepareDueExecutions()).toEqual([]);
     expect(pending(fixture.database, fixture.item.id)).not.toBeNull();
     expect(
-      fixture.updates.workspace(
-        fixture.users.developer.id,
-        fixture.submission.id,
-      ).pendingDeliveries[0]!.availableActions,
+      fixture.updates.workspace(fixture.users.developer.id, fixture.submission.id)
+        .pendingDeliveries[0]!.availableActions,
     ).toEqual([]);
     expect(() => freezeUpdate(fixture)).toThrow('已暂停使用环境');
     const paused = submissions.getWorkspace(
@@ -176,9 +163,7 @@ describe('更新遵守环境使用权', () => {
     expect(fixture.updates.prepareDueExecutions()).toHaveLength(1);
     const nextView = submissions.getWorkspace(fixture.users.owner.id, next.id);
     const nextItem = nextView.submission.items[0]!;
-    expect(nextItem.environmentAccess.conflict!.blockedReason).toContain(
-      '正在更新',
-    );
+    expect(nextItem.environmentAccess.conflict!.blockedReason).toContain('正在更新');
     expect(() =>
       submissions.changeEnvironment(fixture.users.owner.id, nextItem.id, {
         mutationId: randomUUID(),
@@ -188,8 +173,8 @@ describe('更新遵守环境使用权', () => {
       }),
     ).toThrow('正在更新');
     expect(
-      submissions.getWorkspace(fixture.users.owner.id, fixture.submission.id)
-        .submission.items[0]!.environmentAccess.owned,
+      submissions.getWorkspace(fixture.users.owner.id, fixture.submission.id).submission
+        .items[0]!.environmentAccess.owned,
     ).toBe(true);
   });
 });
@@ -204,10 +189,7 @@ test('外部部署等待期间禁止切换；失败后允许切换但原批次�
     'external-lock-update',
   );
   completeSuccessfulExecution(fixture, running, pushedUpdate());
-  const submissions = new SubmissionService(
-    fixture.database,
-    fixture.clock.now,
-  );
+  const submissions = new SubmissionService(fixture.database, fixture.clock.now);
   const original = submissions.getWorkspace(
     fixture.users.owner.id,
     fixture.submission.id,
@@ -242,16 +224,12 @@ test('外部部署等待期间禁止切换；失败后允许切换但原批次�
     }),
   ).toThrow('等待部署结果');
   const waiting = latestBatch(fixture.database, fixture.item.id);
-  fixture.updates.reportExternalDeployment(
-    fixture.users.developer.id,
-    waiting.id,
-    {
-      ...mutation(waiting.version),
-      outcome: 'FAILED',
-      summary: '外部部署已经失败并结束',
-      attachmentIds: [],
-    },
-  );
+  fixture.updates.reportExternalDeployment(fixture.users.developer.id, waiting.id, {
+    ...mutation(waiting.version),
+    outcome: 'FAILED',
+    summary: '外部部署已经失败并结束',
+    attachmentIds: [],
+  });
   const available = submissions.environmentConflicts(
     fixture.users.owner.id,
     projectId,
@@ -274,7 +252,6 @@ test('外部部署等待期间禁止切换；失败后允许切换但原批次�
     }),
   ).toThrow('已暂停使用环境');
   expect(
-    fixture.updates.batchView(fixture.users.developer.id, batch.id)
-      .availableActions,
+    fixture.updates.batchView(fixture.users.developer.id, batch.id).availableActions,
   ).toEqual([]);
 });

@@ -35,15 +35,9 @@ export function ensureDistinctItems(input: CreateSubmissionInput): void {
   const environmentIds = new Set<string>();
   for (const item of input.items) {
     if (engineeringIds.has(item.engineeringId))
-      throw new PlatformError(
-        'VALIDATION_FAILED',
-        '同一工程在一张提测单中只能出现一次',
-      );
+      throw new PlatformError('VALIDATION_FAILED', '同一工程在一张提测单中只能出现一次');
     if (environmentIds.has(item.environmentId))
-      throw new PlatformError(
-        'VALIDATION_FAILED',
-        '同一环境在一张提测单中只能出现一次',
-      );
+      throw new PlatformError('VALIDATION_FAILED', '同一环境在一张提测单中只能出现一次');
     engineeringIds.add(item.engineeringId);
     environmentIds.add(item.environmentId);
   }

@@ -37,10 +37,7 @@ export async function readCompletedTurn(
       throw new CodexAppServerError(latestTurnStatusMessage(status), sessionId);
     const message = latestAgentMessage(turn.items);
     if (typeof message !== 'string')
-      throw new CodexAppServerError(
-        'Codex 会话的最新轮次未返回结果',
-        sessionId,
-      );
+      throw new CodexAppServerError('Codex 会话的最新轮次未返回结果', sessionId);
     const result = parseStructuredResult(message);
     if (result === undefined)
       throw new CodexAppServerError(
@@ -58,8 +55,7 @@ export async function readCompletedTurn(
 function latestTurnStatusMessage(status: string | null): string {
   if (status === 'inProgress' || status === 'interrupted')
     return 'Codex 会话的最新一轮尚未完成或暂无法确认，请完成后再同步';
-  if (status === 'failed')
-    return 'Codex 会话的最新一轮已失败，请在原会话处理后再同步';
+  if (status === 'failed') return 'Codex 会话的最新一轮已失败，请在原会话处理后再同步';
   return 'Codex 会话的最新一轮状态无法确认，请完成后再同步';
 }
 

@@ -43,13 +43,10 @@ type ProjectionHandlers = Record<
 >;
 
 /** Keep phase dispatch exhaustive without duplicating it in each domain. */
-export function executionProjector(
-  handlers: ProjectionHandlers,
-): ExecutionProjector {
+export function executionProjector(handlers: ProjectionHandlers): ExecutionProjector {
   return (event) => {
     const phase = handlers[event.phase];
-    if (event.kind === 'INTERACTION_OPENED')
-      phase.INTERACTION_OPENED(event.interaction);
+    if (event.kind === 'INTERACTION_OPENED') phase.INTERACTION_OPENED(event.interaction);
     else phase[event.kind](event.execution);
   };
 }

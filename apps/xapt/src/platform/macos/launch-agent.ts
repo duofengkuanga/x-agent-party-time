@@ -12,8 +12,7 @@ export class MacOsLaunchAgent implements LaunchAgent {
       this.domain(),
       plistPath,
     ]);
-    if (result.exitCode !== 0)
-      throw new LaunchAgentError('无法注册 xapt 启动项');
+    if (result.exitCode !== 0) throw new LaunchAgentError('无法注册 xapt 启动项');
   }
 
   async start(label: string): Promise<void> {
@@ -21,8 +20,7 @@ export class MacOsLaunchAgent implements LaunchAgent {
       'kickstart',
       `${this.domain()}/${label}`,
     ]);
-    if (result.exitCode !== 0)
-      throw new LaunchAgentError('无法启动 xapt 本机服务');
+    if (result.exitCode !== 0) throw new LaunchAgentError('无法启动 xapt 本机服务');
   }
 
   async stop(label: string): Promise<void> {
@@ -31,8 +29,7 @@ export class MacOsLaunchAgent implements LaunchAgent {
       'SIGTERM',
       `${this.domain()}/${label}`,
     ]);
-    if (result.exitCode !== 0)
-      throw new LaunchAgentError('无法停止 xapt 本机服务');
+    if (result.exitCode !== 0) throw new LaunchAgentError('无法停止 xapt 本机服务');
   }
 
   async unregister(plistPath: string): Promise<void> {

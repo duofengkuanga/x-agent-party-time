@@ -5,11 +5,7 @@ import { CodexAppServerError } from './errors';
 import { asRecord, requiredString } from './wire-values';
 
 export function codexUserInput(input: CodexExecutionInput): unknown[] {
-  const text = textWithAttachments(
-    input.text,
-    input.attachments,
-    Boolean(input.skill),
-  );
+  const text = textWithAttachments(input.text, input.attachments, Boolean(input.skill));
   return [
     {
       type: 'text',
@@ -56,8 +52,7 @@ function materializeInitialAttachments(
   const references = Array.isArray(brief.attachmentReferences)
     ? brief.attachmentReferences
     : [];
-  if (!references.length)
-    throw new CodexAppServerError('初始任务缺少附件引用', null);
+  if (!references.length) throw new CodexAppServerError('初始任务缺少附件引用', null);
   const paths = new Map(mappings.map((mapping) => [mapping.fileId, mapping]));
   const evidence = references.map((reference) => {
     const value = asRecord(reference);
@@ -67,7 +62,6 @@ function materializeInitialAttachments(
     if (!mapping) throw new CodexAppServerError('任务附件路径映射缺失', null);
     return { role, name: mapping.originalName, path: mapping.path };
   });
-  const { attachmentReferences: _attachmentReferences, ...withoutReferences } =
-    brief;
+  const { attachmentReferences: _attachmentReferences, ...withoutReferences } = brief;
   return JSON.stringify({ ...withoutReferences, attachments: evidence });
 }

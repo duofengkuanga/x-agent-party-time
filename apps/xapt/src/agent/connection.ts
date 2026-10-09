@@ -72,9 +72,7 @@ export class ConnectionCoordinator {
     }
   }
 
-  async heartbeat(
-    availableSlots: number,
-  ): Promise<AuthenticatedRunnerSession | null> {
+  async heartbeat(availableSlots: number): Promise<AuthenticatedRunnerSession | null> {
     const session = await this.authenticatedSession();
     if (!session) return null;
     try {
@@ -152,26 +150,17 @@ export class ConnectionCoordinator {
     progress: (value: ConnectionProgress) => void,
   ): Promise<void> {
     if (this.projection.activity === 'BUSY')
-      throw new ConnectionError(
-        'CONNECT_IN_PROGRESS',
-        '已有 Agent 授权正在进行',
-      );
+      throw new ConnectionError('CONNECT_IN_PROGRESS', '已有 Agent 授权正在进行');
     const origin = normalizeServerOrigin(serverUrl);
     const existing = await this.state.loadConnection();
-    const existingOrigin = existing
-      ? normalizeServerOrigin(existing.serverUrl)
-      : null;
+    const existingOrigin = existing ? normalizeServerOrigin(existing.serverUrl) : null;
     if (existing && existingOrigin === origin) {
       const credential = await this.keychain.read(
         keychainAccount(existingOrigin, existing.runnerId),
       );
       if (credential) {
         try {
-          const runner = await this.http.heartbeat(
-            existingOrigin,
-            credential,
-            3,
-          );
+          const runner = await this.http.heartbeat(existingOrigin, credential, 3);
           this.markConnected(existingOrigin, runner.name);
           return;
         } catch (error) {
@@ -194,9 +183,7 @@ export class ConnectionCoordinator {
     this.projection.serverOrigin = origin;
     try {
       const installationId = await this.state.installationId();
-      const verifier = RunnerAuthorizationVerifierSchema.parse(
-        this.createVerifier(),
-      );
+      const verifier = RunnerAuthorizationVerifierSchema.parse(this.createVerifier());
       const verifierHash = createHash('sha256').update(verifier).digest('hex');
       const fingerprint = RunnerFingerprintSchema.parse(
         verifierHash.slice(0, 12).toUpperCase().match(/.{4}/gu)!.join('-'),
@@ -208,8 +195,7 @@ export class ConnectionCoordinator {
         suggestedName: this.suggestedName(),
       });
       const authorizationUrl =
-        `${origin}/cooking/agents/connect?request=` +
-        encodeURIComponent(issue.requestId);
+        `${origin}/cooking/agents/connect?request=` + encodeURIComponent(issue.requestId);
       let browserOpened = true;
       try {
         await this.browser.open(new URL(authorizationUrl));
@@ -251,20 +237,13 @@ export class ConnectionCoordinator {
           throw error;
         }
         if (existing && existingOrigin) {
-          const previousAccount = keychainAccount(
-            existingOrigin,
-            existing.runnerId,
-          );
-          if (previousAccount !== account)
-            await this.keychain.delete(previousAccount);
+          const previousAccount = keychainAccount(existingOrigin, existing.runnerId);
+          if (previousAccount !== account) await this.keychain.delete(previousAccount);
         }
         this.markConnected(origin, result.runner.name);
         return;
       }
-      throw new ConnectionError(
-        'AUTHORIZATION_EXPIRED',
-        'Agent 授权请求已过期',
-      );
+      throw new ConnectionError('AUTHORIZATION_EXPIRED', 'Agent 授权请求已过期');
     } finally {
       this.projection.activity = 'IDLE';
       if (this.projection.status === 'CONNECTING') {
@@ -285,10 +264,7 @@ export function normalizeServerOrigin(input: string): string {
     throw new ConnectionError('INVALID_SERVER_URL', '服务地址无效');
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:')
-    throw new ConnectionError(
-      'INVALID_SERVER_URL',
-      '服务地址必须使用 HTTP 或 HTTPS',
-    );
+    throw new ConnectionError('INVALID_SERVER_URL', '服务地址必须使用 HTTP 或 HTTPS');
   if (url.username || url.password)
     throw new ConnectionError('INVALID_SERVER_URL', '服务地址不得包含凭据');
   return url.origin;

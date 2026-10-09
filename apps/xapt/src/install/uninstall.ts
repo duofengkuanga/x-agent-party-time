@@ -3,11 +3,7 @@ import type { XaptPaths } from '../platform/paths';
 import type { LocalStateStore } from '../state/store';
 import type { DaemonControlClient } from '../daemon/control';
 import type { DaemonManager } from '../daemon/manager';
-import type {
-  ForceConfirmation,
-  Keychain,
-  UserEnvironment,
-} from '../platform/contracts';
+import type { ForceConfirmation, Keychain, UserEnvironment } from '../platform/contracts';
 import { keychainAccount } from '../platform/macos/keychain';
 import { lstat, readlink } from 'node:fs/promises';
 import { dirname, relative, resolve, sep } from 'node:path';
@@ -82,10 +78,7 @@ export class UninstallManager {
     if (connection)
       try {
         await this.keychain.delete(
-          keychainAccount(
-            new URL(connection.serverUrl).origin,
-            connection.runnerId,
-          ),
+          keychainAccount(new URL(connection.serverUrl).origin, connection.runnerId),
         );
       } catch (error) {
         if (!force) throw error;

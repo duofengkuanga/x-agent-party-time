@@ -4,10 +4,7 @@ import { CleanupExecutionResultSchema } from '../contract';
 import type { CleanupSourceRow } from './records';
 
 export function isCleanupExecution(execution: Execution): boolean {
-  return (
-    execution.owner.namespace === 'cooking' &&
-    execution.owner.kind === 'CLEANUP'
-  );
+  return execution.owner.namespace === 'cooking' && execution.owner.kind === 'CLEANUP';
 }
 
 export function parseWorkspaceKeys(value: string): string[] {
@@ -17,10 +14,7 @@ export function parseWorkspaceKeys(value: string): string[] {
     parsed.length === 0 ||
     parsed.some((item) => typeof item !== 'string' || !item.trim())
   )
-    throw new PlatformError(
-      'INVALID_TRANSITION',
-      '清理任务缺少有效的逻辑工作区范围',
-    );
+    throw new PlatformError('INVALID_TRANSITION', '清理任务缺少有效的逻辑工作区范围');
   return [...new Set(parsed)];
 }
 
@@ -29,9 +23,7 @@ export function interpretCleanup(execution: Execution): {
   outcome: unknown;
 } {
   if (execution.outcome?.kind === 'SUCCEEDED') {
-    const parsed = CleanupExecutionResultSchema.safeParse(
-      execution.outcome.result,
-    );
+    const parsed = CleanupExecutionResultSchema.safeParse(execution.outcome.result);
     if (parsed.success)
       return {
         kind: parsed.data.outcome,

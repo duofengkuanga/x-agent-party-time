@@ -33,10 +33,7 @@ export function handleWorkspaceSnapshot(
 export function handleWorkspaceEvents(
   request: Request,
   userId: string,
-  submissions: Pick<
-    CookingWorkspaceService,
-    'canAccessSubmission' | 'getWorkspace'
-  >,
+  submissions: Pick<CookingWorkspaceService, 'canAccessSubmission' | 'getWorkspace'>,
   events: WorkspaceEventBus,
   keepaliveMs = 15_000,
 ): Response {
@@ -132,9 +129,7 @@ export function handleWorkspaceEvents(
 }
 
 function submissionIdFromRequest(request: Request): string {
-  return SubmissionIdSchema.parse(
-    new URL(request.url).searchParams.get('submissionId'),
-  );
+  return SubmissionIdSchema.parse(new URL(request.url).searchParams.get('submissionId'));
 }
 
 function eventData(value: unknown): string {

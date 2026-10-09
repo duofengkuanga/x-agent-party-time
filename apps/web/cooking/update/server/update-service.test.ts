@@ -122,12 +122,8 @@ describe('UpdateService', () => {
       last_candidate_at: '2026-07-27T10:01:00.000Z',
       eligible_at: '2026-07-27T10:03:00.000Z',
     });
-    expect(currentBug(fixture.database, first.id).stage).toBe(
-      'WAITING_FOR_UPDATE',
-    );
-    expect(currentBug(fixture.database, second.id).stage).toBe(
-      'WAITING_FOR_UPDATE',
-    );
+    expect(currentBug(fixture.database, first.id).stage).toBe('WAITING_FOR_UPDATE');
+    expect(currentBug(fixture.database, second.id).stage).toBe('WAITING_FOR_UPDATE');
   });
 
   test('Workspace Query 会在读取前准备到期 Batch', async () => {
@@ -177,10 +173,8 @@ describe('UpdateService', () => {
     );
 
     expect(
-      fixture.updates.workspace(
-        fixture.users.developer.id,
-        fixture.submission.id,
-      ).updateBatches,
+      fixture.updates.workspace(fixture.users.developer.id, fixture.submission.id)
+        .updateBatches,
     ).toEqual([]);
   });
 
@@ -201,9 +195,9 @@ describe('UpdateService', () => {
       fixture.updates,
       fixture.lifecycle,
     );
-    expect(() =>
-      workspace.getWorkspace(outsider.id, fixture.submission.id),
-    ).toThrow(expect.objectContaining({ code: 'NOT_FOUND' }));
+    expect(() => workspace.getWorkspace(outsider.id, fixture.submission.id)).toThrow(
+      expect.objectContaining({ code: 'NOT_FOUND' }),
+    );
     expect(
       fixture.database.get(
         'SELECT COUNT(*) count FROM cooking_update_batch WHERE submission_id = ?',
@@ -270,9 +264,7 @@ describe('UpdateService', () => {
     ).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
     const frozen = freezeUpdate(fixture);
     const nextBug = fixture.createBug('后续普通修复');
-    const claimed = (
-      await fixture.executions.claim(fixture.runner.id, 1, 0)
-    )[0]!;
+    const claimed = (await fixture.executions.claim(fixture.runner.id, 1, 0))[0]!;
     expect(claimed.id).toBe(frozen.executionId);
     expect(claimed.priority).toBe(0);
     expect(currentBug(fixture.database, first.id).stage).toBe('UPDATING');

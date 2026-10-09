@@ -112,9 +112,7 @@ describe('Runner Contract Conformance Harness', () => {
       repositoryUrl: 'https://example.com/team/repository.git',
     });
     expect(await fixture.agent.listBindings()).toEqual([{ bindingId: id }]);
-    expect(JSON.stringify({ confirmed })).not.toMatch(
-      /repositoryPath|\/Users\/|\/tmp\//,
-    );
+    expect(JSON.stringify({ confirmed })).not.toMatch(/repositoryPath|\/Users\/|\/tmp\//);
   });
 
   test('Execution、附件与 Outcome 严格穿过 HTTP Contract', async () => {
@@ -276,16 +274,14 @@ test('正式 Runner 路由保留认证顺序、方法限制和 HEAD 响应', asy
     ['PATCH', '/bindings', 405],
     ['GET', '/unknown', 404],
   ] as const) {
-    const response = await fixture.dispatch(
-      `http://server.test/api/runner${path}`,
-      { method },
-    );
+    const response = await fixture.dispatch(`http://server.test/api/runner${path}`, {
+      method,
+    });
     expect(response.status, `${method} ${path}`).toBe(status);
   }
-  const head = await fixture.dispatch(
-    'http://server.test/api/runner/bindings',
-    { method: 'HEAD' },
-  );
+  const head = await fixture.dispatch('http://server.test/api/runner/bindings', {
+    method: 'HEAD',
+  });
   expect(head.status).toBe(401);
   expect(await head.text()).toBe('');
   expect(head.headers.get('cache-control')).toBe('no-store');

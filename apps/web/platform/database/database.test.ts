@@ -42,20 +42,17 @@ describe('Server SQLite schema', () => {
     const database = openDatabase(path);
     try {
       expect(
-        database.get<{ user_version: number }>('PRAGMA user_version')
-          ?.user_version,
+        database.get<{ user_version: number }>('PRAGMA user_version')?.user_version,
       ).toBe(SERVER_SCHEMA_VERSION);
       expect(
-        database.get<{ foreign_keys: number }>('PRAGMA foreign_keys')
-          ?.foreign_keys,
+        database.get<{ foreign_keys: number }>('PRAGMA foreign_keys')?.foreign_keys,
       ).toBe(1);
       expect(
-        database.get<{ journal_mode: string }>('PRAGMA journal_mode')
-          ?.journal_mode,
+        database.get<{ journal_mode: string }>('PRAGMA journal_mode')?.journal_mode,
       ).toBe('wal');
-      expect(
-        database.get<{ timeout: number }>('PRAGMA busy_timeout')?.timeout,
-      ).toBe(5_000);
+      expect(database.get<{ timeout: number }>('PRAGMA busy_timeout')?.timeout).toBe(
+        5_000,
+      );
       expect(tableNames(database, 'platform_%')).toEqual([
         'platform_execution',
         'platform_execution_attachment',
@@ -74,8 +71,7 @@ describe('Server SQLite schema', () => {
       ).toContain('installation_id');
       expect(
         database.get<{ name: string }>(`SELECT name FROM sqlite_master
-             WHERE type = 'index' AND name = 'platform_runner_owner_installation'`)
-          ?.name,
+             WHERE type = 'index' AND name = 'platform_runner_owner_installation'`)?.name,
       ).toBe('platform_runner_owner_installation');
       expect(
         database

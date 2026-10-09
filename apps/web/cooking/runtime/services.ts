@@ -26,16 +26,8 @@ export function projectService(): ProjectService {
     undefined,
     undefined,
     (projectId, userId) =>
-      projectMemberHasEngineeringResponsibilities(
-        appDatabase,
-        projectId,
-        userId,
-      ) ||
-      projectMemberHasSubmissionResponsibilities(
-        appDatabase,
-        projectId,
-        userId,
-      ),
+      projectMemberHasEngineeringResponsibilities(appDatabase, projectId, userId) ||
+      projectMemberHasSubmissionResponsibilities(appDatabase, projectId, userId),
   );
 }
 
@@ -47,11 +39,7 @@ export function engineeringService(): EngineeringService {
     environmentReferenced: (environmentId) =>
       submissionReferencesEnvironment(appDatabase, environmentId),
     memberHasActiveResponsibilities: (engineeringId, userId) =>
-      engineeringMemberHasSubmissionResponsibilities(
-        appDatabase,
-        engineeringId,
-        userId,
-      ),
+      engineeringMemberHasSubmissionResponsibilities(appDatabase, engineeringId, userId),
   });
 }
 
@@ -61,19 +49,14 @@ export function bindingService(): BindingService {
 
 export function bindingRequestService(): BindingRequestService {
   const appDatabase = database();
-  return new BindingRequestService(
-    appDatabase,
-    new BindingService(appDatabase),
-  );
+  return new BindingRequestService(appDatabase, new BindingService(appDatabase));
 }
 
 export function cookingFileStore(): LocalFileStore {
   return new LocalFileStore(database(), serverPaths().files);
 }
 
-export function submissionCreationCatalog(
-  userId: string,
-): SubmissionCreationCatalog {
+export function submissionCreationCatalog(userId: string): SubmissionCreationCatalog {
   const projects = projectService();
   const engineering = engineeringService();
   const bindings = bindingService();
@@ -84,9 +67,7 @@ export function submissionCreationCatalog(
       members: projects.listMembers(userId, project.id).map(({ user }) => user),
       engineerings: engineering
         .listEngineering(userId, project.id)
-        .filter(
-          (item) => !item.archivedAt && item.repositoryState === 'CONFIRMED',
-        )
+        .filter((item) => !item.archivedAt && item.repositoryState === 'CONFIRMED')
         .map((item) => {
           const workspace = engineering.getWorkspace(userId, item.id);
           return {
@@ -138,5 +119,4 @@ export const updateService = () => workflow().updates;
 export const lifecycleService = () => workflow().lifecycle;
 export const cookingExecutionService = () => workflow().executions;
 export const workspaceService = () => workflow().workspace;
-export const prepareDueUpdateExecutions = () =>
-  workflow().updates.prepareDueExecutions();
+export const prepareDueUpdateExecutions = () => workflow().updates.prepareDueExecutions();

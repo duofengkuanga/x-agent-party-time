@@ -99,9 +99,7 @@ export const RepairExecutionResultSchema = z.strictObject({
   result: RepairExecutionResultValueSchema,
 });
 
-export const RepairOutputJsonSchema = outputJsonSchema(
-  RepairExecutionResultSchema,
-);
+export const RepairOutputJsonSchema = outputJsonSchema(RepairExecutionResultSchema);
 
 const RepairAttemptResultViewSchema = z.discriminatedUnion('outcome', [
   z.object({
@@ -166,10 +164,9 @@ export const ContinueRepairInputSchema = VersionedCookingMutationSchema;
 
 export const SynchronizeRepairSessionInputSchema = ContinueRepairInputSchema;
 
-export const ResolveRepairInteractionInputSchema =
-  VersionedCookingMutationSchema.extend({
-    resolution: z.json(),
-  });
+export const ResolveRepairInteractionInputSchema = VersionedCookingMutationSchema.extend({
+  resolution: z.json(),
+});
 
 export const RepairWorkspaceProjectionSchema = z.object({
   repairByBug: z.record(BugIdSchema, BugRepairViewSchema),
@@ -190,7 +187,5 @@ export type SynchronizeRepairSessionInput = z.infer<
 export type ResolveRepairInteractionInput = z.infer<
   typeof ResolveRepairInteractionInputSchema
 >;
-export type RepairWorkspaceProjection = z.infer<
-  typeof RepairWorkspaceProjectionSchema
->;
+export type RepairWorkspaceProjection = z.infer<typeof RepairWorkspaceProjectionSchema>;
 export type RepairMutationResult = z.infer<typeof RepairMutationResultSchema>;

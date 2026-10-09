@@ -74,13 +74,9 @@ export class BindingRequestService {
         ) as { last_seen_at: string | null } | undefined;
         if (
           !runner?.last_seen_at ||
-          this.now().getTime() - Date.parse(runner.last_seen_at) >
-            this.onlineAfterMs
+          this.now().getTime() - Date.parse(runner.last_seen_at) > this.onlineAfterMs
         )
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '所选 Agent 当前不在线',
-          );
+          throw new PlatformError('INVALID_TRANSITION', '所选 Agent 当前不在线');
         const existingBinding = this.db.get(
           `SELECT 1 present FROM cooking_engineering_binding
              WHERE engineering_id = ? AND user_id = ?`,
@@ -88,10 +84,7 @@ export class BindingRequestService {
           actorUserId,
         );
         if (existingBinding)
-          throw new PlatformError(
-            'RESOURCE_CONFLICT',
-            '你已经为这个工程建立绑定',
-          );
+          throw new PlatformError('RESOURCE_CONFLICT', '你已经为这个工程建立绑定');
         const active = this.db.get(
           `SELECT * FROM cooking_binding_request
              WHERE engineering_id = ? AND user_id = ?
@@ -99,15 +92,12 @@ export class BindingRequestService {
           engineeringId,
           actorUserId,
         ) as BindingRequestRow | undefined;
-        if (active)
-          return { result: mapRequest(active), resourceId: active.id };
+        if (active) return { result: mapRequest(active), resourceId: active.id };
 
         const id = this.createId();
         const bindingId = this.createId();
         const createdAt = this.now();
-        const expiresAt = new Date(
-          createdAt.getTime() + durationMs,
-        ).toISOString();
+        const expiresAt = new Date(createdAt.getTime() + durationMs).toISOString();
         const stored = this.db.get<BindingRequestRow>(
           `INSERT INTO cooking_binding_request(
                id, engineering_id, user_id, runner_id, state, error_message,
@@ -237,10 +227,7 @@ export class BindingRequestService {
     }
   }
 
-  private requestForRunner(
-    runnerId: string,
-    requestId: string,
-  ): BindingRequestRow {
+  private requestForRunner(runnerId: string, requestId: string): BindingRequestRow {
     this.failExpired();
     const row = this.db.get(
       `SELECT * FROM cooking_binding_request
@@ -248,8 +235,7 @@ export class BindingRequestService {
       requestId,
       runnerId,
     ) as BindingRequestRow | undefined;
-    if (!row)
-      throw new PlatformError('NOT_FOUND', '绑定请求不存在或不属于当前 Agent');
+    if (!row) throw new PlatformError('NOT_FOUND', '绑定请求不存在或不属于当前 Agent');
     return row;
   }
 

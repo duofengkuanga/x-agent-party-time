@@ -21,8 +21,7 @@ export type BugLifecycleActionResult =
   InteractiveActionResult<BugLifecycleMutationResult>;
 export type CloseSubmissionActionResult =
   InteractiveActionResult<CloseSubmissionMutationResult>;
-export type CleanupActionResult =
-  InteractiveActionResult<CleanupMutationResult>;
+export type CleanupActionResult = InteractiveActionResult<CleanupMutationResult>;
 
 export async function verifyBugAction(
   bugId: string,
@@ -71,36 +70,28 @@ export async function cancelBugAction(
   bugId: string,
   input: LifecycleCommandInput,
 ): Promise<BugLifecycleActionResult> {
-  return simpleAction((userId) =>
-    lifecycleService().cancelBug(userId, bugId, input),
-  );
+  return simpleAction((userId) => lifecycleService().cancelBug(userId, bugId, input));
 }
 
 export async function restoreBugAction(
   bugId: string,
   input: LifecycleCommandInput,
 ): Promise<BugLifecycleActionResult> {
-  return simpleAction((userId) =>
-    lifecycleService().restoreBug(userId, bugId, input),
-  );
+  return simpleAction((userId) => lifecycleService().restoreBug(userId, bugId, input));
 }
 
 export async function archiveBugAction(
   bugId: string,
   input: LifecycleCommandInput,
 ): Promise<BugLifecycleActionResult> {
-  return simpleAction((userId) =>
-    lifecycleService().archiveBug(userId, bugId, input),
-  );
+  return simpleAction((userId) => lifecycleService().archiveBug(userId, bugId, input));
 }
 
 export async function unarchiveBugAction(
   bugId: string,
   input: LifecycleCommandInput,
 ): Promise<BugLifecycleActionResult> {
-  return simpleAction((userId) =>
-    lifecycleService().unarchiveBug(userId, bugId, input),
-  );
+  return simpleAction((userId) => lifecycleService().unarchiveBug(userId, bugId, input));
 }
 
 export async function closeSubmissionAction(
@@ -150,6 +141,4 @@ function runLifecycleUpload(
   });
 }
 
-const simpleAction = cookingMutationAction(
-  'cooking_lifecycle_action_validation_failed',
-);
+const simpleAction = cookingMutationAction('cooking_lifecycle_action_validation_failed');
