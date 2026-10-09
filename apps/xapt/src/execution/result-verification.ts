@@ -33,8 +33,7 @@ export class GitExecutionResultVerifier implements ExecutionResultVerifier {
     repositoryPath: string,
     assertions: ExecutionResultAssertion[],
   ): Promise<ExecutionResultBaseline> {
-    if (!assertions.some(({ kind }) => kind === 'GIT_COMMITS_CREATED'))
-      return null;
+    if (!assertions.some(({ kind }) => kind === 'GIT_COMMITS_CREATED')) return null;
     return {
       gitHead: await this.git(repositoryPath, ['rev-parse', 'HEAD']),
     };
@@ -52,9 +51,7 @@ export class GitExecutionResultVerifier implements ExecutionResultVerifier {
       const value = valueAtPath(result, assertion.resultPath);
       if (value === undefined) continue;
       if (!baseline)
-        throw new ExecutionResultVerificationError(
-          '本机 Commit 结果校验缺少执行前基线',
-        );
+        throw new ExecutionResultVerificationError('本机 Commit 结果校验缺少执行前基线');
       const actualCommits = lines(
         await this.git(repositoryPath, [
           'rev-list',
@@ -62,10 +59,7 @@ export class GitExecutionResultVerifier implements ExecutionResultVerifier {
           `${baseline.gitHead}..HEAD`,
         ]),
       );
-      if (
-        !Array.isArray(value) ||
-        !value.every((item) => typeof item === 'string')
-      )
+      if (!Array.isArray(value) || !value.every((item) => typeof item === 'string'))
         throw new ExecutionResultVerificationError(
           'Codex 返回的本地 Commit 证据格式无效',
         );
@@ -92,11 +86,7 @@ export class GitExecutionResultVerifier implements ExecutionResultVerifier {
   }
 
   private async git(repositoryPath: string, args: string[]): Promise<string> {
-    const result = await this.commands.run('git', [
-      '-C',
-      repositoryPath,
-      ...args,
-    ]);
+    const result = await this.commands.run('git', ['-C', repositoryPath, ...args]);
     if (result.exitCode !== 0)
       throw new ExecutionResultVerificationError('无法校验本机 Git 提交记录');
     return result.stdout.trim();
@@ -124,7 +114,6 @@ function lines(value: string): string[] {
 
 function sameValues(left: string[], right: string[]): boolean {
   return (
-    left.length === right.length &&
-    left.every((value, index) => value === right[index])
+    left.length === right.length && left.every((value, index) => value === right[index])
   );
 }

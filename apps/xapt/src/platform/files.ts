@@ -138,10 +138,7 @@ export class NodeLocalFileSystem implements LocalFileSystem {
     await chmod(path, mode);
   }
 
-  async remove(
-    path: string,
-    options: { recursive?: boolean } = {},
-  ): Promise<void> {
+  async remove(path: string, options: { recursive?: boolean } = {}): Promise<void> {
     await rm(path, { recursive: options.recursive, force: true });
   }
 }

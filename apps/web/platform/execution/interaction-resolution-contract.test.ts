@@ -31,16 +31,12 @@ describe('Execution Interaction resolution contract', () => {
       },
     };
     expect(
-      parseExecutionInteractionResolution(
-        'item/permissions/requestApproval',
-        payload,
-        {
-          permissions: {
-            fileSystem: { mode: 'write', root: '本机路径已隐藏' },
-          },
-          scope: 'turn',
+      parseExecutionInteractionResolution('item/permissions/requestApproval', payload, {
+        permissions: {
+          fileSystem: { mode: 'write', root: '本机路径已隐藏' },
         },
-      ),
+        scope: 'turn',
+      }),
     ).toEqual({
       permissions: {
         fileSystem: { mode: 'write', root: '本机路径已隐藏' },
@@ -48,28 +44,20 @@ describe('Execution Interaction resolution contract', () => {
       scope: 'turn',
     });
     expect(() =>
-      parseExecutionInteractionResolution(
-        'item/permissions/requestApproval',
-        payload,
-        {
-          permissions: { shell: { unrestricted: true } },
-          scope: 'session',
-        },
-      ),
+      parseExecutionInteractionResolution('item/permissions/requestApproval', payload, {
+        permissions: { shell: { unrestricted: true } },
+        scope: 'session',
+      }),
     ).toThrow();
     expect(
-      parseExecutionInteractionResolution(
-        'item/permissions/requestApproval',
-        payload,
-        {
-          permissions: {
-            network: {
-              hosts: ['registry.npmjs.org'],
-            },
+      parseExecutionInteractionResolution('item/permissions/requestApproval', payload, {
+        permissions: {
+          network: {
+            hosts: ['registry.npmjs.org'],
           },
-          scope: 'turn',
         },
-      ),
+        scope: 'turn',
+      }),
     ).toEqual({
       permissions: {
         network: {
@@ -79,11 +67,10 @@ describe('Execution Interaction resolution contract', () => {
       scope: 'turn',
     });
     expect(() =>
-      parseExecutionInteractionResolution(
-        'item/permissions/requestApproval',
-        payload,
-        { permissions: {}, scope: 'session' },
-      ),
+      parseExecutionInteractionResolution('item/permissions/requestApproval', payload, {
+        permissions: {},
+        scope: 'session',
+      }),
     ).toThrow();
   });
 
@@ -95,16 +82,12 @@ describe('Execution Interaction resolution contract', () => {
       ],
     };
     expect(
-      parseExecutionInteractionResolution(
-        'item/tool/requestUserInput',
-        payload,
-        {
-          answers: {
-            strategy: { answers: ['稳妥方案'] },
-            confirm: { answers: ['继续'] },
-          },
+      parseExecutionInteractionResolution('item/tool/requestUserInput', payload, {
+        answers: {
+          strategy: { answers: ['稳妥方案'] },
+          confirm: { answers: ['继续'] },
         },
-      ),
+      }),
     ).toMatchObject({
       answers: {
         strategy: { answers: ['稳妥方案'] },
@@ -112,11 +95,9 @@ describe('Execution Interaction resolution contract', () => {
       },
     });
     expect(() =>
-      parseExecutionInteractionResolution(
-        'item/tool/requestUserInput',
-        payload,
-        { answers: { strategy: { answers: ['稳妥方案'] } } },
-      ),
+      parseExecutionInteractionResolution('item/tool/requestUserInput', payload, {
+        answers: { strategy: { answers: ['稳妥方案'] } },
+      }),
     ).toThrow();
   });
 });

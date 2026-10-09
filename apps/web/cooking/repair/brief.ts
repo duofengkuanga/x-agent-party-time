@@ -24,13 +24,9 @@ export function buildInitialRepairBrief(input: {
       ...(input.actualResult ? { actualResult: input.actualResult } : {}),
       ...(input.expectedResult ? { expectedResult: input.expectedResult } : {}),
     },
-    ...(input.attachments.length
-      ? { attachmentReferences: input.attachments }
-      : {}),
+    ...(input.attachments.length ? { attachmentReferences: input.attachments } : {}),
     ...(input.feedback.length ? { feedback: input.feedback } : {}),
-    ...(input.pendingCommits.length
-      ? { pendingCommits: input.pendingCommits }
-      : {}),
+    ...(input.pendingCommits.length ? { pendingCommits: input.pendingCommits } : {}),
   };
 }
 

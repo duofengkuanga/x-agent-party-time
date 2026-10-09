@@ -1,7 +1,4 @@
-export async function git(
-  repositoryPath: string,
-  args: string[],
-): Promise<string> {
+export async function git(repositoryPath: string, args: string[]): Promise<string> {
   const child = Bun.spawn(['git', '-C', repositoryPath, ...args], {
     stdout: 'pipe',
     stderr: 'pipe',

@@ -34,8 +34,7 @@ test('Binding HTTP 请求携带认证但 Payload 从不包含本机路径', asyn
     requests.push(request.clone());
     const path = new URL(request.url).pathname;
     if (path === '/api/runner/bindings') return Response.json({ bindings: [] });
-    if (path === '/api/runner/binding-requests')
-      return Response.json({ request: null });
+    if (path === '/api/runner/binding-requests') return Response.json({ request: null });
     return Response.json({ state: 'SUCCEEDED' });
   });
 
@@ -54,9 +53,7 @@ test('Binding HTTP 请求携带认证但 Payload 从不包含本机路径', asyn
   for (const request of requests)
     expect(request.headers.get('authorization')).toBe(`Bearer ${credential}`);
   const bodies = await Promise.all(requests.map((request) => request.text()));
-  expect(JSON.stringify(bodies)).not.toMatch(
-    /\/Users\/|\/private\/|repositoryPath/,
-  );
+  expect(JSON.stringify(bodies)).not.toMatch(/\/Users\/|\/private\/|repositoryPath/);
   expect(bodies.at(-1)).toContain('https://github.com/team/repository.git');
 });
 
@@ -70,15 +67,11 @@ test('deleteBugs 携带认证并解析删除结果', async () => {
     });
   });
 
-  const result = await client.deleteBugs(
-    'https://apt.example.com',
-    credential,
-    {
-      bugIds: ['944d519c-1ed0-4711-a3b1-325bec5bbe56'],
-      all: false,
-      force: true,
-    },
-  );
+  const result = await client.deleteBugs('https://apt.example.com', credential, {
+    bugIds: ['944d519c-1ed0-4711-a3b1-325bec5bbe56'],
+    all: false,
+    force: true,
+  });
 
   expect(result).toEqual({
     deletedBugIds: ['944d519c-1ed0-4711-a3b1-325bec5bbe56'],
@@ -113,10 +106,7 @@ test('deleteBugs 完整保留服务端原因、建议和诊断编号', async () 
   const message =
     '删除缺陷失败：数据一致性校验失败。请联系维护者，不要反复重试。（诊断编号：944d519c-1ed0-4711-a3b1-325bec5bbe56）';
   const client = new RunnerHttpClient(async () =>
-    Response.json(
-      { error: { code: 'INTERNAL_ERROR', message } },
-      { status: 500 },
-    ),
+    Response.json({ error: { code: 'INTERNAL_ERROR', message } }, { status: 500 }),
   );
   await expect(
     client.deleteBugs('http://server', credential, { all: true, force: true }),

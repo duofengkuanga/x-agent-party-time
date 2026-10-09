@@ -50,8 +50,7 @@ export class CleanupService {
       submissionId: () => this.queries.cleanupSource(cleanupId).submission_id,
       perform: () => {
         const cleanup = this.requireCleanupResponsible(actorUserId, cleanupId);
-        if (cleanup.version !== input.expectedVersion)
-          throw staleLifecycle('清理任务');
+        if (cleanup.version !== input.expectedVersion) throw staleLifecycle('清理任务');
         if (cleanup.state !== 'FAILED')
           throw new PlatformError('INVALID_TRANSITION', '只有失败清理可以重试');
         const latest = this.queries.latestCleanupAttempt(cleanupId);
@@ -129,15 +128,10 @@ export class CleanupService {
       operation: 'CLEANUP_INTERACTION_RESOLVE',
       resourceType: 'EXECUTION_INTERACTION',
       resultSchema: CleanupMutationResultSchema,
-      submissionId: () =>
-        this.queries.cleanupSource(source.cleanup_id).submission_id,
+      submissionId: () => this.queries.cleanupSource(source.cleanup_id).submission_id,
       perform: () => {
-        const cleanup = this.requireCleanupResponsible(
-          actorUserId,
-          source.cleanup_id,
-        );
-        if (cleanup.version !== input.expectedVersion)
-          throw staleLifecycle('清理任务');
+        const cleanup = this.requireCleanupResponsible(actorUserId, source.cleanup_id);
+        if (cleanup.version !== input.expectedVersion) throw staleLifecycle('清理任务');
         if (
           cleanup.state !== 'RUNNING' ||
           cleanup.active_execution_id !== source.execution_id
@@ -187,8 +181,7 @@ export class CleanupService {
       STARTED: this.afterStartedExecution.bind(this),
       RESUMED: this.afterStartedExecution.bind(this),
       TERMINAL: this.afterTerminalExecution.bind(this),
-      INTERACTION_OPENED: ({ executionId }) =>
-        this.afterInteractionOpened(executionId),
+      INTERACTION_OPENED: ({ executionId }) => this.afterInteractionOpened(executionId),
     },
   });
 
@@ -216,10 +209,7 @@ export class CleanupService {
     this.writes.bumpRevision(cleanup.submission_id, this.now().toISOString());
   }
 
-  private applyInteractionOpened(
-    executionId: string,
-    interactionId: string,
-  ): void {
+  private applyInteractionOpened(executionId: string, interactionId: string): void {
     const attempt = this.queries.cleanupAttemptForExecution(executionId);
     if (!attempt) return;
     const cleanup = this.queries.cleanupSource(attempt.cleanup_id);
@@ -336,24 +326,18 @@ export class CleanupService {
          ) VALUES (?, ?, ?, 1, NULL, ?, NULL)`,
       [attemptId, cleanupId, execution.id, input.now],
     );
-    this.db.run(
-      'UPDATE cooking_cleanup SET active_execution_id = ? WHERE id = ?',
-      [execution.id, cleanupId],
-    );
+    this.db.run('UPDATE cooking_cleanup SET active_execution_id = ? WHERE id = ?', [
+      execution.id,
+      cleanupId,
+    ]);
     return { cleanupId, executionId: execution.id };
   }
 
-  private requireCleanupResponsible(
-    userId: string,
-    cleanupId: string,
-  ): CleanupSourceRow {
+  private requireCleanupResponsible(userId: string, cleanupId: string): CleanupSourceRow {
     const cleanup = this.queries.cleanupSource(cleanupId);
     requireSubmissionAccess(this.db, userId, cleanup.submission_id);
     if (cleanup.responsible_user_id !== userId)
-      throw new PlatformError(
-        'PERMISSION_DENIED',
-        '只有对应工程负责人可以处理清理',
-      );
+      throw new PlatformError('PERMISSION_DENIED', '只有对应工程负责人可以处理清理');
     return cleanup;
   }
 
@@ -366,10 +350,6 @@ export class CleanupService {
          WHERE attempt.execution_id = ?`,
       executionId,
     ) as { submission_id: string; workspace_revision: number } | undefined;
-    if (row)
-      this.writes.publishInvalidation(
-        row.submission_id,
-        row.workspace_revision,
-      );
+    if (row) this.writes.publishInvalidation(row.submission_id, row.workspace_revision);
   }
 }

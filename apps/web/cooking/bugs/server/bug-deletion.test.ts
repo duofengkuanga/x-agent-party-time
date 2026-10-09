@@ -19,9 +19,9 @@ describe('BugService', () => {
         all: true,
       }),
     ).toThrow(ZodError);
-    expect(() =>
-      fixture.service.deleteBugs({ bugIds: [randomUUID()] }),
-    ).toThrow(expect.objectContaining({ code: 'NOT_FOUND' }));
+    expect(() => fixture.service.deleteBugs({ bugIds: [randomUUID()] })).toThrow(
+      expect.objectContaining({ code: 'NOT_FOUND' }),
+    );
   });
 
   test('deleteBugs 删除无执行的普通缺陷并推进提测版本', async () => {
@@ -43,9 +43,7 @@ describe('BugService', () => {
     });
     expect(result.deletedBugIds).toEqual([first.bug.id, second.bug.id]);
     expect(result.deletedExecutionIds).toEqual([]);
-    expectRowCount(fixture.database, 'cooking_bug', { id: first.bug.id }).toBe(
-      0,
-    );
+    expectRowCount(fixture.database, 'cooking_bug', { id: first.bug.id }).toBe(0);
     expectRowCount(fixture.database, 'cooking_mutation', {
       resource_type: 'BUG',
       resource_id: first.bug.id,
@@ -98,12 +96,8 @@ describe('BugService', () => {
       bugIds: [bug.id],
       force: true,
     });
-    expect(new Set(result.deletedExecutionIds)).toEqual(
-      new Set([first, second]),
-    );
-    expectRowCount(fixture.database, 'platform_execution', { id: first }).toBe(
-      0,
-    );
+    expect(new Set(result.deletedExecutionIds)).toEqual(new Set([first, second]));
+    expectRowCount(fixture.database, 'platform_execution', { id: first }).toBe(0);
     expectRowCount(fixture.database, 'cooking_repair_attempt', {
       bug_id: bug.id,
     }).toBe(0);
@@ -131,15 +125,7 @@ describe('BugService', () => {
            active_execution_id, session_id, deployment_json, frozen_at,
            created_at, updated_at
          ) VALUES (?, ?, ?, 'RUNNING', 1, ?, NULL, '{}', ?, ?, ?)`,
-      [
-        batchId,
-        fixture.submission.id,
-        fixture.items.front,
-        executionId,
-        now,
-        now,
-        now,
-      ],
+      [batchId, fixture.submission.id, fixture.items.front, executionId, now, now, now],
     );
     fixture.database.run(
       `INSERT INTO cooking_update_batch_entry(
@@ -160,12 +146,10 @@ describe('BugService', () => {
       [randomUUID(), batchId, sync, 'update-session', now],
     );
     const result = fixture.service.deleteBugs({ all: true, force: true });
-    expect(new Set(result.deletedExecutionIds)).toEqual(
-      new Set([executionId, sync]),
+    expect(new Set(result.deletedExecutionIds)).toEqual(new Set([executionId, sync]));
+    expect(fixture.database.all('SELECT id FROM cooking_update_session_sync')).toEqual(
+      [],
     );
-    expect(
-      fixture.database.all('SELECT id FROM cooking_update_session_sync'),
-    ).toEqual([]);
     expectRowCount(fixture.database, 'cooking_update_batch_entry', {
       bug_id: bug.id,
     }).toBe(0);
@@ -185,9 +169,7 @@ describe('BugService', () => {
     async (state) => {
       const fixture = await setup();
       const bug = createAssignedBug(fixture, '同步缺陷', fixture.items.front);
-      const parent = new RepairService(fixture.database).createInitialExecution(
-        bug.id,
-      );
+      const parent = new RepairService(fixture.database).createInitialExecution(bug.id);
       fixture.database.run(
         "UPDATE platform_execution SET state = 'FAILED' WHERE id = ?",
         [parent],
@@ -195,13 +177,7 @@ describe('BugService', () => {
       const sync = addSessionSync(fixture.database, parent, state);
       fixture.database.run(
         'INSERT INTO cooking_repair_session_sync(id, bug_id, execution_id, session_id, created_at) VALUES (?, ?, ?, ?, ?)',
-        [
-          randomUUID(),
-          bug.id,
-          sync,
-          'test-session',
-          '2026-07-27T04:00:00.000Z',
-        ],
+        [randomUUID(), bug.id, sync, 'test-session', '2026-07-27T04:00:00.000Z'],
       );
       if (state === 'QUEUED') {
         expect(() => fixture.service.deleteBugs({ all: true })).toThrow(
@@ -209,12 +185,10 @@ describe('BugService', () => {
         );
       }
       const result = fixture.service.deleteBugs({ all: true, force: true });
-      expect(new Set(result.deletedExecutionIds)).toEqual(
-        new Set([parent, sync]),
+      expect(new Set(result.deletedExecutionIds)).toEqual(new Set([parent, sync]));
+      expect(fixture.database.all('SELECT id FROM cooking_repair_session_sync')).toEqual(
+        [],
       );
-      expect(
-        fixture.database.all('SELECT id FROM cooking_repair_session_sync'),
-      ).toEqual([]);
       expect(fixture.database.all('PRAGMA foreign_key_check')).toEqual([]);
     },
   );
@@ -222,13 +196,9 @@ describe('BugService', () => {
   test('deleteBugs 遇到范围外的后继执行时明确拒绝并回滚', async () => {
     const fixture = await setup();
     const bug = createAssignedBug(fixture, '额外依赖', fixture.items.front);
-    const parent = new RepairService(fixture.database).createInitialExecution(
-      bug.id,
-    );
+    const parent = new RepairService(fixture.database).createInitialExecution(bug.id);
     const successor = addSessionSync(fixture.database, parent, 'FAILED');
-    expect(() =>
-      fixture.service.deleteBugs({ all: true, force: true }),
-    ).toThrow(
+    expect(() => fixture.service.deleteBugs({ all: true, force: true })).toThrow(
       expect.objectContaining({
         code: 'RESOURCE_CONFLICT',
         message: expect.stringContaining('本次删除范围外'),
@@ -244,10 +214,7 @@ describe('BugService', () => {
       ),
     ).not.toBeNull();
     expect(
-      fixture.database.get(
-        'SELECT id FROM platform_execution WHERE id = ?',
-        successor,
-      ),
+      fixture.database.get('SELECT id FROM platform_execution WHERE id = ?', successor),
     ).not.toBeNull();
   });
 
@@ -263,11 +230,7 @@ describe('BugService', () => {
   });
 });
 
-function addSessionSync(
-  database: AppDatabase,
-  parent: string,
-  state: string,
-): string {
+function addSessionSync(database: AppDatabase, parent: string, state: string): string {
   const id = randomUUID();
   database.run(
     `INSERT INTO platform_execution(id, owner_namespace, owner_kind, owner_id, attempt,

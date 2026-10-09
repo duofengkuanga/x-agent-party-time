@@ -15,10 +15,7 @@ import { LocalStateStore } from '../state/store';
 import { OUTBOX_STATE_SCHEMA_VERSION } from '../state/schemas';
 import type { ExecutionService } from '../execution/service';
 import { AgentService } from './service';
-import type {
-  AuthenticatedRunnerSession,
-  ConnectionCoordinator,
-} from './connection';
+import type { AuthenticatedRunnerSession, ConnectionCoordinator } from './connection';
 import type { RunnerBindingHttp } from './server-http';
 
 const createTestDirectory = testDirectories('xapt-agent-service-');

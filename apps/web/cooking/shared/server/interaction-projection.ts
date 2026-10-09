@@ -3,10 +3,7 @@ import {
   type JsonValue,
 } from '@agent-party-time/execution-contract';
 import { PlatformError } from '@/platform/errors';
-import {
-  CookingInteractionViewSchema,
-  type CookingInteractionView,
-} from '../contract';
+import { CookingInteractionViewSchema, type CookingInteractionView } from '../contract';
 
 export type CookingInteractionRow = {
   id: string;
@@ -45,18 +42,14 @@ export function projectCookingInteraction(
       kind: row.kind,
       request: responsible ? approvalRequest(row.method, payload) : null,
       resolution:
-        responsible && resolution
-          ? approvalResolution(row.method, resolution)
-          : null,
+        responsible && resolution ? approvalResolution(row.method, resolution) : null,
     });
   return CookingInteractionViewSchema.parse({
     ...base,
     kind: row.kind,
     request: responsible ? userInputRequest(payload) : null,
     resolution:
-      responsible && resolution
-        ? userInputResolution(payload, resolution)
-        : null,
+      responsible && resolution ? userInputResolution(payload, resolution) : null,
   });
 }
 
@@ -76,8 +69,7 @@ function approvalRequest(method: string, payloadValue: JsonValue) {
       title: 'Codex 请求权限',
     },
   }[method];
-  if (!values)
-    throw new PlatformError('INTERNAL_ERROR', '不支持的 Codex 审批类型');
+  if (!values) throw new PlatformError('INTERNAL_ERROR', '不支持的 Codex 审批类型');
   return {
     ...values,
     purpose: stringValue(payload.reason),
@@ -99,8 +91,7 @@ function approvalResolution(
   } else {
     if (resolution.decision === 'decline') return 'DECLINED';
     if (resolution.decision === 'accept') return 'ACCEPTED_ONCE';
-    if (resolution.decision === 'acceptForSession')
-      return 'ACCEPTED_FOR_SESSION';
+    if (resolution.decision === 'acceptForSession') return 'ACCEPTED_FOR_SESSION';
   }
   throw new PlatformError('INTERNAL_ERROR', 'Codex 审批结果无效');
 }
@@ -124,10 +115,7 @@ function userInputRequest(payloadValue: JsonValue) {
             const label = stringValue(option.label);
             const value = stringValue(option.value) ?? label;
             if (!label || !value)
-              throw new PlatformError(
-                'INTERNAL_ERROR',
-                'Codex question option 结构无效',
-              );
+              throw new PlatformError('INTERNAL_ERROR', 'Codex question option 结构无效');
             return {
               value,
               label,
@@ -145,10 +133,7 @@ function userInputRequest(payloadValue: JsonValue) {
   };
 }
 
-function userInputResolution(
-  payloadValue: JsonValue,
-  resolutionValue: JsonValue,
-) {
+function userInputResolution(payloadValue: JsonValue, resolutionValue: JsonValue) {
   const answerValues = asRecord(resolutionValue).answers;
   const answers = asRecord(answerValues);
   const questions = userInputRequest(payloadValue).questions;
@@ -169,10 +154,7 @@ function userInputResolution(
           values.some((value) => typeof value !== 'string' || !value.trim())
         )
           throw new PlatformError('INTERNAL_ERROR', 'Codex 回答记录无效');
-        return [
-          id,
-          values.map((value) => optionLabels.get(`${id}:${value}`) ?? value),
-        ];
+        return [id, values.map((value) => optionLabels.get(`${id}:${value}`) ?? value)];
       }),
     ),
   };

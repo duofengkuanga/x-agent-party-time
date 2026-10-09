@@ -5,10 +5,7 @@ import type {
   CookingInteractionView,
   CookingVisualPresentation,
 } from '@/cooking/shared/contract';
-import {
-  interactionVisual,
-  queueVisual,
-} from '@/cooking/shared/server/execution-visual';
+import { interactionVisual, queueVisual } from '@/cooking/shared/server/execution-visual';
 import { RepairExecutionResultSchema } from '../contract';
 import type { AttemptRow } from './records';
 
@@ -54,9 +51,7 @@ export function projectAttemptResult(outcomeJson: string, technical: boolean) {
     completedActions: result.completedActions,
     pendingActions: result.pendingActions,
     failureCode:
-      technical && typeof raw.technicalFailure === 'string'
-        ? raw.technicalFailure
-        : null,
+      technical && typeof raw.technicalFailure === 'string' ? raw.technicalFailure : null,
   };
 }
 
@@ -67,12 +62,7 @@ export function repairVisual(
   idleLabel: string,
   queue: { state: Execution['state']; aheadCount: number } | undefined,
 ): CookingVisualPresentation {
-  const interaction = interactionVisual(
-    interactions,
-    latest?.state,
-    responsible,
-    '修复',
-  );
+  const interaction = interactionVisual(interactions, latest?.state, responsible, '修复');
   if (interaction) return interaction;
   if (
     latest?.state === 'FAILED' ||
@@ -106,10 +96,7 @@ export function parseManualOperations(value: string): Array<{
 }
 
 export function isRepairExecution(execution: Execution): boolean {
-  return (
-    execution.owner.namespace === 'cooking' &&
-    execution.owner.kind === 'BUG_REPAIR'
-  );
+  return execution.owner.namespace === 'cooking' && execution.owner.kind === 'BUG_REPAIR';
 }
 
 export function staleRepair(): PlatformError {

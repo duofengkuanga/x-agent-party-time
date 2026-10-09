@@ -4,10 +4,7 @@ import { join } from 'node:path';
 import type { CommandRunner, Clock } from '../platform/contracts';
 import type { LocalFileSystem } from '../platform/files';
 import type { XaptPaths } from '../platform/paths';
-import {
-  INSTALL_STATE_SCHEMA_VERSION,
-  InstallStateSchema,
-} from '../state/schemas';
+import { INSTALL_STATE_SCHEMA_VERSION, InstallStateSchema } from '../state/schemas';
 import type { LocalStateStore } from '../state/store';
 import { compareVersions, type CodexPreflight } from '../codex/preflight';
 import type { DaemonManager } from '../daemon/manager';
@@ -43,10 +40,7 @@ export class UpdateManager {
     private readonly source: UpdateSource = DEFAULT_UPDATE_SOURCE,
   ) {}
 
-  renderInstallState(
-    previousVersion: string | null,
-    installedAt: string,
-  ): string {
+  renderInstallState(previousVersion: string | null, installedAt: string): string {
     return `${JSON.stringify(
       InstallStateSchema.parse({
         schemaVersion: INSTALL_STATE_SCHEMA_VERSION,
@@ -83,10 +77,7 @@ export class UpdateManager {
     const target = await this.downloadAndVerify(release);
     const targetVersion = await this.inspectTarget(target);
     if (targetVersion.version !== release.version)
-      throw new UpdateError(
-        'ASSET_VERSION_MISMATCH',
-        '安装文件版本与稳定版本不一致',
-      );
+      throw new UpdateError('ASSET_VERSION_MISMATCH', '安装文件版本与稳定版本不一致');
     const codex = await this.codex.check();
     if (compareVersions(codex.version, targetVersion.minimumCodexVersion) < 0)
       throw new UpdateError('CODEX_TOO_OLD', '当前 Codex 不满足新 xapt 要求');
@@ -120,8 +111,7 @@ export class UpdateManager {
     } catch (error) {
       const rollbackErrors: unknown[] = [];
       const rollbackSteps: Array<() => Promise<unknown>> = [];
-      if (targetDaemonStarted)
-        rollbackSteps.push(() => this.daemon.stop(false));
+      if (targetDaemonStarted) rollbackSteps.push(() => this.daemon.stop(false));
       rollbackSteps.push(() => this.switchCurrent(previousVersion));
       if (install) rollbackSteps.push(() => this.state.saveInstall(install));
       if (wasRunning) rollbackSteps.push(() => this.daemon.start());
@@ -137,11 +127,7 @@ export class UpdateManager {
           '新版本健康检查失败，且旧版本未能完整恢复',
           new AggregateError([error, ...rollbackErrors]),
         );
-      throw new UpdateError(
-        'ROLLBACK_COMPLETED',
-        '新版本健康检查失败，已回退',
-        error,
-      );
+      throw new UpdateError('ROLLBACK_COMPLETED', '新版本健康检查失败，已回退', error);
     }
   }
 
@@ -169,9 +155,7 @@ export class UpdateManager {
     if (!/^\d+\.\d+\.\d+$/u.test(version))
       throw new UpdateError('UNSTABLE_RELEASE', '稳定版本格式无效');
     const asset = value.assets?.find(({ name }) => name === ASSET_NAME);
-    const checksum = value.assets?.find(
-      ({ name }) => name === `${ASSET_NAME}.sha256`,
-    );
+    const checksum = value.assets?.find(({ name }) => name === `${ASSET_NAME}.sha256`);
     if (
       typeof asset?.browser_download_url !== 'string' ||
       typeof checksum?.browser_download_url !== 'string'
@@ -198,13 +182,10 @@ export class UpdateManager {
       throw new UpdateError('DOWNLOAD_FAILED', '稳定版本下载失败');
     const bytes = new Uint8Array(await assetResponse.arrayBuffer());
     const checksumText = await checksumResponse.text();
-    const match = checksumText.match(
-      /^([a-f0-9]{64})\s+xapt-darwin-arm64\.tar\.gz\s*$/u,
-    );
+    const match = checksumText.match(/^([a-f0-9]{64})\s+xapt-darwin-arm64\.tar\.gz\s*$/u);
     if (!match) throw new UpdateError('CHECKSUM_INVALID', '校验信息格式无效');
     const actual = createHash('sha256').update(bytes).digest('hex');
-    if (actual !== match[1])
-      throw new UpdateError('CHECKSUM_MISMATCH', '校验信息不匹配');
+    if (actual !== match[1]) throw new UpdateError('CHECKSUM_MISMATCH', '校验信息不匹配');
 
     const temporary = join(this.paths.updateCache, randomUUID());
     const archive = join(temporary, ASSET_NAME);

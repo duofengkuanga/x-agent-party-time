@@ -22,44 +22,28 @@ const setup = lifecycleFixture(testDatabases());
 describe('LifecycleService', () => {
   test('验证失败自动沿用 Repair Session，再次更新通过后关闭并异步清理', async () => {
     const fixture = await setup();
-    const localBug = createAndRequestBug(
-      fixture,
-      fixture.items[0]!.id,
-      '本地缺陷',
-    );
+    const localBug = createAndRequestBug(fixture, fixture.items[0]!.id, '本地缺陷');
     await completeNextRepair(fixture, 'repair-local', ['1111111']);
     await completeUpdate(fixture, fixture.items[0]!.id, {
       outcome: 'COMPLETED',
       summary: '本地部署完成',
     });
-    const ciBug = createAndRequestBug(
-      fixture,
-      fixture.items[1]!.id,
-      '持续集成缺陷',
-    );
+    const ciBug = createAndRequestBug(fixture, fixture.items[1]!.id, '持续集成缺陷');
     await completeNextRepair(fixture, 'repair-ci', ['2222222']);
     const ciBatch = await completeUpdate(fixture, fixture.items[1]!.id, {
       outcome: 'PUSHED',
       summary: '已普通 Push',
     });
-    fixture.updates.reportExternalDeployment(
-      fixture.users.developer.id,
-      ciBatch.id,
-      {
-        ...mutation(
-          latestBatch(fixture.database, fixture.items[1]!.id).version,
-        ),
-        outcome: 'SUCCEEDED',
-        summary: '外部部署成功',
-        attachmentIds: [],
-      },
-    );
+    fixture.updates.reportExternalDeployment(fixture.users.developer.id, ciBatch.id, {
+      ...mutation(latestBatch(fixture.database, fixture.items[1]!.id).version),
+      outcome: 'SUCCEEDED',
+      summary: '外部部署成功',
+      attachmentIds: [],
+    });
     expect(currentBug(fixture.database, localBug.id).stage).toBe(
       'WAITING_FOR_VERIFICATION',
     );
-    expect(currentBug(fixture.database, ciBug.id).stage).toBe(
-      'WAITING_FOR_VERIFICATION',
-    );
+    expect(currentBug(fixture.database, ciBug.id).stage).toBe('WAITING_FOR_VERIFICATION');
 
     const files = new LocalFileStore(
       fixture.database,
@@ -80,16 +64,12 @@ describe('LifecycleService', () => {
         attachmentIds: [],
       }),
     ).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
-    const failed = fixture.lifecycle.verifyBug(
-      fixture.users.tester.id,
-      localBug.id,
-      {
-        ...mutation(currentBug(fixture.database, localBug.id).version),
-        result: 'FAILED',
-        feedback: '仍可复现，请检查边界条件',
-        attachmentIds: [evidence.id],
-      },
-    );
+    const failed = fixture.lifecycle.verifyBug(fixture.users.tester.id, localBug.id, {
+      ...mutation(currentBug(fixture.database, localBug.id).version),
+      result: 'FAILED',
+      feedback: '仍可复现，请检查边界条件',
+      attachmentIds: [evidence.id],
+    });
     expect(currentBug(fixture.database, localBug.id).stage).toBe('REPAIRING');
     const continued = fixture.executions.get(failed.executionId!);
     expect(continued.codexTurn).toMatchObject({
@@ -98,9 +78,7 @@ describe('LifecycleService', () => {
     });
     expect(continued.priority).toBe(0);
     expect(
-      continued.codexTurn?.kind === 'CONTINUATION'
-        ? continued.codexTurn.input
-        : '',
+      continued.codexTurn?.kind === 'CONTINUATION' ? continued.codexTurn.input : '',
     ).toContain('第 1 轮验证未通过');
     expect(
       fixture.database.all(
@@ -110,10 +88,8 @@ describe('LifecycleService', () => {
       ),
     ).toEqual([{ file_id: evidence.id }]);
     expect(
-      fixture.lifecycle.workspace(
-        fixture.users.tester.id,
-        fixture.submission.id,
-      ).verificationsByBug[localBug.id]?.[0],
+      fixture.lifecycle.workspace(fixture.users.tester.id, fixture.submission.id)
+        .verificationsByBug[localBug.id]?.[0],
     ).toMatchObject({
       result: 'FAILED',
       comment: '仍可复现，请检查边界条件',
@@ -128,16 +104,12 @@ describe('LifecycleService', () => {
       outcome: 'COMPLETED',
       summary: '再次部署完成',
     });
-    const passed = fixture.lifecycle.verifyBug(
-      fixture.users.tester.id,
-      localBug.id,
-      {
-        ...mutation(currentBug(fixture.database, localBug.id).version),
-        result: 'PASSED',
-        comment: '边界场景已通过',
-        attachmentIds: [],
-      },
-    );
+    const passed = fixture.lifecycle.verifyBug(fixture.users.tester.id, localBug.id, {
+      ...mutation(currentBug(fixture.database, localBug.id).version),
+      result: 'PASSED',
+      comment: '边界场景已通过',
+      attachmentIds: [],
+    });
     expect(passed.executionId).toBeNull();
     expect(currentBug(fixture.database, localBug.id).stage).toBe('DONE');
     fixture.lifecycle.verifyBug(fixture.users.tester.id, ciBug.id, {
@@ -158,9 +130,7 @@ describe('LifecycleService', () => {
     expect(closed.cleanupExecutionIds).toHaveLength(2);
     for (const executionId of closed.cleanupExecutionIds)
       expect(fixture.executions.get(executionId).approvalPolicy).toBe('never');
-    expect(
-      submissionRow(fixture.database, fixture.submission.id),
-    ).toMatchObject({
+    expect(submissionRow(fixture.database, fixture.submission.id)).toMatchObject({
       status: 'CLOSED',
       version: beforeClose.version + 1,
     });
@@ -181,9 +151,7 @@ describe('LifecycleService', () => {
         testerUserId: fixture.users.tester.id,
         items: fixture.items.map((item, index) => ({
           engineeringId:
-            index === 0
-              ? fixture.localEngineering.id
-              : fixture.ciEngineering.id,
+            index === 0 ? fixture.localEngineering.id : fixture.ciEngineering.id,
           responsibleUserId: fixture.users.developer.id,
           bindingId:
             index === 0
@@ -197,9 +165,9 @@ describe('LifecycleService', () => {
     expect(replacement.status).toBe('ACTIVE');
 
     const cleanupExecutions = closed.cleanupExecutionIds;
-    const claimedCleanup = (
-      await fixture.executions.claim(fixture.runner.id, 1, 0)
-    ).find(({ id }) => id === cleanupExecutions[0]);
+    const claimedCleanup = (await fixture.executions.claim(fixture.runner.id, 1, 0)).find(
+      ({ id }) => id === cleanupExecutions[0],
+    );
     if (!claimedCleanup) throw new Error('未领取到首个清理执行');
     fixture.executions.start(fixture.runner.id, claimedCleanup.id, {
       kind: 'STARTED',
@@ -229,8 +197,7 @@ describe('LifecycleService', () => {
       fixture.users.developer.id,
       fixture.submission.id,
     );
-    const developerCleanupInteraction =
-      developerWorkspace.cleanupInteractions[0]!;
+    const developerCleanupInteraction = developerWorkspace.cleanupInteractions[0]!;
     const runningCleanup = developerWorkspace.cleanups.find(
       ({ id }) => id === developerCleanupInteraction.cleanupId,
     )!;
@@ -247,9 +214,7 @@ describe('LifecycleService', () => {
       },
       canResolve: true,
     });
-    expect(JSON.stringify(developerCleanupInteraction)).not.toContain(
-      '/Users/example',
-    );
+    expect(JSON.stringify(developerCleanupInteraction)).not.toContain('/Users/example');
     expect(() =>
       fixture.lifecycle.resolveCleanupInteraction(
         fixture.users.owner.id,
@@ -260,18 +225,15 @@ describe('LifecycleService', () => {
         },
       ),
     ).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
-    const resolvedCleanupInteraction =
-      fixture.lifecycle.resolveCleanupInteraction(
-        fixture.users.developer.id,
-        cleanupInteraction.id,
-        {
-          ...mutation(runningCleanup.version),
-          resolution: { decision: 'decline' },
-        },
-      );
-    expect(resolvedCleanupInteraction.cleanupVersion).toBe(
-      runningCleanup.version + 1,
+    const resolvedCleanupInteraction = fixture.lifecycle.resolveCleanupInteraction(
+      fixture.users.developer.id,
+      cleanupInteraction.id,
+      {
+        ...mutation(runningCleanup.version),
+        resolution: { decision: 'decline' },
+      },
     );
+    expect(resolvedCleanupInteraction.cleanupVersion).toBe(runningCleanup.version + 1);
     expect(
       fixture.database.get(
         'SELECT state FROM platform_execution_interaction WHERE id = ?',
@@ -309,15 +271,11 @@ describe('LifecycleService', () => {
          WHERE attempt.execution_id = ?`,
       claimedCleanup.id,
     ) as { cleanupId: string; state: string };
-    await completeCleanup(
-      fixture,
-      cleanupExecutions[1]!,
-      'cleanup-ci-session',
-      { outcome: 'COMPLETED', summary: '资源不存在，幂等完成' },
-    );
-    expect(submissionRow(fixture.database, fixture.submission.id).status).toBe(
-      'CLOSED',
-    );
+    await completeCleanup(fixture, cleanupExecutions[1]!, 'cleanup-ci-session', {
+      outcome: 'COMPLETED',
+      summary: '资源不存在，幂等完成',
+    });
+    expect(submissionRow(fixture.database, fixture.submission.id).status).toBe('CLOSED');
     const cleanup = fixture.lifecycle
       .workspace(fixture.users.developer.id, fixture.submission.id)
       .cleanups.find(({ id }) => id === failedCleanup.cleanupId)!;
@@ -345,10 +303,8 @@ describe('LifecycleService', () => {
         .cleanups.find(({ id }) => id === cleanup.id)?.state,
     ).toBe('COMPLETED');
     expect(
-      fixture.lifecycle.workspace(
-        fixture.users.tester.id,
-        fixture.submission.id,
-      ).timeline,
+      fixture.lifecycle.workspace(fixture.users.tester.id, fixture.submission.id)
+        .timeline,
     ).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ title: '提测单已关闭' }),

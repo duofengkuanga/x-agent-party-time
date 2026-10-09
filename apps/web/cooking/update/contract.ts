@@ -155,9 +155,7 @@ export const UpdateBatchViewSchema = z.object({
   synchronizationError: z.string().nullable(),
   entries: z.array(UpdateBatchEntryViewSchema).min(1),
   timeline: z.array(UpdateBatchTimelineNodeSchema),
-  availableActions: z.array(
-    z.enum(['RETRY_UPDATE', 'SYNC_SESSION', 'REPORT_EXTERNAL']),
-  ),
+  availableActions: z.array(z.enum(['RETRY_UPDATE', 'SYNC_SESSION', 'REPORT_EXTERNAL'])),
   presentation: z.object({
     statusLabel: z.string().trim().min(1),
     visual: CookingVisualPresentationSchema,
@@ -177,26 +175,22 @@ export const RetryUpdateInputSchema = VersionedCookingMutationSchema;
 
 export const SynchronizeUpdateSessionInputSchema = RetryUpdateInputSchema;
 
-export const ExternalDeploymentReportInputSchema = z.discriminatedUnion(
-  'outcome',
-  [
-    VersionedCookingMutationSchema.extend({
-      outcome: z.literal('SUCCEEDED'),
-      summary: z.string().trim().min(1).max(8_000).optional(),
-      attachmentIds: z.array(z.uuid()).max(5),
-    }),
-    VersionedCookingMutationSchema.extend({
-      outcome: z.literal('FAILED'),
-      summary: z.string().trim().min(1).max(8_000),
-      attachmentIds: z.array(z.uuid()).max(5),
-    }),
-  ],
-);
+export const ExternalDeploymentReportInputSchema = z.discriminatedUnion('outcome', [
+  VersionedCookingMutationSchema.extend({
+    outcome: z.literal('SUCCEEDED'),
+    summary: z.string().trim().min(1).max(8_000).optional(),
+    attachmentIds: z.array(z.uuid()).max(5),
+  }),
+  VersionedCookingMutationSchema.extend({
+    outcome: z.literal('FAILED'),
+    summary: z.string().trim().min(1).max(8_000),
+    attachmentIds: z.array(z.uuid()).max(5),
+  }),
+]);
 
-export const ResolveUpdateInteractionInputSchema =
-  RetryUpdateInputSchema.extend({
-    resolution: z.json(),
-  });
+export const ResolveUpdateInteractionInputSchema = RetryUpdateInputSchema.extend({
+  resolution: z.json(),
+});
 
 export const UpdateMutationResultSchema = z.object({
   batchId: UpdateBatchIdSchema,
@@ -206,9 +200,7 @@ export const UpdateMutationResultSchema = z.object({
 });
 
 export type UpdateBatchView = z.infer<typeof UpdateBatchViewSchema>;
-export type UpdateWorkspaceProjection = z.infer<
-  typeof UpdateWorkspaceProjectionSchema
->;
+export type UpdateWorkspaceProjection = z.infer<typeof UpdateWorkspaceProjectionSchema>;
 export type RetryUpdateInput = z.infer<typeof RetryUpdateInputSchema>;
 export type SynchronizeUpdateSessionInput = z.infer<
   typeof SynchronizeUpdateSessionInputSchema

@@ -22,24 +22,15 @@ async function setup() {
     },
   });
   const engineeringService = new EngineeringService(database);
-  const engineering = engineeringService.createEngineering(
-    users.owner.id,
-    project.id,
-    {
-      mutationId: randomUUID(),
-      name: 'Binding 工程',
-      type: 'FRONTEND',
-      identifier: 'binding-web',
-    },
-  );
-  engineeringService.addMember(
-    users.owner.id,
-    engineering.id,
-    users.member.id,
-    {
-      mutationId: randomUUID(),
-    },
-  );
+  const engineering = engineeringService.createEngineering(users.owner.id, project.id, {
+    mutationId: randomUUID(),
+    name: 'Binding 工程',
+    type: 'FRONTEND',
+    identifier: 'binding-web',
+  });
+  engineeringService.addMember(users.owner.id, engineering.id, users.member.id, {
+    mutationId: randomUUID(),
+  });
   const now = () => new Date('2026-07-26T11:00:00Z');
   const runners = new RunnerService(database, now);
   const pairRunner = (userId: string, name: string) =>
@@ -78,8 +69,7 @@ async function onlineRequest() {
 
 describe('BindingService', () => {
   test('工程成员只能用自己的有效 Runner 建立稳定 Binding', async () => {
-    const { engineering, runnerService, runners, service, users } =
-      await setup();
+    const { engineering, runnerService, runners, service, users } = await setup();
     const mutationId = randomUUID();
     const binding = service.createBinding(
       users.member.id,
@@ -105,9 +95,7 @@ describe('BindingService', () => {
         randomUUID(),
       ),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
-    expect(service.listBindingsForRunner(runners.member.runner.id)).toEqual([
-      binding,
-    ]);
+    expect(service.listBindingsForRunner(runners.member.runner.id)).toEqual([binding]);
     const secondRunner = runnerService.pair(
       runnerService.issuePairingCode(users.member.id).code,
       'Member Runner 2',
@@ -185,10 +173,7 @@ test('首次 Runner Binding 确认仓库身份，后续 Binding 必须匹配', a
     ),
   ).toBe('https://example.com/team/project.git');
   expect(
-    new EngineeringService(database).getEngineering(
-      binding.userId,
-      engineering.id,
-    ),
+    new EngineeringService(database).getEngineering(binding.userId, engineering.id),
   ).toMatchObject({
     repositoryState: 'CONFIRMED',
     repositoryUrl: 'https://example.com/team/project.git',
@@ -215,15 +200,8 @@ test('首次 Runner Binding 确认仓库身份，后续 Binding 必须匹配', a
 
 describe('Web 驱动工程绑定', () => {
   test('在线 Agent 领取请求前服务端无半成品，完成后原子确认仓库', async () => {
-    const {
-      database,
-      engineering,
-      request,
-      requestService,
-      runners,
-      service,
-      users,
-    } = await onlineRequest();
+    const { database, engineering, request, requestService, runners, service, users } =
+      await onlineRequest();
     expectRowCount(database, 'cooking_engineering_binding').toBe(0);
     expect(requestService.claimNext(runners.other.runner.id)).toBeNull();
     const work = requestService.claimNext(runners.member.runner.id);
@@ -242,14 +220,9 @@ describe('Web 驱动工程绑定', () => {
         repositoryUrl: 'git@Example.com:team/project.git',
       }),
     ).toBe('SUCCEEDED');
-    expect(service.listBindings(users.member.id, engineering.id)).toHaveLength(
-      1,
-    );
+    expect(service.listBindings(users.member.id, engineering.id)).toHaveLength(1);
     expect(
-      new EngineeringService(database).getEngineering(
-        users.member.id,
-        engineering.id,
-      ),
+      new EngineeringService(database).getEngineering(users.member.id, engineering.id),
     ).toMatchObject({
       repositoryState: 'CONFIRMED',
       repositoryUrl: 'https://example.com/team/project.git',
@@ -271,9 +244,7 @@ describe('Web 驱动工程绑定', () => {
       }),
     ).toBe('FAILED');
     expect(service.listBindings(users.member.id, engineering.id)).toEqual([]);
-    expect(
-      requestService.getRequest(users.member.id, request.id),
-    ).toMatchObject({
+    expect(requestService.getRequest(users.member.id, request.id)).toMatchObject({
       state: 'FAILED',
       errorMessage: '已取消选择仓库目录',
     });
@@ -292,12 +263,14 @@ describe('删除未使用工程绑定', () => {
     expect(() =>
       service.deleteBinding(users.owner.id, binding.id, randomUUID()),
     ).not.toThrow();
-    expect(
-      service.deleteBinding(users.member.id, binding.id, randomUUID()),
-    ).toEqual({ deleted: true, bindingId: binding.id });
-    expect(
-      service.deleteBinding(users.member.id, binding.id, randomUUID()),
-    ).toEqual({ deleted: false, bindingId: binding.id });
+    expect(service.deleteBinding(users.member.id, binding.id, randomUUID())).toEqual({
+      deleted: true,
+      bindingId: binding.id,
+    });
+    expect(service.deleteBinding(users.member.id, binding.id, randomUUID())).toEqual({
+      deleted: false,
+      bindingId: binding.id,
+    });
     const replacement = service.createBinding(
       users.member.id,
       engineering.id,
@@ -308,8 +281,7 @@ describe('删除未使用工程绑定', () => {
   });
 
   test('已被提测引用的绑定不能删除且历史保持完整', async () => {
-    const { database, engineering, project, runners, service, users } =
-      await setup();
+    const { database, engineering, project, runners, service, users } = await setup();
     const binding = service.createBinding(
       users.member.id,
       engineering.id,
@@ -325,14 +297,7 @@ describe('删除未使用工程绑定', () => {
            status, version, workspace_revision, created_by_user_id,
            created_at, updated_at, closed_at
          ) VALUES (?, ?, '删除保护', '验证绑定历史', ?, 'ACTIVE', 1, 1, ?, ?, ?, NULL)`,
-      [
-        submissionId,
-        project.id,
-        users.owner.id,
-        users.owner.id,
-        createdAt,
-        createdAt,
-      ],
+      [submissionId, project.id, users.owner.id, users.owner.id, createdAt, createdAt],
     );
     database.run(
       `INSERT INTO cooking_submission_item(
@@ -361,9 +326,7 @@ describe('删除未使用工程绑定', () => {
     expect(() =>
       service.deleteBinding(users.member.id, binding.id, randomUUID()),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
-    expect(service.listBindings(users.member.id, engineering.id)).toHaveLength(
-      1,
-    );
+    expect(service.listBindings(users.member.id, engineering.id)).toHaveLength(1);
     expectRowCount(database, 'cooking_submission_item', { id: itemId }).toBe(1);
   });
 

@@ -38,22 +38,15 @@ export class SubmissionClosure {
       resultSchema: CloseSubmissionMutationResultSchema,
       submissionId: (mutation) => mutation.submissionId,
       perform: () => {
-        const submission = this.requireSubmissionTester(
-          actorUserId,
-          submissionId,
-        );
-        if (submission.version !== input.expectedVersion)
-          throw staleLifecycle('提测单');
+        const submission = this.requireSubmissionTester(actorUserId, submissionId);
+        if (submission.version !== input.expectedVersion) throw staleLifecycle('提测单');
         const nonTerminal = this.db.get(
           `SELECT COUNT(*) count FROM cooking_bug
              WHERE submission_id = ? AND stage NOT IN ('DONE', 'CANCELLED')`,
           submissionId,
         ) as { count: number };
         if (nonTerminal.count > 0)
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '仍有未完成缺陷，不能关闭提测单',
-          );
+          throw new PlatformError('INVALID_TRANSITION', '仍有未完成缺陷，不能关闭提测单');
         if (hasActiveSubmissionExecution(this.db, submissionId))
           throw new PlatformError(
             'RESOURCE_CONFLICT',
@@ -93,10 +86,7 @@ export class SubmissionClosure {
           ))
             environmentInvalidations.set(observer, 0);
         for (const observer of environmentInvalidations.keys())
-          environmentInvalidations.set(
-            observer,
-            this.writes.bumpRevision(observer, now),
-          );
+          environmentInvalidations.set(observer, this.writes.bumpRevision(observer, now));
         this.db.run(
           'DELETE FROM cooking_submission_environment_lock WHERE submission_id = ?',
           [submissionId],
@@ -159,10 +149,7 @@ export class SubmissionClosure {
     if (row.status !== 'ACTIVE')
       throw new PlatformError('INVALID_TRANSITION', '提测单已经关闭');
     if (row.tester_user_id !== userId)
-      throw new PlatformError(
-        'PERMISSION_DENIED',
-        '只有测试负责人可以关闭提测单',
-      );
+      throw new PlatformError('PERMISSION_DENIED', '只有测试负责人可以关闭提测单');
     return row;
   }
 }

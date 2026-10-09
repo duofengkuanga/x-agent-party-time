@@ -46,13 +46,9 @@ test('授权成功只把 Credential 写入 Keychain 并报告浏览器进度', a
     runnerId: newRunnerId,
   });
   expect(
-    await fixture.keychain.read(
-      keychainAccount('https://apt.example.com', newRunnerId),
-    ),
+    await fixture.keychain.read(keychainAccount('https://apt.example.com', newRunnerId)),
   ).toBe(credential);
-  expect(JSON.stringify(await fixture.state.loadConnection())).not.toContain(
-    credential,
-  );
+  expect(JSON.stringify(await fixture.state.loadConnection())).not.toContain(credential);
   expect(fixture.connection.projection).toMatchObject({
     status: 'CONNECTED',
     activity: 'IDLE',
@@ -63,8 +59,7 @@ test('授权成功只把 Credential 写入 Keychain 并报告浏览器进度', a
 
 test('浏览器打开失败仍立即给出可复制 URL，授权可继续完成', async () => {
   const fixture = await createFixture({ browserFails: true });
-  const progress: Array<{ browserOpened: boolean; authorizationUrl: string }> =
-    [];
+  const progress: Array<{ browserOpened: boolean; authorizationUrl: string }> = [];
 
   await fixture.connection.connect('https://apt.example.com', (value) =>
     progress.push(value),
@@ -98,18 +93,16 @@ test('删除连接状态后重新授权仍使用同一安装身份', async () =>
   await fixture.connection.connect('https://apt.example.com', () => {});
 
   expect(firstInstallationId).toBeString();
-  expect(
-    fixture.http.created.map(({ installationId }) => installationId),
-  ).toEqual([firstInstallationId, firstInstallationId]);
+  expect(fixture.http.created.map(({ installationId }) => installationId)).toEqual([
+    firstInstallationId,
+    firstInstallationId,
+  ]);
 });
 
 test('显式连接不同 Server 会重新授权并清理旧 Credential', async () => {
   const fixture = await createFixture();
   await fixture.connection.connect('https://apt.example.com', () => {});
-  const previousAccount = keychainAccount(
-    'https://apt.example.com',
-    newRunnerId,
-  );
+  const previousAccount = keychainAccount('https://apt.example.com', newRunnerId);
 
   await fixture.connection.connect('https://other.example.com', () => {});
 
@@ -136,10 +129,7 @@ test('不同 Server 授权失败会保留原连接状态和 Credential', async (
     authorizationFailureOrigin: 'https://other.example.com',
   });
   await fixture.connection.connect('https://apt.example.com', () => {});
-  const previousAccount = keychainAccount(
-    'https://apt.example.com',
-    newRunnerId,
-  );
+  const previousAccount = keychainAccount('https://apt.example.com', newRunnerId);
 
   await expect(
     fixture.connection.connect('https://other.example.com', () => {}),

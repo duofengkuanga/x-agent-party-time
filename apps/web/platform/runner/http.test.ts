@@ -22,10 +22,7 @@ const createDatabase = testDatabases();
 async function setup() {
   const { directory, database } = await createDatabase();
   const auth = new AuthService(database);
-  const user = await seedTestUser(auth, [
-    'http-runner-user',
-    'HTTP Runner 用户',
-  ]);
+  const user = await seedTestUser(auth, ['http-runner-user', 'HTTP Runner 用户']);
   const runners = new RunnerService(database);
   const pair = (name: string) =>
     runners.pair(runners.issuePairingCode(user.id).code, name);
@@ -64,17 +61,13 @@ describe('Runner HTTP protocol', () => {
     expect(unauthorized.status).toBe(401);
 
     const heartbeat = await handleRunnerHeartbeat(
-      bearerJsonRequest(
-        'http://server/api/runner/heartbeat',
-        paired.credential,
-        { availableSlots: 2 },
-      ),
+      bearerJsonRequest('http://server/api/runner/heartbeat', paired.credential, {
+        availableSlots: 2,
+      }),
       runners,
     );
     expect(heartbeat.status).toBe(200);
-    expect(JSON.stringify(await heartbeat.json())).not.toContain(
-      paired.credential,
-    );
+    expect(JSON.stringify(await heartbeat.json())).not.toContain(paired.credential);
 
     const bindings = await handleRunnerBindings(
       bearerRequest('http://server/api/runner/bindings', paired.credential),
@@ -88,14 +81,10 @@ describe('Runner HTTP protocol', () => {
     expect(body).not.toMatch(/\/Users\/|localPath/iu);
 
     const confirmation = await handleRunnerBindingConfirmation(
-      bearerJsonRequest(
-        'http://server/api/runner/bindings',
-        paired.credential,
-        {
-          bindingId: '00000000-0000-4000-8000-000000000001',
-          repositoryUrl: 'git@Example.com:team/project.git',
-        },
-      ),
+      bearerJsonRequest('http://server/api/runner/bindings', paired.credential, {
+        bindingId: '00000000-0000-4000-8000-000000000001',
+        repositoryUrl: 'git@Example.com:team/project.git',
+      }),
       runners,
       (runnerId, bindingId, repositoryUrl) => {
         expect(runnerId).toBe(paired.runner.id);
@@ -158,10 +147,7 @@ describe('Runner HTTP protocol', () => {
     expect(JSON.stringify(issue)).not.toContain(verifier);
     expect(JSON.stringify(issue)).not.toContain('credential');
 
-    const approval = runners.prepareAuthorizationApproval(
-      user.id,
-      issue.requestId,
-    );
+    const approval = runners.prepareAuthorizationApproval(user.id, issue.requestId);
     runners.approveAuthorization(
       user.id,
       issue.requestId,
@@ -169,14 +155,11 @@ describe('Runner HTTP protocol', () => {
       'HTTP Agent',
     );
     const claim = await handleRunnerAuthorizationClaim(
-      new Request(
-        `http://server/api/runner/authorizations/${issue.requestId}/claim`,
-        {
-          method: 'POST',
-          body: JSON.stringify({ verifier }),
-          headers: { 'content-type': 'application/json' },
-        },
-      ),
+      new Request(`http://server/api/runner/authorizations/${issue.requestId}/claim`, {
+        method: 'POST',
+        body: JSON.stringify({ verifier }),
+        headers: { 'content-type': 'application/json' },
+      }),
       issue.requestId,
       runners,
     );
@@ -203,10 +186,7 @@ describe('Runner HTTP protocol', () => {
     expect(unauthorized.status).toBe(401);
 
     const claim = await handleRunnerBindingWorkClaim(
-      bearerRequest(
-        'http://server/api/runner/binding-requests',
-        paired.credential,
-      ),
+      bearerRequest('http://server/api/runner/binding-requests', paired.credential),
       runners,
       (runnerId) => {
         expect(runnerId).toBe(paired.runner.id);
@@ -261,22 +241,19 @@ describe('Runner HTTP protocol', () => {
     const { runners, pair } = await setup();
     const paired = pair('Bug Delete Agent');
     const unauthorized = await handleBugDelete(
-      bearerJsonRequest(
-        'http://server/api/cooking/bugs/delete',
-        'invalid-credential',
-        { all: true },
-      ),
+      bearerJsonRequest('http://server/api/cooking/bugs/delete', 'invalid-credential', {
+        all: true,
+      }),
       runners,
       { deleteBugs: () => ({ deletedBugIds: [], deletedExecutionIds: [] }) },
     );
     expect(unauthorized.status).toBe(401);
 
     const authorized = await handleBugDelete(
-      bearerJsonRequest(
-        'http://server/api/cooking/bugs/delete',
-        paired.credential,
-        { all: true, force: true },
-      ),
+      bearerJsonRequest('http://server/api/cooking/bugs/delete', paired.credential, {
+        all: true,
+        force: true,
+      }),
       runners,
       {
         deleteBugs: (input) => {
@@ -299,11 +276,10 @@ describe('Runner HTTP protocol', () => {
     const { runners, pair } = await setup();
     const paired = pair('Error Agent');
     const response = await handleBugDelete(
-      bearerJsonRequest(
-        'http://server/api/cooking/bugs/delete',
-        paired.credential,
-        { all: true, force: true },
-      ),
+      bearerJsonRequest('http://server/api/cooking/bugs/delete', paired.credential, {
+        all: true,
+        force: true,
+      }),
       runners,
       {
         deleteBugs: () => {
@@ -353,22 +329,14 @@ function pairRequest(body: unknown): Request {
   });
 }
 
-function bearerRequest(
-  url: string,
-  credential: string,
-  method = 'GET',
-): Request {
+function bearerRequest(url: string, credential: string, method = 'GET'): Request {
   return new Request(url, {
     method,
     headers: { authorization: `Bearer ${credential}` },
   });
 }
 
-function bearerJsonRequest(
-  url: string,
-  credential: string,
-  body: unknown,
-): Request {
+function bearerJsonRequest(url: string, credential: string, body: unknown): Request {
   return new Request(url, {
     method: 'POST',
     body: JSON.stringify(body),

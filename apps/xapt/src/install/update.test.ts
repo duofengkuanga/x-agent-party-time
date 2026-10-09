@@ -42,9 +42,7 @@ test('目标 xapt 生成自身版本的安装状态', async () => {
   const fixture = await createFixture('0.3.4');
 
   expect(
-    JSON.parse(
-      fixture.manager.renderInstallState('0.3.4', '2026-08-01T00:00:00.000Z'),
-    ),
+    JSON.parse(fixture.manager.renderInstallState('0.3.4', '2026-08-01T00:00:00.000Z')),
   ).toEqual({
     schemaVersion: INSTALL_STATE_SCHEMA_VERSION,
     currentVersion: '0.5.7',
@@ -71,9 +69,7 @@ test('校验资产并原子切换版本，只保留当前和上一成功版本',
     currentVersion: '0.2.0',
     previousVersion: '0.1.0',
   });
-  expect(
-    await fixture.files.info(fixture.paths.versionExecutable('0.0.9')),
-  ).toBeNull();
+  expect(await fixture.files.info(fixture.paths.versionExecutable('0.0.9'))).toBeNull();
   expect(fixture.events).toContain('codesign');
   expect(fixture.events.slice(-2)).toEqual(['start', 'stop']);
 });

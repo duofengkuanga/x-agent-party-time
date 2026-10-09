@@ -35,10 +35,7 @@ type EngineeringInput = Pick<Engineering, 'name' | 'type' | 'identifier'> & {
 export type EngineeringGuards = {
   engineeringReferenced: (engineeringId: string) => boolean;
   environmentReferenced: (environmentId: string) => boolean;
-  memberHasActiveResponsibilities: (
-    engineeringId: string,
-    userId: string,
-  ) => boolean;
+  memberHasActiveResponsibilities: (engineeringId: string, userId: string) => boolean;
 };
 
 const DEFAULT_GUARDS: EngineeringGuards = {
@@ -85,8 +82,7 @@ export class EngineeringService {
     this.getWorkspace = this.queries.getWorkspace.bind(this.queries);
     this.listMembers = this.queries.listMembers.bind(this.queries);
     this.listEnvironments = this.queries.listEnvironments.bind(this.queries);
-    this.createEnvironments =
-      environments.createEnvironments.bind(environments);
+    this.createEnvironments = environments.createEnvironments.bind(environments);
     this.createEnvironment = environments.createEnvironment.bind(environments);
     this.updateEnvironment = environments.updateEnvironment.bind(environments);
     this.deleteEnvironment = environments.deleteEnvironment.bind(environments);
@@ -141,10 +137,7 @@ export class EngineeringService {
       perform: () => {
         this.queries.requireProjectOwner(actorUserId, projectId);
         this.queries.ensureEngineeringNameAvailable(projectId, name);
-        this.queries.ensureEngineeringIdentifierAvailable(
-          projectId,
-          identifier,
-        );
+        this.queries.ensureEngineeringIdentifierAvailable(projectId, identifier);
         const id = this.createId();
         const createdAt = this.now().toISOString();
         const stored = this.db.get<EngineeringRow>(
@@ -193,10 +186,7 @@ export class EngineeringService {
       resourceType: 'ENGINEERING',
       resultSchema: EngineeringSchema,
       perform: () => {
-        const current = this.queries.requireEngineeringOwner(
-          actorUserId,
-          engineeringId,
-        );
+        const current = this.queries.requireEngineeringOwner(actorUserId, engineeringId);
         if (current.archivedAt)
           throw new PlatformError('INVALID_TRANSITION', '已归档工程不能修改');
         if (current.version !== input.expectedVersion)
@@ -230,8 +220,7 @@ export class EngineeringService {
           engineeringId,
           input.expectedVersion,
         );
-        if (!update)
-          throw new PlatformError('STALE_STATE', '工程已更新，请刷新后重试');
+        if (!update) throw new PlatformError('STALE_STATE', '工程已更新，请刷新后重试');
         return {
           result: mapEngineering(update),
           resourceId: engineeringId,
@@ -257,12 +246,8 @@ export class EngineeringService {
       resourceType: 'ENGINEERING',
       resultSchema: EngineeringSchema,
       perform: () => {
-        const current = this.queries.requireEngineeringOwner(
-          actorUserId,
-          engineeringId,
-        );
-        if (current.archivedAt)
-          return { result: current, resourceId: engineeringId };
+        const current = this.queries.requireEngineeringOwner(actorUserId, engineeringId);
+        if (current.archivedAt) return { result: current, resourceId: engineeringId };
         if (current.version !== input.expectedVersion)
           throw new PlatformError('STALE_STATE', '工程已更新，请刷新后重试');
         if (this.guards.engineeringReferenced(engineeringId))
@@ -280,8 +265,7 @@ export class EngineeringService {
           engineeringId,
           input.expectedVersion,
         );
-        if (!update)
-          throw new PlatformError('STALE_STATE', '工程已更新，请刷新后重试');
+        if (!update) throw new PlatformError('STALE_STATE', '工程已更新，请刷新后重试');
         return {
           result: mapEngineering(update),
           resourceId: engineeringId,
@@ -312,10 +296,7 @@ export class EngineeringService {
           engineeringId,
         );
         if (engineering.archivedAt)
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '已归档工程不能增加成员',
-          );
+          throw new PlatformError('INVALID_TRANSITION', '已归档工程不能增加成员');
         requireProjectMember(this.db, targetUserId, engineering.projectId);
         const existing = this.db.get(
           `SELECT engineering_id, user_id, version, created_at
@@ -382,12 +363,7 @@ export class EngineeringService {
           };
         if (row.version !== input.expectedVersion)
           throw new PlatformError('STALE_STATE', '工程成员关系已更新');
-        if (
-          this.guards.memberHasActiveResponsibilities(
-            engineeringId,
-            targetUserId,
-          )
-        )
+        if (this.guards.memberHasActiveResponsibilities(engineeringId, targetUserId))
           throw new PlatformError(
             'RESOURCE_CONFLICT',
             '该工程成员仍有活动职责，暂时不能移除',

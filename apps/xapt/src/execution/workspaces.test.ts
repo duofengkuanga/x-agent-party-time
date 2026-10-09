@@ -34,43 +34,31 @@ describe('GitExecutionWorkspaceManager', () => {
 
     const paths = xaptPaths(root);
     const manager = new GitExecutionWorkspaceManager(paths);
-    const repair = cwd(
-      await manager.prepare(binding, repairWorkspace('bug-1')),
-    );
-    const update = cwd(
-      await manager.prepare(binding, updateWorkspace('batch-1')),
-    );
+    const repair = cwd(await manager.prepare(binding, repairWorkspace('bug-1')));
+    const update = cwd(await manager.prepare(binding, updateWorkspace('batch-1')));
 
     expect(repair).not.toBe(update);
-    expect(
-      await output(['git', '-C', repair, 'branch', '--show-current']),
-    ).toBe('apt/repair/bug-1');
-    expect(
-      await output(['git', '-C', update, 'branch', '--show-current']),
-    ).toBe('');
+    expect(await output(['git', '-C', repair, 'branch', '--show-current'])).toBe(
+      'apt/repair/bug-1',
+    );
+    expect(await output(['git', '-C', update, 'branch', '--show-current'])).toBe('');
     await writeFile(join(source, 'LATEST.md'), 'latest\n');
     await run(['git', '-C', source, 'add', 'LATEST.md']);
     await run(['git', '-C', source, 'commit', '-m', 'latest']);
     await run(['git', '-C', source, 'push', 'origin', 'main']);
-    const latestUpdate = cwd(
-      await manager.prepare(binding, updateWorkspace('batch-2')),
-    );
+    const latestUpdate = cwd(await manager.prepare(binding, updateWorkspace('batch-2')));
     expect(await output(['git', '-C', latestUpdate, 'rev-parse', 'HEAD'])).toBe(
       await output(['git', '-C', binding, 'rev-parse', 'origin/main']),
     );
     await writeFile(join(repair, 'repair-only.txt'), 'repair\n');
-    expect(
-      await output(['git', '-C', update, 'status', '--short']),
-    ).not.toContain('repair-only.txt');
+    expect(await output(['git', '-C', update, 'status', '--short'])).not.toContain(
+      'repair-only.txt',
+    );
     await run(['git', '-C', binding, 'switch', 'main']);
 
     const restarted = new GitExecutionWorkspaceManager(paths);
-    expect(
-      cwd(await restarted.prepare(binding, repairWorkspace('bug-1'))),
-    ).toBe(repair);
-    expect(await restarted.resolve(binding, repairWorkspace('bug-1'))).toBe(
-      repair,
-    );
+    expect(cwd(await restarted.prepare(binding, repairWorkspace('bug-1')))).toBe(repair);
+    expect(await restarted.resolve(binding, repairWorkspace('bug-1'))).toBe(repair);
     await expect(
       restarted.resolve(binding, {
         key: 'missing-workspace',
@@ -81,21 +69,19 @@ describe('GitExecutionWorkspaceManager', () => {
     ).rejects.toThrow('原任务工作区不存在');
 
     await run(['git', '-C', repair, 'switch', '-c', 'wrong-branch']);
-    await expect(
-      restarted.prepare(binding, repairWorkspace('bug-1')),
-    ).rejects.toThrow('身份不匹配');
+    await expect(restarted.prepare(binding, repairWorkspace('bug-1'))).rejects.toThrow(
+      '身份不匹配',
+    );
     await run(['git', '-C', repair, 'switch', 'apt/repair/bug-1']);
     await run(['git', '-C', binding, 'branch', '-D', 'wrong-branch']);
 
-    const replaced = cwd(
-      await restarted.prepare(binding, updateWorkspace('replaced')),
-    );
+    const replaced = cwd(await restarted.prepare(binding, updateWorkspace('replaced')));
     await run(['git', '-C', binding, 'worktree', 'remove', replaced]);
     await mkdir(replaced);
     await run(['git', 'init', replaced]);
-    await expect(
-      restarted.prepare(binding, updateWorkspace('replaced')),
-    ).rejects.toThrow('身份不匹配');
+    await expect(restarted.prepare(binding, updateWorkspace('replaced'))).rejects.toThrow(
+      '身份不匹配',
+    );
     await rm(replaced, { recursive: true, force: true });
 
     await expect(
@@ -125,9 +111,9 @@ describe('GitExecutionWorkspaceManager', () => {
     expect(
       await output(['git', '-C', binding, 'worktree', 'list', '--porcelain']),
     ).not.toContain(repair);
-    expect(
-      await output(['git', '-C', binding, 'show-ref', '--heads']),
-    ).not.toContain('apt/repair/bug-1');
+    expect(await output(['git', '-C', binding, 'show-ref', '--heads'])).not.toContain(
+      'apt/repair/bug-1',
+    );
   });
 
   test('新 worktree 镜像主工程被忽略内容，复用不覆盖已存在项', async () => {
@@ -144,34 +130,22 @@ describe('GitExecutionWorkspaceManager', () => {
 
     const paths = xaptPaths(root);
     const manager = new GitExecutionWorkspaceManager(paths);
-    const repair = cwd(
-      await manager.prepare(binding, repairWorkspace('mirror-1')),
-    );
+    const repair = cwd(await manager.prepare(binding, repairWorkspace('mirror-1')));
 
     expect(await readlink(join(repair, 'node_modules'))).toBe(
       join(binding, 'node_modules'),
     );
-    expect(await readlink(join(repair, '.env.local'))).toBe(
-      join(binding, '.env.local'),
-    );
-    expect(await readFile(join(repair, 'node_modules', 'dep.js'), 'utf8')).toBe(
-      'dep\n',
-    );
+    expect(await readlink(join(repair, '.env.local'))).toBe(join(binding, '.env.local'));
+    expect(await readFile(join(repair, 'node_modules', 'dep.js'), 'utf8')).toBe('dep\n');
     expect(await readlink(join(repair, 'cache', '.DS_Store'))).toBe(
       join(binding, 'cache', '.DS_Store'),
     );
-    expect(await output(['git', '-C', repair, 'status', '--porcelain'])).toBe(
-      '',
-    );
+    expect(await output(['git', '-C', repair, 'status', '--porcelain'])).toBe('');
 
     await writeFile(join(repair, '.env.local'), 'LOCAL=1\n');
-    const reused = cwd(
-      await manager.prepare(binding, repairWorkspace('mirror-1')),
-    );
+    const reused = cwd(await manager.prepare(binding, repairWorkspace('mirror-1')));
     expect(reused).toBe(repair);
-    expect(await readFile(join(repair, '.env.local'), 'utf8')).toBe(
-      'LOCAL=1\n',
-    );
+    expect(await readFile(join(repair, '.env.local'), 'utf8')).toBe('LOCAL=1\n');
   });
 
   test('removeWorkspaces 先全量校验再删除，force 覆盖未提交修改', async () => {
@@ -179,13 +153,9 @@ describe('GitExecutionWorkspaceManager', () => {
 
     const paths = xaptPaths(root);
     const manager = new GitExecutionWorkspaceManager(paths);
-    const repair = cwd(
-      await manager.prepare(binding, repairWorkspace('bug-1')),
-    );
+    const repair = cwd(await manager.prepare(binding, repairWorkspace('bug-1')));
     const clean = cwd(await manager.prepare(binding, repairWorkspace('bug-2')));
-    const missing = cwd(
-      await manager.prepare(binding, repairWorkspace('bug-3')),
-    );
+    const missing = cwd(await manager.prepare(binding, repairWorkspace('bug-3')));
 
     expect(await manager.workspaceKeys()).toEqual([
       'bug-repair:bug-1',
@@ -253,10 +223,7 @@ async function createRepository({
   await run(['git', '-C', source, 'config', 'user.name', 'Test']);
   await writeFile(join(source, 'README.md'), 'baseline\n');
   if (ignoreLocalFiles)
-    await writeFile(
-      join(source, '.gitignore'),
-      'node_modules/\n.env.local\n.DS_Store\n',
-    );
+    await writeFile(join(source, '.gitignore'), 'node_modules/\n.env.local\n.DS_Store\n');
   await run([
     'git',
     '-C',
@@ -275,11 +242,9 @@ async function createRepository({
 }
 
 function cwd(
-  prepared:
-    { kind: 'EXECUTE'; cwd: string } | { kind: 'COMPLETED'; result: unknown },
+  prepared: { kind: 'EXECUTE'; cwd: string } | { kind: 'COMPLETED'; result: unknown },
 ): string {
-  if (prepared.kind !== 'EXECUTE')
-    throw new Error('测试预期 Runner 返回可执行工作区');
+  if (prepared.kind !== 'EXECUTE') throw new Error('测试预期 Runner 返回可执行工作区');
   return prepared.cwd;
 }
 

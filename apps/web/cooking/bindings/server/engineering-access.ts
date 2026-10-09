@@ -16,8 +16,7 @@ export function requireBindingEngineering(
     actorUserId,
     engineeringId,
   ) as { project_id: string; archived_at: string | null } | undefined;
-  if (!engineering)
-    throw new PlatformError('NOT_FOUND', '工程不存在或你不是工程成员');
+  if (!engineering) throw new PlatformError('NOT_FOUND', '工程不存在或你不是工程成员');
   if (engineering.archived_at)
     throw new PlatformError('INVALID_TRANSITION', '已归档工程不能建立绑定');
   return engineering;

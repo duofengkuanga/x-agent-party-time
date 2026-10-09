@@ -51,18 +51,11 @@ export class SubmissionService {
     private readonly createId: () => string = randomUUID,
     onInvalidated: (submissionId: string, revision: number) => void = () => {},
   ) {
-    this.writes = new TestSubmissionWriteStore(
-      db,
-      now,
-      createId,
-      onInvalidated,
-    );
+    this.writes = new TestSubmissionWriteStore(db, now, createId, onInvalidated);
     this.queries = new SubmissionQueries(db);
     this.listSubmissions = this.queries.listSubmissions.bind(this.queries);
     this.getWorkspace = this.queries.getWorkspace.bind(this.queries);
-    this.canAccessSubmission = this.queries.canAccessSubmission.bind(
-      this.queries,
-    );
+    this.canAccessSubmission = this.queries.canAccessSubmission.bind(this.queries);
     this.requireSubmissionAccess = this.queries.requireSubmissionAccess.bind(
       this.queries,
     );
@@ -78,19 +71,13 @@ export class SubmissionService {
     ensureDistinctItems(parsed);
     const takeovers = parsed.environmentTakeovers ?? [];
     if (
-      new Set(takeovers.map((value) => value.environmentId)).size !==
-        takeovers.length ||
+      new Set(takeovers.map((value) => value.environmentId)).size !== takeovers.length ||
       takeovers.some(
         (value) =>
-          !parsed.items.some(
-            (item) => item.environmentId === value.environmentId,
-          ),
+          !parsed.items.some((item) => item.environmentId === value.environmentId),
       )
     )
-      throw new PlatformError(
-        'VALIDATION_FAILED',
-        '环境切换确认与当前提测项不匹配',
-      );
+      throw new PlatformError('VALIDATION_FAILED', '环境切换确认与当前提测项不匹配');
     const invalidations = new Map<string, number>();
     const result = this.writes.run({
       mutationId: parsed.mutationId,
@@ -146,9 +133,7 @@ export class SubmissionService {
             this.db,
             actorUserId,
             item.source.environment_id,
-            takeovers.find(
-              (value) => value.environmentId === item.source.environment_id,
-            ),
+            takeovers.find((value) => value.environmentId === item.source.environment_id),
           );
           this.db.run(
             `INSERT INTO cooking_submission_environment_lock(
@@ -171,10 +156,7 @@ export class SubmissionService {
             invalidations.set(observer, 0);
         }
         for (const previousId of invalidations.keys())
-          invalidations.set(
-            previousId,
-            this.writes.bumpRevision(previousId, createdAt),
-          );
+          invalidations.set(previousId, this.writes.bumpRevision(previousId, createdAt));
         const submission = mapSubmission(stored);
         return {
           result: submission,
@@ -201,12 +183,7 @@ export class SubmissionService {
     projectId: string,
     input: CreateSubmissionInput,
   ): EnvironmentConflict[] {
-    return environmentConflictsForSubmission(
-      this.db,
-      actorUserId,
-      projectId,
-      input,
-    );
+    return environmentConflictsForSubmission(this.db, actorUserId, projectId, input);
   }
 
   changeEnvironment(
@@ -228,17 +205,10 @@ export class SubmissionService {
           'SELECT * FROM cooking_submission_item WHERE id = ?',
           itemId,
         ) as SubmissionItemRow | undefined;
-        if (!item)
-          throw new PlatformError('NOT_FOUND', SUBMISSION_HIDDEN_MESSAGE);
-        const submission = this.requireSubmissionAccess(
-          actorUserId,
-          item.submission_id,
-        );
+        if (!item) throw new PlatformError('NOT_FOUND', SUBMISSION_HIDDEN_MESSAGE);
+        const submission = this.requireSubmissionAccess(actorUserId, item.submission_id);
         if (submission.status !== 'ACTIVE')
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '已关闭提测单不能切换环境',
-          );
+          throw new PlatformError('INVALID_TRANSITION', '已关闭提测单不能切换环境');
         if (submission.workspace_revision !== input.expectedRevision)
           throw new PlatformError('STALE_STATE', '提测单已更新，请刷新后重试');
         const now = this.now().toISOString();
@@ -272,14 +242,8 @@ export class SubmissionService {
               '只有提测参与者或项目所有者可以取得环境使用权',
             );
           if (environmentOwned(this.db, itemId))
-            throw new PlatformError(
-              'STALE_STATE',
-              '当前提测项已取得环境，请刷新后重试',
-            );
-          if (
-            input.takeover &&
-            input.takeover.environmentId !== item.environment_id
-          )
+            throw new PlatformError('STALE_STATE', '当前提测项已取得环境，请刷新后重试');
+          if (input.takeover && input.takeover.environmentId !== item.environment_id)
             throw new PlatformError(
               'VALIDATION_FAILED',
               '环境切换确认与当前提测项不匹配',
@@ -293,23 +257,14 @@ export class SubmissionService {
           this.db.run(
             `INSERT INTO cooking_submission_environment_lock(environment_id, engineering_id, submission_id, submission_item_id, created_at, deployment_confirmed)
             VALUES (?, ?, ?, ?, ?, 0)`,
-            [
-              item.environment_id,
-              item.engineering_id,
-              item.submission_id,
-              item.id,
-              now,
-            ],
+            [item.environment_id, item.engineering_id, item.submission_id, item.id, now],
           );
           for (const observer of environmentObservers(
             this.db,
             item.environment_id,
             submission.id,
           ))
-            invalidations.set(
-              observer,
-              this.writes.bumpRevision(observer, now),
-            );
+            invalidations.set(observer, this.writes.bumpRevision(observer, now));
         }
         const revision = this.writes.bumpRevision(submission.id, now);
         return {
@@ -346,13 +301,10 @@ export class SubmissionService {
     const parsed = UpdateSubmissionInputSchema.parse(input);
     const targetBranches = parsed.targetBranches ?? [];
     if (
-      new Set(targetBranches.map(({ submissionItemId }) => submissionItemId))
-        .size !== targetBranches.length
+      new Set(targetBranches.map(({ submissionItemId }) => submissionItemId)).size !==
+      targetBranches.length
     )
-      throw new PlatformError(
-        'VALIDATION_FAILED',
-        '同一提测工程不能重复提交目标分支',
-      );
+      throw new PlatformError('VALIDATION_FAILED', '同一提测工程不能重复提交目标分支');
     return this.writes.run({
       mutationId: parsed.mutationId,
       actorUserId,
@@ -374,10 +326,7 @@ export class SubmissionService {
             '只有创建人或项目所有者可以修改提测信息',
           );
         if (!canEditDetails && targetBranches.length === 0)
-          throw new PlatformError(
-            'PERMISSION_DENIED',
-            '当前用户没有可修改的提测信息',
-          );
+          throw new PlatformError('PERMISSION_DENIED', '当前用户没有可修改的提测信息');
         if (current.status !== 'ACTIVE')
           throw new PlatformError('INVALID_TRANSITION', '已关闭提测单不能修改');
         if (current.version !== parsed.expectedVersion)
@@ -428,18 +377,10 @@ export class SubmissionService {
                    SELECT 1 FROM cooking_bug
                    WHERE submission_item_id = cooking_submission_item.id
                  )`,
-            [
-              target.targetBranch,
-              target.submissionItemId,
-              submissionId,
-              actorUserId,
-            ],
+            [target.targetBranch, target.submissionItemId, submissionId, actorUserId],
           );
           if (updateItem.changes !== 1)
-            throw new PlatformError(
-              'STALE_STATE',
-              '提测工程状态已更新，请刷新后重试',
-            );
+            throw new PlatformError('STALE_STATE', '提测工程状态已更新，请刷新后重试');
           changedTargetBranches.push(target);
         }
         const updated = this.db.get<SubmissionRow>(

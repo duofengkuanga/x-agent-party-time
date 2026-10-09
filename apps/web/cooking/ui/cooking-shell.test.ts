@@ -7,10 +7,7 @@ const shellPath = join(import.meta.dir, 'cooking-shell.tsx');
 
 describe('Cooking 页面框架', () => {
   test('Cooking layout 统一挂载共享框架', async () => {
-    const layout = await readFile(
-      join(webRoot, 'app/cooking/layout.tsx'),
-      'utf8',
-    );
+    const layout = await readFile(join(webRoot, 'app/cooking/layout.tsx'), 'utf8');
     expect(layout).toContain('<CookingShell');
     expect(layout).toContain('<AccountInvitationNotifications');
     expect(layout).toContain('accountNotifications=');
@@ -31,9 +28,7 @@ describe('Cooking 页面框架', () => {
       'cooking/submissions/ui/submission-workspace.tsx',
     ];
     for (const page of pageImplementations) {
-      expect(await readFile(join(webRoot, page), 'utf8')).not.toContain(
-        '<CookingShell',
-      );
+      expect(await readFile(join(webRoot, page), 'utf8')).not.toContain('<CookingShell');
     }
   });
 
@@ -41,9 +36,7 @@ describe('Cooking 页面框架', () => {
     const definitions: string[] = [];
     for (const root of ['app', 'cooking']) {
       for (const path of await tsxFiles(join(webRoot, root))) {
-        if (
-          (await readFile(path, 'utf8')).includes('className="collab-topbar"')
-        )
+        if ((await readFile(path, 'utf8')).includes('className="collab-topbar"'))
           definitions.push(relative(webRoot, path));
       }
     }
@@ -58,9 +51,7 @@ describe('Cooking 页面框架', () => {
       ].map((path) => readFile(path, 'utf8')),
     );
     expect(cookingSources.join('\n')).not.toContain('/cooking/runners');
-    expect(
-      await fileExists(join(webRoot, 'app/cooking/runners/page.tsx')),
-    ).toBe(false);
+    expect(await fileExists(join(webRoot, 'app/cooking/runners/page.tsx'))).toBe(false);
 
     const agentPage = await readFile(
       join(webRoot, 'app/cooking/agents/page.tsx'),
@@ -81,9 +72,7 @@ describe('Cooking 页面框架', () => {
       join(webRoot, 'cooking/projects/ui/account-invitation-notifications.tsx'),
       'utf8',
     );
-    expect(invitationNotifications).toContain(
-      'if (!invitations.length) return null',
-    );
+    expect(invitationNotifications).toContain('if (!invitations.length) return null');
     expect(invitationNotifications).not.toContain('暂无待处理邀请');
 
     const connectPage = await readFile(

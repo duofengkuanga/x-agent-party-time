@@ -49,9 +49,9 @@ test('control socket 位置的未知文件不会被删除', async () => {
   await expect(server.start()).rejects.toMatchObject({
     code: 'SOCKET_OCCUPIED',
   });
-  expect(
-    new TextDecoder().decode((await files.read(paths.controlSocket))!),
-  ).toBe('unknown');
+  expect(new TextDecoder().decode((await files.read(paths.controlSocket))!)).toBe(
+    'unknown',
+  );
 });
 
 test('普通 stop 在 daemon 忙碌时拒绝且保留运行状态', async () => {
@@ -110,8 +110,7 @@ test('connect 在同一控制请求上先流式报告进度再返回最终状态
     }),
     connect: async (_serverUrl, progress) => {
       progress({
-        authorizationUrl:
-          'https://apt.example.com/cooking/agents/connect?request=req_1',
+        authorizationUrl: 'https://apt.example.com/cooking/agents/connect?request=req_1',
         fingerprint: 'ABCD-EF12-3456',
         browserOpened: false,
       });
@@ -121,15 +120,15 @@ test('connect 在同一控制请求上先流式报告进度再返回最终状态
   await server.start();
   const progress: unknown[] = [];
 
-  const snapshot = await new DaemonControlClient(
-    paths.controlSocket,
+  const snapshot = await new DaemonControlClient(paths.controlSocket, 500).connect(
+    'https://apt.example.com',
+    (value) => progress.push(value),
     500,
-  ).connect('https://apt.example.com', (value) => progress.push(value), 500);
+  );
 
   expect(progress).toEqual([
     {
-      authorizationUrl:
-        'https://apt.example.com/cooking/agents/connect?request=req_1',
+      authorizationUrl: 'https://apt.example.com/cooking/agents/connect?request=req_1',
       fingerprint: 'ABCD-EF12-3456',
       browserOpened: false,
     },

@@ -45,10 +45,7 @@ export class ExecutionInteractions {
           existing.payload_json === JSON.stringify(request.payload)
         )
           return mapInteraction(existing);
-        throw new PlatformError(
-          'RESOURCE_CONFLICT',
-          '该任务已有待处理的操作请求',
-        );
+        throw new PlatformError('RESOURCE_CONFLICT', '该任务已有待处理的操作请求');
       }
       const id = this.createId();
       const createdAt = this.now().toISOString();
@@ -87,19 +84,12 @@ export class ExecutionInteractions {
   ): Promise<WaitInteractionResponse> {
     const deadline = Date.now() + waitMs;
     do {
-      requireLeasedExecution(
-        this.records,
-        this.now,
-        runnerId,
-        executionId,
-        leaseToken,
-        [
-          'WAITING_FOR_INTERACTION',
-          'WAITING_TO_RESUME',
-          'RUNNING',
-          'CANCEL_REQUESTED',
-        ],
-      );
+      requireLeasedExecution(this.records, this.now, runnerId, executionId, leaseToken, [
+        'WAITING_FOR_INTERACTION',
+        'WAITING_TO_RESUME',
+        'RUNNING',
+        'CANCEL_REQUESTED',
+      ]);
       const interaction = this.records.latestInteraction(executionId);
       if (!interaction || interaction.id !== interactionId)
         throw new PlatformError('NOT_FOUND', '任务操作请求不存在');
@@ -120,15 +110,11 @@ export class ExecutionInteractions {
     return {
       interaction: mapInteraction(interaction),
       laneAcquired:
-        interaction.state === 'RESOLVED' &&
-        this.queue.tryAcquireResumeLane(executionId),
+        interaction.state === 'RESOLVED' && this.queue.tryAcquireResumeLane(executionId),
     };
   }
 
-  resolveInteraction(
-    interactionId: string,
-    resolution: JsonValue,
-  ): ExecutionInteraction {
+  resolveInteraction(interactionId: string, resolution: JsonValue): ExecutionInteraction {
     this.queue.expireLeases();
     return this.db.transaction(() => {
       const interaction = this.records.getInteractionRow(interactionId);

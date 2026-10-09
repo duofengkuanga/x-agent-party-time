@@ -13,10 +13,7 @@ async function setup(options?: {
   hasActiveResponsibilities?: (projectId: string, userId: string) => boolean;
 }) {
   const { directory, database } = await createDatabase();
-  const auth = new AuthService(
-    database,
-    () => new Date('2026-07-26T08:00:00Z'),
-  );
+  const auth = new AuthService(database, () => new Date('2026-07-26T08:00:00Z'));
   const users = await seedUsers(auth, {
     owner: ['owner', '所有者', 'user-owner'],
     member: ['member', '成员', 'user-member'],
@@ -105,27 +102,17 @@ describe('ProjectService', () => {
       }),
     ).toThrow(expect.objectContaining({ code: 'NOT_FOUND' }));
 
-    const accepted = service.respondToInvitation(
-      users.member.id,
-      invitation.id,
-      {
-        ...mutation(invitation.version),
-        decision: 'ACCEPT',
-      },
-    );
-    const repeated = service.respondToInvitation(
-      users.member.id,
-      invitation.id,
-      {
-        ...mutation(invitation.version),
-        decision: 'ACCEPT',
-      },
-    );
+    const accepted = service.respondToInvitation(users.member.id, invitation.id, {
+      ...mutation(invitation.version),
+      decision: 'ACCEPT',
+    });
+    const repeated = service.respondToInvitation(users.member.id, invitation.id, {
+      ...mutation(invitation.version),
+      decision: 'ACCEPT',
+    });
     expect(accepted.status).toBe('ACCEPTED');
     expect(repeated).toEqual(accepted);
-    expect(service.listProjects(users.member.id)[0]?.membership.role).toBe(
-      'MEMBER',
-    );
+    expect(service.listProjects(users.member.id)[0]?.membership.role).toBe('MEMBER');
     expect(service.listMembers(users.owner.id, project.id)).toHaveLength(2);
     expectRowCount(database, 'cooking_project_membership', {
       project_id: project.id,
@@ -149,14 +136,10 @@ describe('ProjectService', () => {
       mutationId: randomUUID(),
       username: 'member',
     });
-    const rejected = service.respondToInvitation(
-      users.member.id,
-      rejectedInvitation.id,
-      {
-        ...mutation(rejectedInvitation.version),
-        decision: 'REJECT',
-      },
-    );
+    const rejected = service.respondToInvitation(users.member.id, rejectedInvitation.id, {
+      ...mutation(rejectedInvitation.version),
+      decision: 'REJECT',
+    });
     expect(
       service.respondToInvitation(users.member.id, rejectedInvitation.id, {
         ...mutation(rejectedInvitation.version),
@@ -174,13 +157,9 @@ describe('ProjectService', () => {
       mutationId: randomUUID(),
       username: 'other',
     });
-    const revoked = service.revokeInvitation(
-      users.owner.id,
-      revokedInvitation.id,
-      {
-        ...mutation(revokedInvitation.version),
-      },
-    );
+    const revoked = service.revokeInvitation(users.owner.id, revokedInvitation.id, {
+      ...mutation(revokedInvitation.version),
+    });
     expect(
       service.revokeInvitation(users.owner.id, revokedInvitation.id, {
         ...mutation(revokedInvitation.version),
@@ -191,8 +170,7 @@ describe('ProjectService', () => {
   test('版本冲突、活动职责和最后 OWNER 保护成员与项目写入', async () => {
     const activeUsers = new Set(['user-member']);
     const { service, users } = await setup({
-      hasActiveResponsibilities: (_projectId, userId) =>
-        activeUsers.has(userId),
+      hasActiveResponsibilities: (_projectId, userId) => activeUsers.has(userId),
     });
     const created = service.createProject(users.owner.id, {
       mutationId: randomUUID(),
@@ -217,25 +195,15 @@ describe('ProjectService', () => {
       }),
     ).toThrow(expect.objectContaining({ code: 'STALE_STATE' }));
     expect(() =>
-      service.removeMember(
-        users.owner.id,
-        created.project.id,
-        users.member.id,
-        {
-          ...mutation(member.membership.version),
-        },
-      ),
+      service.removeMember(users.owner.id, created.project.id, users.member.id, {
+        ...mutation(member.membership.version),
+      }),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
     activeUsers.clear();
     expect(
-      service.removeMember(
-        users.owner.id,
-        created.project.id,
-        users.member.id,
-        {
-          ...mutation(member.membership.version),
-        },
-      ),
+      service.removeMember(users.owner.id, created.project.id, users.member.id, {
+        ...mutation(member.membership.version),
+      }),
     ).toEqual({ removed: true, userId: users.member.id });
     expect(() =>
       service.removeMember(users.owner.id, created.project.id, users.owner.id, {

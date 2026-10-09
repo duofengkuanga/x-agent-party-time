@@ -37,9 +37,7 @@ test('Platform 与本机 Agent 不反向依赖 Cooking 实现', async () => {
     })) {
       if (file.includes('.test.')) continue;
       const source = await readFile(resolve(root, file), 'utf8');
-      for (const match of source.matchAll(
-        /(?:from\s+|import\s*\()(['"])([^'"]+)\1/gu,
-      )) {
+      for (const match of source.matchAll(/(?:from\s+|import\s*\()(['"])([^'"]+)\1/gu)) {
         if (forbidden.test(match[2]!)) violations.push(`${file}: ${match[2]}`);
       }
     }

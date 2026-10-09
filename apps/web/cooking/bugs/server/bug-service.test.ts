@@ -38,9 +38,7 @@ describe('BugService', () => {
       },
     ).bug;
 
-    expect(
-      new BugRepairContextService(fixture.database).get(bug.id),
-    ).toMatchObject({
+    expect(new BugRepairContextService(fixture.database).get(bug.id)).toMatchObject({
       bugId: bug.id,
       submissionTitle: '双工程提测',
       engineeringName: '前端工程',
@@ -69,9 +67,7 @@ describe('BugService', () => {
     expect(() =>
       createBug(fixture, fixture.users.tester.id, {
         title: '附件过多',
-        actualResultAttachmentIds: Array.from({ length: 6 }, () =>
-          randomUUID(),
-        ),
+        actualResultAttachmentIds: Array.from({ length: 6 }, () => randomUUID()),
       }),
     ).toThrow();
     const file = await fixture.files.put({
@@ -129,42 +125,32 @@ describe('BugService', () => {
       { submissionId: fixture.submission.id, revision: 2 },
     ]);
     expect(
-      fixture.service.workspace(fixture.users.tester.id, fixture.submission.id)
-        .bugs[0]?.report.actualResultAttachments[0],
+      fixture.service.workspace(fixture.users.tester.id, fixture.submission.id).bugs[0]
+        ?.report.actualResultAttachments[0],
     ).toMatchObject({ id: file.id, originalName: '复现.txt' });
     expect(
-      fixture.service.workspace(fixture.users.tester.id, fixture.submission.id)
-        .bugs[0]?.report.expectedResultAttachments[0],
+      fixture.service.workspace(fixture.users.tester.id, fixture.submission.id).bugs[0]
+        ?.report.expectedResultAttachments[0],
     ).toMatchObject({ id: expectedFile.id, originalName: '预期.txt' });
     expect(() =>
       fixture.service.requireAttachmentAccess(fixture.users.member.id, file.id),
     ).not.toThrow();
     expect(() =>
-      fixture.service.requireAttachmentAccess(
-        fixture.users.outsider.id,
-        file.id,
-      ),
+      fixture.service.requireAttachmentAccess(fixture.users.outsider.id, file.id),
     ).toThrow(expect.objectContaining({ code: 'NOT_FOUND' }));
-    const updated = fixture.service.updateReport(
-      fixture.users.tester.id,
-      result.bug.id,
-      {
-        ...mutation(result.bug.version),
-        submissionItemId: null,
-        title: result.bug.report.title,
-        actualResultAttachmentIds: [],
-        expectedResultAttachmentIds: [],
-      },
-    );
+    const updated = fixture.service.updateReport(fixture.users.tester.id, result.bug.id, {
+      ...mutation(result.bug.version),
+      submissionItemId: null,
+      title: result.bug.report.title,
+      actualResultAttachmentIds: [],
+      expectedResultAttachmentIds: [],
+    });
     expect(updated.unboundAttachmentIds).toEqual([file.id, expectedFile.id]);
+    expect(await fixture.files.deleteUnbound(file.id, fixture.users.tester.id)).toBe(
+      true,
+    );
     expect(
-      await fixture.files.deleteUnbound(file.id, fixture.users.tester.id),
-    ).toBe(true);
-    expect(
-      await fixture.files.deleteUnbound(
-        expectedFile.id,
-        fixture.users.tester.id,
-      ),
+      await fixture.files.deleteUnbound(expectedFile.id, fixture.users.tester.id),
     ).toBe(true);
   });
 
@@ -173,14 +159,10 @@ describe('BugService', () => {
     const created = createBug(fixture, fixture.users.tester.id, {
       title: '待分诊缺陷',
     }).bug;
-    const assigned = fixture.service.assignBug(
-      fixture.users.developerB.id,
-      created.id,
-      {
-        ...mutation(1),
-        submissionItemId: fixture.items.front,
-      },
-    ).bug;
+    const assigned = fixture.service.assignBug(fixture.users.developerB.id, created.id, {
+      ...mutation(1),
+      submissionItemId: fixture.items.front,
+    }).bug;
     expect(assigned.submissionItemId).toBe(fixture.items.front);
     const assignedView = fixture.service
       .workspace(fixture.users.developerA.id, fixture.submission.id)
@@ -251,9 +233,7 @@ describe('BugService', () => {
       { id: first.id, stage: 'REPAIRING' },
       { id: second.id, stage: 'REPAIRING' },
     ]);
-    expect(JSON.stringify(workspace)).not.toMatch(
-      /queuePosition|REORDER|全局修复队列/u,
-    );
+    expect(JSON.stringify(workspace)).not.toMatch(/queuePosition|REORDER|全局修复队列/u);
     expect(firstQueued.reportLockedAt).not.toBeNull();
   });
 
@@ -285,10 +265,7 @@ describe('BugService', () => {
     );
     expect(repairing.version).toBe(bug.version + 1);
     expect(() =>
-      fixture.service.workspace(
-        fixture.users.outsider.id,
-        fixture.submission.id,
-      ),
+      fixture.service.workspace(fixture.users.outsider.id, fixture.submission.id),
     ).toThrow(expect.objectContaining({ code: 'NOT_FOUND' }));
   });
 
@@ -321,8 +298,7 @@ describe('BugService', () => {
       action: 'BUG_CREATED',
     }).toBe(1);
     expect(
-      fixture.service.workspace(fixture.users.tester.id, fixture.submission.id)
-        .bugs,
+      fixture.service.workspace(fixture.users.tester.id, fixture.submission.id).bugs,
     ).toHaveLength(1);
   });
 });

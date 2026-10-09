@@ -4,8 +4,7 @@ const HEX = Array.from({ length: 256 }, (_, value) =>
 
 export function createClientId(): string {
   const cryptoApi = globalThis.crypto;
-  if (typeof cryptoApi?.randomUUID === 'function')
-    return cryptoApi.randomUUID();
+  if (typeof cryptoApi?.randomUUID === 'function') return cryptoApi.randomUUID();
   if (typeof cryptoApi?.getRandomValues !== 'function')
     throw new Error('当前浏览器不支持安全随机数');
 

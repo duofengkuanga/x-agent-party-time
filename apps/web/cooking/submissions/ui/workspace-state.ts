@@ -1,10 +1,7 @@
 'use client';
 
 import { type CookingWorkspaceSnapshot } from '@/cooking/workspace/contract';
-import {
-  WorkspaceInvalidationSchema,
-  type SubmissionSummary,
-} from '../contract';
+import { WorkspaceInvalidationSchema, type SubmissionSummary } from '../contract';
 
 export type SyncState = 'connected' | 'reconnecting' | 'syncing';
 

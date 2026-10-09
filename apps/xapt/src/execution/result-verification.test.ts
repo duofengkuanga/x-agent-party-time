@@ -101,11 +101,7 @@ async function gitRepository(): Promise<string> {
 }
 
 async function git(repository: string, args: string[]): Promise<string> {
-  const result = await new NodeCommandRunner().run('git', [
-    '-C',
-    repository,
-    ...args,
-  ]);
+  const result = await new NodeCommandRunner().run('git', ['-C', repository, ...args]);
   if (result.exitCode !== 0) throw new Error(result.stderr);
   return result.stdout.trim();
 }

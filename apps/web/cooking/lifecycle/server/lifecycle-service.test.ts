@@ -16,11 +16,7 @@ const setup = lifecycleFixture(testDatabases());
 describe('LifecycleService', () => {
   test('Workspace 将修复、批次、验证和取消恢复投影为同一条旧到新时间线', async () => {
     const fixture = await setup();
-    const bug = createAndRequestBug(
-      fixture,
-      fixture.items[0]!.id,
-      '统一时间线缺陷',
-    );
+    const bug = createAndRequestBug(fixture, fixture.items[0]!.id, '统一时间线缺陷');
     await completeNextRepair(fixture, 'timeline-repair', ['1111111']);
     fixture.clock.set('2026-07-27T12:01:00.000Z');
     await completeUpdate(fixture, fixture.items[0]!.id, {
@@ -50,9 +46,7 @@ describe('LifecycleService', () => {
       'REPAIR_ATTEMPT',
     ]);
     expect(
-      workspace.progressByBug[bug.id]?.find(
-        (node) => node.kind === 'VERIFICATION',
-      ),
+      workspace.progressByBug[bug.id]?.find((node) => node.kind === 'VERIFICATION'),
     ).toMatchObject({
       result: 'FAILED',
       comment: '边界条件仍可复现',
@@ -80,8 +74,10 @@ describe('LifecycleService', () => {
       fixture.updates,
       fixture.lifecycle,
     ).getWorkspace(fixture.users.tester.id, fixture.submission.id);
-    expect(
-      restoredWorkspace.progressByBug[stored.id]?.map(({ kind }) => kind),
-    ).toEqual(['BUG_REGISTERED', 'CANCELLED', 'RESTORED']);
+    expect(restoredWorkspace.progressByBug[stored.id]?.map(({ kind }) => kind)).toEqual([
+      'BUG_REGISTERED',
+      'CANCELLED',
+      'RESTORED',
+    ]);
   });
 });

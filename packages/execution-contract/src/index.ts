@@ -223,11 +223,7 @@ export const ExecutionRenewResponseSchema = z.object({
 });
 
 export const InteractionKindSchema = z.enum(['APPROVAL', 'USER_INPUT']);
-export const InteractionStateSchema = z.enum([
-  'PENDING',
-  'RESOLVED',
-  'INVALIDATED',
-]);
+export const InteractionStateSchema = z.enum(['PENDING', 'RESOLVED', 'INVALIDATED']);
 
 export const ExecutionInteractionSchema = z.object({
   id: InteractionIdSchema,
@@ -278,33 +274,21 @@ export type JsonValue = z.infer<typeof JsonValueSchema>;
 export type JsonObject = z.infer<typeof JsonObjectSchema>;
 export type Execution = z.infer<typeof ExecutionSchema>;
 export type ExecutionState = z.infer<typeof ExecutionStateSchema>;
-export type ExecutionApprovalPolicy = z.infer<
-  typeof ExecutionApprovalPolicySchema
->;
+export type ExecutionApprovalPolicy = z.infer<typeof ExecutionApprovalPolicySchema>;
 export type ExecutionWorkspace = z.infer<typeof ExecutionWorkspaceSchema>;
 export type TaskSkillBinding = z.infer<typeof TaskSkillBindingSchema>;
-export type ExecutionResultAssertion = z.infer<
-  typeof ExecutionResultAssertionSchema
->;
+export type ExecutionResultAssertion = z.infer<typeof ExecutionResultAssertionSchema>;
 export type CodexTurn = z.infer<typeof CodexTurnSchema>;
 export type ExecutionFailure = z.infer<typeof ExecutionFailureSchema>;
 export type ExecutionOutcome = z.infer<typeof ExecutionOutcomeSchema>;
 export type EnqueueExecutionInput = z.infer<typeof EnqueueExecutionInputSchema>;
 export type ClaimedExecution = z.infer<typeof ClaimedExecutionSchema>;
 export type ExecutionStartRequest = z.infer<typeof ExecutionStartRequestSchema>;
-export type ExecutionRenewResponse = z.infer<
-  typeof ExecutionRenewResponseSchema
->;
+export type ExecutionRenewResponse = z.infer<typeof ExecutionRenewResponseSchema>;
 export type ExecutionInteraction = z.infer<typeof ExecutionInteractionSchema>;
-export type OpenInteractionRequest = z.infer<
-  typeof OpenInteractionRequestSchema
->;
-export type WaitInteractionResponse = z.infer<
-  typeof WaitInteractionResponseSchema
->;
-export type CompleteExecutionRequest = z.infer<
-  typeof CompleteExecutionRequestSchema
->;
+export type OpenInteractionRequest = z.infer<typeof OpenInteractionRequestSchema>;
+export type WaitInteractionResponse = z.infer<typeof WaitInteractionResponseSchema>;
+export type CompleteExecutionRequest = z.infer<typeof CompleteExecutionRequestSchema>;
 export type RunnerActivity = z.infer<typeof RunnerActivitySchema>;
 
 export function serializeDeterministicJson(value: JsonValue): string {
@@ -313,10 +297,7 @@ export function serializeDeterministicJson(value: JsonValue): string {
     return `[${value.map((item) => serializeDeterministicJson(item)).join(',')}]`;
   return `{${Object.keys(value)
     .sort()
-    .map(
-      (key) =>
-        `${JSON.stringify(key)}:${serializeDeterministicJson(value[key]!)}`,
-    )
+    .map((key) => `${JSON.stringify(key)}:${serializeDeterministicJson(value[key]!)}`)
     .join(',')}}`;
 }
 
@@ -360,10 +341,7 @@ export function parseExecutionInteractionResolution(
     const requested = jsonRecord(payloadValue).permissions;
     if (!isJsonSubset(resolution.permissions, requested))
       invalidInteraction('permissions', '只能提交 Codex 实际请求的权限');
-    if (
-      Object.keys(resolution.permissions).length === 0 &&
-      resolution.scope !== 'turn'
-    )
+    if (Object.keys(resolution.permissions).length === 0 && resolution.scope !== 'turn')
       invalidInteraction('scope', '拒绝权限请求只能使用 turn scope');
     return resolution;
   }
@@ -437,8 +415,7 @@ export function isJsonSubset(candidate: unknown, requested: unknown): boolean {
 function sanitizeInteractionValue(value: unknown, key = ''): JsonValue {
   if (/cwd|directory|path|root/iu.test(key)) return '本机路径已隐藏';
   if (typeof value === 'string') return redactAbsolutePaths(value);
-  if (Array.isArray(value))
-    return value.map((item) => sanitizeInteractionValue(item));
+  if (Array.isArray(value)) return value.map((item) => sanitizeInteractionValue(item));
   if (value && typeof value === 'object')
     return Object.fromEntries(
       Object.entries(value).map(([childKey, childValue]) => [

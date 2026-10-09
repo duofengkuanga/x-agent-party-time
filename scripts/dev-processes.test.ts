@@ -9,12 +9,7 @@ import {
 
 const projectRoot = '/workspace/agent-party-time';
 
-function row(
-  pid: number,
-  ppid: number,
-  command: string,
-  elapsed = '00:10',
-): ProcessRow {
+function row(pid: number, ppid: number, command: string, elapsed = '00:10'): ProcessRow {
   return { pid, ppid, command, elapsed };
 }
 

@@ -34,9 +34,6 @@ export type CompletedCodexTurn = {
 };
 
 export interface CodexExecutor {
-  begin(
-    input: CodexExecutionInput,
-    signal: AbortSignal,
-  ): Promise<StartedCodexExecution>;
+  begin(input: CodexExecutionInput, signal: AbortSignal): Promise<StartedCodexExecution>;
   readLastCompletedTurn(sessionId: string): Promise<CompletedCodexTurn>;
 }

@@ -5,10 +5,7 @@ import { z } from 'zod';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
 import { RunnerSchema } from '@/platform/runner/contract';
-import {
-  EngineeringIdSchema,
-  RepositoryUrlSchema,
-} from '@/cooking/engineering/contract';
+import { EngineeringIdSchema, RepositoryUrlSchema } from '@/cooking/engineering/contract';
 import { CookingWriteStore } from '@/cooking/shared/server/write-store';
 import { requireBindingEngineering } from './engineering-access';
 import {
@@ -96,10 +93,7 @@ export class BindingService {
           actorUserId,
         );
         if (!runner)
-          throw new PlatformError(
-            'NOT_FOUND',
-            'Agent 不存在、已停用或不属于当前用户',
-          );
+          throw new PlatformError('NOT_FOUND', 'Agent 不存在、已停用或不属于当前用户');
         const existing = this.db.get(
           `SELECT id, engineering_id, user_id, runner_id, created_at
              FROM cooking_engineering_binding
@@ -243,10 +237,7 @@ export class BindingService {
     })();
   }
 
-  listBindings(
-    userId: string,
-    engineeringId: string,
-  ): EngineeringBindingSummary[] {
+  listBindings(userId: string, engineeringId: string): EngineeringBindingSummary[] {
     this.requireEngineeringProjectMember(userId, engineeringId);
     return this.db
       .all(
@@ -279,10 +270,7 @@ export class BindingService {
       .map((row) => mapBinding(row as BindingRow));
   }
 
-  private requireEngineeringProjectMember(
-    userId: string,
-    engineeringId: string,
-  ): void {
+  private requireEngineeringProjectMember(userId: string, engineeringId: string): void {
     const membership = this.db.get(
       `SELECT 1 present
          FROM cooking_engineering engineering
@@ -293,8 +281,7 @@ export class BindingService {
       userId,
       engineeringId,
     );
-    if (!membership)
-      throw new PlatformError('NOT_FOUND', '工程不存在或无权访问');
+    if (!membership) throw new PlatformError('NOT_FOUND', '工程不存在或无权访问');
   }
 
   private repositoryConfirmationTarget(
@@ -312,10 +299,7 @@ export class BindingService {
       runnerId,
     ) as RepositoryConfirmationRow | undefined;
     if (!row)
-      throw new PlatformError(
-        'NOT_FOUND',
-        '本机 Agent 关联不存在或不属于当前 Agent',
-      );
+      throw new PlatformError('NOT_FOUND', '本机 Agent 关联不存在或不属于当前 Agent');
     return row;
   }
 }
@@ -334,10 +318,7 @@ function requireMatchingRepository(
   repositoryUrl: string,
 ): string {
   if (confirmedRepositoryUrl !== repositoryUrl)
-    throw new PlatformError(
-      'RESOURCE_CONFLICT',
-      '本机仓库与工程仓库身份不一致',
-    );
+    throw new PlatformError('RESOURCE_CONFLICT', '本机仓库与工程仓库身份不一致');
   return repositoryUrl;
 }
 

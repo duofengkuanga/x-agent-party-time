@@ -37,11 +37,7 @@ describe('UpdateService', () => {
       ['bbbbbbb'],
       'update-session',
     );
-    completeSuccessfulExecution(
-      fixture,
-      failed,
-      failedUpdate('部署脚本返回非零状态'),
-    );
+    completeSuccessfulExecution(fixture, failed, failedUpdate('部署脚本返回非零状态'));
     let batch = latestBatch(fixture.database, fixture.item.id);
     expect(batch.state).toBe('FAILED');
     expect(currentBug(fixture.database, first.id).stage).toBe('UPDATING');
@@ -50,9 +46,7 @@ describe('UpdateService', () => {
       .batchView(fixture.users.tester.id, batch.id)
       .timeline.find((node) => node.kind === 'UPDATE_ATTEMPT');
     expect(
-      testerAttempt?.kind === 'UPDATE_ATTEMPT'
-        ? testerAttempt.result
-        : undefined,
+      testerAttempt?.kind === 'UPDATE_ATTEMPT' ? testerAttempt.result : undefined,
     ).toMatchObject({
       outcome: 'FAILED',
       failedStep: '执行统一更新',
@@ -62,13 +56,9 @@ describe('UpdateService', () => {
       failureCode: null,
     });
 
-    const continued = fixture.updates.retryUpdate(
-      fixture.users.developer.id,
-      batch.id,
-      {
-        ...mutation(batch.version),
-      },
-    );
+    const continued = fixture.updates.retryUpdate(fixture.users.developer.id, batch.id, {
+      ...mutation(batch.version),
+    });
     const continuation = fixture.executions.get(continued.executionId);
     expect(continuation).toMatchObject({
       previousExecutionId: failed.executionId,
@@ -79,20 +69,13 @@ describe('UpdateService', () => {
       priority: 0,
     });
     expect(continuation.codexTurn?.kind).toBe('CONTINUATION');
-    if (continuation.codexTurn?.kind !== 'CONTINUATION')
-      throw new Error('需要继续 Turn');
+    if (continuation.codexTurn?.kind !== 'CONTINUATION') throw new Error('需要继续 Turn');
     expect(continuation.codexTurn.input).toBe('继续完成上次未完成的任务。');
-    const resumed = await startExecution(
-      fixture,
-      continuation.id,
-      'update-session',
-    );
+    const resumed = await startExecution(fixture, continuation.id, 'update-session');
     completeSuccessfulExecution(fixture, resumed, completedUpdate());
     batch = latestBatch(fixture.database, fixture.item.id);
     expect(batch.state).toBe('COMPLETED');
-    expect(currentBug(fixture.database, first.id).stage).toBe(
-      'WAITING_FOR_VERIFICATION',
-    );
+    expect(currentBug(fixture.database, first.id).stage).toBe('WAITING_FOR_VERIFICATION');
     expect(currentBug(fixture.database, second.id).stage).toBe(
       'WAITING_FOR_VERIFICATION',
     );
@@ -103,13 +86,9 @@ describe('UpdateService', () => {
   test('首次启动失败且原 Task 不存在时不自动重建 Update Task', async () => {
     const fixture = await setup();
     fixture.createBug('启动失败候选');
-    await completeNextRepair(fixture, 'repair-before-start-failure', [
-      'aaaaaaa',
-    ]);
+    await completeNextRepair(fixture, 'repair-before-start-failure', ['aaaaaaa']);
     const frozen = freezeUpdate(fixture);
-    const claimed = (
-      await fixture.executions.claim(fixture.runner.id, 1, 0)
-    )[0]!;
+    const claimed = (await fixture.executions.claim(fixture.runner.id, 1, 0))[0]!;
     expect(claimed.id).toBe(frozen.executionId);
     fixture.executions.start(fixture.runner.id, claimed.id, {
       kind: 'START_FAILED',
@@ -147,9 +126,7 @@ describe('UpdateService', () => {
     const waiting = latestBatch(fixture.database, fixture.item.id);
     expect(waiting.state).toBe('WAITING_EXTERNAL');
     expect(currentBug(fixture.database, bug.id).stage).toBe('UPDATING');
-    expect(
-      fixture.updates.batchView(fixture.users.tester.id, waiting.id),
-    ).toMatchObject({
+    expect(fixture.updates.batchView(fixture.users.tester.id, waiting.id)).toMatchObject({
       timeline: [
         { kind: 'BATCH_FORMED' },
         {
@@ -166,8 +143,7 @@ describe('UpdateService', () => {
       presentation: { statusLabel: '等待外部部署结果' },
     });
     expect(
-      fixture.updates.batchView(fixture.users.developer.id, waiting.id)
-        .availableActions,
+      fixture.updates.batchView(fixture.users.developer.id, waiting.id).availableActions,
     ).toContain('REPORT_EXTERNAL');
 
     const files = new LocalFileStore(
@@ -182,16 +158,12 @@ describe('UpdateService', () => {
       uploadedByUserId: fixture.users.developer.id,
     });
     expect(() =>
-      fixture.updates.reportExternalDeployment(
-        fixture.users.tester.id,
-        waiting.id,
-        {
-          ...mutation(waiting.version),
-          outcome: 'FAILED',
-          summary: '流水线测试失败',
-          attachmentIds: [],
-        },
-      ),
+      fixture.updates.reportExternalDeployment(fixture.users.tester.id, waiting.id, {
+        ...mutation(waiting.version),
+        outcome: 'FAILED',
+        summary: '流水线测试失败',
+        attachmentIds: [],
+      }),
     ).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
     const reportMutationId = randomUUID();
     const failed = fixture.updates.reportExternalDeployment(
@@ -206,17 +178,13 @@ describe('UpdateService', () => {
       },
     );
     expect(
-      fixture.updates.reportExternalDeployment(
-        fixture.users.developer.id,
-        waiting.id,
-        {
-          mutationId: reportMutationId,
-          expectedVersion: waiting.version,
-          outcome: 'FAILED',
-          summary: '流水线测试失败',
-          attachmentIds: [evidence.id],
-        },
-      ),
+      fixture.updates.reportExternalDeployment(fixture.users.developer.id, waiting.id, {
+        mutationId: reportMutationId,
+        expectedVersion: waiting.version,
+        outcome: 'FAILED',
+        summary: '流水线测试失败',
+        attachmentIds: [evidence.id],
+      }),
     ).toEqual(failed);
     expect(latestBatch(fixture.database, fixture.item.id).state).toBe('FAILED');
     const responsibleView = fixture.updates.batchView(
@@ -244,17 +212,13 @@ describe('UpdateService', () => {
         ...mutation(failed.batchVersion),
       },
     );
-    const continuationExecution = fixture.executions.get(
-      continued.executionId!,
-    );
+    const continuationExecution = fixture.executions.get(continued.executionId!);
     expect(continuationExecution.codexTurn?.kind).toBe('CONTINUATION');
     if (continuationExecution.codexTurn?.kind !== 'CONTINUATION')
       throw new Error('需要继续 Turn');
     expect(continuationExecution.codexTurn.taskId).toBe('update-ci-session');
     expect(continuationExecution.codexTurn.input).toContain('流水线测试失败');
-    expect(continuationExecution.codexTurn.input).not.toContain(
-      'repositoryUrl',
-    );
+    expect(continuationExecution.codexTurn.input).not.toContain('repositoryUrl');
     expect(
       fixture.database.all(
         `SELECT file_id FROM platform_execution_attachment
@@ -271,22 +235,14 @@ describe('UpdateService', () => {
     const waitingAgain = latestBatch(fixture.database, fixture.item.id);
     expect(waitingAgain.id).toBe(waiting.id);
     expect(waitingAgain.state).toBe('WAITING_EXTERNAL');
-    fixture.updates.reportExternalDeployment(
-      fixture.users.developer.id,
-      waiting.id,
-      {
-        ...mutation(waitingAgain.version),
-        outcome: 'SUCCEEDED',
-        summary: '流水线与部署均成功',
-        attachmentIds: [],
-      },
-    );
-    expect(latestBatch(fixture.database, fixture.item.id).state).toBe(
-      'COMPLETED',
-    );
-    expect(currentBug(fixture.database, bug.id).stage).toBe(
-      'WAITING_FOR_VERIFICATION',
-    );
+    fixture.updates.reportExternalDeployment(fixture.users.developer.id, waiting.id, {
+      ...mutation(waitingAgain.version),
+      outcome: 'SUCCEEDED',
+      summary: '流水线与部署均成功',
+      attachmentIds: [],
+    });
+    expect(latestBatch(fixture.database, fixture.item.id).state).toBe('COMPLETED');
+    expect(currentBug(fixture.database, bug.id).stage).toBe('WAITING_FOR_VERIFICATION');
     expect(pendingCommits(fixture.database, bug.id)).toEqual([]);
   });
 
@@ -299,11 +255,7 @@ describe('UpdateService', () => {
       ['aaaaaaa'],
       'first-batch-session',
     );
-    completeSuccessfulExecution(
-      fixture,
-      running,
-      failedUpdate('等待负责人处理冲突'),
-    );
+    completeSuccessfulExecution(fixture, running, failedUpdate('等待负责人处理冲突'));
     const firstBatch = latestBatch(fixture.database, fixture.item.id);
 
     fixture.clock.set('2026-07-27T10:01:00.000Z');
@@ -314,9 +266,7 @@ describe('UpdateService', () => {
     expect(batchEntries(fixture.database, firstBatch.id)).toEqual([
       { bug_id: first.id, commits: ['aaaaaaa'] },
     ]);
-    expect(currentBug(fixture.database, later.id).stage).toBe(
-      'WAITING_FOR_UPDATE',
-    );
+    expect(currentBug(fixture.database, later.id).stage).toBe('WAITING_FOR_UPDATE');
 
     const continued = fixture.updates.retryUpdate(
       fixture.users.developer.id,
@@ -349,9 +299,7 @@ describe('UpdateService', () => {
       'lease-update-session',
     );
     fixture.clock.set('2026-07-27T10:00:16.000Z');
-    const reclaimed = (
-      await fixture.executions.claim(fixture.runner.id, 1, 0)
-    )[0]!;
+    const reclaimed = (await fixture.executions.claim(fixture.runner.id, 1, 0))[0]!;
     expect(reclaimed.id).toBe(first.executionId);
     expect(reclaimed.codexTurn).toMatchObject({
       kind: 'CONTINUATION',
@@ -361,9 +309,7 @@ describe('UpdateService', () => {
       kind: 'STARTED',
       leaseToken: reclaimed.lease.token,
       sessionId: 'lease-update-session',
-      taskSkillBinding: testSkillBinding(
-        'agent-party-time-integrate-update-batch',
-      ),
+      taskSkillBinding: testSkillBinding('agent-party-time-integrate-update-batch'),
     });
     expect(
       fixture.database.get(
@@ -391,18 +337,12 @@ describe('UpdateService', () => {
       },
     };
     expect(
-      fixture.executions.complete(
-        fixture.runner.id,
-        running.executionId,
-        completion,
-      ).state,
+      fixture.executions.complete(fixture.runner.id, running.executionId, completion)
+        .state,
     ).toBe('FAILED');
     expect(
-      fixture.executions.complete(
-        fixture.runner.id,
-        running.executionId,
-        completion,
-      ).state,
+      fixture.executions.complete(fixture.runner.id, running.executionId, completion)
+        .state,
     ).toBe('FAILED');
     expect(latestBatch(fixture.database, fixture.item.id).state).toBe('FAILED');
   });
@@ -553,23 +493,15 @@ describe('UpdateService', () => {
     expect(developerAttempt).toMatchObject({ result: null });
     const batch = latestBatch(fixture.database, fixture.item.id);
     expect(() =>
-      fixture.updates.resolveInteraction(
-        fixture.users.developer.id,
-        interaction.id,
-        {
-          ...mutation(batch.version - 1),
-          resolution: { decision: 'accept' },
-        },
-      ),
+      fixture.updates.resolveInteraction(fixture.users.developer.id, interaction.id, {
+        ...mutation(batch.version - 1),
+        resolution: { decision: 'accept' },
+      }),
     ).toThrow(expect.objectContaining({ code: 'STALE_STATE' }));
-    fixture.updates.resolveInteraction(
-      fixture.users.developer.id,
-      interaction.id,
-      {
-        ...mutation(batch.version),
-        resolution: { decision: 'acceptForSession' },
-      },
-    );
+    fixture.updates.resolveInteraction(fixture.users.developer.id, interaction.id, {
+      ...mutation(batch.version),
+      resolution: { decision: 'acceptForSession' },
+    });
     expect(
       fixture.database.get(
         'SELECT state FROM platform_execution_interaction WHERE id = ?',
@@ -578,9 +510,7 @@ describe('UpdateService', () => {
     ).toEqual({ state: 'RESOLVED' });
     const resolvedAttempt = fixture.updates
       .workspace(fixture.users.developer.id, fixture.submission.id)
-      .updateBatches[0]?.timeline.find(
-        (node) => node.kind === 'UPDATE_ATTEMPT',
-      );
+      .updateBatches[0]?.timeline.find((node) => node.kind === 'UPDATE_ATTEMPT');
     expect(
       resolvedAttempt?.kind === 'UPDATE_ATTEMPT'
         ? resolvedAttempt.interactions[0]
@@ -607,14 +537,10 @@ describe('UpdateService', () => {
       revision: revisionBeforeResume + 1,
     });
     expect(() =>
-      fixture.updates.resolveInteraction(
-        fixture.users.developer.id,
-        interaction.id,
-        {
-          ...mutation(batch.version + 1),
-          resolution: { decision: 'accept' },
-        },
-      ),
+      fixture.updates.resolveInteraction(fixture.users.developer.id, interaction.id, {
+        ...mutation(batch.version + 1),
+        resolution: { decision: 'accept' },
+      }),
     ).toThrow(expect.objectContaining({ code: 'STALE_STATE' }));
   });
 });

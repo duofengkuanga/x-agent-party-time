@@ -3,10 +3,7 @@ import { environmentReady } from '@/cooking/submissions/server/environment-acces
 import { CookingAttachmentViewSchema } from '@/cooking/shared/contract';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
-import {
-  StoredFileSchema,
-  type StoredFile,
-} from '@/platform/files/local-file-store';
+import { StoredFileSchema, type StoredFile } from '@/platform/files/local-file-store';
 import { UserSchema, type User } from '@/platform/auth/contract';
 import {
   BugSchema,
@@ -86,9 +83,7 @@ export class BugQueries {
             ...(bug.report.operationPath
               ? { operationPath: bug.report.operationPath }
               : {}),
-            ...(bug.report.actualResult
-              ? { actualResult: bug.report.actualResult }
-              : {}),
+            ...(bug.report.actualResult ? { actualResult: bug.report.actualResult } : {}),
             ...(bug.report.expectedResult
               ? { expectedResult: bug.report.expectedResult }
               : {}),
@@ -116,8 +111,7 @@ export class BugQueries {
       });
     return BugWorkspaceProjectionSchema.parse({
       availableActions:
-        access.submission_status === 'ACTIVE' &&
-        userId === access.tester_user_id
+        access.submission_status === 'ACTIVE' && userId === access.tester_user_id
           ? ['CREATE_BUG']
           : [],
       bugs,
@@ -195,8 +189,7 @@ export class BugQueries {
       itemId,
       submissionId,
     ) as ItemRow | undefined;
-    if (!row)
-      throw new PlatformError('VALIDATION_FAILED', '所选工程不属于当前提测单');
+    if (!row) throw new PlatformError('VALIDATION_FAILED', '所选工程不属于当前提测单');
     return row;
   }
 
@@ -221,9 +214,7 @@ export class BugQueries {
   }
 
   private attachmentsForBug(bugId: string) {
-    const rows = this.db.all<
-      DatabaseRow<StoredFile> & { role: BugAttachmentRole }
-    >(
+    const rows = this.db.all<DatabaseRow<StoredFile> & { role: BugAttachmentRole }>(
       `SELECT attachment.role, file.id, file.storage_key, file.original_name,
               file.media_type, file.size_bytes, file.sha256,
               file.uploaded_by_user_id, file.created_at
@@ -277,11 +268,7 @@ export class BugQueries {
         actions.push('ASSIGN');
     }
     if (!tester) return actions;
-    if (
-      bug.stage === 'WAITING_FOR_REPAIR' &&
-      bug.submissionItemId &&
-      !bug.archivedAt
-    )
+    if (bug.stage === 'WAITING_FOR_REPAIR' && bug.submissionItemId && !bug.archivedAt)
       actions.push('REQUEST_REPAIR', 'CANCEL');
     if (bug.stage === 'CANCELLED') actions.push('RESTORE');
     if (
@@ -290,8 +277,7 @@ export class BugQueries {
       environmentReady(this.db, bug.submissionItemId)
     )
       actions.push('VERIFY_PASS', 'VERIFY_FAIL');
-    if (bug.stage === 'DONE' && !bug.archivedAt)
-      actions.push('REOPEN', 'ARCHIVE');
+    if (bug.stage === 'DONE' && !bug.archivedAt) actions.push('REOPEN', 'ARCHIVE');
     if (bug.stage === 'DONE' && bug.archivedAt) actions.push('UNARCHIVE');
     return actions;
   }

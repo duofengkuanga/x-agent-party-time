@@ -117,10 +117,7 @@ export class LocalFileStore {
     return { file, bytes: await readFile(this.contentPath(file.storageKey)) };
   }
 
-  async deleteUnbound(
-    fileId: string,
-    uploadedByUserId: string,
-  ): Promise<boolean> {
+  async deleteUnbound(fileId: string, uploadedByUserId: string): Promise<boolean> {
     const file = this.get(fileId);
     if (!file || file.uploadedByUserId !== uploadedByUserId) return false;
     const deletion = this.db.run(

@@ -11,21 +11,13 @@ export function interactionVisual(
   responsible: boolean,
   subject: '修复' | '更新',
 ): CookingVisualPresentation | null {
-  const pending = interactions.filter(
-    (interaction) => interaction.state === 'PENDING',
-  );
+  const pending = interactions.filter((interaction) => interaction.state === 'PENDING');
   if (pending.length > 1)
-    throw new PlatformError(
-      'INTERNAL_ERROR',
-      `同一${subject}记录存在多个待处理操作请求`,
-    );
+    throw new PlatformError('INTERNAL_ERROR', `同一${subject}记录存在多个待处理操作请求`);
   const interaction = pending[0];
   if (interaction) {
     if (state !== 'WAITING_FOR_INTERACTION')
-      throw new PlatformError(
-        'INTERNAL_ERROR',
-        `${subject}操作请求与任务状态不一致`,
-      );
+      throw new PlatformError('INTERNAL_ERROR', `${subject}操作请求与任务状态不一致`);
     return interaction.kind === 'APPROVAL'
       ? {
           state: 'NEEDS_APPROVAL',

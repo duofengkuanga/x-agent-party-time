@@ -2,11 +2,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect, RedirectType } from 'next/navigation';
 import { ZodError } from 'zod';
 import { requireCurrentUser } from '@/platform/auth/server';
-import {
-  PlatformError,
-  publicError,
-  type PlatformErrorCode,
-} from '@/platform/errors';
+import { PlatformError, publicError, type PlatformErrorCode } from '@/platform/errors';
 import {
   AllowedMediaTypeSchema,
   MAX_FILE_BYTES,
@@ -21,8 +17,7 @@ export type ActionFailure = {
   error: { code: PlatformErrorCode; message: string };
 };
 
-export type InteractiveActionResult<T> =
-  { ok: true; result: T } | ActionFailure;
+export type InteractiveActionResult<T> = { ok: true; result: T } | ActionFailure;
 
 export type InteractiveActionContext = {
   userId: string;
@@ -120,9 +115,7 @@ export async function runInteractiveMutation<T>(
 }
 
 export function cookingMutationAction(validationEvent: string) {
-  return <T>(
-    command: (userId: string) => T,
-  ): Promise<InteractiveActionResult<T>> =>
+  return <T>(command: (userId: string) => T): Promise<InteractiveActionResult<T>> =>
     runInteractiveMutation({
       validationEvent,
       command: ({ userId }) => ({
@@ -182,18 +175,12 @@ export function requiredFormField(formData: FormData, name: string): string {
   return value;
 }
 
-export function optionalFormField(
-  formData: FormData,
-  name: string,
-): string | undefined {
+export function optionalFormField(formData: FormData, name: string): string | undefined {
   const value = formField(formData, name).trim();
   return value || undefined;
 }
 
-export function nullableFormField(
-  formData: FormData,
-  name: string,
-): string | null {
+export function nullableFormField(formData: FormData, name: string): string | null {
   return optionalFormField(formData, name) ?? null;
 }
 

@@ -5,10 +5,7 @@ import { markInvalidExecutionResult } from '@/cooking/shared/server/invalid-exec
 import { parseCommits } from '@/cooking/shared/server/result-data';
 import type { AppDatabase } from '@/platform/database';
 import { executionProjector } from '@/platform/execution/projection';
-import type {
-  Execution,
-  JsonValue,
-} from '@agent-party-time/execution-contract';
+import type { Execution, JsonValue } from '@agent-party-time/execution-contract';
 import { RepairExecutionResultSchema } from '../contract';
 import type { ContextRow } from './records';
 import { RepairQueries } from './repair-queries';
@@ -44,8 +41,7 @@ export class RepairProjection {
       STARTED: this.afterStartedExecution.bind(this),
       RESUMED: this.afterStartedExecution.bind(this),
       TERMINAL: this.afterTerminalExecution.bind(this),
-      INTERACTION_OPENED: ({ executionId }) =>
-        this.afterInteractionOpened(executionId),
+      INTERACTION_OPENED: ({ executionId }) => this.afterInteractionOpened(executionId),
     },
   });
 
@@ -88,8 +84,7 @@ export class RepairProjection {
           attempt.bug_id,
         ],
       );
-      if (deliveryRequired)
-        this.deliveryHooks.candidateAvailable(attempt.bug_id, now);
+      if (deliveryRequired) this.deliveryHooks.candidateAvailable(attempt.bug_id, now);
     } else {
       this.db.run(
         `UPDATE cooking_bug_repair_context
@@ -119,8 +114,7 @@ export class RepairProjection {
         executionId: execution.id,
         attempt: attempt.attempt,
         outcome: interpreted.kind,
-        deliveryRequired:
-          interpreted.kind === 'COMPLETED' ? deliveryRequired : undefined,
+        deliveryRequired: interpreted.kind === 'COMPLETED' ? deliveryRequired : undefined,
       },
       now,
     );
@@ -148,10 +142,7 @@ export class RepairProjection {
     this.writes.bumpRevisionForBug(attempt.bug_id, this.now().toISOString());
   }
 
-  private applyInteractionOpened(
-    executionId: string,
-    interactionId: string,
-  ): void {
+  private applyInteractionOpened(executionId: string, interactionId: string): void {
     const attempt = this.queries.attemptForExecution(executionId);
     if (!attempt) return;
     const now = this.now().toISOString();
@@ -174,8 +165,7 @@ export class RepairProjection {
       'SELECT bug_id FROM cooking_repair_session_sync WHERE execution_id = ?',
       execution.id,
     ) as { bug_id: string } | undefined;
-    if (sync)
-      this.writes.bumpRevisionForBug(sync.bug_id, this.now().toISOString());
+    if (sync) this.writes.bumpRevisionForBug(sync.bug_id, this.now().toISOString());
   }
 
   private afterStartedExecution(execution: Execution): void {
@@ -221,11 +211,7 @@ export class RepairProjection {
       [turnId, execution.id],
     );
     const latest = this.queries.latestAttempt(sync.bug_id);
-    if (
-      !latest ||
-      !latest.outcome_json ||
-      !isFailedAttemptOutcome(latest.outcome_json)
-    )
+    if (!latest || !latest.outcome_json || !isFailedAttemptOutcome(latest.outcome_json))
       return;
     const attemptId = this.createId();
     const now = this.now().toISOString();
@@ -249,11 +235,7 @@ export class RepairProjection {
          WHERE attempt.execution_id = ?`,
       executionId,
     ) as { submission_id: string; workspace_revision: number } | undefined;
-    if (row)
-      this.writes.publishInvalidation(
-        row.submission_id,
-        row.workspace_revision,
-      );
+    if (row) this.writes.publishInvalidation(row.submission_id, row.workspace_revision);
   }
 
   private interpret(
@@ -275,9 +257,7 @@ export class RepairProjection {
         attemptOutcome: unknown;
       } {
     if (execution.outcome?.kind === 'SUCCEEDED') {
-      const parsed = RepairExecutionResultSchema.safeParse(
-        execution.outcome.result,
-      );
+      const parsed = RepairExecutionResultSchema.safeParse(execution.outcome.result);
       const result = parsed.success ? parsed.data.result : null;
       if (result?.outcome === 'COMPLETED') {
         const current = parseCommits(context.pending_commits_json);
@@ -287,8 +267,7 @@ export class RepairProjection {
         if (
           new Set(result.commits).size === result.commits.length &&
           !result.commits.some((commit) => current.includes(commit)) &&
-          (result.completionKind === 'CHANGES_COMMITTED' ||
-            current.length === 0)
+          (result.completionKind === 'CHANGES_COMMITTED' || current.length === 0)
         )
           return {
             kind: 'COMPLETED',
@@ -332,10 +311,7 @@ export class RepairProjection {
       attemptOutcome: {
         outcome: 'FAILED',
         failedStep: '修复执行',
-        reason:
-          failure?.message ??
-          cancelledReason ??
-          '修复执行未返回更具体的失败原因',
+        reason: failure?.message ?? cancelledReason ?? '修复执行未返回更具体的失败原因',
         completedActions: [],
         pendingActions: ['重新执行修复'],
         technicalFailure: failure?.code ?? (cancelled ? 'CANCELLED' : null),

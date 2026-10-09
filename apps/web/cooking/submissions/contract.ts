@@ -11,10 +11,7 @@ import {
   EnvironmentNameSchema,
   RepositoryUrlSchema,
 } from '@/cooking/engineering/contract';
-import {
-  ProjectIdSchema,
-  ProjectNameSchema,
-} from '@/cooking/projects/contract';
+import { ProjectIdSchema, ProjectNameSchema } from '@/cooking/projects/contract';
 import {
   CookingMutationIdSchema,
   VersionedCookingMutationSchema,
@@ -187,31 +184,26 @@ export const SubmissionCreationCatalogSchema = z.array(
   }),
 );
 
-export const UpdateSubmissionInputSchema =
-  VersionedCookingMutationSchema.extend({
-    title: SubmissionTitleSchema,
-    requirementDescription: RequirementDescriptionSchema,
-    targetBranches: z
-      .array(
-        z.object({
-          submissionItemId: SubmissionItemIdSchema,
-          targetBranch: TargetBranchSchema,
-        }),
-      )
-      .max(20)
-      .optional(),
-  });
+export const UpdateSubmissionInputSchema = VersionedCookingMutationSchema.extend({
+  title: SubmissionTitleSchema,
+  requirementDescription: RequirementDescriptionSchema,
+  targetBranches: z
+    .array(
+      z.object({
+        submissionItemId: SubmissionItemIdSchema,
+        targetBranch: TargetBranchSchema,
+      }),
+    )
+    .max(20)
+    .optional(),
+});
 
 export type TestSubmission = z.infer<typeof TestSubmissionSchema>;
 export type SubmissionItem = z.infer<typeof SubmissionItemSchema>;
 export type CreateSubmissionInput = z.infer<typeof CreateSubmissionInputSchema>;
 export type SubmissionSummary = z.infer<typeof SubmissionSummarySchema>;
 export type SubmissionItemView = z.infer<typeof SubmissionItemViewSchema>;
-export type CookingWorkspaceSnapshot = z.infer<
-  typeof CookingWorkspaceSnapshotSchema
->;
+export type CookingWorkspaceSnapshot = z.infer<typeof CookingWorkspaceSnapshotSchema>;
 export type WorkspaceInvalidation = z.infer<typeof WorkspaceInvalidationSchema>;
-export type SubmissionCreationCatalog = z.infer<
-  typeof SubmissionCreationCatalogSchema
->;
+export type SubmissionCreationCatalog = z.infer<typeof SubmissionCreationCatalogSchema>;
 export type UpdateSubmissionInput = z.infer<typeof UpdateSubmissionInputSchema>;

@@ -44,15 +44,11 @@ describe('Submission Workspace HTTP', () => {
     const reader = response.body!.getReader();
     const initial = `${await readChunk(reader)}${await readChunk(reader)}`;
     expect(initial).toContain('retry: 1000');
-    expect(initial).toContain(
-      `data: {"submissionId":"${submissionId}","revision":4}`,
-    );
+    expect(initial).toContain(`data: {"submissionId":"${submissionId}","revision":4}`);
 
     events.publish({ submissionId, revision: 5 });
     const update = await readChunk(reader);
-    expect(update).toBe(
-      `data: {"submissionId":"${submissionId}","revision":5}\n\n`,
-    );
+    expect(update).toBe(`data: {"submissionId":"${submissionId}","revision":5}\n\n`);
     expect(update).not.toMatch(/title|requirement|binding|repository|path/iu);
     await reader.cancel();
   });

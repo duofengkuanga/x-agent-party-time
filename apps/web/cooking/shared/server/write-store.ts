@@ -51,18 +51,13 @@ export class CookingWriteStore {
         `SELECT actor_user_id, operation, result_json
            FROM cooking_mutation WHERE id = ?`,
         mutationId,
-      ) as
-        | { actor_user_id: string; operation: string; result_json: string }
-        | undefined;
+      ) as { actor_user_id: string; operation: string; result_json: string } | undefined;
       if (previous) {
         if (
           previous.actor_user_id !== input.actorUserId ||
           previous.operation !== input.operation
         )
-          throw new PlatformError(
-            'RESOURCE_CONFLICT',
-            '操作标识已用于其他操作',
-          );
+          throw new PlatformError('RESOURCE_CONFLICT', '操作标识已用于其他操作');
         return {
           result: input.resultSchema.parse(JSON.parse(previous.result_json)),
           replayed: true,

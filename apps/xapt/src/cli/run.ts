@@ -205,8 +205,7 @@ function renderDaemonStatus(snapshot: DaemonSnapshot): string {
     `Codex         ${snapshot.codexVersion ?? '不可用'}`,
     `连接          ${connection}`,
   ];
-  if (snapshot.serverOrigin)
-    lines.push(`服务地址      ${snapshot.serverOrigin}`);
+  if (snapshot.serverOrigin) lines.push(`服务地址      ${snapshot.serverOrigin}`);
   if (snapshot.agentName) lines.push(`Agent          ${snapshot.agentName}`);
   if (snapshot.lastHeartbeatAt)
     lines.push(`最近心跳      ${relativeHeartbeat(snapshot.lastHeartbeatAt)}`);

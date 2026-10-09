@@ -28,10 +28,7 @@ export const IdentityStateSchema = z.strictObject({
 
 export const LocalBindingSchema = z.strictObject({
   bindingId: z.uuid(),
-  repositoryPath: z
-    .string()
-    .min(1)
-    .refine(isAbsolute, '仓库路径必须是本机绝对路径'),
+  repositoryPath: z.string().min(1).refine(isAbsolute, '仓库路径必须是本机绝对路径'),
   updatedAt: z.iso.datetime(),
 });
 
@@ -44,12 +41,7 @@ export const ExecutionRecoveryStateSchema = z.strictObject({
   schemaVersion: z.literal(EXECUTION_STATE_SCHEMA_VERSION),
   executionId: z.uuid(),
   bindingId: z.uuid(),
-  phase: z.enum([
-    'CLAIMED',
-    'RUNNING',
-    'WAITING_INTERACTION',
-    'OUTCOME_PENDING',
-  ]),
+  phase: z.enum(['CLAIMED', 'RUNNING', 'WAITING_INTERACTION', 'OUTCOME_PENDING']),
   sessionId: z.string().min(1).nullable(),
   claimedExecution: ClaimedExecutionSchema,
   updatedAt: z.iso.datetime(),
@@ -90,9 +82,7 @@ export const InstallStateSchema = z.strictObject({
 
 export type ConnectionState = z.infer<typeof ConnectionStateSchema>;
 export type BindingState = z.infer<typeof BindingStateSchema>;
-export type ExecutionRecoveryState = z.infer<
-  typeof ExecutionRecoveryStateSchema
->;
+export type ExecutionRecoveryState = z.infer<typeof ExecutionRecoveryStateSchema>;
 export type ExecutionResultBaselineState = z.infer<
   typeof ExecutionResultBaselineStateSchema
 >;

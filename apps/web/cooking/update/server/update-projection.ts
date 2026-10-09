@@ -6,10 +6,7 @@ import { markInvalidExecutionResult } from '@/cooking/shared/server/invalid-exec
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
 import { executionProjector } from '@/platform/execution/projection';
-import type {
-  Execution,
-  JsonValue,
-} from '@agent-party-time/execution-contract';
+import type { Execution, JsonValue } from '@agent-party-time/execution-contract';
 import {
   CiCdUpdateExecutionResultSchema,
   LocalScriptUpdateExecutionResultSchema,
@@ -41,8 +38,7 @@ export class UpdateProjection {
       STARTED: this.afterStartedExecution.bind(this),
       RESUMED: this.afterStartedExecution.bind(this),
       TERMINAL: this.afterTerminalExecution.bind(this),
-      INTERACTION_OPENED: ({ executionId }) =>
-        this.afterInteractionOpened(executionId),
+      INTERACTION_OPENED: ({ executionId }) => this.afterInteractionOpened(executionId),
     },
   });
 
@@ -142,9 +138,7 @@ export class UpdateProjection {
     const turnId = typeof envelope.turnId === 'string' ? envelope.turnId : null;
     const result = envelope.result;
     if (!turnId) return;
-    const deployment = DeploymentMethodSchema.parse(
-      JSON.parse(batch.deployment_json),
-    );
+    const deployment = DeploymentMethodSchema.parse(JSON.parse(batch.deployment_json));
     const parsed =
       deployment.kind === 'LOCAL_SCRIPT'
         ? LocalScriptUpdateExecutionResultSchema.safeParse(result)
@@ -154,8 +148,7 @@ export class UpdateProjection {
       return;
     }
     const latest = this.queries.latestAttempt(batch.id);
-    if (!latest || !isTerminal(latest.state) || batch.state !== 'FAILED')
-      return;
+    if (!latest || !isTerminal(latest.state) || batch.state !== 'FAILED') return;
     const duplicate = this.db.get(
       `SELECT 1 FROM cooking_update_session_sync
        WHERE session_id = ? AND turn_id = ? AND execution_id <> ? LIMIT 1`,
@@ -181,10 +174,7 @@ export class UpdateProjection {
     });
   }
 
-  private applyInteractionOpened(
-    executionId: string,
-    interactionId: string,
-  ): void {
+  private applyInteractionOpened(executionId: string, interactionId: string): void {
     const attempt = this.queries.attemptForExecution(executionId);
     if (!attempt) return;
     const batch = this.queries.batch(attempt.batch_id);
@@ -230,20 +220,15 @@ export class UpdateProjection {
     | { kind: 'PUSHED'; attemptOutcome: unknown }
     | { kind: 'FAILED'; attemptOutcome: unknown } {
     if (execution.outcome?.kind === 'SUCCEEDED') {
-      const deployment = DeploymentMethodSchema.parse(
-        JSON.parse(batch.deployment_json),
-      );
+      const deployment = DeploymentMethodSchema.parse(JSON.parse(batch.deployment_json));
       const parsed =
         deployment.kind === 'LOCAL_SCRIPT'
-          ? LocalScriptUpdateExecutionResultSchema.safeParse(
-              execution.outcome.result,
-            )
+          ? LocalScriptUpdateExecutionResultSchema.safeParse(execution.outcome.result)
           : CiCdUpdateExecutionResultSchema.safeParse(execution.outcome.result);
       const result = parsed.success ? parsed.data.result : null;
       if (result?.outcome === 'COMPLETED')
         return { kind: 'COMPLETED', attemptOutcome: result };
-      if (result?.outcome === 'PUSHED')
-        return { kind: 'PUSHED', attemptOutcome: result };
+      if (result?.outcome === 'PUSHED') return { kind: 'PUSHED', attemptOutcome: result };
       if (parsed.success) return { kind: 'FAILED', attemptOutcome: result };
       markInvalidExecutionResult(this.db, execution.id, INVALID_RESULT_MESSAGE);
       return {
@@ -339,10 +324,6 @@ export class UpdateProjection {
          WHERE attempt.execution_id = ?`,
       executionId,
     ) as { submission_id: string; workspace_revision: number } | undefined;
-    if (row)
-      this.writes.publishInvalidation(
-        row.submission_id,
-        row.workspace_revision,
-      );
+    if (row) this.writes.publishInvalidation(row.submission_id, row.workspace_revision);
   }
 }

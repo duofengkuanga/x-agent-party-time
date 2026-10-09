@@ -11,19 +11,12 @@ import {
   type CleanupInteractionView,
   type LifecycleWorkspaceProjection,
 } from '../contract';
-import type {
-  BugSourceRow,
-  CleanupAttemptRow,
-  CleanupSourceRow,
-} from './records';
+import type { BugSourceRow, CleanupAttemptRow, CleanupSourceRow } from './records';
 import { cleanupStateLabel } from './results';
 
 export class LifecycleQueries {
   constructor(private readonly db: AppDatabase) {}
-  workspace(
-    userId: string,
-    submissionId: string,
-  ): LifecycleWorkspaceProjection {
+  workspace(userId: string, submissionId: string): LifecycleWorkspaceProjection {
     requireSubmissionAccess(this.db, userId, submissionId);
     const bugIds = this.db
       .all<{ id: string }>(
@@ -57,10 +50,7 @@ export class LifecycleQueries {
     });
   }
 
-  cleanupInteractions(
-    userId: string,
-    submissionId: string,
-  ): CleanupInteractionView[] {
+  cleanupInteractions(userId: string, submissionId: string): CleanupInteractionView[] {
     requireSubmissionAccess(this.db, userId, submissionId);
     const rows = this.db.all<{
       id: string;
@@ -97,10 +87,7 @@ export class LifecycleQueries {
         state: row.state,
         method: responsible ? row.method : null,
         payload: responsible
-          ? sanitizeExecutionInteractionPayload(
-              row.method,
-              JSON.parse(row.payload_json),
-            )
+          ? sanitizeExecutionInteractionPayload(row.method, JSON.parse(row.payload_json))
           : null,
         canResolve: responsible,
         createdAt: row.created_at,
@@ -248,8 +235,7 @@ export class LifecycleQueries {
             };
           })
         : [],
-      availableActions:
-        technical && cleanup.state === 'FAILED' ? ['RETRY_CLEANUP'] : [],
+      availableActions: technical && cleanup.state === 'FAILED' ? ['RETRY_CLEANUP'] : [],
       presentation: { statusLabel: cleanupStateLabel(cleanup.state) },
       createdAt: cleanup.created_at,
     };
@@ -483,9 +469,7 @@ export class LifecycleQueries {
     return row;
   }
 
-  cleanupAttemptForExecution(
-    executionId: string,
-  ): CleanupAttemptRow | undefined {
+  cleanupAttemptForExecution(executionId: string): CleanupAttemptRow | undefined {
     return this.db.get(
       `SELECT attempt.*, execution.state, execution.session_id
          FROM cooking_cleanup_attempt attempt

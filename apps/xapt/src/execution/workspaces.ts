@@ -1,7 +1,4 @@
-import type {
-  ExecutionWorkspace,
-  JsonValue,
-} from '@agent-party-time/execution-contract';
+import type { ExecutionWorkspace, JsonValue } from '@agent-party-time/execution-contract';
 import { createHash } from 'node:crypto';
 import { chmod, mkdir, readFile, stat } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
@@ -26,10 +23,7 @@ export interface ExecutionWorkspaceManager {
     repositoryPath: string,
     workspace: ExecutionWorkspace,
   ): Promise<PreparedExecutionWorkspace>;
-  resolve(
-    repositoryPath: string,
-    workspace: ExecutionWorkspace,
-  ): Promise<string>;
+  resolve(repositoryPath: string, workspace: ExecutionWorkspace): Promise<string>;
 }
 
 export type PreparedExecutionWorkspace =
@@ -93,9 +87,7 @@ export class GitExecutionWorkspaceManager implements ExecutionWorkspaceManager {
         (workspace.isolation === 'BRANCH_WORKTREE' ? workspace.branch : null)
     )
       throw new Error('原任务工作区与本机映射不一致，无法校验同步结果');
-    if (
-      !(await isExpectedGitWorktree(repositoryPath, record, this.worktreeRoot))
-    )
+    if (!(await isExpectedGitWorktree(repositoryPath, record, this.worktreeRoot)))
       throw new Error('原任务工作区不可用，无法校验同步结果');
     return record.worktreePath;
   }
@@ -120,13 +112,8 @@ export class GitExecutionWorkspaceManager implements ExecutionWorkspaceManager {
           (workspace.isolation === 'BRANCH_WORKTREE' ? workspace.branch : null)
       )
         throw new Error('逻辑工作区与已保存的本机映射不一致');
-      if (
-        await isExpectedGitWorktree(repositoryPath, existing, this.worktreeRoot)
-      ) {
-        await mirrorIgnoredRepositoryContents(
-          repositoryPath,
-          existing.worktreePath,
-        );
+      if (await isExpectedGitWorktree(repositoryPath, existing, this.worktreeRoot)) {
+        await mirrorIgnoredRepositoryContents(repositoryPath, existing.worktreePath);
         return { kind: 'EXECUTE', cwd: existing.worktreePath };
       }
       if (await pathExists(existing.worktreePath))
@@ -155,14 +142,7 @@ export class GitExecutionWorkspaceManager implements ExecutionWorkspaceManager {
         repositoryPath,
         branchExists
           ? ['worktree', 'add', worktreePath, workspace.branch]
-          : [
-              'worktree',
-              'add',
-              '-b',
-              workspace.branch,
-              worktreePath,
-              workspace.baseRef,
-            ],
+          : ['worktree', 'add', '-b', workspace.branch, worktreePath, workspace.baseRef],
       );
     } else
       await git(repositoryPath, [
@@ -178,8 +158,7 @@ export class GitExecutionWorkspaceManager implements ExecutionWorkspaceManager {
       repositoryPath,
       worktreePath,
       isolation: workspace.isolation,
-      branch:
-        workspace.isolation === 'BRANCH_WORKTREE' ? workspace.branch : null,
+      branch: workspace.isolation === 'BRANCH_WORKTREE' ? workspace.branch : null,
       updatedAt: this.now().toISOString(),
     };
     current.workspaces[workspace.key] = record;
@@ -200,10 +179,7 @@ export class GitExecutionWorkspaceManager implements ExecutionWorkspaceManager {
     return Object.keys(current.workspaces).sort();
   }
 
-  async removeWorkspaces(
-    keys: string[],
-    options: { force: boolean },
-  ): Promise<void> {
+  async removeWorkspaces(keys: string[], options: { force: boolean }): Promise<void> {
     const current = await this.readState();
     const records = [...new Set(keys)]
       .map((key) => ({ key, record: current.workspaces[key] }))
@@ -217,11 +193,7 @@ export class GitExecutionWorkspaceManager implements ExecutionWorkspaceManager {
         throw new Error(`拒绝删除不属于本机管理的工作区（${key}）`);
       if (!(await pathExists(record.worktreePath))) continue;
       if (
-        !(await isExpectedGitWorktree(
-          record.repositoryPath,
-          record,
-          this.worktreeRoot,
-        ))
+        !(await isExpectedGitWorktree(record.repositoryPath, record, this.worktreeRoot))
       )
         throw new Error(`拒绝删除仓库或分支身份不匹配的本机工作区（${key}）`);
       if (
@@ -266,17 +238,9 @@ export class GitExecutionWorkspaceManager implements ExecutionWorkspaceManager {
       )
         throw new Error('拒绝清理不属于当前绑定的本机工作区');
       if (await pathExists(record.worktreePath)) {
-        if (
-          !(await isExpectedGitWorktree(
-            repositoryPath,
-            record,
-            this.worktreeRoot,
-          ))
-        )
+        if (!(await isExpectedGitWorktree(repositoryPath, record, this.worktreeRoot)))
           throw new Error('拒绝清理仓库或分支身份不匹配的本机工作区');
-        if (
-          (await git(record.worktreePath, ['status', '--porcelain'])).length > 0
-        )
+        if ((await git(record.worktreePath, ['status', '--porcelain'])).length > 0)
           throw new Error('工作区仍有未提交修改，拒绝自动清理');
         await git(repositoryPath, ['worktree', 'remove', record.worktreePath]);
       } else await git(repositoryPath, ['worktree', 'prune']);
@@ -293,31 +257,24 @@ export class GitExecutionWorkspaceManager implements ExecutionWorkspaceManager {
         JSON.parse(await readFile(this.statePath, 'utf8')),
       );
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT')
-        return { workspaces: {} };
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { workspaces: {} };
       throw error;
     }
   }
 
-  private async writeState(
-    state: z.infer<typeof WorkspaceStateSchema>,
-  ): Promise<void> {
+  private async writeState(state: z.infer<typeof WorkspaceStateSchema>): Promise<void> {
     await writePrivateJson(this.statePath, WorkspaceStateSchema.parse(state));
   }
 }
 
-async function fetchBaseRef(
-  repositoryPath: string,
-  baseRef: string,
-): Promise<void> {
+async function fetchBaseRef(repositoryPath: string, baseRef: string): Promise<void> {
   const remote = baseRef.match(/^([^/]+)\/(.+)$/u);
   if (remote) await git(repositoryPath, ['fetch', '--prune', remote[1]!]);
   await git(repositoryPath, ['rev-parse', '--verify', `${baseRef}^{commit}`]);
 }
 
 async function ensureMissing(path: string): Promise<void> {
-  if (await pathExists(path))
-    throw new Error('工作区物理目录已存在但没有可信映射');
+  if (await pathExists(path)) throw new Error('工作区物理目录已存在但没有可信映射');
 }
 
 async function pathExists(path: string): Promise<boolean> {

@@ -15,10 +15,7 @@ export class ExecutionRecovery {
     private readonly now: () => Date,
   ) {}
 
-  async renew(
-    session: AuthenticatedRunnerSession,
-    execution: ClaimedExecution,
-  ) {
+  async renew(session: AuthenticatedRunnerSession, execution: ClaimedExecution) {
     const status = await this.http.renewExecution(
       session.serverOrigin,
       session.credential,
@@ -92,9 +89,7 @@ export class ExecutionRecovery {
         timer = setTimeout(renew, 5_000);
       } catch (error) {
         controller.abort();
-        rejectLost(
-          error instanceof Error ? error : new Error('任务领取凭据已失效'),
-        );
+        rejectLost(error instanceof Error ? error : new Error('任务领取凭据已失效'));
       }
     };
     timer = setTimeout(renew, 5_000);

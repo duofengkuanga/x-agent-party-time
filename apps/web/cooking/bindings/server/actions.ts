@@ -1,19 +1,11 @@
 'use server';
 
 import { PlatformError } from '@/platform/errors';
-import {
-  bindingRequestService,
-  bindingService,
-} from '@/cooking/runtime/services';
-import {
-  formField,
-  runRedirectMutation,
-} from '@/cooking/shared/server/action-transport';
+import { bindingRequestService, bindingService } from '@/cooking/runtime/services';
+import { formField, runRedirectMutation } from '@/cooking/shared/server/action-transport';
 import { bindingSettingsPath } from '@/cooking/projects/ui/route-state';
 
-export async function createEngineeringBindingAction(
-  formData: FormData,
-): Promise<never> {
+export async function createEngineeringBindingAction(formData: FormData): Promise<never> {
   const projectId = formField(formData, 'projectId');
   const engineeringId = formField(formData, 'engineeringId');
   return runRedirectMutation({
@@ -35,9 +27,7 @@ export async function createEngineeringBindingAction(
   });
 }
 
-export async function deleteEngineeringBindingAction(
-  formData: FormData,
-): Promise<never> {
+export async function deleteEngineeringBindingAction(formData: FormData): Promise<never> {
   const projectId = formField(formData, 'projectId');
   const engineeringId = formField(formData, 'engineeringId');
   const path = bindingSettingsPath(projectId, engineeringId);

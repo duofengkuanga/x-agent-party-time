@@ -7,9 +7,7 @@ describe('ProtocolAgent', () => {
     expect(RunnerHeartbeatRequestSchema.parse({ availableSlots: 3 })).toEqual({
       availableSlots: 3,
     });
-    expect(() =>
-      RunnerHeartbeatRequestSchema.parse({ availableSlots: 4 }),
-    ).toThrow();
+    expect(() => RunnerHeartbeatRequestSchema.parse({ availableSlots: 4 })).toThrow();
   });
   test('认证请求只通过 Bearer Header 并使用共享请求 Schema', async () => {
     const requests: Request[] = [];
@@ -26,9 +24,7 @@ describe('ProtocolAgent', () => {
     });
 
     expect(await agent.claimExecutions(3, 0)).toEqual([]);
-    expect(requests[0]?.url).toBe(
-      'https://apt.example.com/api/runner/executions/claim',
-    );
+    expect(requests[0]?.url).toBe('https://apt.example.com/api/runner/executions/claim');
     expect(requests[0]?.headers.get('authorization')).toBe(
       `Bearer credential-${'x'.repeat(32)}`,
     );

@@ -15,9 +15,7 @@ test('在 randomUUID 不可用时使用 getRandomValues 生成 UUID', () => {
     configurable: true,
     value: {
       getRandomValues<T extends ArrayBufferView>(array: T): T {
-        new Uint8Array(array.buffer, array.byteOffset, array.byteLength).fill(
-          0xab,
-        );
+        new Uint8Array(array.buffer, array.byteOffset, array.byteLength).fill(0xab);
         return array;
       },
     } as Crypto,

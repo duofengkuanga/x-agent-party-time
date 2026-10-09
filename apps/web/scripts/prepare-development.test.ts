@@ -31,16 +31,16 @@ describe('开发数据库准备', () => {
     oldDatabase.exec(`PRAGMA user_version = ${SERVER_SCHEMA_VERSION - 1}`);
     oldDatabase.close();
 
-    expect(prepareDevelopmentDatabase({ AGENT_PARTY_TIME_HOME: home })).toEqual(
-      { database: paths.database, reset: true },
-    );
+    expect(prepareDevelopmentDatabase({ AGENT_PARTY_TIME_HOME: home })).toEqual({
+      database: paths.database,
+      reset: true,
+    });
 
     const currentDatabase = new Database(paths.database, { readonly: true });
     try {
       expect(
-        currentDatabase
-          .query<{ user_version: number }, []>('PRAGMA user_version')
-          .get()?.user_version,
+        currentDatabase.query<{ user_version: number }, []>('PRAGMA user_version').get()
+          ?.user_version,
       ).toBe(SERVER_SCHEMA_VERSION);
       expect(
         currentDatabase
@@ -64,16 +64,15 @@ describe('开发数据库准备', () => {
     oldDatabase.exec(`PRAGMA user_version = ${SERVER_SCHEMA_VERSION - 1}`);
     oldDatabase.close();
 
-    expect(() =>
-      prepareDevelopmentDatabase({ AGENT_PARTY_TIME_HOME: home }),
-    ).toThrow('开发数据目录必须位于仓库 .scratch 内');
+    expect(() => prepareDevelopmentDatabase({ AGENT_PARTY_TIME_HOME: home })).toThrow(
+      '开发数据目录必须位于仓库 .scratch 内',
+    );
 
     const preservedDatabase = new Database(paths.database, { readonly: true });
     try {
       expect(
-        preservedDatabase
-          .query<{ user_version: number }, []>('PRAGMA user_version')
-          .get()?.user_version,
+        preservedDatabase.query<{ user_version: number }, []>('PRAGMA user_version').get()
+          ?.user_version,
       ).toBe(SERVER_SCHEMA_VERSION - 1);
     } finally {
       preservedDatabase.close();

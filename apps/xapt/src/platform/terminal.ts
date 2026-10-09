@@ -8,10 +8,7 @@ export class TerminalForceConfirmation implements ForceConfirmation {
       output: process.stdout,
     });
     try {
-      return (
-        (await terminal.question(`${message}\n输入 STOP 确认：`)).trim() ===
-        'STOP'
-      );
+      return (await terminal.question(`${message}\n输入 STOP 确认：`)).trim() === 'STOP';
     } finally {
       terminal.close();
     }

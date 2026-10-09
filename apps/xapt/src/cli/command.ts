@@ -31,8 +31,7 @@ export class CliUsageError extends Error {
 export function parseCommand(args: readonly string[]): XaptCommand {
   if (args.length === 0 || isExactly(args, '--help') || isExactly(args, '-h'))
     return { kind: 'help' };
-  if (isExactly(args, '--version') || isExactly(args, '-v'))
-    return { kind: 'version' };
+  if (isExactly(args, '--version') || isExactly(args, '-v')) return { kind: 'version' };
 
   const [command, ...rest] = args;
   switch (command) {
@@ -97,8 +96,7 @@ function parseDaemonCommand(args: readonly string[]): XaptCommand {
       requireNoArguments('daemon start', rest);
       return { kind: 'daemon-start' };
     case 'connect': {
-      if (rest.length === 0)
-        throw new CliUsageError('缺少必需参数 <server-url>');
+      if (rest.length === 0) throw new CliUsageError('缺少必需参数 <server-url>');
       if (rest.length > 1)
         throw new CliUsageError(`daemon connect 不接受参数“${rest[1]}”`);
       return { kind: 'daemon-connect', serverUrl: rest[0]! };
@@ -150,8 +148,7 @@ function parseOptionalForce(command: string, args: readonly string[]): boolean {
 }
 
 function requireNoArguments(command: string, args: readonly string[]): void {
-  if (args.length > 0)
-    throw new CliUsageError(`${command} 不接受参数“${args[0]}”`);
+  if (args.length > 0) throw new CliUsageError(`${command} 不接受参数“${args[0]}”`);
 }
 
 function isExactly(args: readonly string[], value: string): boolean {

@@ -4,10 +4,7 @@ import { database, type AppDatabase } from '@/platform/database';
 import { executionFileStore } from '@/platform/execution/files';
 import { runnerFetch, type RunnerHttpServices } from '@/platform/runner/router';
 import { runnerService } from '@/platform/runner/server';
-import {
-  cookingExecutionService,
-  prepareDueUpdateExecutions,
-} from './services';
+import { cookingExecutionService, prepareDueUpdateExecutions } from './services';
 
 export function cookingRunnerFetch(
   db: AppDatabase,
@@ -19,9 +16,7 @@ export function cookingRunnerFetch(
     ...services,
     bindings: {
       list: (runnerId) =>
-        bindings
-          .listBindingsForRunner(runnerId)
-          .map(({ id }) => ({ bindingId: id })),
+        bindings.listBindingsForRunner(runnerId).map(({ id }) => ({ bindingId: id })),
       confirm: bindings.confirmRepository.bind(bindings),
       claim: requests.claimNext.bind(requests),
       complete: requests.complete.bind(requests),

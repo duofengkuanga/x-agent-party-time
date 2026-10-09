@@ -85,11 +85,7 @@ export function engineeringScenario<K extends string>(
       randomUUID(),
     );
     if (spec.repository !== null)
-      bindings.confirmRepository(
-        developer.runnerId,
-        binding.id,
-        spec.repository,
-      );
+      bindings.confirmRepository(developer.runnerId, binding.id, spec.repository);
     values[key] = binding;
   }
   return { source, environment, bindings: values };

@@ -1,10 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import {
-  createConnection,
-  createServer,
-  type Server,
-  type Socket,
-} from 'node:net';
+import { createConnection, createServer, type Server, type Socket } from 'node:net';
 import { dirname } from 'node:path';
 import type { LocalFileSystem } from '../platform/files';
 import type { ConnectionProgress } from '../agent/connection';
@@ -53,10 +48,7 @@ export class DaemonControlServer {
 
   async start(): Promise<void> {
     if (this.server) throw new Error('本机服务控制端已启动');
-    await this.options.files.ensureDirectory(
-      dirname(this.options.socketPath),
-      0o700,
-    );
+    await this.options.files.ensureDirectory(dirname(this.options.socketPath), 0o700);
     const existing = await this.options.files.info(this.options.socketPath);
     if (existing?.type === 'socket')
       await this.options.files.remove(this.options.socketPath);
@@ -153,14 +145,9 @@ export class DaemonControlServer {
       }
 
       const snapshot = await this.options.snapshot();
-      if (
-        request.method === 'stop' &&
-        snapshot.activity === 'BUSY' &&
-        !request.force
-      )
+      if (request.method === 'stop' && snapshot.activity === 'BUSY' && !request.force)
         throw new ControlSocketError('DAEMON_BUSY', '本机服务正在处理任务');
-      if (request.method === 'stop' && request.force)
-        await this.options.forceStop?.();
+      if (request.method === 'stop' && request.force) await this.options.forceStop?.();
       sendFinal(
         socket,
         { id: request.id, ok: true, result: snapshot },
@@ -244,9 +231,7 @@ export class DaemonControlClient {
       let settled = false;
       const timeout = setTimeout(() => {
         socket.destroy();
-        settle(() =>
-          reject(new ControlSocketError('TIMEOUT', '本机服务无响应')),
-        );
+        settle(() => reject(new ControlSocketError('TIMEOUT', '本机服务无响应')));
       }, timeoutMs);
       const settle = (callback: () => void) => {
         if (settled) return;
@@ -257,18 +242,14 @@ export class DaemonControlClient {
       socket.setEncoding('utf8');
       socket.once('error', (error) =>
         settle(() =>
-          reject(
-            new ControlSocketError('UNREACHABLE', '无法连接本机服务', error),
-          ),
+          reject(new ControlSocketError('UNREACHABLE', '无法连接本机服务', error)),
         ),
       );
       socket.on('data', (chunk: string) => {
         input += chunk;
         if (Buffer.byteLength(input) > MAX_CONTROL_MESSAGE_BYTES) {
           settle(() =>
-            reject(
-              new ControlSocketError('INVALID_RESPONSE', '本机服务响应过大'),
-            ),
+            reject(new ControlSocketError('INVALID_RESPONSE', '本机服务响应过大')),
           );
           socket.destroy();
           return;
@@ -286,10 +267,7 @@ export class DaemonControlClient {
             }
             settle(() => {
               if (frame.ok) resolve(frame.result);
-              else
-                reject(
-                  new ControlSocketError(frame.error.code, frame.error.message),
-                );
+              else reject(new ControlSocketError(frame.error.code, frame.error.message));
             });
             socket.end();
             return;
@@ -300,9 +278,7 @@ export class DaemonControlClient {
           }
         }
       });
-      socket.once('connect', () =>
-        socket.write(`${JSON.stringify(request)}\n`),
-      );
+      socket.once('connect', () => socket.write(`${JSON.stringify(request)}\n`));
     });
   }
 }
@@ -334,11 +310,7 @@ function parseFrame(line: string, id: string): ControlResponse | ControlEvent {
   return value;
 }
 
-function sendFinal(
-  socket: Socket,
-  response: ControlResponse,
-  after?: () => void,
-): void {
+function sendFinal(socket: Socket, response: ControlResponse, after?: () => void): void {
   socket.end(`${JSON.stringify(response)}\n`, after);
 }
 

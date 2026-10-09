@@ -10,10 +10,5 @@ export async function GET(request: Request): Promise<Response> {
       { error: { code: 'NOT_AUTHENTICATED', message: '请先登录。' } },
       { status: 401 },
     );
-  return handleWorkspaceEvents(
-    request,
-    user.id,
-    workspaceService(),
-    workspaceEvents(),
-  );
+  return handleWorkspaceEvents(request, user.id, workspaceService(), workspaceEvents());
 }

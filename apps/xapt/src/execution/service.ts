@@ -10,10 +10,7 @@ import { randomUUID } from 'node:crypto';
 import type { AuthenticatedRunnerSession } from '../agent/connection';
 import type { RunnerExecutionHttp } from '../agent/server-http';
 import { RunnerHttpError } from '@agent-party-time/runner-contract/http-client';
-import {
-  type CodexExecutor,
-  type StartedCodexExecution,
-} from '../codex/contract';
+import { type CodexExecutor, type StartedCodexExecution } from '../codex/contract';
 import { CodexAppServerError } from '../codex/errors';
 import type { LocalFileSystem } from '../platform/files';
 import type { SkillBundleManager } from '../skills/manager';
@@ -168,16 +165,9 @@ export class ExecutionService {
       return;
     }
     if (turn.kind === 'READ_SESSION') {
-      const synchronization = await this.preparation.readSession(
-        execution,
-        turn.taskId,
-      );
+      const synchronization = await this.preparation.readSession(execution, turn.taskId);
       if (synchronization.kind === 'FAILED')
-        await this.reportStartFailure(
-          session,
-          execution,
-          synchronization.failure,
-        );
+        await this.reportStartFailure(session, execution, synchronization.failure);
       else
         await this.completeImmediateExecution(
           session,
@@ -290,12 +280,7 @@ export class ExecutionService {
       },
     };
     if (
-      !(await this.outbox.persistAndDeliver(
-        session,
-        'START',
-        execution.id,
-        startRequest,
-      ))
+      !(await this.outbox.persistAndDeliver(session, 'START', execution.id, startRequest))
     ) {
       releaseStartGate();
       controller.abort();
@@ -343,19 +328,8 @@ export class ExecutionService {
     } finally {
       lease.stop();
     }
-    await this.recovery.recordPhase(
-      execution,
-      'OUTCOME_PENDING',
-      started.sessionId,
-    );
-    if (
-      await this.outbox.persistAndDeliver(
-        session,
-        'OUTCOME',
-        execution.id,
-        request,
-      )
-    )
+    await this.recovery.recordPhase(execution, 'OUTCOME_PENDING', started.sessionId);
+    if (await this.outbox.persistAndDeliver(session, 'OUTCOME', execution.id, request))
       await this.state.removeExecution(execution.id);
     this.controllers.delete(execution.id);
   }
@@ -373,18 +347,13 @@ export class ExecutionService {
       execution.id,
       {
         leaseToken: execution.lease.token,
-        kind:
-          method === 'item/tool/requestUserInput' ? 'USER_INPUT' : 'APPROVAL',
+        kind: method === 'item/tool/requestUserInput' ? 'USER_INPUT' : 'APPROVAL',
         method,
         payload,
       },
     );
     this.waitingInteractionCount += 1;
-    await this.recovery.recordPhase(
-      execution,
-      'WAITING_INTERACTION',
-      sessionId,
-    );
+    await this.recovery.recordPhase(execution, 'WAITING_INTERACTION', sessionId);
     try {
       for (;;) {
         const waited = await this.http.waitInteraction(

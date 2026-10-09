@@ -5,13 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CodexAppServerExecutor } from './app-server';
 
-for (const mode of [
-  'completed',
-  'failed',
-  'invalid',
-  'start-error',
-  'cancel',
-]) {
+for (const mode of ['completed', 'failed', 'invalid', 'start-error', 'cancel']) {
   test(`会话在 ${mode} 后释放，其他执行仍可继续`, async () => {
     const root = await mkdtemp(join(tmpdir(), 'xapt-session-lifecycle-'));
     const executable = join(root, 'codex');
@@ -60,16 +54,13 @@ rl.on('line', line => {
     });
     const otherController = new AbortController();
     try {
-      const other = await executor.begin(
-        input('cancel'),
-        otherController.signal,
-      );
+      const other = await executor.begin(input('cancel'), otherController.signal);
       const otherDone = other.completion.catch((error) => error);
       const controller = new AbortController();
       if (mode === 'start-error') {
-        await expect(
-          executor.begin(input(mode), controller.signal),
-        ).rejects.toThrow('turn start failed');
+        await expect(executor.begin(input(mode), controller.signal)).rejects.toThrow(
+          'turn start failed',
+        );
       } else {
         const execution = await executor.begin(input(mode), controller.signal);
         const done = execution.completion.catch((error) => error);
@@ -81,9 +72,9 @@ rl.on('line', line => {
       // The finished execution must no longer have a writer process, while the
       // unrelated in-flight turn must still own its own live process.
       expect(children).toHaveLength(2);
-      expect(
-        children[1]!.exitCode !== null || children[1]!.signalCode !== null,
-      ).toBe(true);
+      expect(children[1]!.exitCode !== null || children[1]!.signalCode !== null).toBe(
+        true,
+      );
       expect(children[0]!.exitCode).toBeNull();
       expect(children[0]!.signalCode).toBeNull();
       otherController.abort();
@@ -147,25 +138,16 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', li
       result: { summary: 'new' },
     });
     for (const status of ['inProgress', 'interrupted']) {
-      await writeFile(
-        history,
-        JSON.stringify([turn('old'), turn('new', status)]),
-      );
+      await writeFile(history, JSON.stringify([turn('old'), turn('new', status)]));
       await expect(executor.readLastCompletedTurn('session')).rejects.toThrow(
         '最新一轮尚未完成或暂无法确认，请完成后再同步',
       );
     }
-    await writeFile(
-      history,
-      JSON.stringify([turn('old'), turn('new', 'failed')]),
-    );
+    await writeFile(history, JSON.stringify([turn('old'), turn('new', 'failed')]));
     await expect(executor.readLastCompletedTurn('session')).rejects.toThrow(
       '最新一轮已失败，请在原会话处理后再同步',
     );
-    await writeFile(
-      history,
-      JSON.stringify([turn('old'), turn('new', 'unknown')]),
-    );
+    await writeFile(history, JSON.stringify([turn('old'), turn('new', 'unknown')]));
     await expect(executor.readLastCompletedTurn('session')).rejects.toThrow(
       '最新一轮状态无法确认，请完成后再同步',
     );
@@ -185,9 +167,7 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', li
       '无法读取 Codex 会话，请确认 Agent 在线且原会话可读后再同步',
     );
     expect(
-      children.every(
-        (child) => child.exitCode !== null || child.signalCode !== null,
-      ),
+      children.every((child) => child.exitCode !== null || child.signalCode !== null),
     ).toBe(true);
   } finally {
     await executor.close();

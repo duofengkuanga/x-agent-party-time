@@ -16,15 +16,15 @@ export class LifecycleService {
   private readonly bugCommands: BugLifecycleCommands;
   readonly retryCleanup: CleanupService['retryCleanup'] = (...args) =>
     this.cleanup.retryCleanup(...args);
-  readonly resolveCleanupInteraction: CleanupService['resolveCleanupInteraction'] =
-    (...args) => this.cleanup.resolveCleanupInteraction(...args);
+  readonly resolveCleanupInteraction: CleanupService['resolveCleanupInteraction'] = (
+    ...args
+  ) => this.cleanup.resolveCleanupInteraction(...args);
   readonly projectExecution: CleanupService['projectExecution'] = (...args) =>
     this.cleanup.projectExecution(...args);
   readonly workspace: LifecycleQueries['workspace'] = (...args) =>
     this.queries.workspace(...args);
-  readonly cleanupInteractions: LifecycleQueries['cleanupInteractions'] = (
-    ...args
-  ) => this.queries.cleanupInteractions(...args);
+  readonly cleanupInteractions: LifecycleQueries['cleanupInteractions'] = (...args) =>
+    this.queries.cleanupInteractions(...args);
   readonly closeSubmission: SubmissionClosure['closeSubmission'] = (...args) =>
     this.closure.closeSubmission(...args);
 
@@ -37,12 +37,7 @@ export class LifecycleService {
     onInvalidated: (submissionId: string, revision: number) => void = () => {},
   ) {
     this.queries = new LifecycleQueries(db);
-    this.writes = new TestSubmissionWriteStore(
-      db,
-      now,
-      createId,
-      onInvalidated,
-    );
+    this.writes = new TestSubmissionWriteStore(db, now, createId, onInvalidated);
     this.bugCommands = new BugLifecycleCommands(
       db,
       repairs,
@@ -51,13 +46,7 @@ export class LifecycleService {
       now,
       createId,
     );
-    this.cleanup = new CleanupService(
-      db,
-      executions,
-      this.writes,
-      now,
-      createId,
-    );
+    this.cleanup = new CleanupService(db, executions, this.writes, now, createId);
     this.closure = new SubmissionClosure(
       db,
       this.queries,

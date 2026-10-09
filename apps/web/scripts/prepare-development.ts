@@ -21,10 +21,7 @@ export function prepareDevelopmentDatabase(
     openDatabase(paths.database).close();
     return { database: paths.database, reset: false };
   } catch (error) {
-    if (
-      !(error instanceof PlatformError) ||
-      error.code !== 'SCHEMA_VERSION_MISMATCH'
-    )
+    if (!(error instanceof PlatformError) || error.code !== 'SCHEMA_VERSION_MISMATCH')
       throw error;
   }
 
@@ -47,7 +44,5 @@ function assertDisposableDevelopmentHome(home: string): void {
 if (import.meta.main) {
   const result = prepareDevelopmentDatabase();
   if (result.reset)
-    process.stdout.write(
-      `[dev] 已重建 Schema 不匹配的开发数据库：${result.database}\n`,
-    );
+    process.stdout.write(`[dev] 已重建 Schema 不匹配的开发数据库：${result.database}\n`);
 }

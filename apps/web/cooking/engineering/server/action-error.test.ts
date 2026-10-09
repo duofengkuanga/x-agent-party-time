@@ -12,8 +12,7 @@ describe('engineeringActionError', () => {
 
     expect(engineeringActionError(parsed.error)).toEqual({
       code: 'VALIDATION_FAILED',
-      message:
-        '工程标识只能使用中文、小写字母、数字和连字符，并以中文或小写字母开头',
+      message: '工程标识只能使用中文、小写字母、数字和连字符，并以中文或小写字母开头',
       status: 400,
     });
   });
@@ -29,9 +28,7 @@ describe('engineeringActionError', () => {
       status: 400,
     });
     expect(
-      engineeringActionError(
-        new PlatformError('RESOURCE_CONFLICT', '工程标识已存在'),
-      ),
+      engineeringActionError(new PlatformError('RESOURCE_CONFLICT', '工程标识已存在')),
     ).toEqual({
       code: 'RESOURCE_CONFLICT',
       message: '工程标识已存在',

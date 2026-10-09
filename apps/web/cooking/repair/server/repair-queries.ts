@@ -15,11 +15,7 @@ import {
   type RepairWorkspaceProjection,
 } from '../contract';
 import type { AttemptRow, ContextRow, RepairSourceRow } from './records';
-import {
-  isFailedAttemptOutcome,
-  projectAttemptResult,
-  repairVisual,
-} from './results';
+import { isFailedAttemptOutcome, projectAttemptResult, repairVisual } from './results';
 
 const REPAIR_ATTEMPT_SELECT = `SELECT attempt.id, attempt.bug_id, attempt.execution_id,
        attempt.attempt, attempt.outcome_json, attempt.created_at,
@@ -84,13 +80,9 @@ export class RepairQueries {
     }));
     return BugRepairViewSchema.parse({
       pendingCommits:
-        technical && context
-          ? parseCommits(context.pending_commits_json)
-          : null,
+        technical && context ? parseCommits(context.pending_commits_json) : null,
       sessionAvailable: Boolean(context?.session_id),
-      synchronizationError: technical
-        ? this.sessionSynchronizationError(bugId)
-        : null,
+      synchronizationError: technical ? this.sessionSynchronizationError(bugId) : null,
       synchronizationCorrection: technical
         ? this.sessionSynchronizationCorrection(bugId)
         : null,
@@ -126,9 +118,7 @@ export class RepairQueries {
     });
   }
 
-  interactionsForBug(
-    bugId: string,
-  ): Array<CookingInteractionRow & { attempt: number }> {
+  interactionsForBug(bugId: string): Array<CookingInteractionRow & { attempt: number }> {
     return this.db.all<CookingInteractionRow & { attempt: number }>(
       `SELECT interaction.*, attempt.attempt
          FROM platform_execution_interaction interaction
@@ -198,9 +188,7 @@ export class RepairQueries {
     const failure = row?.outcome_json
       ? (JSON.parse(row.outcome_json) as { failure?: { message?: unknown } })
       : null;
-    return typeof failure?.failure?.message === 'string'
-      ? failure.failure.message
-      : null;
+    return typeof failure?.failure?.message === 'string' ? failure.failure.message : null;
   }
 
   sessionSynchronizationCorrection(bugId: string): {
@@ -236,10 +224,7 @@ export class RepairQueries {
       turn?.outputJsonSchema && typeof turn.outputJsonSchema === 'object'
         ? JSON.stringify(turn.outputJsonSchema, null, 2)
         : null;
-    if (
-      schema &&
-      /未返回结果|未返回可识别的结果|不符合原任务结果约束/u.test(message)
-    )
+    if (schema && /未返回结果|未返回可识别的结果|不符合原任务结果约束/u.test(message))
       return {
         instruction:
           '回到原 Codex 会话，完成实际修复与验证后，依据下方结果约束据实输出本次终态结果，再点击“同步状态”。',
@@ -269,10 +254,8 @@ export class RepairQueries {
   }
 
   bugRegisteredAt(bugId: string): string {
-    const row = this.db.get(
-      'SELECT created_at FROM cooking_bug WHERE id = ?',
-      bugId,
-    ) as { created_at: string } | undefined;
+    const row = this.db.get('SELECT created_at FROM cooking_bug WHERE id = ?', bugId) as
+      { created_at: string } | undefined;
     if (!row) throw new PlatformError('NOT_FOUND', '修复缺陷不存在');
     return row.created_at;
   }

@@ -18,8 +18,7 @@ export function initializeSchema(database: Database): void {
   const currentVersion = Number(versionRow?.user_version ?? 0);
   if (currentVersion === SERVER_SCHEMA_VERSION) return;
 
-  if (currentVersion !== 0)
-    throw schemaMismatch(currentVersion, SERVER_SCHEMA_VERSION);
+  if (currentVersion !== 0) throw schemaMismatch(currentVersion, SERVER_SCHEMA_VERSION);
 
   const existingTables = database
     .query<{ name: string }, []>(

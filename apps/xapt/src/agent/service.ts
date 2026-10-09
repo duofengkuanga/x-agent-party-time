@@ -4,15 +4,9 @@ import type {
 } from '@agent-party-time/runner-contract';
 import type { Clock } from '../platform/contracts';
 import type { DirectorySelector } from '../platform/macos/directory-selector';
-import {
-  RepositoryError,
-  type LocalRepositoryInspector,
-} from '../platform/repository';
+import { RepositoryError, type LocalRepositoryInspector } from '../platform/repository';
 import type { LocalStateStore } from '../state/store';
-import type {
-  AuthenticatedRunnerSession,
-  ConnectionCoordinator,
-} from './connection';
+import type { AuthenticatedRunnerSession, ConnectionCoordinator } from './connection';
 import type { RunnerBindingHttp } from './server-http';
 import type { ExecutionService } from '../execution/service';
 
@@ -71,25 +65,20 @@ export class AgentService {
         (await this.executions.hasRecoveryRecords())
       : false;
     const session = await this.connection.heartbeat(
-      recovering
-        ? 0
-        : 3 - (this.executions?.projection.activeExecutionCount ?? 0),
+      recovering ? 0 : 3 - (this.executions?.projection.activeExecutionCount ?? 0),
     );
     if (!session) return false;
     const serverBindings = await this.http.listBindings(
       session.serverOrigin,
       session.credential,
     );
-    await this.state.pruneBindings(
-      serverBindings.map(({ bindingId }) => bindingId),
-    );
+    await this.state.pruneBindings(serverBindings.map(({ bindingId }) => bindingId));
     if (this.executions) {
       this.projection.activeExecutionCount =
         this.executions.projection.activeExecutionCount;
       this.projection.waitingInteractionCount =
         this.executions.projection.waitingInteractionCount;
-      this.projection.recoveryRequired =
-        this.executions.projection.recoveryRequired;
+      this.projection.recoveryRequired = this.executions.projection.recoveryRequired;
       try {
         const progressed = await this.executions.cycle(session);
         if (recovering || progressed) return progressed;
@@ -98,8 +87,7 @@ export class AgentService {
           this.executions.projection.activeExecutionCount;
         this.projection.waitingInteractionCount =
           this.executions.projection.waitingInteractionCount;
-        this.projection.recoveryRequired =
-          this.executions.projection.recoveryRequired;
+        this.projection.recoveryRequired = this.executions.projection.recoveryRequired;
       }
     }
     const request = await this.http.claimBindingWork(
@@ -144,8 +132,7 @@ export class AgentService {
     try {
       repositoryUrl = await this.repositories.origin(repositoryPath);
     } catch (error) {
-      const code =
-        error instanceof RepositoryError ? error.code : 'NOT_GIT_REPOSITORY';
+      const code = error instanceof RepositoryError ? error.code : 'NOT_GIT_REPOSITORY';
       await this.completeFailure(session, request, {
         outcome: 'FAILED',
         code,

@@ -51,9 +51,7 @@ test('卸载不删除非 xapt 管理的 Skill 命名空间', async () => {
 
   expect(result.warnings).toContain('规则包目录不由 xapt 管理，未删除');
   expect(
-    await fixture.files.read(
-      join(fixture.paths.skillNamespaceLink, 'mine.txt'),
-    ),
+    await fixture.files.read(join(fixture.paths.skillNamespaceLink, 'mine.txt')),
   ).not.toBeNull();
 });
 
@@ -77,9 +75,7 @@ test('普通卸载在 Outbox 未收敛时不启动、不撤销也不删除', asy
     code: 'UNSETTLED_STATE',
   });
   expect(fixture.events).toEqual([]);
-  expect(
-    await fixture.files.info(fixture.paths.applicationSupport),
-  ).not.toBeNull();
+  expect(await fixture.files.info(fixture.paths.applicationSupport)).not.toBeNull();
 });
 
 test('只含空 Workspace 索引时允许安全卸载', async () => {
@@ -107,9 +103,7 @@ test('强制卸载在任何副作用前要求真实 TTY 且允许取消', async 
     code: 'CANCELLED',
   });
   expect(cancelled.events).toEqual(['confirm']);
-  expect(
-    await cancelled.files.info(cancelled.paths.applicationSupport),
-  ).not.toBeNull();
+  expect(await cancelled.files.info(cancelled.paths.applicationSupport)).not.toBeNull();
 });
 
 test('强制离线卸载仍删除可定位的本机 Keychain Credential', async () => {
@@ -126,16 +120,10 @@ test('强制离线卸载仍删除可定位的本机 Keychain Credential', async 
     remoteRevoked: false,
     warnings: ['服务离线，远程授权状态未知'],
   });
-  expect(fixture.events).toEqual([
-    'confirm',
-    'stop:true:true',
-    'keychain-delete',
-  ]);
+  expect(fixture.events).toEqual(['confirm', 'stop:true:true', 'keychain-delete']);
 });
 
-async function createFixture(
-  options: { terminal?: boolean; confirmed?: boolean } = {},
-) {
+async function createFixture(options: { terminal?: boolean; confirmed?: boolean } = {}) {
   const home = await createTestDirectory();
   const paths = xaptPaths(home);
   const files = new NodeLocalFileSystem();

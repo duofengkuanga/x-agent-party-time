@@ -8,9 +8,7 @@ export function testDirectories(defaultPrefix: string) {
   const directories: string[] = [];
   afterEach(async () => {
     await Promise.all(
-      directories
-        .splice(0)
-        .map((path) => rm(path, { recursive: true, force: true })),
+      directories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
     );
   });
   return async (prefix = defaultPrefix) => {

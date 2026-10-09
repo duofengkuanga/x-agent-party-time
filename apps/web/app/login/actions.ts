@@ -1,11 +1,7 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import {
-  authService,
-  establishSession,
-  safeRedirectPath,
-} from '@/platform/auth/server';
+import { authService, establishSession, safeRedirectPath } from '@/platform/auth/server';
 import { logger } from '@/platform/logging';
 
 export type LoginState = { error: string | null };

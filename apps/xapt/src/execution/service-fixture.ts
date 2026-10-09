@@ -124,23 +124,20 @@ export async function createFixture(
       {
         prepare: async () => ({ kind: 'EXECUTE', cwd: repositoryPath }),
         resolve: async () => {
-          if (options.workspaceResolveFailure)
-            throw options.workspaceResolveFailure;
+          if (options.workspaceResolveFailure) throw options.workspaceResolveFailure;
           return repositoryPath;
         },
       } as ExecutionWorkspaceManager,
       executor,
       {
         resolveCurrent: async () => skillAt(skillBinding),
-        resolveBound: async (identity: typeof skillBinding) =>
-          skillAt(identity),
+        resolveBound: async (identity: typeof skillBinding) => skillAt(identity),
       } as unknown as SkillBundleManager,
       {
         capture: async () => options.capturedBaseline ?? null,
         verify: async (_repositoryPath, _assertions, baseline) => {
           verifiedBaselines.push(baseline);
-          if (options.resultValidationFailure)
-            throw options.resultValidationFailure;
+          if (options.resultValidationFailure) throw options.resultValidationFailure;
         },
       } as ExecutionResultVerifier,
       () => now,
@@ -244,11 +241,7 @@ class FakeExecutionHttp implements RunnerExecutionHttp {
     };
   }
 
-  async waitInteraction(
-    _origin: string,
-    _credential: string,
-    executionId: string,
-  ) {
+  async waitInteraction(_origin: string, _credential: string, executionId: string) {
     return {
       interaction: {
         id: '00000000-0000-4000-8000-000000000350',
@@ -378,9 +371,7 @@ function initialTurn(): ClaimedExecution['codexTurn'] {
   };
 }
 
-export function continuationTurn(
-  taskId: string,
-): ClaimedExecution['codexTurn'] {
+export function continuationTurn(taskId: string): ClaimedExecution['codexTurn'] {
   return {
     kind: 'CONTINUATION',
     taskId,

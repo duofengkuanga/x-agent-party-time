@@ -1,8 +1,5 @@
 import { createCooking } from '@/cooking/runtime/create-cooking';
-import {
-  completeClaimedExecution,
-  testSkillBinding,
-} from '@/cooking/testing/execution';
+import { completeClaimedExecution, testSkillBinding } from '@/cooking/testing/execution';
 import { deliveryProject, mutation } from '@/cooking/testing/project';
 import type { AppDatabase } from '@/platform/database';
 import { LocalFileStore } from '@/platform/files/local-file-store';
@@ -11,11 +8,8 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 
 /** Each test file owns its database factory and cleanup hook. */
-export function repairFixture(
-  createDatabase: ReturnType<typeof testDatabases>,
-) {
-  return (options: Parameters<typeof setup>[1] = {}) =>
-    setup(createDatabase, options);
+export function repairFixture(createDatabase: ReturnType<typeof testDatabases>) {
+  return (options: Parameters<typeof setup>[1] = {}) => setup(createDatabase, options);
 }
 
 async function setup(
@@ -51,8 +45,7 @@ async function setup(
   const events: Array<{ submissionId: string; revision: number }> = [];
   const { repairs, bugs, executions } = createCooking(database, {
     now: now,
-    publish: (submissionId, revision) =>
-      events.push({ submissionId, revision }),
+    publish: (submissionId, revision) => events.push({ submissionId, revision }),
     ids: { repair: options.repairCreateId },
   });
   const files = new LocalFileStore(database, join(directory, 'files'));
@@ -123,8 +116,7 @@ export async function requestSyncAfterFailure(
     fixture.requested.bug.id,
     {
       mutationId: randomUUID(),
-      expectedVersion: currentBug(fixture.database, fixture.requested.bug.id)
-        .version,
+      expectedVersion: currentBug(fixture.database, fixture.requested.bug.id).version,
     },
   );
   const [claimed] = await fixture.executions.claim(fixture.runner.id, 1, 0);
@@ -159,8 +151,8 @@ export function latestAttempt(database: AppDatabase, bugId: string) {
 }
 
 export function currentBug(database: AppDatabase, bugId: string) {
-  return database.get(
-    'SELECT stage, version FROM cooking_bug WHERE id = ?',
-    bugId,
-  ) as { stage: string; version: number };
+  return database.get('SELECT stage, version FROM cooking_bug WHERE id = ?', bugId) as {
+    stage: string;
+    version: number;
+  };
 }

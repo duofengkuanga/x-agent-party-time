@@ -47,9 +47,7 @@ export class UpdateDelivery {
     if (!latest || !isTerminal(latest.state))
       throw new PlatformError('RESOURCE_CONFLICT', '当前更新执行尚未结束');
     const source = batch.source;
-    const deployment = DeploymentMethodSchema.parse(
-      JSON.parse(batch.deployment_json),
-    );
+    const deployment = DeploymentMethodSchema.parse(JSON.parse(batch.deployment_json));
     const externalReport =
       deployment.kind === 'CI_CD'
         ? this.queries.latestUnconsumedFailedReport(batchId)
@@ -58,10 +56,7 @@ export class UpdateDelivery {
       ? this.queries.externalReportAttachmentIds(externalReport.id)
       : [];
     if (!batch.session_id)
-      throw new PlatformError(
-        'INVALID_TRANSITION',
-        '原更新任务不存在，不能自动重建',
-      );
+      throw new PlatformError('INVALID_TRANSITION', '原更新任务不存在，不能自动重建');
     const previousExecution = this.executions.get(latest.execution_id);
     const continuationInput = externalReport
       ? buildUpdateExternalFailureInput({
@@ -139,19 +134,13 @@ export class UpdateDelivery {
       !isTerminal(latest.state) ||
       !batch.session_id
     )
-      throw new PlatformError(
-        'INVALID_TRANSITION',
-        '当前没有可同步的失败更新会话',
-      );
+      throw new PlatformError('INVALID_TRANSITION', '当前没有可同步的失败更新会话');
     if (this.queries.hasActiveSessionSync(batchId))
       throw new PlatformError('RESOURCE_CONFLICT', '更新会话正在同步');
     const source = batch.source;
     const previousExecution = this.executions.get(latest.execution_id);
     if (!previousExecution.codexTurn)
-      throw new PlatformError(
-        'INVALID_TRANSITION',
-        '原更新任务缺少结果约束，不能同步',
-      );
+      throw new PlatformError('INVALID_TRANSITION', '原更新任务缺少结果约束，不能同步');
     const syncId = this.createId();
     const execution = this.executions.enqueue({
       id: this.createId(),
@@ -222,8 +211,7 @@ export class UpdateDelivery {
       if (frozen)
         prepared.push({
           ...frozen,
-          submissionId:
-            this.queries.itemSource(submission_item_id).submission_id,
+          submissionId: this.queries.itemSource(submission_item_id).submission_id,
         });
     }
     for (const item of prepared)
@@ -242,9 +230,7 @@ export class UpdateDelivery {
       !environmentOwned(this.db, submissionItemId)
     )
       return undefined;
-    const deployment = DeploymentMethodSchema.parse(
-      JSON.parse(source.deployment_json),
-    );
+    const deployment = DeploymentMethodSchema.parse(JSON.parse(source.deployment_json));
     const pending = this.db.get(
       `SELECT last_candidate_at, eligible_at
          FROM cooking_pending_delivery WHERE submission_item_id = ?`,
@@ -254,10 +240,9 @@ export class UpdateDelivery {
     if (this.queries.activeBatch(submissionItemId)) return undefined;
     const candidates = this.queries.candidates(submissionItemId);
     if (!candidates.length) {
-      this.db.run(
-        'DELETE FROM cooking_pending_delivery WHERE submission_item_id = ?',
-        [submissionItemId],
-      );
+      this.db.run('DELETE FROM cooking_pending_delivery WHERE submission_item_id = ?', [
+        submissionItemId,
+      ]);
       return undefined;
     }
     const batchId = this.createId();
@@ -337,10 +322,10 @@ export class UpdateDelivery {
          ) VALUES (?, ?, ?, NULL, 1, NULL, ?, NULL)`,
       [attemptId, batchId, execution.id, now],
     );
-    this.db.run(
-      `UPDATE cooking_update_batch SET active_execution_id = ? WHERE id = ?`,
-      [execution.id, batchId],
-    );
+    this.db.run(`UPDATE cooking_update_batch SET active_execution_id = ? WHERE id = ?`, [
+      execution.id,
+      batchId,
+    ]);
     const bugUpdate = this.db.run(
       `UPDATE cooking_bug
          SET stage = 'UPDATING', version = version + 1, updated_at = ?
@@ -352,10 +337,9 @@ export class UpdateDelivery {
     );
     if (bugUpdate.changes !== candidates.length)
       throw new PlatformError('STALE_STATE', '待更新缺陷集合已变化');
-    this.db.run(
-      'DELETE FROM cooking_pending_delivery WHERE submission_item_id = ?',
-      [submissionItemId],
-    );
+    this.db.run('DELETE FROM cooking_pending_delivery WHERE submission_item_id = ?', [
+      submissionItemId,
+    ]);
     const revision = this.writes.bumpRevision(source.submission_id, now);
     return { batchId, executionId: execution.id, revision };
   }
@@ -372,22 +356,16 @@ export class UpdateDelivery {
       submissionItemId,
     ) as { last_candidate_at: string | null };
     if (!latest.last_candidate_at) {
-      this.db.run(
-        'DELETE FROM cooking_pending_delivery WHERE submission_item_id = ?',
-        [submissionItemId],
-      );
+      this.db.run('DELETE FROM cooking_pending_delivery WHERE submission_item_id = ?', [
+        submissionItemId,
+      ]);
       return;
     }
     this.recordPendingDelivery(submissionItemId, latest.last_candidate_at);
   }
 
-  private recordPendingDelivery(
-    submissionItemId: string,
-    candidateAt: string,
-  ): void {
-    const eligibleAt = new Date(
-      Date.parse(candidateAt) + QUIET_WINDOW_MS,
-    ).toISOString();
+  private recordPendingDelivery(submissionItemId: string, candidateAt: string): void {
+    const eligibleAt = new Date(Date.parse(candidateAt) + QUIET_WINDOW_MS).toISOString();
     this.db.run(
       `INSERT INTO cooking_pending_delivery(
            submission_item_id, last_candidate_at, eligible_at

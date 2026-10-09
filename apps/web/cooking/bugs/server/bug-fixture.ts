@@ -1,7 +1,4 @@
-import {
-  projectScenario,
-  engineeringScenario,
-} from '@/cooking/testing/scenario';
+import { projectScenario, engineeringScenario } from '@/cooking/testing/scenario';
 import { SubmissionService } from '@/cooking/submissions/server/submission-service';
 import { LocalFileStore } from '@/platform/files/local-file-store';
 import { RunnerService } from '@/platform/runner/service';
@@ -25,15 +22,12 @@ async function setup(createDatabase: ReturnType<typeof testDatabases>) {
     member: ['bug-member', '普通成员'],
     outsider: ['bug-outsider', '项目外用户'],
   } satisfies Record<string, [string, string]>;
-  const { users, project } = await projectScenario<keyof typeof people>(
-    database,
-    {
-      name: '缺陷协作项目',
-      owner: 'owner',
-      members: ['tester', 'developerA', 'developerB', 'member'],
-      people,
-    },
-  );
+  const { users, project } = await projectScenario<keyof typeof people>(database, {
+    name: '缺陷协作项目',
+    owner: 'owner',
+    members: ['tester', 'developerA', 'developerB', 'member'],
+    people,
+  });
   const runners = new RunnerService(database);
   const runnerA = runners.pair(
     runners.issuePairingCode(users.developerA.id).code,

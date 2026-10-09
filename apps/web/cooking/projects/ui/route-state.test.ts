@@ -29,11 +29,7 @@ describe('Project settings route state', () => {
 
   test.each([
     ['未知项目', { projectId: 'missing', panel: 'engineering' }, {}],
-    [
-      '未知面板',
-      { projectId: 'owned', panel: 'unknown', engineeringId: 'x' },
-      {},
-    ],
+    ['未知面板', { projectId: 'owned', panel: 'unknown', engineeringId: 'x' }, {}],
     [
       '未知工程',
       {

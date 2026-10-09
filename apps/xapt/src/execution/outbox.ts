@@ -5,10 +5,7 @@ import type {
 import type { AuthenticatedRunnerSession } from '../agent/connection';
 import type { RunnerExecutionHttp } from '../agent/server-http';
 import { RunnerHttpError } from '@agent-party-time/runner-contract/http-client';
-import {
-  OUTBOX_STATE_SCHEMA_VERSION,
-  type OutboxEntry,
-} from '../state/schemas';
+import { OUTBOX_STATE_SCHEMA_VERSION, type OutboxEntry } from '../state/schemas';
 import type { LocalStateStore } from '../state/store';
 export class ExecutionOutbox {
   constructor(
@@ -65,8 +62,7 @@ export class ExecutionOutbox {
     } catch (error) {
       if (!isTerminalDeliveryError(error)) return false;
       await this.state.removeOutbox(entry.id);
-      if (mode === 'RECOVERY')
-        await this.state.removeExecution(entry.executionId);
+      if (mode === 'RECOVERY') await this.state.removeExecution(entry.executionId);
       return true;
     }
   }
@@ -74,8 +70,6 @@ export class ExecutionOutbox {
 function isTerminalDeliveryError(error: unknown): boolean {
   return (
     error instanceof RunnerHttpError &&
-    ['LEASE_EXPIRED', 'OUTCOME_CONFLICT', 'INVALID_TRANSITION'].includes(
-      error.code,
-    )
+    ['LEASE_EXPIRED', 'OUTCOME_CONFLICT', 'INVALID_TRANSITION'].includes(error.code)
   );
 }

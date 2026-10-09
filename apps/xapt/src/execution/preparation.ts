@@ -19,10 +19,7 @@ import {
   type XaptSkillName,
 } from '../skills/manager';
 import type { LocalStateStore } from '../state/store';
-import type {
-  AttachmentMaterializer,
-  MaterializedAttachment,
-} from './attachments';
+import type { AttachmentMaterializer, MaterializedAttachment } from './attachments';
 import {
   ExecutionResultVerificationError,
   type ExecutionResultBaseline,
@@ -54,8 +51,7 @@ type PreparedExecution =
   | { kind: 'FAILED'; failure: ExecutionFailure };
 
 type SynchronizedSession =
-  | { kind: 'READY'; result: JsonValue }
-  | { kind: 'FAILED'; failure: ExecutionFailure };
+  { kind: 'READY'; result: JsonValue } | { kind: 'FAILED'; failure: ExecutionFailure };
 
 function failed(failure: ExecutionFailure) {
   return { kind: 'FAILED' as const, failure };
@@ -95,10 +91,7 @@ export class ExecutionPreparation {
     let repositoryPath = bindingPath;
     if (execution.workspace)
       try {
-        const prepared = await this.workspaces.prepare(
-          bindingPath,
-          execution.workspace,
-        );
+        const prepared = await this.workspaces.prepare(bindingPath, execution.workspace);
         if (prepared.kind === 'COMPLETED')
           return { kind: 'WORKSPACE_COMPLETED', result: prepared.result };
         repositoryPath = prepared.cwd;
@@ -159,10 +152,7 @@ export class ExecutionPreparation {
         repositoryPath,
         resultAssertions,
       );
-      await this.state.saveExecutionResultBaseline(
-        execution.id,
-        resultBaseline,
-      );
+      await this.state.saveExecutionResultBaseline(execution.id, resultBaseline);
     } catch (error) {
       return failed({
         code: 'CODEX_START_FAILED',
@@ -188,15 +178,10 @@ export class ExecutionPreparation {
   ): Promise<SynchronizedSession> {
     try {
       const completed = await this.executor.readLastCompletedTurn(sessionId);
-      verifySessionResultSchema(
-        execution.codexTurn?.outputJsonSchema,
-        completed.result,
-      );
+      verifySessionResultSchema(execution.codexTurn?.outputJsonSchema, completed.result);
       const resultAssertions = execution.codexTurn?.resultAssertions ?? [];
       if (resultAssertions.length > 0) {
-        const bindingPath = await this.state.resolveBinding(
-          execution.bindingId,
-        );
+        const bindingPath = await this.state.resolveBinding(execution.bindingId);
         if (!bindingPath)
           throw new ExecutionResultVerificationError(
             '本机未登记原任务关联，无法校验同步结果',

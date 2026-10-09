@@ -78,9 +78,7 @@ describe('projectCookingInteraction', () => {
   });
 });
 
-function row(
-  values: Partial<CookingInteractionRow> = {},
-): CookingInteractionRow {
+function row(values: Partial<CookingInteractionRow> = {}): CookingInteractionRow {
   return {
     id: '00000000-0000-4000-8000-000000000901',
     execution_id: '00000000-0000-4000-8000-000000000902',

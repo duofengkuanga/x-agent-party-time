@@ -83,10 +83,7 @@ export class CodexAppServerExecutor implements CodexExecutor {
       await Promise.race([
         executor.ensureStarted(),
         new Promise<never>((_, reject) => {
-          timeout = setTimeout(
-            () => reject(new Error('initialize timeout')),
-            timeoutMs,
-          );
+          timeout = setTimeout(() => reject(new Error('initialize timeout')), timeoutMs);
         }),
       ]);
     } finally {
@@ -99,10 +96,7 @@ export class CodexAppServerExecutor implements CodexExecutor {
     input: CodexExecutionInput,
     signal: AbortSignal,
   ): Promise<StartedCodexExecution> {
-    const operation = new CodexAppServerExecutor(
-      this.executable,
-      this.spawnProcess,
-    );
+    const operation = new CodexAppServerExecutor(this.executable, this.spawnProcess);
     this.operations.add(operation);
     const release = async () => {
       await operation.close();
@@ -161,10 +155,7 @@ export class CodexAppServerExecutor implements CodexExecutor {
   }
 
   async readLastCompletedTurn(sessionId: string): Promise<CompletedCodexTurn> {
-    const operation = new CodexAppServerExecutor(
-      this.executable,
-      this.spawnProcess,
-    );
+    const operation = new CodexAppServerExecutor(this.executable, this.spawnProcess);
     this.operations.add(operation);
     try {
       return await operation.readOwnedTurn(sessionId);
@@ -176,15 +167,11 @@ export class CodexAppServerExecutor implements CodexExecutor {
 
   private async readOwnedTurn(sessionId: string): Promise<CompletedCodexTurn> {
     await this.ensureStarted();
-    return readCompletedTurn(sessionId, (method, params) =>
-      this.request(method, params),
-    );
+    return readCompletedTurn(sessionId, (method, params) => this.request(method, params));
   }
 
   async close(): Promise<void> {
-    await Promise.all(
-      [...this.operations].map((operation) => operation.close()),
-    );
+    await Promise.all([...this.operations].map((operation) => operation.close()));
     if (this.closing) return this.closing;
     const child = this.child;
     if (!child) return;
@@ -261,12 +248,8 @@ export class CodexAppServerExecutor implements CodexExecutor {
         log.end(callback);
       };
       const abort = () => {
-        void this.request('turn/interrupt', { threadId, turnId }).catch(
-          () => undefined,
-        );
-        finish(() =>
-          reject(new CodexAppServerError('Codex Turn 已被取消', threadId)),
-        );
+        void this.request('turn/interrupt', { threadId, turnId }).catch(() => undefined);
+        finish(() => reject(new CodexAppServerError('Codex Turn 已被取消', threadId)));
       };
       const active: ActiveTurn = {
         threadId,
@@ -312,9 +295,7 @@ export class CodexAppServerExecutor implements CodexExecutor {
       if (Object.keys(error).length)
         pending.reject(
           new Error(
-            typeof error.message === 'string'
-              ? error.message
-              : 'Codex 本机服务请求失败',
+            typeof error.message === 'string' ? error.message : 'Codex 本机服务请求失败',
           ),
         );
       else pending.resolve(message.result);
@@ -326,8 +307,7 @@ export class CodexAppServerExecutor implements CodexExecutor {
     const threadId = optionalString(params.threadId);
     const turnId =
       optionalString(params.turnId) ?? optionalString(asRecord(params.turn).id);
-    const active =
-      threadId && turnId ? this.turns.get(turnKey(threadId, turnId)) : null;
+    const active = threadId && turnId ? this.turns.get(turnKey(threadId, turnId)) : null;
     if (active) active.log.write(`${raw}\n`);
 
     if (id !== undefined && method) {
@@ -349,16 +329,11 @@ export class CodexAppServerExecutor implements CodexExecutor {
     }
   }
 
-  private completeTurn(
-    active: ActiveTurn,
-    params: Record<string, unknown>,
-  ): void {
+  private completeTurn(active: ActiveTurn, params: Record<string, unknown>): void {
     const turn = asRecord(params.turn);
     const status = optionalString(turn.status);
     if (status !== 'completed') {
-      active.reject(
-        new CodexAppServerError(turnFailureMessage(turn), active.threadId),
-      );
+      active.reject(new CodexAppServerError(turnFailureMessage(turn), active.threadId));
       return;
     }
     const message =
@@ -373,10 +348,7 @@ export class CodexAppServerExecutor implements CodexExecutor {
     const result = parseStructuredResult(message);
     if (result === undefined) {
       active.reject(
-        new CodexAppServerError(
-          'Codex Turn 返回的结构化结果无效',
-          active.threadId,
-        ),
+        new CodexAppServerError('Codex Turn 返回的结构化结果无效', active.threadId),
       );
       return;
     }
@@ -398,11 +370,7 @@ export class CodexAppServerExecutor implements CodexExecutor {
       });
       this.respond(
         request.id,
-        restorePrivateInteractionResolution(
-          request.method,
-          result,
-          request.params,
-        ),
+        restorePrivateInteractionResolution(request.method, result, request.params),
       );
     } catch {
       this.respond(request.id, defaultDecline(request.method));
@@ -427,8 +395,7 @@ export class CodexAppServerExecutor implements CodexExecutor {
 
   private write(message: unknown): void {
     const child = this.child;
-    if (!child || child.exitCode !== null)
-      throw new Error('Codex 本机服务尚未运行');
+    if (!child || child.exitCode !== null) throw new Error('Codex 本机服务尚未运行');
     child.stdin.write(`${JSON.stringify(message)}\n`);
   }
 
@@ -440,9 +407,7 @@ export class CodexAppServerExecutor implements CodexExecutor {
     for (const pending of this.pending.values()) pending.reject(error);
     this.pending.clear();
     for (const turn of this.turns.values())
-      turn.reject(
-        new CodexAppServerError('Codex App Server 已中断', turn.threadId),
-      );
+      turn.reject(new CodexAppServerError('Codex App Server 已中断', turn.threadId));
     this.turns.clear();
     this.completedTurns.clear();
     this.agentMessages.clear();

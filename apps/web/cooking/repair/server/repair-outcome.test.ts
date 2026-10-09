@@ -69,11 +69,8 @@ describe('RepairService', () => {
       );
       expect(completed.state).toBe('FAILED');
       expect(
-        fixture.executions.complete(
-          fixture.runner.id,
-          started.executionId,
-          completion,
-        ).state,
+        fixture.executions.complete(fixture.runner.id, started.executionId, completion)
+          .state,
       ).toBe('FAILED');
       expect(currentBug(fixture.database, fixture.requested.bug.id).stage).toBe(
         'REPAIRING',
@@ -137,9 +134,7 @@ describe('RepairService', () => {
     ).toThrow();
 
     expect(fixture.executions.get(started.executionId).state).toBe('RUNNING');
-    expect(currentBug(fixture.database, fixture.requested.bug.id)).toEqual(
-      before,
-    );
+    expect(currentBug(fixture.database, fixture.requested.bug.id)).toEqual(before);
     expect(
       fixture.database.get(
         'SELECT workspace_revision FROM cooking_test_submission WHERE id = ?',
@@ -147,10 +142,8 @@ describe('RepairService', () => {
       ),
     ).toEqual(beforeRevision);
     expect(
-      fixture.repairs.repairView(
-        fixture.users.developer.id,
-        fixture.requested.bug.id,
-      )?.pendingCommits,
+      fixture.repairs.repairView(fixture.users.developer.id, fixture.requested.bug.id)
+        ?.pendingCommits,
     ).toEqual([]);
   });
 
@@ -221,24 +214,16 @@ describe('RepairService', () => {
     });
     expect(JSON.stringify(developerView)).not.toContain('/Users/example');
     expect(() =>
-      fixture.repairs.resolveInteraction(
-        fixture.users.developer.id,
-        interaction.id,
-        {
-          ...mutation(1),
-          resolution: { decision: 'accept' },
-        },
-      ),
+      fixture.repairs.resolveInteraction(fixture.users.developer.id, interaction.id, {
+        ...mutation(1),
+        resolution: { decision: 'accept' },
+      }),
     ).toThrow(expect.objectContaining({ code: 'STALE_STATE' }));
     expect(() =>
-      fixture.repairs.resolveInteraction(
-        fixture.users.owner.id,
-        interaction.id,
-        {
-          ...mutation(2),
-          resolution: { decision: 'decline' },
-        },
-      ),
+      fixture.repairs.resolveInteraction(fixture.users.owner.id, interaction.id, {
+        ...mutation(2),
+        resolution: { decision: 'decline' },
+      }),
     ).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
     const resolved = fixture.repairs.resolveInteraction(
       fixture.users.developer.id,
@@ -290,14 +275,10 @@ describe('RepairService', () => {
     );
     expect(fixture.events).toHaveLength(eventsBeforeResume + 1);
     expect(() =>
-      fixture.repairs.resolveInteraction(
-        fixture.users.developer.id,
-        interaction.id,
-        {
-          ...mutation(3),
-          resolution: { decision: 'accept' },
-        },
-      ),
+      fixture.repairs.resolveInteraction(fixture.users.developer.id, interaction.id, {
+        ...mutation(3),
+        resolution: { decision: 'accept' },
+      }),
     ).toThrow(expect.objectContaining({ code: 'STALE_STATE' }));
   });
 });

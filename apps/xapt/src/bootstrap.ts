@@ -1,10 +1,7 @@
 import type { CliRuntime } from './cli/run';
 import { MacOsCodexPreflight } from './codex/preflight';
 import { AgentService } from './agent/service';
-import {
-  ConnectionCoordinator,
-  normalizeServerOrigin,
-} from './agent/connection';
+import { ConnectionCoordinator, normalizeServerOrigin } from './agent/connection';
 import { DaemonControlClient } from './daemon/control';
 import { DaemonManager } from './daemon/manager';
 import { DaemonRuntime } from './daemon/runtime';
@@ -64,10 +61,8 @@ export function createCliRuntime(): CliRuntime {
     clock,
     fetch,
     {
-      apiBaseUrl:
-        process.env.XAPT_GITHUB_API ?? DEFAULT_UPDATE_SOURCE.apiBaseUrl,
-      repository:
-        process.env.XAPT_GITHUB_REPOSITORY ?? DEFAULT_UPDATE_SOURCE.repository,
+      apiBaseUrl: process.env.XAPT_GITHUB_API ?? DEFAULT_UPDATE_SOURCE.apiBaseUrl,
+      repository: process.env.XAPT_GITHUB_REPOSITORY ?? DEFAULT_UPDATE_SOURCE.repository,
     },
   );
   const uninstaller = new UninstallManager(
@@ -92,25 +87,20 @@ export function createCliRuntime(): CliRuntime {
       };
     },
     daemonStatus: () => manager.status(),
-    daemonConnect: (serverUrl, progress) =>
-      control.connect(serverUrl, progress),
+    daemonConnect: (serverUrl, progress) => control.connect(serverUrl, progress),
     daemonStop: (force) => manager.stop(force),
     update: () => updates.update(),
     uninstall: (force) => uninstaller.uninstall(force),
     bugsDelete: async ({ bugIds, all, force }) => {
       const connection = await state.loadConnection();
       if (!connection)
-        throw new Error(
-          '尚未连接服务，请先运行 xapt daemon connect <server-url>',
-        );
+        throw new Error('尚未连接服务，请先运行 xapt daemon connect <server-url>');
       const origin = normalizeServerOrigin(connection.serverUrl);
       const credential = await keychain.read(
         keychainAccount(origin, connection.runnerId),
       );
       if (!credential)
-        throw new Error(
-          '未找到本机授权凭据，请先运行 xapt daemon connect <server-url>',
-        );
+        throw new Error('未找到本机授权凭据，请先运行 xapt daemon connect <server-url>');
       const keys = all
         ? await workspaces.workspaceKeys()
         : bugIds.map((bugId) => `bug-repair:${bugId}`);
@@ -131,10 +121,7 @@ export function createCliRuntime(): CliRuntime {
     renderInstallState: async (previousVersion, installedAt) =>
       updates.renderInstallState(previousVersion, installedAt),
     internalDaemon: async () => {
-      if (
-        environment.platform() !== 'darwin' ||
-        environment.architecture() !== 'arm64'
-      )
+      if (environment.platform() !== 'darwin' || environment.architecture() !== 'arm64')
         throw new Error('xapt 0.x 只支持 Apple Silicon macOS');
       const installation = await codex.check();
       const connection = new ConnectionCoordinator(

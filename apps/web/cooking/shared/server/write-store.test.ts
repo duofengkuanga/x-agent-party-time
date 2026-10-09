@@ -79,10 +79,7 @@ describe('CookingWriteStore 冲突保护', () => {
 test('TestSubmissionWriteStore 只在首次成功提交后发布 Revision', async () => {
   const { directory, database } = await createDatabase();
   const auth = new AuthService(database);
-  const user = await seedTestUser(auth, [
-    'submission-write-user',
-    '提测写入用户',
-  ]);
+  const user = await seedTestUser(auth, ['submission-write-user', '提测写入用户']);
   const project = new ProjectService(database).createProject(user.id, {
     mutationId: randomUUID(),
     name: '提测写入项目',

@@ -19,10 +19,7 @@ async function setup() {
     'Execution 用户',
   ]);
   const runners = new RunnerService(database);
-  const paired = runners.pair(
-    runners.issuePairingCode(user.id).code,
-    'Execution Runner',
-  );
+  const paired = runners.pair(runners.issuePairingCode(user.id).code, 'Execution Runner');
   let now = new Date('2026-07-27T08:00:00.000Z');
   let leaseIndex = 0;
   const executions = new ExecutionService(
@@ -62,9 +59,7 @@ describe('Execution lifecycle', () => {
     const other = executions.enqueue(input(runnerId, bindingId(2), 'other'));
 
     const claimed = await executions.claim(runnerId, 3, 0);
-    expect(claimed.map(({ id }) => id).sort()).toEqual(
-      [first.id, other.id].sort(),
-    );
+    expect(claimed.map(({ id }) => id).sort()).toEqual([first.id, other.id].sort());
     expect(new Set(claimed.map(({ lease }) => lease.token)).size).toBe(2);
     expect(executions.get(second.id).state).toBe('QUEUED');
   });
@@ -86,9 +81,7 @@ describe('Execution lifecycle', () => {
       kind: 'USER_INPUT',
       method: 'item/tool/requestUserInput',
       payload: {
-        questions: [
-          { id: 'continue', header: '继续处理', question: '继续吗？' },
-        ],
+        questions: [{ id: 'continue', header: '继续处理', question: '继续吗？' }],
       },
     });
     expect(executions.activityForRunner(runnerId)).toEqual({
@@ -99,13 +92,7 @@ describe('Execution lifecycle', () => {
       answers: { continue: { answers: ['继续'] } },
     });
     expect(
-      await executions.waitInteraction(
-        runnerId,
-        queued.id,
-        interaction.id,
-        token,
-        0,
-      ),
+      await executions.waitInteraction(runnerId, queued.id, interaction.id, token, 0),
     ).toMatchObject({
       laneAcquired: true,
       interaction: {
@@ -119,12 +106,8 @@ describe('Execution lifecycle', () => {
       sessionId: 'session-flow',
       outcome: { kind: 'SUCCEEDED' as const, result: { ok: true } },
     };
-    expect(executions.complete(runnerId, queued.id, completion).state).toBe(
-      'SUCCEEDED',
-    );
-    expect(executions.complete(runnerId, queued.id, completion).state).toBe(
-      'SUCCEEDED',
-    );
+    expect(executions.complete(runnerId, queued.id, completion).state).toBe('SUCCEEDED');
+    expect(executions.complete(runnerId, queued.id, completion).state).toBe('SUCCEEDED');
     expect(() =>
       executions.complete(runnerId, queued.id, {
         ...completion,
@@ -202,8 +185,7 @@ describe('Execution lifecycle', () => {
   });
 
   test('Lease 过期保留待处理 Interaction，处理后由新 Agent 明确接管', async () => {
-    const { database, executions, runnerId, setNow, startClaimed } =
-      await setup();
+    const { database, executions, runnerId, setNow, startClaimed } = await setup();
     const queued = executions.enqueue(input(runnerId, bindingId(4), 'lease'));
     const firstClaim = (await executions.claim(runnerId, 1, 0))[0]!;
     startClaimed(firstClaim, 'session-resume');
@@ -253,9 +235,7 @@ describe('Execution lifecycle', () => {
     const next = executions.enqueue(input(runnerId, binding, 'next'));
     const claim = (await executions.claim(runnerId, 1, 0))[0]!;
     startClaimed(claim, 'session-cancelled');
-    expect(executions.requestCancellation(cancelled.id).state).toBe(
-      'CANCEL_REQUESTED',
-    );
+    expect(executions.requestCancellation(cancelled.id).state).toBe('CANCEL_REQUESTED');
 
     setNow('2026-07-27T08:00:11.000Z');
     expect((await executions.claim(runnerId, 1, 0))[0]?.id).toBe(next.id);
@@ -277,24 +257,18 @@ describe('Execution lifecycle', () => {
     const next = executions.enqueue(input(runnerId, binding, 'next'));
     const interactionClaim = (await executions.claim(runnerId, 1, 0))[0]!;
     startClaimed(interactionClaim, 'session-waiting-interaction');
-    const interaction = executions.openInteraction(
-      runnerId,
-      waitingInteraction.id,
-      {
-        leaseToken: interactionClaim.lease.token,
-        kind: 'APPROVAL',
-        method: 'item/commandExecution/requestApproval',
-        payload: { command: 'bun test' },
-      },
-    );
+    const interaction = executions.openInteraction(runnerId, waitingInteraction.id, {
+      leaseToken: interactionClaim.lease.token,
+      kind: 'APPROVAL',
+      method: 'item/commandExecution/requestApproval',
+      payload: { command: 'bun test' },
+    });
 
-    expect(executions.requestCancellation(waitingInteraction.id)).toMatchObject(
-      {
-        state: 'CANCELLED',
-        lease: null,
-        cancellationRequested: true,
-      },
-    );
+    expect(executions.requestCancellation(waitingInteraction.id)).toMatchObject({
+      state: 'CANCELLED',
+      lease: null,
+      cancellationRequested: true,
+    });
     expect(
       database.get<{ state: string }>(
         'SELECT state FROM platform_execution_interaction WHERE id = ?',
@@ -307,12 +281,8 @@ describe('Execution lifecycle', () => {
     const waitingResume = executions.enqueue(
       input(runnerId, resumeBinding, 'waiting-resume'),
     );
-    const blocker = executions.enqueue(
-      input(runnerId, resumeBinding, 'blocker'),
-    );
-    const following = executions.enqueue(
-      input(runnerId, resumeBinding, 'following'),
-    );
+    const blocker = executions.enqueue(input(runnerId, resumeBinding, 'blocker'));
+    const following = executions.enqueue(input(runnerId, resumeBinding, 'following'));
     const resumeClaim = (await executions.claim(runnerId, 1, 0))[0]!;
     startClaimed(resumeClaim, 'session-waiting-resume');
     const resolved = executions.openInteraction(runnerId, waitingResume.id, {
@@ -346,12 +316,8 @@ describe('Execution lifecycle', () => {
   test('领取候选显式排除 cancellation_requested Execution', async () => {
     const { database, executions, runnerId } = await setup();
     const binding = bindingId(11);
-    const cancelled = executions.enqueue(
-      input(runnerId, binding, 'cancelled-candidate'),
-    );
-    const available = executions.enqueue(
-      input(runnerId, binding, 'available-candidate'),
-    );
+    const cancelled = executions.enqueue(input(runnerId, binding, 'cancelled-candidate'));
+    const available = executions.enqueue(input(runnerId, binding, 'available-candidate'));
     database.run(
       `UPDATE platform_execution
          SET cancellation_requested = 1
@@ -368,9 +334,7 @@ describe('Execution lifecycle', () => {
     const { executions, runnerId, setNow, startClaimed } = await setup();
     const binding = bindingId(7);
     const first = executions.enqueue(input(runnerId, binding, 'resume-first'));
-    const second = executions.enqueue(
-      input(runnerId, binding, 'resume-second'),
-    );
+    const second = executions.enqueue(input(runnerId, binding, 'resume-second'));
     const third = executions.enqueue(input(runnerId, binding, 'resume-third'));
     const firstClaim = (await executions.claim(runnerId, 1, 0))[0]!;
     startClaimed(firstClaim, 'session-persisted-resume');
@@ -423,12 +387,7 @@ describe('Execution lifecycle', () => {
     });
     const claimed = (await executions.claim(runnerId, 1, 0))[0]!;
     expect(
-      executions.authorizeFile(
-        runnerId,
-        queued.id,
-        claimed.lease.token,
-        file.id,
-      ),
+      executions.authorizeFile(runnerId, queued.id, claimed.lease.token, file.id),
     ).toMatchObject({ file_id: file.id, sha256: file.sha256 });
     const failed = executions.start(runnerId, queued.id, {
       kind: 'START_FAILED',
@@ -447,12 +406,7 @@ describe('Execution lifecycle', () => {
       },
     });
     expect(() =>
-      executions.authorizeFile(
-        runnerId,
-        queued.id,
-        claimed.lease.token,
-        file.id,
-      ),
+      executions.authorizeFile(runnerId, queued.id, claimed.lease.token, file.id),
     ).toThrow(expect.objectContaining({ code: 'LEASE_EXPIRED' }));
   });
 

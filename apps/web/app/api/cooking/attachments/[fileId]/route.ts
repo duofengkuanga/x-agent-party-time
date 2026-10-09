@@ -18,8 +18,7 @@ export async function GET(
     try {
       bugService().requireAttachmentAccess(user.id, fileId);
     } catch (error) {
-      if (!(error instanceof PlatformError) || error.code !== 'NOT_FOUND')
-        throw error;
+      if (!(error instanceof PlatformError) || error.code !== 'NOT_FOUND') throw error;
       updateService().requireExternalAttachmentAccess(user.id, fileId);
     }
     const { file, bytes } = await cookingFileStore().read(fileId);

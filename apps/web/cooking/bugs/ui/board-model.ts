@@ -31,10 +31,7 @@ export type Drawer =
   | { mode: 'batch'; batchId: string };
 
 export type WorkspaceActionResult =
-  | BugActionResult
-  | RepairActionResult
-  | UpdateActionResult
-  | BugLifecycleActionResult;
+  BugActionResult | RepairActionResult | UpdateActionResult | BugLifecycleActionResult;
 
 export type UndoAction = {
   message: string;
@@ -90,10 +87,7 @@ export function bugLabel(bug: BugView): string {
   return `缺陷-${String(bug.shortId).padStart(3, '0')}`;
 }
 
-export function pendingDeliveryFor(
-  bug: BugView,
-  snapshot: CookingWorkspaceSnapshot,
-) {
+export function pendingDeliveryFor(bug: BugView, snapshot: CookingWorkspaceSnapshot) {
   const submissionItemId = bug.assignment?.submissionItemId;
   return submissionItemId
     ? snapshot.pendingDeliveries.find(
@@ -126,9 +120,7 @@ export function formatDateTime(value: string): string {
   }).format(new Date(value));
 }
 
-export function deploymentLabel(
-  kind: UpdateBatchView['deploymentKind'],
-): string {
+export function deploymentLabel(kind: UpdateBatchView['deploymentKind']): string {
   return kind === 'LOCAL_SCRIPT' ? '本地脚本部署' : '持续集成部署';
 }
 
@@ -140,10 +132,7 @@ export function engineeringTypeLabel(
 }
 
 export function updateAttemptLabel(
-  attempt: Extract<
-    UpdateBatchView['timeline'][number],
-    { kind: 'UPDATE_ATTEMPT' }
-  >,
+  attempt: Extract<UpdateBatchView['timeline'][number], { kind: 'UPDATE_ATTEMPT' }>,
 ): string {
   if (attempt.result?.outcome === 'COMPLETED')
     return `第 ${attempt.attempt} 轮统一更新已完成`;
@@ -154,9 +143,7 @@ export function updateAttemptLabel(
   return `第 ${attempt.attempt} 轮统一更新进行中`;
 }
 
-export function validationLabel(
-  status: 'PASSED' | 'FAILED' | 'SKIPPED',
-): string {
+export function validationLabel(status: 'PASSED' | 'FAILED' | 'SKIPPED'): string {
   return {
     PASSED: '通过',
     FAILED: '失败',
@@ -172,9 +159,7 @@ export function stopCardAction(action: () => void) {
 }
 
 export function bugVersionOf(result: WorkspaceActionResult): number | null {
-  return result.ok && 'bugVersion' in result.result
-    ? result.result.bugVersion
-    : null;
+  return result.ok && 'bugVersion' in result.result ? result.result.bugVersion : null;
 }
 
 export function messageOf(error: unknown, fallback: string): string {

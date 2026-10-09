@@ -29,9 +29,7 @@ export async function createProjectAction(formData: FormData): Promise<never> {
   });
 }
 
-export async function inviteProjectUserAction(
-  formData: FormData,
-): Promise<never> {
+export async function inviteProjectUserAction(formData: FormData): Promise<never> {
   const projectId = formField(formData, 'projectId');
   return runRedirectMutation({
     formData,
@@ -46,25 +44,17 @@ export async function inviteProjectUserAction(
   });
 }
 
-export async function respondProjectInvitationAction(
-  formData: FormData,
-): Promise<never> {
+export async function respondProjectInvitationAction(formData: FormData): Promise<never> {
   const returnTo = invitationReturnPath(formField(formData, 'returnTo'));
   return runRedirectMutation({
     formData,
     errorPath: () => returnTo,
     command: (userId) => {
-      projectService().respondToInvitation(
-        userId,
-        formField(formData, 'invitationId'),
-        {
-          mutationId: formField(formData, 'mutationId'),
-          expectedVersion: integerFormField(formData, 'expectedVersion'),
-          decision: ProjectInvitationDecisionSchema.parse(
-            formField(formData, 'decision'),
-          ),
-        },
-      );
+      projectService().respondToInvitation(userId, formField(formData, 'invitationId'), {
+        mutationId: formField(formData, 'mutationId'),
+        expectedVersion: integerFormField(formData, 'expectedVersion'),
+        decision: ProjectInvitationDecisionSchema.parse(formField(formData, 'decision')),
+      });
       return {
         path: returnTo,
         message: '邀请已处理',
@@ -74,22 +64,16 @@ export async function respondProjectInvitationAction(
   });
 }
 
-export async function revokeProjectInvitationAction(
-  formData: FormData,
-): Promise<never> {
+export async function revokeProjectInvitationAction(formData: FormData): Promise<never> {
   const projectId = formField(formData, 'projectId');
   return runRedirectMutation({
     formData,
     errorPath: () => projectPanelPath(projectId, 'collaboration'),
     command: (userId) => {
-      projectService().revokeInvitation(
-        userId,
-        formField(formData, 'invitationId'),
-        {
-          mutationId: formField(formData, 'mutationId'),
-          expectedVersion: integerFormField(formData, 'expectedVersion'),
-        },
-      );
+      projectService().revokeInvitation(userId, formField(formData, 'invitationId'), {
+        mutationId: formField(formData, 'mutationId'),
+        expectedVersion: integerFormField(formData, 'expectedVersion'),
+      });
       return projectSuccess(projectId, '邀请已撤销');
     },
   });
@@ -115,23 +99,16 @@ export async function updateProjectAction(formData: FormData): Promise<never> {
   });
 }
 
-export async function removeProjectMemberAction(
-  formData: FormData,
-): Promise<never> {
+export async function removeProjectMemberAction(formData: FormData): Promise<never> {
   const projectId = formField(formData, 'projectId');
   return runRedirectMutation({
     formData,
     errorPath: () => projectPanelPath(projectId, 'collaboration'),
     command: (userId) => {
-      projectService().removeMember(
-        userId,
-        projectId,
-        formField(formData, 'userId'),
-        {
-          mutationId: formField(formData, 'mutationId'),
-          expectedVersion: integerFormField(formData, 'expectedVersion'),
-        },
-      );
+      projectService().removeMember(userId, projectId, formField(formData, 'userId'), {
+        mutationId: formField(formData, 'mutationId'),
+        expectedVersion: integerFormField(formData, 'expectedVersion'),
+      });
       return projectSuccess(projectId, '成员已移除');
     },
   });

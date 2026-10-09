@@ -1,8 +1,5 @@
 import { mutation } from '@/cooking/testing/project';
-import {
-  completeClaimedExecution,
-  testSkillBinding,
-} from '@/cooking/testing/execution';
+import { completeClaimedExecution, testSkillBinding } from '@/cooking/testing/execution';
 import { testDatabases } from '@/testing/database';
 import type { ClaimedExecution } from '@agent-party-time/execution-contract';
 import { ProtocolAgent } from '@agent-party-time/runner-conformance';
@@ -45,9 +42,10 @@ describe('RepairService', () => {
       },
       { sessionId: () => 'repair-conformance-session' },
     );
-    expect(
-      currentBug(fixture.database, fixture.requested.bug.id),
-    ).toMatchObject({ stage: 'REPAIRING', version: 3 });
+    expect(currentBug(fixture.database, fixture.requested.bug.id)).toMatchObject({
+      stage: 'REPAIRING',
+      version: 3,
+    });
 
     const continued = fixture.repairs.continueRepair(
       fixture.users.developer.id,
@@ -87,15 +85,12 @@ describe('RepairService', () => {
       },
     });
     expect(claimed[1]?.codexTurn?.kind).toBe('CONTINUATION');
-    if (claimed[1]?.codexTurn?.kind !== 'CONTINUATION')
-      throw new Error('需要继续 Turn');
+    if (claimed[1]?.codexTurn?.kind !== 'CONTINUATION') throw new Error('需要继续 Turn');
     expect(claimed[1].codexTurn.input).toBe('继续完成上次未完成的任务。');
     expect(claimed[1].codexTurn.input).not.toContain('点击后没有反应');
     expect(
-      fixture.repairs.repairView(
-        fixture.users.developer.id,
-        fixture.requested.bug.id,
-      )?.pendingCommits,
+      fixture.repairs.repairView(fixture.users.developer.id, fixture.requested.bug.id)
+        ?.pendingCommits,
     ).toEqual(['abcdef1']);
   });
 
@@ -168,22 +163,16 @@ describe('RepairService', () => {
 
     expect(synced.executionId).toBe(claimed.id);
     expect(
-      fixture.repairs.repairView(
-        fixture.users.developer.id,
-        fixture.requested.bug.id,
-      )?.synchronizationError,
+      fixture.repairs.repairView(fixture.users.developer.id, fixture.requested.bug.id)
+        ?.synchronizationError,
     ).toBe('Codex 会话的最新一轮尚未完成或暂无法确认，请完成后再同步');
     expect(
-      fixture.repairs.repairView(
-        fixture.users.developer.id,
-        fixture.requested.bug.id,
-      )?.synchronizationCorrection,
+      fixture.repairs.repairView(fixture.users.developer.id, fixture.requested.bug.id)
+        ?.synchronizationCorrection,
     ).toBeNull();
     expect(
-      fixture.repairs.repairView(
-        fixture.users.tester.id,
-        fixture.requested.bug.id,
-      )?.synchronizationError,
+      fixture.repairs.repairView(fixture.users.tester.id, fixture.requested.bug.id)
+        ?.synchronizationError,
     ).toBeNull();
     expect(
       fixture.repairs
@@ -195,16 +184,10 @@ describe('RepairService', () => {
       fixture.users.developer.id,
       fixture.requested.bug.id,
       {
-        ...mutation(
-          currentBug(fixture.database, fixture.requested.bug.id).version,
-        ),
+        ...mutation(currentBug(fixture.database, fixture.requested.bug.id).version),
       },
     );
-    const [schemaClaim] = await fixture.executions.claim(
-      fixture.runner.id,
-      1,
-      0,
-    );
+    const [schemaClaim] = await fixture.executions.claim(fixture.runner.id, 1, 0);
     if (!schemaClaim) throw new Error('缺少 Schema 同步 Execution');
     fixture.executions.start(fixture.runner.id, schemaClaim.id, {
       kind: 'START_FAILED',
@@ -222,18 +205,15 @@ describe('RepairService', () => {
     expect(correction?.instruction).toContain('原 Codex 会话');
     expect(correction?.schema).toContain('"result"');
     expect(
-      fixture.repairs.repairView(
-        fixture.users.tester.id,
-        fixture.requested.bug.id,
-      )?.synchronizationCorrection,
+      fixture.repairs.repairView(fixture.users.tester.id, fixture.requested.bug.id)
+        ?.synchronizationCorrection,
     ).toBeNull();
   });
 
   test('Execution 失败使用真实 code/message 且仅向工程负责人投影技术码', async () => {
     const fixture = await setup();
     const started = await startLatest(fixture, 'failed-session');
-    const failureSummary =
-      'Codex 请求过多：429 Too Many Requests，已超过重试次数。';
+    const failureSummary = 'Codex 请求过多：429 Too Many Requests，已超过重试次数。';
     completeClaimedExecution(fixture, started, {
       kind: 'FAILED',
       failure: {
@@ -331,8 +311,7 @@ describe('RepairService', () => {
       kind: 'FAILED',
       failure: {
         code: 'CODEX_START_FAILED',
-        message:
-          'failed to load configuration: Model provider `custom` not found',
+        message: 'failed to load configuration: Model provider `custom` not found',
         retryable: true,
       },
     });

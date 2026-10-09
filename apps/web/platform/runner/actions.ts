@@ -14,9 +14,7 @@ export async function revokeRunnerAction(formData: FormData): Promise<never> {
   return changeRunnerState(formData, 'revoke');
 }
 
-export async function reactivateRunnerAction(
-  formData: FormData,
-): Promise<never> {
+export async function reactivateRunnerAction(formData: FormData): Promise<never> {
   return changeRunnerState(formData, 'reactivate');
 }
 
@@ -44,19 +42,11 @@ async function changeRunnerState(
       messageRedirectPath(
         '/cooking/agents',
         'success',
-        action === 'revoke'
-          ? 'Agent 已停用'
-          : 'Agent 已重新启用，等待本机重新连接',
+        action === 'revoke' ? 'Agent 已停用' : 'Agent 已重新启用，等待本机重新连接',
       ),
     );
   } catch (error) {
     rethrowRedirectError(error);
-    redirect(
-      messageRedirectPath(
-        '/cooking/agents',
-        'error',
-        publicError(error).message,
-      ),
-    );
+    redirect(messageRedirectPath('/cooking/agents', 'error', publicError(error).message));
   }
 }

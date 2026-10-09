@@ -3,10 +3,7 @@ import { projectScenario } from '@/cooking/testing/scenario';
 import { countRows, expectRowCount, testDatabases } from '@/testing/database';
 import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
-import {
-  EngineeringService,
-  type EngineeringGuards,
-} from './engineering-service';
+import { EngineeringService, type EngineeringGuards } from './engineering-service';
 
 const createDatabase = testDatabases();
 
@@ -29,10 +26,8 @@ async function setup() {
     member: new Set<string>(),
   };
   const guards: EngineeringGuards = {
-    engineeringReferenced: (engineeringId) =>
-      references.engineering.has(engineeringId),
-    environmentReferenced: (environmentId) =>
-      references.environment.has(environmentId),
+    engineeringReferenced: (engineeringId) => references.engineering.has(engineeringId),
+    environmentReferenced: (environmentId) => references.environment.has(environmentId),
     memberHasActiveResponsibilities: (engineeringId, userId) =>
       references.member.has(`${engineeringId}:${userId}`),
   };
@@ -54,33 +49,29 @@ async function setup() {
 describe('EngineeringService', () => {
   test('工程初始化原子创建创建者成员、额外成员与多个环境', async () => {
     const { project, service, users } = await setup();
-    const engineering = service.createEngineeringSetup(
-      users.owner.id,
-      project.id,
-      {
-        mutationId: randomUUID(),
-        name: '完整初始化工程',
-        type: 'FRONTEND',
-        identifier: '大屏',
-        creatorMembershipMutationId: randomUUID(),
-        members: [{ userId: users.member.id, mutationId: randomUUID() }],
-        environments: [
-          {
-            mutationId: randomUUID(),
-            name: '测试环境',
-            deployment: {
-              kind: 'LOCAL_SCRIPT',
-              command: 'bun run deploy:test',
-            },
+    const engineering = service.createEngineeringSetup(users.owner.id, project.id, {
+      mutationId: randomUUID(),
+      name: '完整初始化工程',
+      type: 'FRONTEND',
+      identifier: '大屏',
+      creatorMembershipMutationId: randomUUID(),
+      members: [{ userId: users.member.id, mutationId: randomUUID() }],
+      environments: [
+        {
+          mutationId: randomUUID(),
+          name: '测试环境',
+          deployment: {
+            kind: 'LOCAL_SCRIPT',
+            command: 'bun run deploy:test',
           },
-          {
-            mutationId: randomUUID(),
-            name: '预发布环境',
-            deployment: { kind: 'CI_CD' },
-          },
-        ],
-      },
-    );
+        },
+        {
+          mutationId: randomUUID(),
+          name: '预发布环境',
+          deployment: { kind: 'CI_CD' },
+        },
+      ],
+    });
     const workspace = service.getWorkspace(users.owner.id, engineering.id);
     expect(workspace.engineering.identifier).toBe('大屏');
     expect(workspace.members.map(({ user }) => user.id).sort()).toEqual(
@@ -189,12 +180,10 @@ describe('EngineeringService', () => {
         identifier: 'replay-api',
       }),
     ).toEqual(engineering);
-    expect(service.listEngineering(users.member.id, project.id)).toEqual([
-      engineering,
-    ]);
-    expect(() =>
-      service.getEngineering(users.other.id, engineering.id),
-    ).toThrow(expect.objectContaining({ code: 'NOT_FOUND' }));
+    expect(service.listEngineering(users.member.id, project.id)).toEqual([engineering]);
+    expect(() => service.getEngineering(users.other.id, engineering.id)).toThrow(
+      expect.objectContaining({ code: 'NOT_FOUND' }),
+    );
     expect(() =>
       service.createEngineering(users.member.id, project.id, {
         mutationId: randomUUID(),
@@ -277,9 +266,7 @@ describe('EngineeringService', () => {
       type: 'BACKEND',
       identifier: 'web',
     });
-    expect(service.isIdentifierLocked(users.owner.id, engineering.id)).toBe(
-      true,
-    );
+    expect(service.isIdentifierLocked(users.owner.id, engineering.id)).toBe(true);
     expect(() =>
       service.updateEngineering(users.owner.id, engineering.id, {
         ...mutation(renamed.version),
@@ -314,9 +301,7 @@ describe('EngineeringService', () => {
         mutationId: randomUUID(),
       }),
     ).toEqual(membership);
-    expect(service.listMembers(users.member.id, engineering.id)).toHaveLength(
-      1,
-    );
+    expect(service.listMembers(users.member.id, engineering.id)).toHaveLength(1);
 
     references.member.add(`${engineering.id}:${users.member.id}`);
     expect(() =>
@@ -359,15 +344,11 @@ describe('EngineeringService', () => {
       type: 'BACKEND',
       identifier: 'environment-api',
     });
-    const environment = service.createEnvironment(
-      users.owner.id,
-      engineering.id,
-      {
-        mutationId: randomUUID(),
-        name: '测试环境',
-        deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' },
-      },
-    );
+    const environment = service.createEnvironment(users.owner.id, engineering.id, {
+      mutationId: randomUUID(),
+      name: '测试环境',
+      deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' },
+    });
     expect(() =>
       service.createEnvironment(users.owner.id, engineering.id, {
         mutationId: randomUUID(),
@@ -389,9 +370,7 @@ describe('EngineeringService', () => {
     });
     expect(updated.deployment).toEqual({ kind: 'CI_CD' });
     expect(updated.version).toBe(2);
-    expect(service.listEnvironments(users.member.id, engineering.id)).toEqual([
-      updated,
-    ]);
+    expect(service.listEnvironments(users.member.id, engineering.id)).toEqual([updated]);
   });
 
   test('批量创建测试环境保持原子性', async () => {
@@ -416,9 +395,7 @@ describe('EngineeringService', () => {
         },
       ]),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
-    expect(service.listEnvironments(users.owner.id, engineering.id)).toEqual(
-      [],
-    );
+    expect(service.listEnvironments(users.owner.id, engineering.id)).toEqual([]);
 
     const created = service.createEnvironments(users.owner.id, engineering.id, [
       {
@@ -446,15 +423,11 @@ describe('EngineeringService', () => {
     service.addMember(users.owner.id, engineering.id, users.member.id, {
       mutationId: randomUUID(),
     });
-    const environment = service.createEnvironment(
-      users.owner.id,
-      engineering.id,
-      {
-        mutationId: randomUUID(),
-        name: '共享环境',
-        deployment: { kind: 'CI_CD' },
-      },
-    );
+    const environment = service.createEnvironment(users.owner.id, engineering.id, {
+      mutationId: randomUUID(),
+      name: '共享环境',
+      deployment: { kind: 'CI_CD' },
+    });
     references.environment.add(environment.id);
     expect(() =>
       service.updateEnvironment(users.owner.id, environment.id, {
@@ -476,20 +449,14 @@ describe('EngineeringService', () => {
       }),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
     references.engineering.clear();
-    const archived = service.archiveEngineering(
-      users.owner.id,
-      engineering.id,
-      {
-        ...mutation(engineering.version),
-      },
-    );
+    const archived = service.archiveEngineering(users.owner.id, engineering.id, {
+      ...mutation(engineering.version),
+    });
     expect(archived.archivedAt).not.toBeNull();
     expectRowCount(database, 'cooking_engineering', {
       id: engineering.id,
     }).toBe(1);
-    expect(
-      service.getWorkspace(users.member.id, engineering.id).members,
-    ).toHaveLength(1);
+    expect(service.getWorkspace(users.member.id, engineering.id).members).toHaveLength(1);
     expect(
       service.getWorkspace(users.member.id, engineering.id).environments,
     ).toHaveLength(1);

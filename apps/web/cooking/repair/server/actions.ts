@@ -41,6 +41,4 @@ export async function resolveRepairInteractionAction(
   );
 }
 
-const runRepairAction = cookingMutationAction(
-  'cooking_repair_action_validation_failed',
-);
+const runRepairAction = cookingMutationAction('cooking_repair_action_validation_failed');

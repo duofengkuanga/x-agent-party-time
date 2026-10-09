@@ -41,9 +41,7 @@ export async function destroyCurrentSession(): Promise<void> {
   cookieStore.delete(SESSION_COOKIE_NAME);
 }
 
-export function safeRedirectPath(
-  value: string | null | undefined,
-): string | null {
+export function safeRedirectPath(value: string | null | undefined): string | null {
   if (
     !value ||
     !value.startsWith('/') ||

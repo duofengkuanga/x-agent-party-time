@@ -21,19 +21,10 @@ export function createCooking(
   const commands = new ExecutionService(db, now);
   const updates = new UpdateService(db, commands, now, ids?.update, publish);
   const repairs = new RepairService(db, commands, now, ids?.repair, publish, {
-    candidateAvailable: (bugId, at) =>
-      updates.recordCandidateAvailable(bugId, at),
-    candidateReconsidered: (bugId) =>
-      updates.recalculatePendingDeliveryForBug(bugId),
+    candidateAvailable: (bugId, at) => updates.recordCandidateAvailable(bugId, at),
+    candidateReconsidered: (bugId) => updates.recalculatePendingDeliveryForBug(bugId),
   });
-  const lifecycle = new LifecycleService(
-    db,
-    repairs,
-    commands,
-    now,
-    undefined,
-    publish,
-  );
+  const lifecycle = new LifecycleService(db, repairs, commands, now, undefined, publish);
   const bugs = new BugService(db, now, undefined, publish, {
     requested: (bugId) => repairs.createInitialExecution(bugId),
   });

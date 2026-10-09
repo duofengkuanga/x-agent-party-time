@@ -12,11 +12,7 @@ export function clampSidebarWidth(width: number): number {
     window.innerWidth - STAGE_MIN_WIDTH,
   );
   return Math.round(
-    Math.min(
-      SIDEBAR_MAX_WIDTH,
-      viewportMaximum,
-      Math.max(SIDEBAR_MIN_WIDTH, width),
-    ),
+    Math.min(SIDEBAR_MAX_WIDTH, viewportMaximum, Math.max(SIDEBAR_MIN_WIDTH, width)),
   );
 }
 
