@@ -1,13 +1,10 @@
 import { testDirectories } from '../testing/directories';
+import { macEnvironment as environment } from '../testing/environment';
 import { describe, expect, test } from 'bun:test';
 import { symlink } from 'node:fs/promises';
 
 import { join } from 'node:path';
-import type {
-  CommandResult,
-  CommandRunner,
-  UserEnvironment,
-} from '../platform/contracts';
+import type { CommandResult, CommandRunner } from '../platform/contracts';
 import { NodeLocalFileSystem } from '../platform/files';
 import {
   MacOsCodexPreflight,
@@ -155,14 +152,4 @@ function commandFixture(
 
 function result(exitCode: number, stdout = ''): CommandResult {
   return { exitCode, stdout, stderr: '' };
-}
-
-function environment(home: string): UserEnvironment {
-  return {
-    homeDirectory: () => home,
-    userId: () => 501,
-    platform: () => 'darwin',
-    architecture: () => 'arm64',
-    isTerminal: () => false,
-  };
 }

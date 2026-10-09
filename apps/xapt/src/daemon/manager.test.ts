@@ -1,8 +1,9 @@
 import { testDirectories } from '../testing/directories';
+import { macEnvironment } from '../testing/environment';
 import { expect, test } from 'bun:test';
 import { readFile, stat } from 'node:fs/promises';
 
-import type { LaunchAgent, UserEnvironment } from '../platform/contracts';
+import type { LaunchAgent } from '../platform/contracts';
 import { NodeLocalFileSystem } from '../platform/files';
 import { xaptPaths } from '../platform/paths';
 import { SystemClock } from '../platform/system';
@@ -164,15 +165,5 @@ function healthyCodex(): CodexPreflight {
       executable: '/opt/bin/codex',
       version: '0.146.0',
     }),
-  };
-}
-
-function macEnvironment(home: string): UserEnvironment {
-  return {
-    homeDirectory: () => home,
-    userId: () => 501,
-    platform: () => 'darwin',
-    architecture: () => 'arm64',
-    isTerminal: () => false,
   };
 }
