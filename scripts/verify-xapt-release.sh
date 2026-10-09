@@ -122,6 +122,7 @@ mkdir -p \
   "$UPDATE_APP/run" \
   "$UPDATE_APP/state/outbox" \
   "$UPDATE_APP/state/executions" \
+  "$UPDATE_APP/state/result-baselines" \
   "$UPDATE_APP/state/workspaces" \
   "$UPDATE_HOME/Library/Caches/com.agentpartytime.xapt/updates" \
   "$UPDATE_HOME/Library/Caches/com.agentpartytime.xapt/attachments" \
@@ -137,6 +138,7 @@ chmod 700 \
   "$UPDATE_APP/state" \
   "$UPDATE_APP/state/outbox" \
   "$UPDATE_APP/state/executions" \
+  "$UPDATE_APP/state/result-baselines" \
   "$UPDATE_APP/state/workspaces" \
   "$UPDATE_HOME/Library/Caches/com.agentpartytime.xapt" \
   "$UPDATE_HOME/Library/Caches/com.agentpartytime.xapt/updates" \
