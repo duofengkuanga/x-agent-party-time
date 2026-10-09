@@ -210,7 +210,6 @@ export function AttachmentPicker({
 function PendingAttachmentLink({ file }: { file: File }) {
   const image = IMAGE_ATTACHMENT_MEDIA_TYPES.has(file.type);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [preview, setPreview] = useState(false);
 
   useEffect(() => {
     if (!image) {
@@ -223,11 +222,36 @@ function PendingAttachmentLink({ file }: { file: File }) {
   }, [file, image]);
 
   return (
+    <AttachmentFile
+      downloadUrl={null}
+      imageUrl={imageUrl}
+      name={file.name}
+      newlyAdded
+      size={file.size}
+    />
+  );
+}
+
+function AttachmentFile({
+  downloadUrl,
+  imageUrl,
+  name,
+  newlyAdded = false,
+  size,
+}: {
+  downloadUrl: string | null;
+  imageUrl: string | null;
+  name: string;
+  newlyAdded?: boolean;
+  size: number;
+}) {
+  const [preview, setPreview] = useState(false);
+  return (
     <>
       <span className="collab-attachment-file">
         {imageUrl ? (
           <button
-            aria-label={`查看图片 ${file.name}`}
+            aria-label={`查看图片 ${name}`}
             className="collab-attachment-file__thumb"
             onClick={() => setPreview(true)}
             type="button"
@@ -244,20 +268,27 @@ function PendingAttachmentLink({ file }: { file: File }) {
             <button
               className="collab-attachment-file__name"
               onClick={() => setPreview(true)}
-              title={file.name}
+              title={name}
               type="button"
             >
-              {file.name}
+              {name}
             </button>
+          ) : downloadUrl ? (
+            <a href={downloadUrl} title={name}>
+              {name}
+            </a>
           ) : (
-            <strong title={file.name}>{file.name}</strong>
+            <strong title={name}>{name}</strong>
           )}
-          <small>{formatBytes(file.size)} · 新添加</small>
+          <small>
+            {formatBytes(size)}
+            {newlyAdded ? ' · 新添加' : null}
+          </small>
         </span>
       </span>
       {preview && imageUrl ? (
         <ImagePreviewDialog
-          name={file.name}
+          name={name}
           onClose={() => setPreview(false)}
           src={imageUrl}
         />
@@ -316,53 +347,14 @@ export function AttachmentLink({
 }: {
   attachment: StoredAttachment;
 }) {
-  const [preview, setPreview] = useState(false);
   const downloadUrl = `/api/cooking/attachments/${attachment.id}`;
-  const imageUrl = `${downloadUrl}?preview=1`;
   const image = IMAGE_ATTACHMENT_MEDIA_TYPES.has(attachment.mediaType);
-
   return (
-    <>
-      <span className="collab-attachment-file">
-        {image ? (
-          <button
-            aria-label={`查看图片 ${attachment.originalName}`}
-            className="collab-attachment-file__thumb"
-            onClick={() => setPreview(true)}
-            type="button"
-          >
-            <img alt="" src={imageUrl} />
-          </button>
-        ) : (
-          <span aria-hidden="true" className="collab-attachment-file__kind">
-            文件
-          </span>
-        )}
-        <span className="collab-attachment-file__meta">
-          {image ? (
-            <button
-              className="collab-attachment-file__name"
-              onClick={() => setPreview(true)}
-              title={attachment.originalName}
-              type="button"
-            >
-              {attachment.originalName}
-            </button>
-          ) : (
-            <a href={downloadUrl} title={attachment.originalName}>
-              {attachment.originalName}
-            </a>
-          )}
-          <small>{formatBytes(attachment.sizeBytes)}</small>
-        </span>
-      </span>
-      {preview ? (
-        <ImagePreviewDialog
-          name={attachment.originalName}
-          onClose={() => setPreview(false)}
-          src={imageUrl}
-        />
-      ) : null}
-    </>
+    <AttachmentFile
+      downloadUrl={downloadUrl}
+      imageUrl={image ? `${downloadUrl}?preview=1` : null}
+      name={attachment.originalName}
+      size={attachment.sizeBytes}
+    />
   );
 }

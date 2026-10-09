@@ -1,8 +1,9 @@
-import { afterEach, expect, test } from 'bun:test';
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import type { LaunchAgent, UserEnvironment } from '../platform/contracts';
+import { testDirectories } from '../testing/directories';
+import { macEnvironment } from '../testing/environment';
+import { expect, test } from 'bun:test';
+import { readFile, stat } from 'node:fs/promises';
+
+import type { LaunchAgent } from '../platform/contracts';
 import { NodeLocalFileSystem } from '../platform/files';
 import { xaptPaths } from '../platform/paths';
 import { SystemClock } from '../platform/system';
@@ -13,13 +14,7 @@ import { DaemonControlClient } from './control';
 import { DaemonManager } from './manager';
 import { DaemonRuntime } from './runtime';
 
-const homes: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    homes.splice(0).map((home) => rm(home, { recursive: true, force: true })),
-  );
-});
+const temporaryHome = testDirectories('xapt-manager-');
 
 test('daemon 首次启动、重复启动、状态、停止和重复停止保持幂等', async () => {
   const home = await temporaryHome();
@@ -105,7 +100,7 @@ test('未知 socket 文件、无响应状态与不支持平台有确定结果', 
   const state = new LocalStateStore(paths, files);
   await files.writeAtomic(paths.currentExecutable, 'executable', 0o755);
   await files.writeAtomic(paths.controlSocket, 'unknown', 0o600);
-  const manager = new DaemonManager({
+  const options = {
     paths,
     files,
     state,
@@ -118,7 +113,8 @@ test('未知 socket 文件、无响应状态与不支持平台有确定结果', 
     clock: new SystemClock(),
     environment: macEnvironment(home),
     stableExecutable: paths.currentExecutable,
-  });
+  };
+  const manager = new DaemonManager(options);
 
   expect(await manager.status()).toMatchObject({ service: 'UNRESPONSIVE' });
   await expect(manager.stop(true)).rejects.toMatchObject({
@@ -130,18 +126,8 @@ test('未知 socket 文件、无响应状态与不支持平台有确定结果', 
   await files.remove(paths.controlSocket);
 
   const unsupported = new DaemonManager({
-    paths,
-    files,
-    state,
-    launchAgent: new RuntimeLaunchAgent(() => {
-      throw new Error('must not start');
-    }),
-    codex: healthyCodex(),
-    control: new DaemonControlClient(paths.controlSocket, 20),
-    confirmation: { confirm: async () => true },
-    clock: new SystemClock(),
+    ...options,
     environment: { ...macEnvironment(home), architecture: () => 'x64' },
-    stableExecutable: paths.currentExecutable,
   });
   await expect(unsupported.start()).rejects.toMatchObject({
     code: 'UNSUPPORTED_PLATFORM',
@@ -180,20 +166,4 @@ function healthyCodex(): CodexPreflight {
       version: '0.146.0',
     }),
   };
-}
-
-function macEnvironment(home: string): UserEnvironment {
-  return {
-    homeDirectory: () => home,
-    userId: () => 501,
-    platform: () => 'darwin',
-    architecture: () => 'arm64',
-    isTerminal: () => false,
-  };
-}
-
-async function temporaryHome(): Promise<string> {
-  const home = await mkdtemp(join(tmpdir(), 'xapt-manager-'));
-  homes.push(home);
-  return home;
 }

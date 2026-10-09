@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import type { CommandResult, CommandRunner, Keychain } from '../contracts';
+import type { CommandResult, CommandRunner } from '../contracts';
+import { MemoryKeychain } from '../../testing/memory-keychain';
 import {
   MacOsKeychain,
   XAPT_KEYCHAIN_SERVICE,
@@ -22,22 +23,6 @@ class FakeCommandRunner implements CommandRunner {
   ): Promise<CommandResult> {
     this.calls.push({ executable, args, stdin: options.stdin });
     return this.results.shift() ?? { exitCode: 0, stdout: '', stderr: '' };
-  }
-}
-
-class MemoryKeychain implements Keychain {
-  private readonly values = new Map<string, string>();
-
-  async save(account: string, credential: string): Promise<void> {
-    this.values.set(account, credential);
-  }
-
-  async read(account: string): Promise<string | null> {
-    return this.values.get(account) ?? null;
-  }
-
-  async delete(account: string): Promise<void> {
-    this.values.delete(account);
   }
 }
 

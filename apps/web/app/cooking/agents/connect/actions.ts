@@ -12,50 +12,39 @@ import { runnerService } from '@/platform/runner/server';
 export async function approveAgentAuthorizationAction(
   formData: FormData,
 ): Promise<never> {
-  const user = await requireCurrentUser();
-  const requestId = field(formData, 'requestId');
-  try {
-    runnerService().approveAuthorization(
-      user.id,
-      requestId,
-      field(formData, 'approvalToken'),
-      field(formData, 'name'),
-    );
-    redirect(
-      messageRedirectPath(
-        connectPath(requestId),
-        'success',
-        'Agent 已确认，正在建立连接',
-      ),
-    );
-  } catch (error) {
-    rethrowRedirectError(error);
-    redirect(
-      messageRedirectPath(
-        connectPath(requestId),
-        'error',
-        publicError(error).message,
-      ),
-    );
-  }
+  return authorizationDecision(formData, 'approve');
 }
 
 export async function rejectAgentAuthorizationAction(
   formData: FormData,
 ): Promise<never> {
+  return authorizationDecision(formData, 'reject');
+}
+
+async function authorizationDecision(
+  formData: FormData,
+  decision: 'approve' | 'reject',
+): Promise<never> {
   const user = await requireCurrentUser();
   const requestId = field(formData, 'requestId');
   try {
-    runnerService().rejectAuthorization(
-      user.id,
-      requestId,
-      field(formData, 'approvalToken'),
-    );
+    const runners = runnerService();
+    const approvalToken = field(formData, 'approvalToken');
+    if (decision === 'approve')
+      runners.approveAuthorization(
+        user.id,
+        requestId,
+        approvalToken,
+        field(formData, 'name'),
+      );
+    else runners.rejectAuthorization(user.id, requestId, approvalToken);
     redirect(
       messageRedirectPath(
         connectPath(requestId),
         'success',
-        '已暂不连接这台 Agent',
+        decision === 'approve'
+          ? 'Agent 已确认，正在建立连接'
+          : '已暂不连接这台 Agent',
       ),
     );
   } catch (error) {

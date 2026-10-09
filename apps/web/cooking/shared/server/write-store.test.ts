@@ -1,40 +1,19 @@
-import { afterEach, describe, expect, test } from 'bun:test';
-import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { z } from 'zod';
-import { AuthService } from '@/platform/auth/service';
-import type { AppDatabase } from '@/platform/database';
-import { openDatabase } from '@/platform/database';
 import { ProjectService } from '@/cooking/projects/server/project-service';
 import { TestSubmissionWriteStore } from '@/cooking/submissions/server/test-submission-write-store';
+import { AuthService } from '@/platform/auth/service';
+import { expectRowCount, testDatabases } from '@/testing/database';
+import { seedTestUser } from '@/testing/users';
+import { describe, expect, test } from 'bun:test';
+import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
 import { CookingWriteStore } from './write-store';
 
-const directories: string[] = [];
-const databases: AppDatabase[] = [];
-
-afterEach(async () => {
-  for (const database of databases.splice(0)) database.close();
-  await Promise.all(
-    directories
-      .splice(0)
-      .map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
+const createDatabase = testDatabases();
 
 test('CookingWriteStore 在同一事务中完成业务写入、Audit 与幂等结果', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'agent-party-time-write-'));
-  directories.push(directory);
-  const database = openDatabase(join(directory, 'server.sqlite'));
-  databases.push(database);
+  const { directory, database } = await createDatabase();
   const auth = new AuthService(database);
-  const user = await auth.seedUser({
-    id: 'write-user',
-    username: 'write-user',
-    displayName: '写入用户',
-    password: 'password',
-  });
+  const user = await seedTestUser(auth, ['write-user', '写入用户']);
   const project = new ProjectService(database).createProject(user.id, {
     mutationId: randomUUID(),
     name: '写入测试项目',
@@ -54,14 +33,10 @@ test('CookingWriteStore 在同一事务中完成业务写入、Audit 与幂等�
         return {
           result: { value: '稳定结果' },
           resourceId: 'resource-one',
-          audits: [
-            {
-              projectId: project.id,
-              action: 'TEST_WRITTEN',
-              targetType: 'TEST_RESOURCE',
-              targetId: 'resource-one',
-            },
-          ],
+          audit: {
+            projectId: project.id,
+            action: 'TEST_WRITTEN',
+          },
         };
       },
     });
@@ -69,29 +44,22 @@ test('CookingWriteStore 在同一事务中完成业务写入、Audit 与幂等�
   expect(command()).toEqual({ value: '稳定结果' });
   expect(command()).toEqual({ value: '稳定结果' });
   expect(executions).toBe(1);
+  expectRowCount(database, 'cooking_audit_event', {
+    action: 'TEST_WRITTEN',
+  }).toBe(1);
   expect(
-    database
-      .query<{ count: number }, []>(
-        `SELECT COUNT(*) count FROM cooking_audit_event
-         WHERE action = 'TEST_WRITTEN'`,
-      )
-      .get()?.count,
-  ).toBe(1);
+    database.get<{ target_type: string; target_id: string }>(
+      `SELECT target_type, target_id FROM cooking_audit_event
+       WHERE action = 'TEST_WRITTEN'`,
+    ),
+  ).toEqual({ target_type: 'TEST_RESOURCE', target_id: 'resource-one' });
 });
 
 describe('CookingWriteStore 冲突保护', () => {
   test('同一操作标识不能复用于不同操作', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'agent-party-time-write-'));
-    directories.push(directory);
-    const database = openDatabase(join(directory, 'server.sqlite'));
-    databases.push(database);
+    const { directory, database } = await createDatabase();
     const auth = new AuthService(database);
-    const user = await auth.seedUser({
-      id: 'conflict-user',
-      username: 'conflict-user',
-      displayName: '冲突用户',
-      password: 'password',
-    });
+    const user = await seedTestUser(auth, ['conflict-user', '冲突用户']);
     const store = new CookingWriteStore(database);
     const mutationId = randomUUID();
     const base = {
@@ -109,32 +77,26 @@ describe('CookingWriteStore 冲突保护', () => {
 });
 
 test('TestSubmissionWriteStore 只在首次成功提交后发布 Revision', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'agent-party-time-write-'));
-  directories.push(directory);
-  const database = openDatabase(join(directory, 'server.sqlite'));
-  databases.push(database);
+  const { directory, database } = await createDatabase();
   const auth = new AuthService(database);
-  const user = await auth.seedUser({
-    id: 'submission-write-user',
-    username: 'submission-write-user',
-    displayName: '提测写入用户',
-    password: 'password',
-  });
+  const user = await seedTestUser(auth, [
+    'submission-write-user',
+    '提测写入用户',
+  ]);
   const project = new ProjectService(database).createProject(user.id, {
     mutationId: randomUUID(),
     name: '提测写入项目',
   }).project;
   const submissionId = randomUUID();
   const createdAt = '2026-08-11T00:00:00.000Z';
-  database
-    .prepare(
-      `INSERT INTO cooking_test_submission(
+  database.run(
+    `INSERT INTO cooking_test_submission(
          id, project_id, title, requirement_description, tester_user_id,
          status, version, workspace_revision, created_by_user_id,
          created_at, updated_at, closed_at
        ) VALUES (?, ?, '提测写入', '验证写入时序', ?, 'ACTIVE', 1, 1, ?, ?, ?, NULL)`,
-    )
-    .run(submissionId, project.id, user.id, user.id, createdAt, createdAt);
+    [submissionId, project.id, user.id, user.id, createdAt, createdAt],
+  );
   const invalidations: Array<{ submissionId: string; revision: number }> = [];
   const store = new TestSubmissionWriteStore(
     database,
@@ -151,24 +113,17 @@ test('TestSubmissionWriteStore 只在首次成功提交后发布 Revision', asyn
       operation: 'TEST_SUBMISSION_WRITE',
       resourceType: 'TEST_SUBMISSION',
       resultSchema: z.object({ revision: z.number().int() }),
-      invalidation: (result) => ({
-        submissionId,
-        revision: result.revision,
-      }),
+      submissionId: () => submissionId,
       perform: () => {
         executions += 1;
         const revision = store.bumpRevision(submissionId, createdAt);
         return {
           result: { revision },
           resourceId: submissionId,
-          audits: [
-            {
-              projectId: project.id,
-              action: 'TEST_SUBMISSION_WRITTEN',
-              targetType: 'TEST_SUBMISSION',
-              targetId: submissionId,
-            },
-          ],
+          audit: {
+            projectId: project.id,
+            action: 'TEST_SUBMISSION_WRITTEN',
+          },
         };
       },
     });
@@ -177,14 +132,9 @@ test('TestSubmissionWriteStore 只在首次成功提交后发布 Revision', asyn
   expect(command()).toEqual({ revision: 2 });
   expect(executions).toBe(1);
   expect(invalidations).toEqual([{ submissionId, revision: 2 }]);
-  expect(
-    database
-      .query<{ count: number }, []>(
-        `SELECT COUNT(*) count FROM cooking_audit_event
-         WHERE action = 'TEST_SUBMISSION_WRITTEN'`,
-      )
-      .get()?.count,
-  ).toBe(1);
+  expectRowCount(database, 'cooking_audit_event', {
+    action: 'TEST_SUBMISSION_WRITTEN',
+  }).toBe(1);
 
   expect(() =>
     store.run({
@@ -193,7 +143,7 @@ test('TestSubmissionWriteStore 只在首次成功提交后发布 Revision', asyn
       operation: 'TEST_SUBMISSION_FAILURE',
       resourceType: 'TEST_SUBMISSION',
       resultSchema: z.object({ revision: z.number().int() }),
-      invalidation: (result) => ({ submissionId, revision: result.revision }),
+      submissionId: () => submissionId,
       perform: () => {
         store.bumpRevision(submissionId, createdAt);
         throw new Error('rollback');
@@ -201,11 +151,10 @@ test('TestSubmissionWriteStore 只在首次成功提交后发布 Revision', asyn
     }),
   ).toThrow('rollback');
   expect(
-    database
-      .query<{ workspace_revision: number }, [string]>(
-        `SELECT workspace_revision FROM cooking_test_submission WHERE id = ?`,
-      )
-      .get(submissionId)?.workspace_revision,
+    database.get<{ workspace_revision: number }>(
+      `SELECT workspace_revision FROM cooking_test_submission WHERE id = ?`,
+      submissionId,
+    )?.workspace_revision,
   ).toBe(2);
   expect(invalidations).toEqual([{ submissionId, revision: 2 }]);
 });

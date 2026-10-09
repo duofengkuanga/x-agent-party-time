@@ -1,3 +1,4 @@
+import { parseRow, type DatabaseRow } from '@/platform/database/row-mapper';
 import { createHash, randomBytes } from 'node:crypto';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
@@ -10,13 +11,7 @@ import {
 } from './contract';
 import { hashPassword, verifyPassword } from './password';
 
-type UserRow = {
-  id: string;
-  username: string;
-  display_name: string;
-  password_hash: string;
-  created_at: string;
-};
+type UserRow = DatabaseRow<User> & { password_hash: string };
 
 type SessionUserRow = UserRow & {
   expires_at: string;
@@ -47,13 +42,13 @@ export class AuthService {
     if (!input.password)
       throw new PlatformError('VALIDATION_FAILED', '开发 Seed 密码不能为空');
 
-    const existing = this.db
-      .prepare(
-        `SELECT id, username, display_name, password_hash, created_at
+    const existing = this.db.get(
+      `SELECT id, username, display_name, password_hash, created_at
          FROM platform_user
          WHERE id = ? OR username = ? COLLATE NOCASE`,
-      )
-      .get(id, username) as UserRow | undefined;
+      id,
+      username,
+    ) as UserRow | undefined;
 
     if (existing) {
       if (existing.id !== id || existing.username.toLowerCase() !== username)
@@ -66,12 +61,11 @@ export class AuthService {
 
     const createdAt = this.now().toISOString();
     const passwordHash = await hashPassword(input.password);
-    this.db
-      .prepare(
-        `INSERT INTO platform_user(id, username, display_name, password_hash, created_at)
+    this.db.run(
+      `INSERT INTO platform_user(id, username, display_name, password_hash, created_at)
          VALUES (?, ?, ?, ?, ?)`,
-      )
-      .run(id, username, displayName, passwordHash, createdAt);
+      [id, username, displayName, passwordHash, createdAt],
+    );
     return UserSchema.parse({ id, username, displayName, createdAt });
   }
 
@@ -80,13 +74,12 @@ export class AuthService {
     const parsedUsername = UsernameSchema.safeParse(normalized);
     if (!parsedUsername.success || !password) return null;
 
-    const row = this.db
-      .prepare(
-        `SELECT id, username, display_name, password_hash, created_at
+    const row = this.db.get(
+      `SELECT id, username, display_name, password_hash, created_at
          FROM platform_user
          WHERE username = ? COLLATE NOCASE`,
-      )
-      .get(parsedUsername.data) as UserRow | undefined;
+      parsedUsername.data,
+    ) as UserRow | undefined;
     if (!row || !(await verifyPassword(password, row.password_hash)))
       return null;
     return mapUser(row);
@@ -102,36 +95,34 @@ export class AuthService {
     const createdAt = this.now();
     const expiresAt = new Date(createdAt.getTime() + durationMs).toISOString();
     this.db.transaction(() => {
-      this.db
-        .prepare('DELETE FROM platform_session WHERE expires_at <= ?')
-        .run(createdAt.toISOString());
-      this.db
-        .prepare(
-          `INSERT INTO platform_session(token_hash, user_id, expires_at, created_at)
+      this.db.run('DELETE FROM platform_session WHERE expires_at <= ?', [
+        createdAt.toISOString(),
+      ]);
+      this.db.run(
+        `INSERT INTO platform_session(token_hash, user_id, expires_at, created_at)
            VALUES (?, ?, ?, ?)`,
-        )
-        .run(tokenHash, userId, expiresAt, createdAt.toISOString());
+        [tokenHash, userId, expiresAt, createdAt.toISOString()],
+      );
     })();
     return { token, expiresAt };
   }
 
   currentUser(token: string | undefined): User | null {
     if (!token) return null;
-    const row = this.db
-      .prepare(
-        `SELECT u.id, u.username, u.display_name, u.password_hash, u.created_at,
+    const row = this.db.get(
+      `SELECT u.id, u.username, u.display_name, u.password_hash, u.created_at,
                 s.expires_at
          FROM platform_session s
          JOIN platform_user u ON u.id = s.user_id
          WHERE s.token_hash = ?`,
-      )
-      .get(hashToken(token)) as SessionUserRow | undefined;
+      hashToken(token),
+    ) as SessionUserRow | undefined;
     if (!row) return null;
 
     if (Date.parse(row.expires_at) <= this.now().getTime()) {
-      this.db
-        .prepare('DELETE FROM platform_session WHERE token_hash = ?')
-        .run(hashToken(token));
+      this.db.run('DELETE FROM platform_session WHERE token_hash = ?', [
+        hashToken(token),
+      ]);
       return null;
     }
     return mapUser(row);
@@ -139,9 +130,9 @@ export class AuthService {
 
   revokeSession(token: string | undefined): void {
     if (!token) return;
-    this.db
-      .prepare('DELETE FROM platform_session WHERE token_hash = ?')
-      .run(hashToken(token));
+    this.db.run('DELETE FROM platform_session WHERE token_hash = ?', [
+      hashToken(token),
+    ]);
   }
 }
 
@@ -150,10 +141,5 @@ function hashToken(token: string): string {
 }
 
 function mapUser(row: UserRow): User {
-  return UserSchema.parse({
-    id: row.id,
-    username: row.username,
-    displayName: row.display_name,
-    createdAt: row.created_at,
-  });
+  return parseRow(UserSchema, row);
 }

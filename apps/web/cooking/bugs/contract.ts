@@ -8,7 +8,11 @@ import {
   EngineeringIdentifierSchema,
   EngineeringTypeSchema,
 } from '@/cooking/engineering/contract';
-import { CookingMutationIdSchema } from '@/cooking/shared/contract';
+import {
+  CookingAttachmentViewSchema,
+  CookingMutationIdSchema,
+  VersionedCookingMutationSchema,
+} from '@/cooking/shared/contract';
 
 export const BugIdSchema = z.uuid();
 export const BugStageSchema = z.enum([
@@ -96,30 +100,13 @@ export const UpdateBugReportInputSchema = CreateBugInputBaseSchema.extend({
   expectedVersion: z.number().int().positive(),
 }).superRefine(requireDisjointAttachments);
 
-export const AssignBugInputSchema = z.object({
-  mutationId: CookingMutationIdSchema,
-  expectedVersion: z.number().int().positive(),
+export const AssignBugInputSchema = VersionedCookingMutationSchema.extend({
   submissionItemId: SubmissionItemIdSchema.nullable(),
 });
 
-export const RequestRepairInputSchema = z.object({
-  mutationId: CookingMutationIdSchema,
-  expectedVersion: z.number().int().positive(),
-});
+export const RequestRepairInputSchema = VersionedCookingMutationSchema;
 
-export const BugAttachmentViewSchema = z.object({
-  id: z.uuid(),
-  originalName: z.string().trim().min(1).max(255),
-  mediaType: z.enum([
-    'image/png',
-    'image/jpeg',
-    'image/webp',
-    'text/plain',
-    'application/json',
-  ]),
-  sizeBytes: z.number().int().positive(),
-  createdAt: z.iso.datetime(),
-});
+export const BugAttachmentViewSchema = CookingAttachmentViewSchema;
 
 export const BugActionSchema = z.enum([
   'EDIT_REPORT',
@@ -185,12 +172,11 @@ export type BugWorkspaceProjection = z.infer<
 export type BugMutationResult = z.infer<typeof BugMutationResultSchema>;
 
 export const BugDeleteRequestSchema = z
-  .object({
+  .strictObject({
     bugIds: z.array(z.uuid()).min(1).optional(),
     all: z.boolean().optional(),
     force: z.boolean().optional(),
   })
-  .strict()
   .refine((value) => (value.all ? !value.bugIds : value.bugIds !== undefined), {
     message: '必须指定 bugIds 或 all 之一',
   });

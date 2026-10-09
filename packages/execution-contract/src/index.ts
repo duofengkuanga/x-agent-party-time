@@ -49,85 +49,60 @@ export const ExecutionLeaseSchema = z.object({
 });
 
 export const ExecutionWorkspaceSchema = z.discriminatedUnion('isolation', [
-  z
-    .object({
-      key: z.string().trim().min(1).max(240),
-      isolation: z.literal('BRANCH_WORKTREE'),
-      baseRef: z.string().trim().min(1).max(240),
-      branch: z.string().trim().min(1).max(240),
-    })
-    .strict(),
-  z
-    .object({
-      key: z.string().trim().min(1).max(240),
-      isolation: z.literal('DETACHED_WORKTREE'),
-      baseRef: z.string().trim().min(1).max(240),
-    })
-    .strict(),
-  z
-    .object({
-      key: z.string().trim().min(1).max(240),
-      isolation: z.literal('CLEANUP_WORKTREES'),
-      workspaceKeys: z.array(z.string().trim().min(1).max(240)).min(1).max(100),
-      completionResult: JsonValueSchema,
-    })
-    .strict(),
+  z.strictObject({
+    key: z.string().trim().min(1).max(240),
+    isolation: z.literal('BRANCH_WORKTREE'),
+    baseRef: z.string().trim().min(1).max(240),
+    branch: z.string().trim().min(1).max(240),
+  }),
+  z.strictObject({
+    key: z.string().trim().min(1).max(240),
+    isolation: z.literal('DETACHED_WORKTREE'),
+    baseRef: z.string().trim().min(1).max(240),
+  }),
+  z.strictObject({
+    key: z.string().trim().min(1).max(240),
+    isolation: z.literal('CLEANUP_WORKTREES'),
+    workspaceKeys: z.array(z.string().trim().min(1).max(240)).min(1).max(100),
+    completionResult: JsonValueSchema,
+  }),
 ]);
 
-export const TaskSkillBindingSchema = z
-  .object({
-    skillName: z.string().trim().min(1).max(120),
-    bundleHash: z.string().regex(/^[a-f0-9]{64}$/u),
-    sourceRevision: z.string().regex(/^[a-f0-9]{40}$/u),
-  })
-  .strict();
+export const TaskSkillBindingSchema = z.strictObject({
+  skillName: z.string().trim().min(1).max(120),
+  bundleHash: z.string().regex(/^[a-f0-9]{64}$/u),
+  sourceRevision: z.string().regex(/^[a-f0-9]{40}$/u),
+});
 
-export const ExecutionResultAssertionSchema = z
-  .object({
-    kind: z.literal('GIT_COMMITS_CREATED'),
-    resultPath: z.array(z.string().trim().min(1).max(120)).min(1).max(8),
-  })
-  .strict();
+export const ExecutionResultAssertionSchema = z.strictObject({
+  kind: z.literal('GIT_COMMITS_CREATED'),
+  resultPath: z.array(z.string().trim().min(1).max(120)).min(1).max(8),
+});
 
 export const CodexTurnSchema = z.discriminatedUnion('kind', [
-  z
-    .object({
-      kind: z.literal('INITIAL'),
-      requiredSkillName: z.string().trim().min(1).max(120),
-      executionBrief: JsonObjectSchema,
-      executionBriefHash: z.string().regex(/^[a-f0-9]{64}$/u),
-      outputJsonSchema: JsonObjectSchema,
-      taskSkillBinding: TaskSkillBindingSchema.nullable().default(null),
-      resultAssertions: z
-        .array(ExecutionResultAssertionSchema)
-        .max(5)
-        .optional(),
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal('CONTINUATION'),
-      taskId: SessionIdSchema,
-      taskSkillBinding: TaskSkillBindingSchema,
-      input: z.string().trim().min(1).max(200_000),
-      outputJsonSchema: JsonObjectSchema,
-      resultAssertions: z
-        .array(ExecutionResultAssertionSchema)
-        .max(5)
-        .optional(),
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal('READ_SESSION'),
-      taskId: SessionIdSchema,
-      outputJsonSchema: JsonObjectSchema,
-      resultAssertions: z
-        .array(ExecutionResultAssertionSchema)
-        .max(5)
-        .optional(),
-    })
-    .strict(),
+  z.strictObject({
+    kind: z.literal('INITIAL'),
+    requiredSkillName: z.string().trim().min(1).max(120),
+    executionBrief: JsonObjectSchema,
+    executionBriefHash: z.string().regex(/^[a-f0-9]{64}$/u),
+    outputJsonSchema: JsonObjectSchema,
+    taskSkillBinding: TaskSkillBindingSchema.nullable().default(null),
+    resultAssertions: z.array(ExecutionResultAssertionSchema).max(5).optional(),
+  }),
+  z.strictObject({
+    kind: z.literal('CONTINUATION'),
+    taskId: SessionIdSchema,
+    taskSkillBinding: TaskSkillBindingSchema,
+    input: z.string().trim().min(1).max(200_000),
+    outputJsonSchema: JsonObjectSchema,
+    resultAssertions: z.array(ExecutionResultAssertionSchema).max(5).optional(),
+  }),
+  z.strictObject({
+    kind: z.literal('READ_SESSION'),
+    taskId: SessionIdSchema,
+    outputJsonSchema: JsonObjectSchema,
+    resultAssertions: z.array(ExecutionResultAssertionSchema).max(5).optional(),
+  }),
 ]);
 
 export const ExecutionFailureCodeSchema = z.enum([
@@ -203,12 +178,11 @@ export const ClaimedExecutionSchema = ExecutionSchema.extend({
   }),
   outcome: z.null(),
   recoveredInteraction: z
-    .object({
+    .strictObject({
       method: z.string().trim().min(1).max(160),
       payload: JsonValueSchema,
       resolution: JsonValueSchema,
     })
-    .strict()
     .nullable(),
 });
 
@@ -307,8 +281,6 @@ export type ExecutionState = z.infer<typeof ExecutionStateSchema>;
 export type ExecutionApprovalPolicy = z.infer<
   typeof ExecutionApprovalPolicySchema
 >;
-export type ExecutionOwnerRef = z.infer<typeof ExecutionOwnerRefSchema>;
-export type ExecutionAttachment = z.infer<typeof ExecutionAttachmentSchema>;
 export type ExecutionWorkspace = z.infer<typeof ExecutionWorkspaceSchema>;
 export type TaskSkillBinding = z.infer<typeof TaskSkillBindingSchema>;
 export type ExecutionResultAssertion = z.infer<
@@ -319,21 +291,13 @@ export type ExecutionFailure = z.infer<typeof ExecutionFailureSchema>;
 export type ExecutionOutcome = z.infer<typeof ExecutionOutcomeSchema>;
 export type EnqueueExecutionInput = z.infer<typeof EnqueueExecutionInputSchema>;
 export type ClaimedExecution = z.infer<typeof ClaimedExecutionSchema>;
-export type ExecutionClaimRequest = z.infer<typeof ExecutionClaimRequestSchema>;
-export type ExecutionClaimResponse = z.infer<
-  typeof ExecutionClaimResponseSchema
->;
 export type ExecutionStartRequest = z.infer<typeof ExecutionStartRequestSchema>;
-export type ExecutionRenewRequest = z.infer<typeof ExecutionRenewRequestSchema>;
 export type ExecutionRenewResponse = z.infer<
   typeof ExecutionRenewResponseSchema
 >;
 export type ExecutionInteraction = z.infer<typeof ExecutionInteractionSchema>;
 export type OpenInteractionRequest = z.infer<
   typeof OpenInteractionRequestSchema
->;
-export type WaitInteractionRequest = z.infer<
-  typeof WaitInteractionRequestSchema
 >;
 export type WaitInteractionResponse = z.infer<
   typeof WaitInteractionResponseSchema
@@ -356,31 +320,30 @@ export function serializeDeterministicJson(value: JsonValue): string {
     .join(',')}}`;
 }
 
-const ApprovalResolutionSchema = z
-  .object({
-    decision: z.enum(['decline', 'accept', 'acceptForSession']),
-  })
-  .strict();
+const ApprovalResolutionSchema = z.strictObject({
+  decision: z.enum(['decline', 'accept', 'acceptForSession']),
+});
 
-const PermissionResolutionSchema = z
-  .object({
-    permissions: JsonObjectSchema,
-    scope: z.enum(['turn', 'session']),
-  })
-  .strict();
+const PermissionResolutionSchema = z.strictObject({
+  permissions: JsonObjectSchema,
+  scope: z.enum(['turn', 'session']),
+});
 
-const UserInputResolutionSchema = z
-  .object({
-    answers: z.record(
-      z.string().trim().min(1),
-      z
-        .object({
-          answers: z.array(z.string().trim().min(1)).min(1),
-        })
-        .strict(),
-    ),
-  })
-  .strict();
+const UserInputResolutionSchema = z.strictObject({
+  answers: z.record(
+    z.string().trim().min(1),
+    z.strictObject({
+      answers: z.array(z.string().trim().min(1)).min(1),
+    }),
+  ),
+});
+
+const INTERACTION_PAYLOAD_KEYS: Record<string, readonly string[]> = {
+  'item/commandExecution/requestApproval': ['command', 'reason'],
+  'item/fileChange/requestApproval': ['reason'],
+  'item/permissions/requestApproval': ['permissions', 'reason'],
+  'item/tool/requestUserInput': ['questions'],
+};
 
 export function parseExecutionInteractionResolution(
   method: string,
@@ -396,24 +359,12 @@ export function parseExecutionInteractionResolution(
     const resolution = PermissionResolutionSchema.parse(resolutionValue);
     const requested = jsonRecord(payloadValue).permissions;
     if (!isJsonSubset(resolution.permissions, requested))
-      throw new z.ZodError([
-        {
-          code: 'custom',
-          path: ['permissions'],
-          message: '只能提交 Codex 实际请求的权限',
-        },
-      ]);
+      invalidInteraction('permissions', '只能提交 Codex 实际请求的权限');
     if (
       Object.keys(resolution.permissions).length === 0 &&
       resolution.scope !== 'turn'
     )
-      throw new z.ZodError([
-        {
-          code: 'custom',
-          path: ['scope'],
-          message: '拒绝权限请求只能使用 turn scope',
-        },
-      ]);
+      invalidInteraction('scope', '拒绝权限请求只能使用 turn scope');
     return resolution;
   }
   if (method === 'item/tool/requestUserInput') {
@@ -431,22 +382,14 @@ export function parseExecutionInteractionResolution(
       questionIds.length !== answerIds.length ||
       questionIds.some((id) => !answerIds.includes(id))
     )
-      throw new z.ZodError([
-        {
-          code: 'custom',
-          path: ['answers'],
-          message: '必须一次提交全部 Codex questions 的回答',
-        },
-      ]);
+      invalidInteraction('answers', '必须一次提交全部 Codex questions 的回答');
     return resolution;
   }
-  throw new z.ZodError([
-    {
-      code: 'custom',
-      path: ['method'],
-      message: '不支持的 Codex Interaction method',
-    },
-  ]);
+  invalidInteraction('method', '不支持的 Codex Interaction method');
+}
+
+function invalidInteraction(path: string, message: string): never {
+  throw new z.ZodError([{ code: 'custom', path: [path], message }]);
 }
 
 export function sanitizeExecutionInteractionPayload(
@@ -454,16 +397,7 @@ export function sanitizeExecutionInteractionPayload(
   value: unknown,
 ): JsonValue {
   const payload = jsonRecord(value);
-  const keys =
-    method === 'item/commandExecution/requestApproval'
-      ? ['command', 'reason']
-      : method === 'item/fileChange/requestApproval'
-        ? ['reason']
-        : method === 'item/permissions/requestApproval'
-          ? ['permissions', 'reason']
-          : method === 'item/tool/requestUserInput'
-            ? ['questions']
-            : [];
+  const keys = INTERACTION_PAYLOAD_KEYS[method] ?? [];
   return Object.fromEntries(
     keys.flatMap((key) =>
       payload[key] === undefined
@@ -473,7 +407,7 @@ export function sanitizeExecutionInteractionPayload(
   );
 }
 
-function isJsonSubset(candidate: unknown, requested: unknown): boolean {
+export function isJsonSubset(candidate: unknown, requested: unknown): boolean {
   if (
     candidate === null ||
     typeof candidate === 'string' ||

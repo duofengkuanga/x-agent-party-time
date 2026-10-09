@@ -2,6 +2,31 @@ import { z } from 'zod';
 
 export const CookingMutationIdSchema = z.uuid();
 
+export const VersionedCookingMutationSchema = z.object({
+  mutationId: CookingMutationIdSchema,
+  expectedVersion: z.number().int().positive(),
+});
+
+export const CookingValidationSchema = z.object({
+  name: z.string().trim().min(1).max(240),
+  status: z.enum(['PASSED', 'FAILED', 'SKIPPED']),
+  detail: z.string().trim().max(300),
+});
+
+export const CookingAttachmentViewSchema = z.object({
+  id: z.uuid(),
+  originalName: z.string().trim().min(1).max(255),
+  mediaType: z.enum([
+    'image/png',
+    'image/jpeg',
+    'image/webp',
+    'text/plain',
+    'application/json',
+  ]),
+  sizeBytes: z.number().int().positive(),
+  createdAt: z.iso.datetime(),
+});
+
 const CookingVisualBaseSchema = z.object({
   label: z.string().trim().min(1),
 });

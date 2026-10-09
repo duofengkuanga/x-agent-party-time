@@ -18,6 +18,11 @@ import type {
 
 export type BugActionResult = InteractiveActionResult<BugMutationResult>;
 
+const REPORT_UPLOAD_OPTIONS = {
+  maxFiles: 5,
+  maxFilesMessage: '实际结果和预期结果各最多上传 5 个附件',
+};
+
 export async function createBugAction(
   submissionId: string,
   formData: FormData,
@@ -28,18 +33,12 @@ export async function createBugAction(
       const actualResultAttachmentIds = await uploadFiles(
         formData,
         'actualResultAttachments',
-        {
-          maxFiles: 5,
-          maxFilesMessage: '实际结果和预期结果各最多上传 5 个附件',
-        },
+        REPORT_UPLOAD_OPTIONS,
       );
       const expectedResultAttachmentIds = await uploadFiles(
         formData,
         'expectedResultAttachments',
-        {
-          maxFiles: 5,
-          maxFilesMessage: '实际结果和预期结果各最多上传 5 个附件',
-        },
+        REPORT_UPLOAD_OPTIONS,
       );
       const result = bugService().createBug(userId, submissionId, {
         mutationId: formField(formData, 'mutationId'),
@@ -66,18 +65,12 @@ export async function updateBugReportAction(
       const uploadedActual = await uploadFiles(
         formData,
         'actualResultAttachments',
-        {
-          maxFiles: 5,
-          maxFilesMessage: '实际结果和预期结果各最多上传 5 个附件',
-        },
+        REPORT_UPLOAD_OPTIONS,
       );
       const uploadedExpected = await uploadFiles(
         formData,
         'expectedResultAttachments',
-        {
-          maxFiles: 5,
-          maxFilesMessage: '实际结果和预期结果各最多上传 5 个附件',
-        },
+        REPORT_UPLOAD_OPTIONS,
       );
       const result = bugService().updateReport(userId, bugId, {
         mutationId: formField(formData, 'mutationId'),

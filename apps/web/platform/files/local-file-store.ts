@@ -1,3 +1,4 @@
+import { type DatabaseRow } from '@/platform/database/row-mapper';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
@@ -27,15 +28,8 @@ export const StoredFileSchema = z.object({
 export type StoredFile = z.infer<typeof StoredFileSchema>;
 export type AllowedMediaType = z.infer<typeof AllowedMediaTypeSchema>;
 
-type StoredFileRow = {
-  id: string;
-  storage_key: string;
-  original_name: string;
+type StoredFileRow = Omit<DatabaseRow<StoredFile>, 'media_type'> & {
   media_type: string;
-  size_bytes: number;
-  sha256: string;
-  uploaded_by_user_id: string;
-  created_at: string;
 };
 
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -83,14 +77,12 @@ export class LocalFileStore {
 
     try {
       await rename(temporaryPath, finalPath);
-      this.db
-        .prepare(
-          `INSERT INTO platform_file(
+      this.db.run(
+        `INSERT INTO platform_file(
              id, storage_key, original_name, media_type, size_bytes,
              sha256, uploaded_by_user_id, created_at
            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
+        [
           storedFile.id,
           storedFile.storageKey,
           storedFile.originalName,
@@ -99,7 +91,8 @@ export class LocalFileStore {
           storedFile.sha256,
           storedFile.uploadedByUserId,
           storedFile.createdAt,
-        );
+        ],
+      );
       return storedFile;
     } catch (error) {
       await rm(temporaryPath, { force: true });
@@ -109,13 +102,12 @@ export class LocalFileStore {
   }
 
   get(fileId: string): StoredFile | null {
-    const row = this.db
-      .prepare(
-        `SELECT id, storage_key, original_name, media_type, size_bytes,
+    const row = this.db.get(
+      `SELECT id, storage_key, original_name, media_type, size_bytes,
                 sha256, uploaded_by_user_id, created_at
          FROM platform_file WHERE id = ?`,
-      )
-      .get(fileId) as StoredFileRow | undefined;
+      fileId,
+    ) as StoredFileRow | undefined;
     return row ? mapStoredFile(row) : null;
   }
 
@@ -131,12 +123,11 @@ export class LocalFileStore {
   ): Promise<boolean> {
     const file = this.get(fileId);
     if (!file || file.uploadedByUserId !== uploadedByUserId) return false;
-    const deletion = this.db
-      .prepare(
-        `DELETE FROM platform_file
+    const deletion = this.db.run(
+      `DELETE FROM platform_file
          WHERE id = ? AND uploaded_by_user_id = ?`,
-      )
-      .run(fileId, uploadedByUserId);
+      [fileId, uploadedByUserId],
+    );
     if (deletion.changes !== 1) return false;
     await rm(this.contentPath(file.storageKey), { force: true });
     return true;

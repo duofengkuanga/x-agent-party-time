@@ -3,19 +3,20 @@ import type { z } from 'zod';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
 import { CookingMutationIdSchema } from '../contract';
+import { insertAuditEvent } from './audit-event';
 
 export type CookingAuditInput = {
   projectId: string;
   action: string;
-  targetType: string;
-  targetId: string;
+  /** Defaults to resourceId; targetType is always the mutation's resourceType. */
+  targetId?: string;
   details?: unknown;
 };
 
 export type CookingWriteOutcome<T> = {
   result: T;
   resourceId: string;
-  audits?: CookingAuditInput[];
+  audit?: CookingAuditInput;
 };
 
 export type CookingWriteInput<T> = {
@@ -46,12 +47,11 @@ export class CookingWriteStore {
   runTracked<T>(input: CookingWriteInput<T>): TrackedCookingWriteResult<T> {
     const mutationId = CookingMutationIdSchema.parse(input.mutationId);
     return this.db.transaction(() => {
-      const previous = this.db
-        .prepare(
-          `SELECT actor_user_id, operation, result_json
+      const previous = this.db.get(
+        `SELECT actor_user_id, operation, result_json
            FROM cooking_mutation WHERE id = ?`,
-        )
-        .get(mutationId) as
+        mutationId,
+      ) as
         | { actor_user_id: string; operation: string; result_json: string }
         | undefined;
       if (previous) {
@@ -72,32 +72,24 @@ export class CookingWriteStore {
       const outcome = input.perform();
       const result = input.resultSchema.parse(outcome.result);
       const createdAt = this.now().toISOString();
-      for (const audit of outcome.audits ?? [])
-        this.db
-          .prepare(
-            `INSERT INTO cooking_audit_event(
-               id, project_id, actor_user_id, action, target_type, target_id,
-               details_json, created_at
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          )
-          .run(
-            this.createId(),
-            audit.projectId,
-            input.actorUserId,
-            audit.action,
-            audit.targetType,
-            audit.targetId,
-            JSON.stringify(audit.details ?? {}),
-            createdAt,
-          );
-      this.db
-        .prepare(
-          `INSERT INTO cooking_mutation(
+      const audit = outcome.audit;
+      if (audit)
+        insertAuditEvent(this.db, {
+          id: this.createId(),
+          projectId: audit.projectId,
+          actorUserId: input.actorUserId,
+          action: audit.action,
+          targetType: input.resourceType,
+          targetId: audit.targetId ?? outcome.resourceId,
+          details: audit.details,
+          createdAt,
+        });
+      this.db.run(
+        `INSERT INTO cooking_mutation(
              id, actor_user_id, operation, resource_type, resource_id,
              result_json, created_at
            ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
+        [
           mutationId,
           input.actorUserId,
           input.operation,
@@ -105,7 +97,8 @@ export class CookingWriteStore {
           outcome.resourceId,
           JSON.stringify(result),
           createdAt,
-        );
+        ],
+      );
       return { result, replayed: false };
     })();
   }

@@ -1,26 +1,20 @@
-import { afterEach, describe, expect, test } from 'bun:test';
-import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { testDirectories } from '../testing/directories';
+import { describe, expect, test } from 'bun:test';
+import { chmod, readFile, writeFile } from 'node:fs/promises';
+
 import { join } from 'node:path';
+import { XAPT_VERSION } from '../version';
 import { CodexAppServerExecutor } from './app-server';
+import { AppServerInitializer } from './preflight';
 import {
   publicInteractionPayload,
   restorePrivateInteractionResolution,
 } from './interaction';
 
-const directories: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    directories
-      .splice(0)
-      .map((path) => rm(path, { recursive: true, force: true })),
-  );
-});
+const createTestDirectory = testDirectories('xapt-fake-codex-');
 
 test('Fake Codex 完成 thread start/resume、turn/start 与结构化结果', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'xapt-fake-codex-'));
-  directories.push(root);
+  const root = await createTestDirectory();
   const executable = join(root, 'codex');
   const requestLog = join(root, 'requests.jsonl');
   await writeFile(
@@ -54,12 +48,18 @@ rl.on('line', (line) => {
   );
   await chmod(executable, 0o700);
   const executor = new CodexAppServerExecutor(executable);
+  const baseInput = {
+    approvalPolicy: 'on-request' as const,
+    repositoryPath: root,
+    outputSchema: { type: 'object' },
+    artifactsDirectory: join(root, 'artifacts'),
+    onInteraction: async () => ({}),
+  };
 
   const started = await executor.begin(
     {
-      approvalPolicy: 'on-request',
+      ...baseInput,
       executionId: '00000000-0000-4000-8000-000000000601',
-      repositoryPath: root,
       text: JSON.stringify({
         task: '只返回 JSON',
         attachmentReferences: [
@@ -71,7 +71,6 @@ rl.on('line', (line) => {
         ],
       }),
       skill: { name: 'agent-party-time-repair-bug', path: '/tmp/repair-skill' },
-      outputSchema: { type: 'object' },
       attachments: [
         {
           fileId: '00000000-0000-4000-8000-000000000603',
@@ -79,9 +78,7 @@ rl.on('line', (line) => {
           path: join(root, 'evidence.txt'),
         },
       ],
-      artifactsDirectory: join(root, 'artifacts'),
       taskId: null,
-      onInteraction: async () => ({}),
     },
     new AbortController().signal,
   );
@@ -91,16 +88,12 @@ rl.on('line', (line) => {
 
   const resumed = await executor.begin(
     {
-      approvalPolicy: 'on-request',
+      ...baseInput,
       executionId: '00000000-0000-4000-8000-000000000602',
-      repositoryPath: root,
       text: '继续并只返回 JSON',
       skill: null,
-      outputSchema: { type: 'object' },
       attachments: [],
-      artifactsDirectory: join(root, 'artifacts'),
       taskId: 'thread-1',
-      onInteraction: async () => ({}),
     },
     new AbortController().signal,
   );
@@ -170,9 +163,29 @@ rl.on('line', (line) => {
     ],
   );
   await executor.close();
+
+  await new AppServerInitializer().initialize(executable);
+  const probeRequests = (await readFile(requestLog, 'utf8'))
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+  expect(probeRequests.at(-1)).toMatchObject({
+    method: 'initialize',
+    params: { clientInfo: { version: XAPT_VERSION } },
+  });
 });
 
 describe('Codex Interaction 安全投影', () => {
+  const privatePermissions = {
+    fileSystem: {
+      root: '/Users/example/private-repository',
+      mode: 'write',
+    },
+  };
+  const publicPermissions = {
+    fileSystem: { root: '本机路径已隐藏', mode: 'write' },
+  };
+
   test('命令审批不上传 cwd、线程标识或命令中的绝对路径', () => {
     const payload = publicInteractionPayload(
       'item/commandExecution/requestApproval',
@@ -201,12 +214,7 @@ describe('Codex Interaction 安全投影', () => {
     ).toEqual({ reason: '需要修改工作区文件' });
     expect(
       publicInteractionPayload('item/permissions/requestApproval', {
-        permissions: {
-          fileSystem: {
-            root: '/Users/example/private-repository',
-            mode: 'write',
-          },
-        },
+        permissions: privatePermissions,
         reason: '运行验证',
       }),
     ).toEqual({
@@ -222,19 +230,10 @@ describe('Codex Interaction 安全投影', () => {
       restorePrivateInteractionResolution(
         'item/permissions/requestApproval',
         {
-          permissions: {
-            fileSystem: { root: '本机路径已隐藏', mode: 'write' },
-          },
+          permissions: publicPermissions,
           scope: 'session',
         },
-        {
-          permissions: {
-            fileSystem: {
-              root: '/Users/example/private-repository',
-              mode: 'write',
-            },
-          },
-        },
+        { permissions: privatePermissions },
       ),
     ).toEqual({
       permissions: {
@@ -261,10 +260,7 @@ describe('Codex Interaction 安全投影', () => {
         },
         {
           permissions: {
-            fileSystem: {
-              root: '/Users/example/private-repository',
-              mode: 'write',
-            },
+            ...privatePermissions,
             network: {
               hosts: ['registry.npmjs.org', 'api.example.com'],
             },
@@ -309,21 +305,12 @@ describe('Codex Interaction 安全投影', () => {
   });
 
   test('Turn 与 Session 权限都会在 Runner 本机恢复，拒绝保持空权限', () => {
-    const privatePayload = {
-      permissions: {
-        fileSystem: {
-          root: '/Users/example/private-repository',
-          mode: 'write',
-        },
-      },
-    };
+    const privatePayload = { permissions: privatePermissions };
     expect(
       restorePrivateInteractionResolution(
         'item/permissions/requestApproval',
         {
-          permissions: {
-            fileSystem: { root: '本机路径已隐藏', mode: 'write' },
-          },
+          permissions: publicPermissions,
           scope: 'turn',
         },
         privatePayload,
@@ -342,39 +329,38 @@ describe('Codex Interaction 安全投影', () => {
   });
 });
 
+function completeFakeTurn(
+  threadId: string,
+  turnId: string,
+  turn: Record<string, unknown>,
+): Promise<unknown> {
+  const executor = new CodexAppServerExecutor();
+  return new Promise((resolve, reject) => {
+    (
+      executor as unknown as {
+        completeTurn: (
+          active: unknown,
+          params: Record<string, unknown>,
+        ) => void;
+      }
+    ).completeTurn(
+      { threadId, turnId, log: { write: () => undefined }, reject, resolve },
+      { turn: { id: turnId, ...turn } },
+    );
+  });
+}
+
 describe('Codex Turn 失败摘要', () => {
   test('Turn 失败时保留 429 重试耗尽摘要', async () => {
-    const executor = new CodexAppServerExecutor();
-    const failure = new Promise((resolve, reject) => {
-      (
-        executor as unknown as {
-          completeTurn: (
-            active: unknown,
-            params: Record<string, unknown>,
-          ) => void;
-        }
-      ).completeTurn(
-        {
-          threadId: 'thread-429',
-          turnId: 'turn-429',
-          log: { write: () => undefined },
-          reject,
-          resolve,
+    const failure = completeFakeTurn('thread-429', 'turn-429', {
+      status: 'failed',
+      error: {
+        message:
+          'exceeded retry limit, last status: 429 Too Many Requests, request id: request-429',
+        codexErrorInfo: {
+          responseTooManyFailedAttempts: { httpStatusCode: 429 },
         },
-        {
-          turn: {
-            id: 'turn-429',
-            status: 'failed',
-            error: {
-              message:
-                'exceeded retry limit, last status: 429 Too Many Requests, request id: request-429',
-              codexErrorInfo: {
-                responseTooManyFailedAttempts: { httpStatusCode: 429 },
-              },
-            },
-          },
-        },
-      );
+      },
     });
 
     await expect(failure).rejects.toMatchObject({
@@ -386,31 +372,9 @@ describe('Codex Turn 失败摘要', () => {
 
 describe('Codex Turn 结构化结果解析', () => {
   function completeTurnWithMessage(text: string): Promise<unknown> {
-    const executor = new CodexAppServerExecutor();
-    return new Promise((resolve, reject) => {
-      (
-        executor as unknown as {
-          completeTurn: (
-            active: unknown,
-            params: Record<string, unknown>,
-          ) => void;
-        }
-      ).completeTurn(
-        {
-          threadId: 'thread-structured',
-          turnId: 'turn-structured',
-          log: { write: () => undefined },
-          reject,
-          resolve,
-        },
-        {
-          turn: {
-            id: 'turn-structured',
-            status: 'completed',
-            items: [{ type: 'agentMessage', text }],
-          },
-        },
-      );
+    return completeFakeTurn('thread-structured', 'turn-structured', {
+      status: 'completed',
+      items: [{ type: 'agentMessage', text }],
     });
   }
 

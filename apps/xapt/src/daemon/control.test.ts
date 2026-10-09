@@ -1,19 +1,12 @@
-import { afterEach, expect, test } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { testDirectories } from '../testing/directories';
+import { expect, test } from 'bun:test';
+
 import { NodeLocalFileSystem } from '../platform/files';
 import { xaptPaths } from '../platform/paths';
 import { DaemonControlClient, DaemonControlServer } from './control';
 import type { DaemonSnapshot } from './status';
 
-const homes: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    homes.splice(0).map((home) => rm(home, { recursive: true, force: true })),
-  );
-});
+const temporaryHome = testDirectories('xapt-control-');
 
 test('私有 Unix control socket 完成握手、状态与安全停止', async () => {
   const home = await temporaryHome();
@@ -162,10 +155,4 @@ function runningSnapshot(): DaemonSnapshot {
     bindingCount: 0,
     bindingActive: false,
   };
-}
-
-async function temporaryHome(): Promise<string> {
-  const home = await mkdtemp(join(tmpdir(), 'xapt-control-'));
-  homes.push(home);
-  return home;
 }

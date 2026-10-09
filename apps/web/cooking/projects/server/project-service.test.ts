@@ -1,48 +1,27 @@
-import { afterEach, describe, expect, test } from 'bun:test';
-import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { mutation } from '@/cooking/testing/project';
 import { AuthService } from '@/platform/auth/service';
-import type { AppDatabase } from '@/platform/database';
-import { openDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
+import { expectRowCount, testDatabases } from '@/testing/database';
+import { seedUsers } from '@/testing/users';
+import { describe, expect, test } from 'bun:test';
+import { randomUUID } from 'node:crypto';
 import { ProjectService } from './project-service';
 
-const directories: string[] = [];
-const databases: AppDatabase[] = [];
+const createDatabase = testDatabases();
 
 async function setup(options?: {
   hasActiveResponsibilities?: (projectId: string, userId: string) => boolean;
 }) {
-  const directory = await mkdtemp(join(tmpdir(), 'agent-party-time-projects-'));
-  directories.push(directory);
-  const database = openDatabase(join(directory, 'server.sqlite'));
-  databases.push(database);
+  const { directory, database } = await createDatabase();
   const auth = new AuthService(
     database,
     () => new Date('2026-07-26T08:00:00Z'),
   );
-  const users = {
-    owner: await auth.seedUser({
-      id: 'user-owner',
-      username: 'owner',
-      displayName: '所有者',
-      password: 'password',
-    }),
-    member: await auth.seedUser({
-      id: 'user-member',
-      username: 'member',
-      displayName: '成员',
-      password: 'password',
-    }),
-    other: await auth.seedUser({
-      id: 'user-other',
-      username: 'other',
-      displayName: '其他用户',
-      password: 'password',
-    }),
-  };
+  const users = await seedUsers(auth, {
+    owner: ['owner', '所有者', 'user-owner'],
+    member: ['member', '成员', 'user-member'],
+    other: ['other', '其他用户', 'user-other'],
+  });
   return {
     database,
     users,
@@ -54,15 +33,6 @@ async function setup(options?: {
     ),
   };
 }
-
-afterEach(async () => {
-  for (const database of databases.splice(0)) database.close();
-  await Promise.all(
-    directories
-      .splice(0)
-      .map((directory) => rm(directory, { force: true, recursive: true })),
-  );
-});
 
 describe('ProjectService', () => {
   test('原子创建唯一 OWNER，并按成员关系隔离项目和 Mutation', async () => {
@@ -82,27 +52,9 @@ describe('ProjectService', () => {
     expect(created.membership.role).toBe('OWNER');
     expect(service.listProjects(users.owner.id)).toEqual([created]);
     expect(service.listProjects(users.member.id)).toEqual([]);
-    expect(
-      database
-        .query<{ count: number }, []>(
-          'SELECT COUNT(*) count FROM cooking_project',
-        )
-        .get()?.count,
-    ).toBe(1);
-    expect(
-      database
-        .query<{ count: number }, []>(
-          'SELECT COUNT(*) count FROM cooking_project_membership',
-        )
-        .get()?.count,
-    ).toBe(1);
-    expect(
-      database
-        .query<{ count: number }, []>(
-          'SELECT COUNT(*) count FROM cooking_audit_event',
-        )
-        .get()?.count,
-    ).toBe(1);
+    expectRowCount(database, 'cooking_project').toBe(1);
+    expectRowCount(database, 'cooking_project_membership').toBe(1);
+    expectRowCount(database, 'cooking_audit_event').toBe(1);
   });
 
   test('非成员读取真实或不存在项目都得到相同安全错误', async () => {
@@ -148,8 +100,7 @@ describe('ProjectService', () => {
     expect(service.listReceivedInvitations(users.member.id)).toHaveLength(1);
     expect(() =>
       service.respondToInvitation(users.other.id, invitation.id, {
-        mutationId: randomUUID(),
-        expectedVersion: invitation.version,
+        ...mutation(invitation.version),
         decision: 'ACCEPT',
       }),
     ).toThrow(expect.objectContaining({ code: 'NOT_FOUND' }));
@@ -158,8 +109,7 @@ describe('ProjectService', () => {
       users.member.id,
       invitation.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: invitation.version,
+        ...mutation(invitation.version),
         decision: 'ACCEPT',
       },
     );
@@ -167,8 +117,7 @@ describe('ProjectService', () => {
       users.member.id,
       invitation.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: invitation.version,
+        ...mutation(invitation.version),
         decision: 'ACCEPT',
       },
     );
@@ -178,14 +127,10 @@ describe('ProjectService', () => {
       'MEMBER',
     );
     expect(service.listMembers(users.owner.id, project.id)).toHaveLength(2);
-    expect(
-      database
-        .query<{ count: number }, []>(
-          `SELECT COUNT(*) count FROM cooking_project_membership
-           WHERE project_id = ? AND user_id = ?`,
-        )
-        .get(project.id, users.member.id)?.count,
-    ).toBe(1);
+    expectRowCount(database, 'cooking_project_membership', {
+      project_id: project.id,
+      user_id: users.member.id,
+    }).toBe(1);
     expect(() =>
       service.inviteUser(users.member.id, project.id, {
         mutationId: randomUUID(),
@@ -208,22 +153,19 @@ describe('ProjectService', () => {
       users.member.id,
       rejectedInvitation.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: rejectedInvitation.version,
+        ...mutation(rejectedInvitation.version),
         decision: 'REJECT',
       },
     );
     expect(
       service.respondToInvitation(users.member.id, rejectedInvitation.id, {
-        mutationId: randomUUID(),
-        expectedVersion: rejectedInvitation.version,
+        ...mutation(rejectedInvitation.version),
         decision: 'REJECT',
       }),
     ).toEqual(rejected);
     expect(() =>
       service.respondToInvitation(users.member.id, rejectedInvitation.id, {
-        mutationId: randomUUID(),
-        expectedVersion: rejectedInvitation.version,
+        ...mutation(rejectedInvitation.version),
         decision: 'ACCEPT',
       }),
     ).toThrow(expect.objectContaining({ code: 'INVALID_TRANSITION' }));
@@ -236,14 +178,12 @@ describe('ProjectService', () => {
       users.owner.id,
       revokedInvitation.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: revokedInvitation.version,
+        ...mutation(revokedInvitation.version),
       },
     );
     expect(
       service.revokeInvitation(users.owner.id, revokedInvitation.id, {
-        mutationId: randomUUID(),
-        expectedVersion: revokedInvitation.version,
+        ...mutation(revokedInvitation.version),
       }),
     ).toEqual(revoked);
   });
@@ -263,8 +203,7 @@ describe('ProjectService', () => {
       username: 'member',
     });
     service.respondToInvitation(users.member.id, invitation.id, {
-      mutationId: randomUUID(),
-      expectedVersion: invitation.version,
+      ...mutation(invitation.version),
       decision: 'ACCEPT',
     });
     const member = service
@@ -273,8 +212,7 @@ describe('ProjectService', () => {
 
     expect(() =>
       service.updateProject(users.owner.id, created.project.id, {
-        mutationId: randomUUID(),
-        expectedVersion: 99,
+        ...mutation(99),
         name: '过期修改',
       }),
     ).toThrow(expect.objectContaining({ code: 'STALE_STATE' }));
@@ -284,8 +222,7 @@ describe('ProjectService', () => {
         created.project.id,
         users.member.id,
         {
-          mutationId: randomUUID(),
-          expectedVersion: member.membership.version,
+          ...mutation(member.membership.version),
         },
       ),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
@@ -296,15 +233,13 @@ describe('ProjectService', () => {
         created.project.id,
         users.member.id,
         {
-          mutationId: randomUUID(),
-          expectedVersion: member.membership.version,
+          ...mutation(member.membership.version),
         },
       ),
     ).toEqual({ removed: true, userId: users.member.id });
     expect(() =>
       service.removeMember(users.owner.id, created.project.id, users.owner.id, {
-        mutationId: randomUUID(),
-        expectedVersion: created.membership.version,
+        ...mutation(created.membership.version),
       }),
     ).toThrow(expect.objectContaining({ code: 'INVALID_TRANSITION' }));
   });

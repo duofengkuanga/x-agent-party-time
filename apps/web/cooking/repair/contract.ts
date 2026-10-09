@@ -1,14 +1,13 @@
-import { z } from 'zod';
-import {
-  ExecutionStateSchema,
-  type JsonObject,
-} from '@agent-party-time/execution-contract';
 import { BugIdSchema } from '@/cooking/bugs/contract';
 import {
   CookingInteractionViewSchema,
-  CookingMutationIdSchema,
+  VersionedCookingMutationSchema,
+  CookingValidationSchema,
   CookingVisualPresentationSchema,
 } from '@/cooking/shared/contract';
+import { outputJsonSchema } from '@/cooking/shared/output-schema';
+import { ExecutionStateSchema } from '@agent-party-time/execution-contract';
+import { z } from 'zod';
 
 export const CommitShaSchema = z
   .string()
@@ -16,11 +15,7 @@ export const CommitShaSchema = z
   .toLowerCase()
   .regex(/^[a-f0-9]{7,64}$/u);
 
-export const RepairValidationSchema = z.object({
-  name: z.string().trim().min(1).max(240),
-  status: z.enum(['PASSED', 'FAILED', 'SKIPPED']),
-  detail: z.string().trim().max(300),
-});
+export const RepairValidationSchema = CookingValidationSchema;
 
 const RepositoryRelativePathSchema = z
   .string()
@@ -35,18 +30,16 @@ const RepositoryRelativePathSchema = z
     '必须是仓库内的相对路径',
   );
 
-export const ManualOperationSchema = z
-  .object({
-    kind: z.literal('DATABASE_SQL'),
-    paths: z.array(RepositoryRelativePathSchema).min(1).max(100),
-  })
-  .strict();
+export const ManualOperationSchema = z.strictObject({
+  kind: z.literal('DATABASE_SQL'),
+  paths: z.array(RepositoryRelativePathSchema).min(1).max(100),
+});
 
 export const ManualOperationsSchema = z.array(ManualOperationSchema).max(5);
 
 const RepairExecutionResultValueSchema = z.discriminatedUnion('outcome', [
   z
-    .object({
+    .strictObject({
       outcome: z.literal('COMPLETED'),
       completionKind: z.enum(['CHANGES_COMMITTED', 'TARGET_ALREADY_FIXED']),
       changes: z.array(z.string().trim().min(1).max(300)).max(5),
@@ -55,7 +48,6 @@ const RepairExecutionResultValueSchema = z.discriminatedUnion('outcome', [
       commits: z.array(CommitShaSchema).max(5),
       manualOperations: ManualOperationsSchema,
     })
-    .strict()
     .superRefine((result, context) => {
       if (result.completionKind === 'CHANGES_COMMITTED') {
         if (result.commits.length === 0)
@@ -94,134 +86,22 @@ const RepairExecutionResultValueSchema = z.discriminatedUnion('outcome', [
           message: '目标分支已修复必须有成功且无失败的验证结果',
         });
     }),
-  z
-    .object({
-      outcome: z.literal('FAILED'),
-      failedStep: z.string().trim().min(1).max(240),
-      reason: z.string().trim().min(1).max(500),
-      completedActions: z.array(z.string().trim().min(1).max(300)).max(5),
-      pendingActions: z.array(z.string().trim().min(1).max(300)).max(5),
-    })
-    .strict(),
+  z.strictObject({
+    outcome: z.literal('FAILED'),
+    failedStep: z.string().trim().min(1).max(240),
+    reason: z.string().trim().min(1).max(500),
+    completedActions: z.array(z.string().trim().min(1).max(300)).max(5),
+    pendingActions: z.array(z.string().trim().min(1).max(300)).max(5),
+  }),
 ]);
 
-export const RepairExecutionResultSchema = z
-  .object({ result: RepairExecutionResultValueSchema })
-  .strict();
+export const RepairExecutionResultSchema = z.strictObject({
+  result: RepairExecutionResultValueSchema,
+});
 
-export const RepairOutputJsonSchema: JsonObject = {
-  type: 'object',
-  properties: {
-    result: {
-      anyOf: [repairCompletedOutputSchema(), repairFailedOutputSchema()],
-    },
-  },
-  required: ['result'],
-  additionalProperties: false,
-};
-
-function repairCompletedOutputSchema(): JsonObject {
-  return {
-    type: 'object',
-    properties: {
-      outcome: { type: 'string', enum: ['COMPLETED'] },
-      completionKind: {
-        type: 'string',
-        enum: ['CHANGES_COMMITTED', 'TARGET_ALREADY_FIXED'],
-      },
-      changes: {
-        type: 'array',
-        items: { type: 'string', minLength: 1, maxLength: 300 },
-        maxItems: 5,
-      },
-      validations: {
-        type: 'array',
-        items: validationOutputSchema(),
-        maxItems: 5,
-      },
-      warnings: {
-        type: 'array',
-        items: { type: 'string', minLength: 1, maxLength: 300 },
-        maxItems: 3,
-      },
-      commits: {
-        type: 'array',
-        items: { type: 'string', pattern: '^[a-f0-9]{7,64}$' },
-        maxItems: 5,
-      },
-      manualOperations: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            kind: { type: 'string', enum: ['DATABASE_SQL'] },
-            paths: {
-              type: 'array',
-              items: { type: 'string', minLength: 1, maxLength: 2_000 },
-              minItems: 1,
-              maxItems: 100,
-            },
-          },
-          required: ['kind', 'paths'],
-          additionalProperties: false,
-        },
-        maxItems: 5,
-      },
-    },
-    required: [
-      'outcome',
-      'completionKind',
-      'changes',
-      'validations',
-      'warnings',
-      'commits',
-      'manualOperations',
-    ],
-    additionalProperties: false,
-  };
-}
-
-function repairFailedOutputSchema(): JsonObject {
-  return {
-    type: 'object',
-    properties: {
-      outcome: { type: 'string', enum: ['FAILED'] },
-      failedStep: { type: 'string', minLength: 1, maxLength: 240 },
-      reason: { type: 'string', minLength: 1, maxLength: 500 },
-      completedActions: {
-        type: 'array',
-        items: { type: 'string', minLength: 1, maxLength: 300 },
-        maxItems: 5,
-      },
-      pendingActions: {
-        type: 'array',
-        items: { type: 'string', minLength: 1, maxLength: 300 },
-        maxItems: 5,
-      },
-    },
-    required: [
-      'outcome',
-      'failedStep',
-      'reason',
-      'completedActions',
-      'pendingActions',
-    ],
-    additionalProperties: false,
-  };
-}
-
-function validationOutputSchema(): JsonObject {
-  return {
-    type: 'object',
-    properties: {
-      name: { type: 'string', minLength: 1, maxLength: 240 },
-      status: { type: 'string', enum: ['PASSED', 'FAILED', 'SKIPPED'] },
-      detail: { type: 'string', maxLength: 300 },
-    },
-    required: ['name', 'status', 'detail'],
-    additionalProperties: false,
-  };
-}
+export const RepairOutputJsonSchema = outputJsonSchema(
+  RepairExecutionResultSchema,
+);
 
 const RepairAttemptResultViewSchema = z.discriminatedUnion('outcome', [
   z.object({
@@ -282,18 +162,14 @@ export const BugRepairViewSchema = z.object({
   }),
 });
 
-export const ContinueRepairInputSchema = z.object({
-  mutationId: CookingMutationIdSchema,
-  expectedVersion: z.number().int().positive(),
-});
+export const ContinueRepairInputSchema = VersionedCookingMutationSchema;
 
 export const SynchronizeRepairSessionInputSchema = ContinueRepairInputSchema;
 
-export const ResolveRepairInteractionInputSchema = z.object({
-  mutationId: CookingMutationIdSchema,
-  expectedVersion: z.number().int().positive(),
-  resolution: z.json(),
-});
+export const ResolveRepairInteractionInputSchema =
+  VersionedCookingMutationSchema.extend({
+    resolution: z.json(),
+  });
 
 export const RepairWorkspaceProjectionSchema = z.object({
   repairByBug: z.record(BugIdSchema, BugRepairViewSchema),
@@ -306,7 +182,6 @@ export const RepairMutationResultSchema = z.object({
   revision: z.number().int().positive(),
 });
 
-export type RepairExecutionResult = z.infer<typeof RepairExecutionResultSchema>;
 export type BugRepairView = z.infer<typeof BugRepairViewSchema>;
 export type ContinueRepairInput = z.infer<typeof ContinueRepairInputSchema>;
 export type SynchronizeRepairSessionInput = z.infer<

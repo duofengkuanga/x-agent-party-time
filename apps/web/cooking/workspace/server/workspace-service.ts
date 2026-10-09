@@ -21,9 +21,7 @@ export class CookingWorkspaceService {
     private readonly bugs: BugService,
     private readonly repairs: RepairService,
     private readonly updates: UpdateService,
-    private readonly lifecycle: Pick<LifecycleService, 'workspace'> = {
-      workspace: () => emptyLifecycleProjection(),
-    },
+    private readonly lifecycle: Pick<LifecycleService, 'workspace'>,
   ) {}
 
   getWorkspace(userId: string, submissionId: string): CookingWorkspaceSnapshot {
@@ -177,15 +175,4 @@ function deriveBugVisuals(
       ];
     }),
   );
-}
-
-function emptyLifecycleProjection(): LifecycleWorkspaceProjection {
-  return {
-    verificationsByBug: {},
-    reopensByBug: {},
-    transitionsByBug: {},
-    cleanups: [],
-    cleanupInteractions: [],
-    timeline: [],
-  };
 }

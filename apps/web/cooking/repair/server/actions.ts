@@ -1,10 +1,10 @@
 'use server';
 
 import {
-  runInteractiveMutation,
+  cookingMutationAction,
   type InteractiveActionResult,
 } from '@/cooking/shared/server/action-transport';
-import { repairService } from '../../runtime/repair';
+import { repairService } from '../../runtime/services';
 import type {
   ContinueRepairInput,
   RepairMutationResult,
@@ -41,14 +41,6 @@ export async function resolveRepairInteractionAction(
   );
 }
 
-function runRepairAction(
-  command: (userId: string) => RepairMutationResult,
-): Promise<RepairActionResult> {
-  return runInteractiveMutation({
-    validationEvent: 'cooking_repair_action_validation_failed',
-    command: ({ userId }) => ({
-      result: command(userId),
-      refreshPaths: ['/cooking'],
-    }),
-  });
-}
+const runRepairAction = cookingMutationAction(
+  'cooking_repair_action_validation_failed',
+);

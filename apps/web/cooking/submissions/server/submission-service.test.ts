@@ -1,177 +1,23 @@
-import { afterEach, describe, expect, test } from 'bun:test';
-import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { AuthService } from '@/platform/auth/service';
-import type { AppDatabase } from '@/platform/database';
-import { openDatabase } from '@/platform/database';
-import { RunnerService } from '@/platform/runner/service';
-import { BindingService } from '@/cooking/bindings/server/binding-service';
+import { mutation } from '@/cooking/testing/project';
 import { EngineeringService } from '@/cooking/engineering/server/engineering-service';
 import { ProjectService } from '@/cooking/projects/server/project-service';
+import { expectRowCount, testDatabases } from '@/testing/database';
+import { describe, expect, test } from 'bun:test';
+import { randomUUID } from 'node:crypto';
 import {
   engineeringMemberHasSubmissionResponsibilities,
   projectMemberHasSubmissionResponsibilities,
   submissionReferencesEngineering,
   submissionReferencesEnvironment,
 } from './references';
-import { SubmissionService } from './submission-service';
+import {
+  createSubmission,
+  insertBug,
+  item,
+  submissionFixture,
+} from './submission-fixture';
 
-const directories: string[] = [];
-const databases: AppDatabase[] = [];
-
-async function setup(options: { confirmRepositories?: boolean } = {}) {
-  const directory = await mkdtemp(
-    join(tmpdir(), 'agent-party-time-submission-'),
-  );
-  directories.push(directory);
-  const database = openDatabase(join(directory, 'server.sqlite'));
-  databases.push(database);
-  const auth = new AuthService(database);
-  const users = {
-    owner: await auth.seedUser(user('submission-owner', '项目所有者')),
-    creator: await auth.seedUser(user('submission-creator', '提测创建人')),
-    tester: await auth.seedUser(user('submission-tester', '测试负责人')),
-    developerA: await auth.seedUser(user('submission-dev-a', '开发甲')),
-    developerB: await auth.seedUser(user('submission-dev-b', '开发乙')),
-    member: await auth.seedUser(user('submission-member', '普通成员')),
-    outsider: await auth.seedUser(user('submission-outsider', '项目外用户')),
-  };
-  const projects = new ProjectService(database);
-  const project = projects.createProject(users.owner.id, {
-    mutationId: randomUUID(),
-    name: '提测项目',
-  }).project;
-  for (const invited of [
-    users.creator,
-    users.tester,
-    users.developerA,
-    users.developerB,
-    users.member,
-  ]) {
-    const invitation = projects.inviteUser(users.owner.id, project.id, {
-      mutationId: randomUUID(),
-      username: invited.username,
-    });
-    projects.respondToInvitation(invited.id, invitation.id, {
-      mutationId: randomUUID(),
-      expectedVersion: invitation.version,
-      decision: 'ACCEPT',
-    });
-  }
-
-  const engineeringService = new EngineeringService(database);
-  const front = engineeringService.createEngineering(
-    users.owner.id,
-    project.id,
-    {
-      mutationId: randomUUID(),
-      name: '前端工程',
-      type: 'FRONTEND',
-      identifier: 'web',
-    },
-  );
-  const back = engineeringService.createEngineering(
-    users.owner.id,
-    project.id,
-    {
-      mutationId: randomUUID(),
-      name: '后端工程',
-      type: 'BACKEND',
-      identifier: 'api',
-    },
-  );
-  for (const [engineeringId, developerId] of [
-    [front.id, users.developerA.id],
-    [back.id, users.developerA.id],
-    [back.id, users.developerB.id],
-  ] as const)
-    engineeringService.addMember(users.owner.id, engineeringId, developerId, {
-      mutationId: randomUUID(),
-    });
-  const environments = {
-    front: engineeringService.createEnvironment(users.owner.id, front.id, {
-      mutationId: randomUUID(),
-      name: '前端测试环境',
-      deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' },
-    }),
-    back: engineeringService.createEnvironment(users.owner.id, back.id, {
-      mutationId: randomUUID(),
-      name: '后端测试环境',
-      deployment: { kind: 'CI_CD' },
-    }),
-  };
-
-  const runners = new RunnerService(database);
-  const runnerA = pairRunner(runners, users.developerA.id, '开发甲 Runner');
-  const runnerB = pairRunner(runners, users.developerB.id, '开发乙 Runner');
-  const bindings = new BindingService(database);
-  const bindingValues = {
-    frontA: bindings.createBinding(
-      users.developerA.id,
-      front.id,
-      runnerA.runner.id,
-      randomUUID(),
-    ),
-    backA: bindings.createBinding(
-      users.developerA.id,
-      back.id,
-      runnerA.runner.id,
-      randomUUID(),
-    ),
-    backB: bindings.createBinding(
-      users.developerB.id,
-      back.id,
-      runnerB.runner.id,
-      randomUUID(),
-    ),
-  };
-  if (options.confirmRepositories !== false) {
-    bindings.confirmRepository(
-      runnerA.runner.id,
-      bindingValues.frontA.id,
-      'https://example.com/front.git',
-    );
-    bindings.confirmRepository(
-      runnerA.runner.id,
-      bindingValues.backA.id,
-      'https://example.com/back.git',
-    );
-    bindings.confirmRepository(
-      runnerB.runner.id,
-      bindingValues.backB.id,
-      'https://example.com/back.git',
-    );
-  }
-  const events: Array<{ submissionId: string; revision: number }> = [];
-  const service = new SubmissionService(
-    database,
-    () => new Date('2026-07-27T02:00:00Z'),
-    undefined,
-    (submissionId, revision) => events.push({ submissionId, revision }),
-  );
-  return {
-    database,
-    engineering: { front, back },
-    environments,
-    bindings: bindingValues,
-    runners: { runnerA, runnerB },
-    project,
-    service,
-    users,
-    events,
-  };
-}
-
-afterEach(async () => {
-  for (const database of databases.splice(0)) database.close();
-  await Promise.all(
-    directories
-      .splice(0)
-      .map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
+const setup = submissionFixture(testDatabases());
 
 describe('SubmissionService create', () => {
   test('首次本机 Binding 尚未确认仓库时不能创建提测', async () => {
@@ -181,7 +27,7 @@ describe('SubmissionService create', () => {
         item(fixture, 'front', 'developerA', 'frontA', 'feature/pending'),
       ]),
     ).toThrow('提测项仓库、负责人、绑定、Agent 或环境配置无效');
-    expect(countRows(fixture.database, 'cooking_test_submission')).toBe(0);
+    expectRowCount(fixture.database, 'cooking_test_submission').toBe(0);
   });
 
   test('支持同一人多工程、不同人多工程和单个全栈工程', async () => {
@@ -242,8 +88,7 @@ describe('SubmissionService create', () => {
       fixture.users.owner.id,
       fixture.engineering.front.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: current.version,
+        ...mutation(current.version),
         name: '改名后的工程',
         type: 'BACKEND',
         identifier: current.identifier,
@@ -269,7 +114,7 @@ describe('SubmissionService create', () => {
         fixture.users.outsider.id,
       ),
     ).toThrow(PlatformErrorLike);
-    expect(countRows(fixture.database, 'cooking_test_submission')).toBe(0);
+    expectRowCount(fixture.database, 'cooking_test_submission').toBe(0);
     const invalidInputs = [
       [item(fixture, 'front', 'tester', 'frontA', 'feature/tester-conflict')],
       [
@@ -285,20 +130,20 @@ describe('SubmissionService create', () => {
     ];
     for (const items of invalidInputs) {
       expect(() => createSubmission(fixture, items)).toThrow(PlatformErrorLike);
-      expect(countRows(fixture.database, 'cooking_test_submission')).toBe(0);
-      expect(countRows(fixture.database, 'cooking_submission_item')).toBe(0);
-      expect(
-        countRows(fixture.database, 'cooking_submission_environment_lock'),
+      expectRowCount(fixture.database, 'cooking_test_submission').toBe(0);
+      expectRowCount(fixture.database, 'cooking_submission_item').toBe(0);
+      expectRowCount(
+        fixture.database,
+        'cooking_submission_environment_lock',
       ).toBe(0);
     }
 
-    fixture.database
-      .prepare(
-        `UPDATE cooking_engineering_binding
+    fixture.database.run(
+      `UPDATE cooking_engineering_binding
          SET runner_id = ?
          WHERE id = ?`,
-      )
-      .run(fixture.runners.runnerB.runner.id, fixture.bindings.frontA.id);
+      [fixture.runners.runnerB.runner.id, fixture.bindings.frontA.id],
+    );
     expect(() =>
       createSubmission(fixture, [
         {
@@ -313,14 +158,13 @@ describe('SubmissionService create', () => {
         },
       ]),
     ).toThrow(PlatformErrorLike);
-    expect(countRows(fixture.database, 'cooking_test_submission')).toBe(0);
-    fixture.database
-      .prepare(
-        `UPDATE cooking_engineering_binding
+    expectRowCount(fixture.database, 'cooking_test_submission').toBe(0);
+    fixture.database.run(
+      `UPDATE cooking_engineering_binding
          SET runner_id = ?
          WHERE id = ?`,
-      )
-      .run(fixture.runners.runnerA.runner.id, fixture.bindings.frontA.id);
+      [fixture.runners.runnerA.runner.id, fixture.bindings.frontA.id],
+    );
 
     const active = createSubmission(fixture, [
       item(fixture, 'front', 'developerA', 'frontA', 'feature/active'),
@@ -331,8 +175,8 @@ describe('SubmissionService create', () => {
         item(fixture, 'front', 'developerA', 'frontA', 'feature/conflict'),
       ]),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
-    expect(countRows(fixture.database, 'cooking_test_submission')).toBe(1);
-    expect(countRows(fixture.database, 'cooking_submission_item')).toBe(1);
+    expectRowCount(fixture.database, 'cooking_test_submission').toBe(1);
+    expectRowCount(fixture.database, 'cooking_submission_item').toBe(1);
   });
 
   test('创建和更新的幂等回放不会重复发布失效通知', async () => {
@@ -363,8 +207,7 @@ describe('SubmissionService create', () => {
 
     fixture.events.splice(0);
     const updateInput = {
-      mutationId: randomUUID(),
-      expectedVersion: 1,
+      ...mutation(1),
       title: '幂等提测已更新',
       requirementDescription: '重复更新也只通知一次',
     };
@@ -451,8 +294,7 @@ describe('Submission workspace', () => {
       fixture.users.developerA.id,
       submission.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: 1,
+        ...mutation(1),
         title: submission.title,
         requirementDescription: submission.requirementDescription,
         targetBranches: [
@@ -477,8 +319,7 @@ describe('Submission workspace', () => {
         fixture.users.developerA.id,
         submission.id,
         {
-          mutationId: randomUUID(),
-          expectedVersion: 2,
+          ...mutation(2),
           title: submission.title,
           requirementDescription: submission.requirementDescription,
           targetBranches: [
@@ -489,8 +330,7 @@ describe('Submission workspace', () => {
     ).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
     expect(() =>
       fixture.service.updateSubmission(fixture.users.owner.id, submission.id, {
-        mutationId: randomUUID(),
-        expectedVersion: 2,
+        ...mutation(2),
         title: submission.title,
         requirementDescription: submission.requirementDescription,
         targetBranches: [
@@ -509,8 +349,7 @@ describe('Submission workspace', () => {
         fixture.users.developerA.id,
         submission.id,
         {
-          mutationId: randomUUID(),
-          expectedVersion: 2,
+          ...mutation(2),
           title: submission.title,
           requirementDescription: submission.requirementDescription,
           targetBranches: [
@@ -543,11 +382,12 @@ describe('Submission workspace', () => {
         fixture.users.owner.id,
         fixture.engineering.front.id,
         {
-          mutationId: randomUUID(),
-          expectedVersion: engineering.getEngineering(
-            fixture.users.owner.id,
-            fixture.engineering.front.id,
-          ).version,
+          ...mutation(
+            engineering.getEngineering(
+              fixture.users.owner.id,
+              fixture.engineering.front.id,
+            ).version,
+          ),
           name: fixture.engineering.front.name,
           type: fixture.engineering.front.type,
           identifier: 'renamed-web',
@@ -559,8 +399,7 @@ describe('Submission workspace', () => {
         fixture.users.owner.id,
         fixture.environments.front.id,
         {
-          mutationId: randomUUID(),
-          expectedVersion: fixture.environments.front.version,
+          ...mutation(fixture.environments.front.version),
           name: fixture.environments.front.name,
           deployment: { kind: 'CI_CD' },
         },
@@ -575,8 +414,7 @@ describe('Submission workspace', () => {
         fixture.engineering.front.id,
         fixture.users.developerA.id,
         {
-          mutationId: randomUUID(),
-          expectedVersion: developerMembership.version,
+          ...mutation(developerMembership.version),
         },
       ),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
@@ -601,8 +439,7 @@ describe('Submission workspace', () => {
         fixture.project.id,
         fixture.users.tester.id,
         {
-          mutationId: randomUUID(),
-          expectedVersion: testerMembership.version,
+          ...mutation(testerMembership.version),
         },
       ),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
@@ -620,8 +457,7 @@ describe('Submission workspace', () => {
       fixture.users.creator.id,
       submission.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: 1,
+        ...mutation(1),
         title: '第一次修改',
         requirementDescription: '第一次需求修改',
       },
@@ -635,8 +471,7 @@ describe('Submission workspace', () => {
         fixture.users.creator.id,
         submission.id,
         {
-          mutationId: randomUUID(),
-          expectedVersion: 1,
+          ...mutation(1),
           title: '旧版本',
           requirementDescription: '不能覆盖',
         },
@@ -648,8 +483,7 @@ describe('Submission workspace', () => {
     ).toBe(2);
     expect(() =>
       fixture.service.updateSubmission(fixture.users.member.id, submission.id, {
-        mutationId: randomUUID(),
-        expectedVersion: 2,
+        ...mutation(2),
         title: '普通成员修改',
         requirementDescription: '不应允许',
       }),
@@ -658,288 +492,19 @@ describe('Submission workspace', () => {
       fixture.users.owner.id,
       submission.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: 2,
+        ...mutation(2),
         title: '所有者修改',
         requirementDescription: '项目所有者可以修改',
       },
     );
     expect(ownerUpdate).toMatchObject({ version: 3, workspaceRevision: 3 });
-    expect(
-      fixture.database
-        .query<{ count: number }, []>(
-          `SELECT COUNT(*) count FROM cooking_audit_event
-           WHERE target_id = ? AND action = 'SUBMISSION_DETAILS_UPDATED'`,
-        )
-        .get(submission.id)?.count,
-    ).toBe(2);
+    expectRowCount(fixture.database, 'cooking_audit_event', {
+      target_id: submission.id,
+      action: 'SUBMISSION_DETAILS_UPDATED',
+    }).toBe(2);
   });
 });
 
 const PlatformErrorLike = expect.objectContaining({
   code: expect.any(String),
-});
-
-function user(id: string, displayName: string) {
-  return {
-    id,
-    username: id,
-    displayName,
-    password: 'password',
-  };
-}
-
-function pairRunner(service: RunnerService, userId: string, name: string) {
-  return service.pair(service.issuePairingCode(userId).code, name);
-}
-
-function item(
-  fixture: Awaited<ReturnType<typeof setup>>,
-  engineering: 'back' | 'front',
-  responsible: 'developerA' | 'developerB' | 'member' | 'tester',
-  binding: 'backA' | 'backB' | 'frontA',
-  targetBranch: string,
-) {
-  return {
-    engineeringId: fixture.engineering[engineering].id,
-    responsibleUserId: fixture.users[responsible].id,
-    bindingId: fixture.bindings[binding].id,
-    targetBranch,
-    environmentId: fixture.environments[engineering].id,
-  };
-}
-
-function createSubmission(
-  fixture: Awaited<ReturnType<typeof setup>>,
-  items: ReturnType<typeof item>[],
-  actorUserId: string = fixture.users.owner.id,
-) {
-  return fixture.service.createSubmission(actorUserId, fixture.project.id, {
-    mutationId: randomUUID(),
-    title: '版本 1.0 提测',
-    requirementDescription: '验证项目多工程协作流程',
-    testerUserId: fixture.users.tester.id,
-    items,
-  });
-}
-
-function insertBug(
-  fixture: Awaited<ReturnType<typeof setup>>,
-  submissionId: string,
-  submissionItemId: string,
-): void {
-  const now = '2026-07-30T00:00:00.000Z';
-  fixture.database
-    .prepare(
-      `INSERT INTO cooking_bug(
-         id, short_id, submission_id, submission_item_id, stage, title,
-         operation_path, actual_result, expected_result,
-         report_locked_at, archived_at, archived_by_user_id, version,
-         created_by_user_id, created_at, updated_at
-       ) VALUES (?, 1, ?, ?, 'WAITING_FOR_REPAIR', ?, ?, ?, ?,
-                 NULL, NULL, NULL, 1, ?, ?, ?)`,
-    )
-    .run(
-      randomUUID(),
-      submissionId,
-      submissionItemId,
-      '锁定目标分支',
-      '打开测试页面',
-      '出现缺陷',
-      '应按预期工作',
-      fixture.users.tester.id,
-      now,
-      now,
-    );
-}
-
-function countRows(database: AppDatabase, table: string): number {
-  return (
-    database
-      .query<{ count: number }, []>(`SELECT COUNT(*) count FROM ${table}`)
-      .get()?.count ?? 0
-  );
-}
-
-describe('环境使用权切换', () => {
-  test('多工程原子切换、幂等回放、只暂停目标提测项并通知双方', async () => {
-    const fixture = await setup();
-    const front = item(fixture, 'front', 'developerA', 'frontA', 'main');
-    const back = item(fixture, 'back', 'developerB', 'backB', 'main');
-    const original = createSubmission(fixture, [front, back]);
-    const input = {
-      mutationId: randomUUID(),
-      title: '优先提测',
-      requirementDescription: '优先验收前端',
-      testerUserId: fixture.users.tester.id,
-      items: [front],
-    };
-    expect(() =>
-      fixture.service.createSubmission(
-        fixture.users.owner.id,
-        fixture.project.id,
-        input,
-      ),
-    ).toThrow('所选环境');
-    const conflicts = fixture.service.environmentConflicts(
-      fixture.users.owner.id,
-      fixture.project.id,
-      input,
-    );
-    expect(conflicts).toHaveLength(1);
-    expect(conflicts[0]).toMatchObject({
-      submissionId: original.id,
-      blockedReason: null,
-    });
-    const confirmed = { ...input, environmentTakeovers: conflicts };
-    fixture.events.length = 0;
-    const next = fixture.service.createSubmission(
-      fixture.users.owner.id,
-      fixture.project.id,
-      confirmed,
-    );
-    expect(
-      fixture.events.map(({ submissionId }) => submissionId).sort(),
-    ).toEqual([next.id, original.id].sort());
-    const oldItems = fixture.service.getWorkspace(
-      fixture.users.owner.id,
-      original.id,
-    ).submission.items;
-    expect(oldItems[0]!.environmentAccess.owned).toBe(false);
-    expect(oldItems[1]!.environmentAccess.owned).toBe(true);
-    const nextItem = fixture.service.getWorkspace(
-      fixture.users.developerA.id,
-      next.id,
-    ).submission.items[0]!;
-    expect(nextItem.environmentAccess).toMatchObject({
-      owned: true,
-      deploymentConfirmed: false,
-      canConfirmDeployment: true,
-    });
-    const eventCount = fixture.events.length;
-    expect(
-      fixture.service.createSubmission(
-        fixture.users.owner.id,
-        fixture.project.id,
-        confirmed,
-      ).id,
-    ).toBe(next.id);
-    expect(fixture.events).toHaveLength(eventCount);
-    expect(
-      countRows(fixture.database, 'cooking_submission_environment_lock'),
-    ).toBe(2);
-    const competing = { ...confirmed, mutationId: randomUUID() };
-    expect(() =>
-      fixture.service.createSubmission(
-        fixture.users.owner.id,
-        fixture.project.id,
-        competing,
-      ),
-    ).toThrow('环境使用情况已变化');
-    expect(countRows(fixture.database, 'cooking_test_submission')).toBe(2);
-    expect(() =>
-      fixture.service.changeEnvironment(fixture.users.tester.id, nextItem.id, {
-        mutationId: randomUUID(),
-        expectedRevision: next.workspaceRevision,
-        action: 'CONFIRM_DEPLOYMENT',
-      }),
-    ).toThrow('只有对应工程负责人');
-    fixture.service.changeEnvironment(
-      fixture.users.developerA.id,
-      nextItem.id,
-      {
-        mutationId: randomUUID(),
-        expectedRevision: next.workspaceRevision,
-        action: 'CONFIRM_DEPLOYMENT',
-      },
-    );
-    expect(
-      fixture.service.getWorkspace(fixture.users.tester.id, next.id).submission
-        .items[0]!.environmentAccess.deploymentConfirmed,
-    ).toBe(true);
-  });
-
-  test('第二个环境确认过期时全部回滚；同一原提测单的多个环境可以一起转移', async () => {
-    const fixture = await setup();
-    const items = [
-      item(fixture, 'front', 'developerA', 'frontA', 'main'),
-      item(fixture, 'back', 'developerB', 'backB', 'main'),
-    ];
-    const original = createSubmission(fixture, items);
-    const input = {
-      mutationId: randomUUID(),
-      title: '多环境接手',
-      requirementDescription: '原子切换',
-      testerUserId: fixture.users.tester.id,
-      items,
-    };
-    const conflicts = fixture.service.environmentConflicts(
-      fixture.users.owner.id,
-      fixture.project.id,
-      input,
-    );
-    const invalid = conflicts.map((entry, index) => ({
-      ...entry,
-      expectedRevision: entry.expectedRevision + index,
-    }));
-    const eventCount = fixture.events.length;
-    expect(() =>
-      fixture.service.createSubmission(
-        fixture.users.owner.id,
-        fixture.project.id,
-        { ...input, environmentTakeovers: invalid },
-      ),
-    ).toThrow('环境使用情况已变化');
-    expect(fixture.events).toHaveLength(eventCount);
-    expect(countRows(fixture.database, 'cooking_test_submission')).toBe(1);
-    expect(
-      fixture.service
-        .getWorkspace(fixture.users.owner.id, original.id)
-        .submission.items.every((entry) => entry.environmentAccess.owned),
-    ).toBe(true);
-    const next = fixture.service.createSubmission(
-      fixture.users.owner.id,
-      fixture.project.id,
-      { ...input, environmentTakeovers: conflicts },
-    );
-    expect(
-      fixture.service
-        .getWorkspace(fixture.users.owner.id, next.id)
-        .submission.items.every((entry) => entry.environmentAccess.owned),
-    ).toBe(true);
-  });
-
-  test('普通成员不能抢占，项目外用户不能读取占用详情', async () => {
-    const fixture = await setup();
-    const items = [item(fixture, 'front', 'developerA', 'frontA', 'main')];
-    createSubmission(fixture, items);
-    const input = {
-      mutationId: randomUUID(),
-      title: '无权抢占',
-      requirementDescription: '权限检查',
-      testerUserId: fixture.users.tester.id,
-      items,
-    };
-    const conflicts = fixture.service.environmentConflicts(
-      fixture.users.member.id,
-      fixture.project.id,
-      input,
-    );
-    expect(conflicts[0]!.blockedReason).toContain('只有项目所有者');
-    expect(() =>
-      fixture.service.createSubmission(
-        fixture.users.member.id,
-        fixture.project.id,
-        { ...input, environmentTakeovers: conflicts },
-      ),
-    ).toThrow('只有项目所有者');
-    expect(() =>
-      fixture.service.environmentConflicts(
-        fixture.users.outsider.id,
-        fixture.project.id,
-        input,
-      ),
-    ).toThrow('项目不存在或无权访问');
-    expect(countRows(fixture.database, 'cooking_test_submission')).toBe(1);
-  });
 });

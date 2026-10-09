@@ -1,9 +1,6 @@
 import { expect, test } from 'bun:test';
-import type {
-  CommandResult,
-  CommandRunner,
-  UserEnvironment,
-} from '../contracts';
+import type { CommandResult, CommandRunner } from '../contracts';
+import { macEnvironment as environment } from '../../testing/environment';
 import { MacOsLaunchAgent } from './launch-agent';
 
 test('launchctl Adapter 只操作当前用户 domain 和明确 Label', async () => {
@@ -48,14 +45,4 @@ class RecordingCommands implements CommandRunner {
     this.calls.push([executable, ...args]);
     return { exitCode: 0, stdout: '', stderr: '' };
   }
-}
-
-function environment(): UserEnvironment {
-  return {
-    homeDirectory: () => '/tmp/home',
-    userId: () => 501,
-    platform: () => 'darwin',
-    architecture: () => 'arm64',
-    isTerminal: () => false,
-  };
 }

@@ -5,6 +5,19 @@ import {
 } from './interaction-projection';
 
 const now = '2026-07-29T08:00:00.000Z';
+const question = {
+  id: 'strategy',
+  header: '处理策略',
+  question: '采用哪个方案？',
+  options: [
+    {
+      value: 'safe_path',
+      label: '稳妥方案',
+      description: '先补回归测试再修改',
+    },
+  ],
+};
+const userInputPayload = JSON.stringify({ questions: [question] });
 
 describe('projectCookingInteraction', () => {
   test('完整保留 questions、options、说明和内部 value', () => {
@@ -12,43 +25,13 @@ describe('projectCookingInteraction', () => {
       row({
         kind: 'USER_INPUT',
         method: 'item/tool/requestUserInput',
-        payload_json: JSON.stringify({
-          questions: [
-            {
-              id: 'strategy',
-              header: '处理策略',
-              question: '采用哪个方案？',
-              options: [
-                {
-                  value: 'safe_path',
-                  label: '稳妥方案',
-                  description: '先补回归测试再修改',
-                },
-              ],
-            },
-          ],
-        }),
+        payload_json: userInputPayload,
       }),
       true,
     );
     expect(projected).toMatchObject({
       kind: 'USER_INPUT',
-      request: {
-        questions: [
-          {
-            id: 'strategy',
-            header: '处理策略',
-            question: '采用哪个方案？',
-            options: [
-              {
-                value: 'safe_path',
-                label: '稳妥方案',
-                description: '先补回归测试再修改',
-              },
-            ],
-          },
-        ],
-      },
+      request: { questions: [question] },
     });
   });
 
@@ -78,22 +61,7 @@ describe('projectCookingInteraction', () => {
         kind: 'USER_INPUT',
         method: 'item/tool/requestUserInput',
         state: 'RESOLVED',
-        payload_json: JSON.stringify({
-          questions: [
-            {
-              id: 'strategy',
-              header: '处理策略',
-              question: '采用哪个方案？',
-              options: [
-                {
-                  value: 'safe_path',
-                  label: '稳妥方案',
-                  description: '先补回归测试再修改',
-                },
-              ],
-            },
-          ],
-        }),
+        payload_json: userInputPayload,
         resolution_json: JSON.stringify({
           answers: { strategy: { answers: ['safe_path'] } },
         }),

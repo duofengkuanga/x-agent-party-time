@@ -3,6 +3,7 @@ import { createWriteStream, type WriteStream } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { type JsonValue } from '@agent-party-time/execution-contract';
+import { XAPT_VERSION } from '../version';
 import type {
   CodexExecutionInput,
   CodexExecutor,
@@ -16,6 +17,7 @@ import {
   safeMessage,
   optionalString,
   parseStructuredResult,
+  latestAgentMessage,
   turnKey,
   turnFailureMessage,
 } from './wire-values';
@@ -30,6 +32,7 @@ import {
 } from './interaction';
 
 import { CodexAppServerError } from './errors';
+import { readCompletedTurn } from './session-reader';
 
 type JsonRpcRequest = {
   id: string | number;
@@ -72,6 +75,25 @@ export class CodexAppServerExecutor implements CodexExecutor {
     private readonly executable = 'codex',
     private readonly spawnProcess: typeof spawn = spawn,
   ) {}
+
+  static async probe(executable: string, timeoutMs = 5_000): Promise<void> {
+    const executor = new CodexAppServerExecutor(executable);
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        executor.ensureStarted(),
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(
+            () => reject(new Error('initialize timeout')),
+            timeoutMs,
+          );
+        }),
+      ]);
+    } finally {
+      if (timeout) clearTimeout(timeout);
+      await executor.close();
+    }
+  }
 
   async begin(
     input: CodexExecutionInput,
@@ -154,59 +176,9 @@ export class CodexAppServerExecutor implements CodexExecutor {
 
   private async readOwnedTurn(sessionId: string): Promise<CompletedCodexTurn> {
     await this.ensureStarted();
-    try {
-      const response = asRecord(
-        await this.request('thread/read', {
-          threadId: sessionId,
-          includeTurns: true,
-        }),
-      );
-      const thread = asRecord(response.thread);
-      const turns = Array.isArray(thread.turns)
-        ? thread.turns.map(asRecord)
-        : Array.isArray(response.turns)
-          ? response.turns.map(asRecord)
-          : [];
-      const turn = turns.at(-1);
-      const turnId = turn ? optionalString(turn.id) : null;
-      if (!turn || !turnId)
-        throw new CodexAppServerError(
-          'Codex 会话没有可确认的最新轮次，请在原会话完成后再同步',
-          sessionId,
-        );
-      const status = optionalString(turn.status);
-      if (status !== 'completed')
-        throw new CodexAppServerError(
-          latestTurnStatusMessage(status),
-          sessionId,
-        );
-      const items = Array.isArray(turn.items) ? turn.items.map(asRecord) : [];
-      const message = [...items]
-        .reverse()
-        .find(
-          (item) =>
-            item.type === 'agentMessage' && typeof item.text === 'string',
-        )?.text;
-      if (typeof message !== 'string')
-        throw new CodexAppServerError(
-          'Codex 会话的最新轮次未返回结果',
-          sessionId,
-        );
-      const result = parseStructuredResult(message);
-      if (result === undefined)
-        throw new CodexAppServerError(
-          'Codex 会话的最新轮次未返回可识别的结果，请在原会话处理后再同步',
-          sessionId,
-        );
-      return { turnId, result };
-    } catch (error) {
-      if (error instanceof CodexAppServerError && error.sessionId === sessionId)
-        throw error;
-      throw new CodexAppServerError(
-        readSessionFailureMessage(error),
-        sessionId,
-      );
-    }
+    return readCompletedTurn(sessionId, (method, params) =>
+      this.request(method, params),
+    );
   }
 
   async close(): Promise<void> {
@@ -263,7 +235,7 @@ export class CodexAppServerExecutor implements CodexExecutor {
       clientInfo: {
         name: 'xapt',
         title: 'xapt',
-        version: '0.1.0',
+        version: XAPT_VERSION,
       },
       capabilities: { experimentalApi: true, requestAttestation: false },
     });
@@ -389,15 +361,8 @@ export class CodexAppServerExecutor implements CodexExecutor {
       );
       return;
     }
-    const items = Array.isArray(turn.items) ? turn.items : [];
     const message =
-      [...items]
-        .reverse()
-        .map(asRecord)
-        .find(
-          (item) =>
-            item.type === 'agentMessage' && typeof item.text === 'string',
-        )?.text ??
+      latestAgentMessage(turn.items) ??
       this.agentMessages.get(turnKey(active.threadId, active.turnId));
     if (typeof message !== 'string') {
       active.reject(
@@ -482,19 +447,4 @@ export class CodexAppServerExecutor implements CodexExecutor {
     this.completedTurns.clear();
     this.agentMessages.clear();
   }
-}
-
-function latestTurnStatusMessage(status: string | null): string {
-  if (status === 'inProgress' || status === 'interrupted')
-    return 'Codex 会话的最新一轮尚未完成或暂无法确认，请完成后再同步';
-  if (status === 'failed')
-    return 'Codex 会话的最新一轮已失败，请在原会话处理后再同步';
-  return 'Codex 会话的最新一轮状态无法确认，请完成后再同步';
-}
-
-function readSessionFailureMessage(error: unknown): string {
-  const message = safeMessage(error);
-  if (/not found|unknown thread|does not exist|不存在|找不到/iu.test(message))
-    return 'Codex 会话不可用，请确认原会话仍可读取后再同步';
-  return '无法读取 Codex 会话，请确认 Agent 在线且原会话可读后再同步';
 }

@@ -1,7 +1,7 @@
-import { afterEach, expect, test } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { testDirectories } from '../testing/directories';
+import { MemoryKeychain } from '../testing/memory-keychain';
+import { expect, test } from 'bun:test';
+
 import type {
   Runner,
   RunnerAuthorizationClaimResponse,
@@ -19,50 +19,17 @@ import { DaemonControlClient } from './control';
 import type { RunnerAuthorizationHttp } from '../agent/server-http';
 import { DaemonRuntime } from './runtime';
 
-const homes: string[] = [];
+const createTestDirectory = testDirectories('xapt-runtime-');
 const runnerId = '00000000-0000-4000-8000-000000000001';
 const credential = 'credential-secret-at-least-thirty-two-characters';
 const now = new Date('2026-08-20T08:00:00.000Z');
 
-afterEach(async () => {
-  await Promise.all(
-    homes.splice(0).map((home) => rm(home, { recursive: true, force: true })),
-  );
-});
-
 test('远程连接恢复阻塞时 control socket 仍先可用', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'xapt-runtime-'));
-  homes.push(home);
-  const paths = xaptPaths(home);
-  const files = new NodeLocalFileSystem();
-  const state = new LocalStateStore(paths, files);
-  await state.initialize();
-  await state.saveConnection({
-    schemaVersion: CONNECTION_STATE_SCHEMA_VERSION,
-    serverUrl: 'http://10.10.96.169:3000',
-    runnerId,
-  });
+  const serverUrl = 'http://10.10.96.169:3000';
   const keychain = new MemoryKeychain();
-  await keychain.save(
-    keychainAccount('http://10.10.96.169:3000', runnerId),
-    credential,
-  );
+  await keychain.save(keychainAccount(serverUrl, runnerId), credential);
   const http = new BlockingAuthorizationHttp();
-  const connection = new ConnectionCoordinator(
-    state,
-    keychain,
-    new NoopBrowser(),
-    http,
-    new FixedClock(),
-  );
-  const runtime = new DaemonRuntime({
-    paths,
-    files,
-    state,
-    codex: { executable: '/opt/bin/codex', version: '0.146.0' },
-    connection,
-  });
-  const control = new DaemonControlClient(paths.controlSocket, 200);
+  const { runtime, control } = await runtimeFixture(serverUrl, keychain, http);
   const runtimeTask = runtime.run();
   await http.heartbeatStarted;
 
@@ -79,22 +46,40 @@ test('远程连接恢复阻塞时 control socket 仍先可用', async () => {
 });
 
 test('远程连接恢复失败时关闭已启动的 control socket', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'xapt-runtime-'));
-  homes.push(home);
+  const { paths, files, runtime, control } = await runtimeFixture(
+    'https://apt.example.com',
+    new RejectingKeychain(),
+    new BlockingAuthorizationHttp(),
+  );
+
+  await expect(runtime.run()).rejects.toThrow('keychain unavailable');
+  try {
+    expect(await files.info(paths.controlSocket)).toBeNull();
+  } finally {
+    if (await files.info(paths.controlSocket)) await control.stop();
+  }
+});
+
+async function runtimeFixture(
+  serverUrl: string,
+  keychain: Keychain,
+  http: RunnerAuthorizationHttp,
+) {
+  const home = await createTestDirectory();
   const paths = xaptPaths(home);
   const files = new NodeLocalFileSystem();
   const state = new LocalStateStore(paths, files);
   await state.initialize();
   await state.saveConnection({
     schemaVersion: CONNECTION_STATE_SCHEMA_VERSION,
-    serverUrl: 'https://apt.example.com',
+    serverUrl,
     runnerId,
   });
   const connection = new ConnectionCoordinator(
     state,
-    new RejectingKeychain(),
+    keychain,
     new NoopBrowser(),
-    new BlockingAuthorizationHttp(),
+    http,
     new FixedClock(),
   );
   const runtime = new DaemonRuntime({
@@ -105,29 +90,7 @@ test('远程连接恢复失败时关闭已启动的 control socket', async () =>
     connection,
   });
   const control = new DaemonControlClient(paths.controlSocket, 200);
-
-  await expect(runtime.run()).rejects.toThrow('keychain unavailable');
-  try {
-    expect(await files.info(paths.controlSocket)).toBeNull();
-  } finally {
-    if (await files.info(paths.controlSocket)) await control.stop();
-  }
-});
-
-class MemoryKeychain implements Keychain {
-  private readonly values = new Map<string, string>();
-
-  async save(account: string, value: string): Promise<void> {
-    this.values.set(account, value);
-  }
-
-  async read(account: string): Promise<string | null> {
-    return this.values.get(account) ?? null;
-  }
-
-  async delete(account: string): Promise<void> {
-    this.values.delete(account);
-  }
+  return { paths, files, runtime, control };
 }
 
 class RejectingKeychain implements Keychain {

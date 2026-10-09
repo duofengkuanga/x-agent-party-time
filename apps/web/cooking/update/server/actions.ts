@@ -4,10 +4,11 @@ import {
   formField,
   integerFormField,
   optionalFormField,
+  cookingMutationAction,
   runInteractiveMutation,
   type InteractiveActionResult,
 } from '@/cooking/shared/server/action-transport';
-import { updateService } from '../../runtime/update';
+import { updateService } from '../../runtime/services';
 import type {
   RetryUpdateInput,
   SynchronizeUpdateSessionInput,
@@ -94,14 +95,6 @@ export async function resolveUpdateInteractionAction(
   );
 }
 
-function runUpdateAction(
-  command: (userId: string) => UpdateMutationResult,
-): Promise<UpdateActionResult> {
-  return runInteractiveMutation({
-    validationEvent: 'cooking_update_action_validation_failed',
-    command: ({ userId }) => ({
-      result: command(userId),
-      refreshPaths: ['/cooking'],
-    }),
-  });
-}
+const runUpdateAction = cookingMutationAction(
+  'cooking_update_action_validation_failed',
+);

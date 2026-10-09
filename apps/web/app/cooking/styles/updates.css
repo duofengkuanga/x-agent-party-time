@@ -1,0 +1,208 @@
+/* 共享统一更新批次 */
+.collab-update-batch-card > h3 {
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.collab-update-batch-card__more {
+  color: var(--faint);
+  font-size: 8px;
+  grid-column: 2;
+  line-height: 1.35;
+}
+
+.collab-update-batch-detail {
+  padding-bottom: 24px;
+}
+
+.collab-update-batch-detail--embedded {
+  padding-bottom: 0;
+}
+
+.collab-update-batch-progress > header p {
+  color: var(--muted);
+  margin-top: 5px;
+}
+
+.collab-update-scope {
+  margin-top: 1px;
+}
+
+.collab-update-scope > summary {
+  font-weight: 900;
+  list-style-position: inside;
+}
+
+.collab-update-scope__entries {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding-left: 18px;
+}
+
+.collab-update-scope__entries > li {
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.collab-update-timeline
+  > li[data-node-kind='BATCH_FORMED']
+  > .collab-repair-timeline__mark {
+  border-color: var(--blue);
+}
+
+.collab-update-timeline
+  > li[data-node-kind='UPDATE_ATTEMPT']
+  > .collab-repair-timeline__mark {
+  border-color: var(--accent);
+}
+
+.collab-update-timeline
+  .collab-repair-timeline__mark[data-outcome='SUCCEEDED'] {
+  border-color: var(--success);
+}
+
+.collab-update-timeline .collab-repair-timeline__mark[data-outcome='FAILED'] {
+  border-color: var(--danger);
+}
+
+.collab-update-timeline .collab-structured-failure {
+  background: color-mix(in srgb, var(--paper), var(--danger) 4%);
+  border: 1px solid color-mix(in srgb, var(--danger), var(--line) 42%);
+  border-left: 3px solid var(--danger);
+  display: grid;
+  gap: 7px;
+  margin-top: 2px;
+  padding: 10px 12px;
+}
+
+.collab-update-timeline .collab-structured-failure > header {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 10px;
+  justify-content: flex-start;
+}
+
+.collab-update-timeline .collab-structured-failure > header > span,
+.collab-update-timeline .collab-structured-failure > p > span {
+  color: var(--danger);
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.collab-update-timeline .collab-structured-failure > header > strong {
+  color: var(--ink);
+  font-size: 10px;
+}
+
+.collab-update-timeline .collab-structured-failure > p {
+  align-items: baseline;
+  display: grid;
+  gap: 6px;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.collab-update-attempt-results {
+  display: grid;
+  margin: 2px 0 0 4px;
+  padding-left: 13px;
+}
+
+.collab-update-attempt-results > * {
+  border-left: 1px solid var(--strong-line);
+  margin: 0;
+  padding: 0 0 16px 17px;
+  position: relative;
+}
+
+.collab-update-attempt-results > *::before {
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  content: '';
+  height: 8px;
+  left: -5px;
+  position: absolute;
+  top: 3px;
+  transform: rotate(45deg);
+  width: 8px;
+}
+
+.collab-update-attempt-results > *:last-child {
+  border-left-color: transparent;
+  padding-bottom: 0;
+}
+
+.collab-update-attempt-results > [data-result-kind='completed']::before {
+  border-color: var(--success);
+}
+
+.collab-update-attempt-results > [data-result-kind='warning']::before {
+  border-color: var(--warning);
+}
+
+.collab-update-attempt-results > [data-result-kind='pending']::before {
+  border-color: var(--accent);
+}
+
+.collab-update-attempt-results > .collab-repair-validations {
+  border-left: 1px solid var(--strong-line);
+  gap: 7px;
+  padding-left: 17px;
+}
+
+.collab-update-result-list {
+  display: grid;
+  gap: 7px;
+}
+
+.collab-update-result-list h4 {
+  color: var(--muted);
+  font-size: 9px;
+  margin: 0;
+}
+
+.collab-update-result-list ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.collab-update-result-list li {
+  font-size: 9px;
+  line-height: 1.6;
+}
+
+.collab-technical-details {
+  border-top: 1px dashed var(--line);
+  margin-top: 12px;
+  padding-top: 10px;
+}
+
+.collab-technical-details > summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.collab-technical-details > div,
+.collab-technical-details > p,
+.collab-technical-details > code {
+  margin-top: 10px;
+}
+
+.collab-bug-card__footer-end > .collab-bug-card__actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  min-width: 0;
+  pointer-events: auto;
+}
+
+.collab-bug-card__footer-end > .collab-bug-card__actions button {
+  min-height: 28px;
+  padding: 5px 8px;
+}

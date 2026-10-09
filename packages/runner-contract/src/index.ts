@@ -112,25 +112,21 @@ export const RunnerPairingResultSchema = z.object({
   credential: RunnerCredentialSchema,
 });
 
-export const RunnerAuthorizationCreateRequestSchema = z
-  .object({
-    installationId: RunnerInstallationIdSchema,
-    verifierHash: RunnerAuthorizationVerifierHashSchema,
-    fingerprint: RunnerFingerprintSchema,
-    suggestedName: RunnerNameSchema,
-  })
-  .strict();
+export const RunnerAuthorizationCreateRequestSchema = z.strictObject({
+  installationId: RunnerInstallationIdSchema,
+  verifierHash: RunnerAuthorizationVerifierHashSchema,
+  fingerprint: RunnerFingerprintSchema,
+  suggestedName: RunnerNameSchema,
+});
 
 export const RunnerAuthorizationIssueSchema = z.object({
   requestId: RunnerAuthorizationRequestIdSchema,
   expiresAt: z.iso.datetime(),
 });
 
-export const RunnerAuthorizationClaimRequestSchema = z
-  .object({
-    verifier: RunnerAuthorizationVerifierSchema,
-  })
-  .strict();
+export const RunnerAuthorizationClaimRequestSchema = z.strictObject({
+  verifier: RunnerAuthorizationVerifierSchema,
+});
 
 export const RunnerAuthorizationClaimResponseSchema = z.discriminatedUnion(
   'state',
@@ -149,11 +145,9 @@ export const RunnerAuthorizationClaimResponseSchema = z.discriminatedUnion(
   ],
 );
 
-export const RunnerHeartbeatRequestSchema = z
-  .object({
-    availableSlots: z.number().int().min(0).max(3),
-  })
-  .strict();
+export const RunnerHeartbeatRequestSchema = z.strictObject({
+  availableSlots: z.number().int().min(0).max(3),
+});
 
 export const RunnerHeartbeatResponseSchema = z.object({
   runner: RunnerSchema,
@@ -163,12 +157,10 @@ export const RunnerBindingRefSchema = z.object({
   bindingId: z.uuid(),
 });
 
-export const RunnerBindingConfirmationRequestSchema = z
-  .object({
-    bindingId: z.uuid(),
-    repositoryUrl: RepositoryUrlSchema,
-  })
-  .strict();
+export const RunnerBindingConfirmationRequestSchema = z.strictObject({
+  bindingId: z.uuid(),
+  repositoryUrl: RepositoryUrlSchema,
+});
 
 export const RunnerBindingConfirmationResponseSchema =
   RunnerBindingConfirmationRequestSchema;
@@ -190,26 +182,22 @@ export const RunnerBindingWorkResponseSchema = z.object({
 export const RunnerBindingWorkCompletionSchema = z.discriminatedUnion(
   'outcome',
   [
-    z
-      .object({
-        outcome: z.literal('SUCCEEDED'),
-        repositoryUrl: RepositoryUrlSchema,
-      })
-      .strict(),
-    z
-      .object({
-        outcome: z.literal('FAILED'),
-        code: z.enum([
-          'CANCELLED',
-          'INVALID_DIRECTORY',
-          'NOT_GIT_REPOSITORY',
-          'MISSING_REMOTE',
-          'LOCAL_STATE_FAILED',
-          'UNSUPPORTED_PLATFORM',
-        ]),
-        message: z.string().trim().min(1).max(240),
-      })
-      .strict(),
+    z.strictObject({
+      outcome: z.literal('SUCCEEDED'),
+      repositoryUrl: RepositoryUrlSchema,
+    }),
+    z.strictObject({
+      outcome: z.literal('FAILED'),
+      code: z.enum([
+        'CANCELLED',
+        'INVALID_DIRECTORY',
+        'NOT_GIT_REPOSITORY',
+        'MISSING_REMOTE',
+        'LOCAL_STATE_FAILED',
+        'UNSUPPORTED_PLATFORM',
+      ]),
+      message: z.string().trim().min(1).max(240),
+    }),
   ],
 );
 
@@ -220,7 +208,6 @@ export const RunnerBindingWorkCompletionResponseSchema = z.object({
 export type Runner = z.infer<typeof RunnerSchema>;
 export type RunnerStatus = z.infer<typeof RunnerStatusSchema>;
 export type PairingCodeIssue = z.infer<typeof PairingCodeIssueSchema>;
-export type RunnerPairRequest = z.infer<typeof RunnerPairRequestSchema>;
 export type RunnerPairingResult = z.infer<typeof RunnerPairingResultSchema>;
 export type RunnerAuthorizationCreateRequest = z.infer<
   typeof RunnerAuthorizationCreateRequestSchema
@@ -231,19 +218,7 @@ export type RunnerAuthorizationIssue = z.infer<
 export type RunnerAuthorizationClaimResponse = z.infer<
   typeof RunnerAuthorizationClaimResponseSchema
 >;
-export type RunnerHeartbeatResponse = z.infer<
-  typeof RunnerHeartbeatResponseSchema
->;
-export type RunnerHeartbeatRequest = z.infer<
-  typeof RunnerHeartbeatRequestSchema
->;
 export type RunnerBindingRef = z.infer<typeof RunnerBindingRefSchema>;
-export type RunnerBindingConfirmationRequest = z.infer<
-  typeof RunnerBindingConfirmationRequestSchema
->;
-export type RunnerBindingsResponse = z.infer<
-  typeof RunnerBindingsResponseSchema
->;
 export type RunnerBindingWork = z.infer<typeof RunnerBindingWorkSchema>;
 export type RunnerBindingWorkCompletion = z.infer<
   typeof RunnerBindingWorkCompletionSchema

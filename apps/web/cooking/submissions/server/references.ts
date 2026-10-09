@@ -6,9 +6,8 @@ export function projectMemberHasSubmissionResponsibilities(
   userId: string,
 ): boolean {
   return Boolean(
-    database
-      .prepare(
-        `SELECT 1 present
+    database.get(
+      `SELECT 1 present
          FROM cooking_test_submission submission
          LEFT JOIN cooking_submission_item item
            ON item.submission_id = submission.id
@@ -17,8 +16,10 @@ export function projectMemberHasSubmissionResponsibilities(
            AND submission.status = 'ACTIVE'
            AND (submission.tester_user_id = ? OR item.id IS NOT NULL)
          LIMIT 1`,
-      )
-      .get(userId, projectId, userId),
+      userId,
+      projectId,
+      userId,
+    ),
   );
 }
 
@@ -27,17 +28,16 @@ export function submissionReferencesEngineering(
   engineeringId: string,
 ): boolean {
   return Boolean(
-    database
-      .prepare(
-        `SELECT 1 present
+    database.get(
+      `SELECT 1 present
          FROM cooking_submission_item item
          JOIN cooking_test_submission submission
            ON submission.id = item.submission_id
           AND submission.status = 'ACTIVE'
          WHERE item.engineering_id = ?
          LIMIT 1`,
-      )
-      .get(engineeringId),
+      engineeringId,
+    ),
   );
 }
 
@@ -46,15 +46,14 @@ export function submissionReferencesEnvironment(
   environmentId: string,
 ): boolean {
   return Boolean(
-    database
-      .prepare(
-        `SELECT 1 present
+    database.get(
+      `SELECT 1 present
          FROM cooking_submission_item item
          JOIN cooking_test_submission submission ON submission.id = item.submission_id
          WHERE item.environment_id = ? AND submission.status = 'ACTIVE'
          LIMIT 1`,
-      )
-      .get(environmentId),
+      environmentId,
+    ),
   );
 }
 
@@ -64,9 +63,8 @@ export function engineeringMemberHasSubmissionResponsibilities(
   userId: string,
 ): boolean {
   return Boolean(
-    database
-      .prepare(
-        `SELECT 1 present
+    database.get(
+      `SELECT 1 present
          FROM cooking_submission_item item
          JOIN cooking_test_submission submission
            ON submission.id = item.submission_id
@@ -74,7 +72,8 @@ export function engineeringMemberHasSubmissionResponsibilities(
          WHERE item.engineering_id = ?
            AND item.responsible_user_id = ?
          LIMIT 1`,
-      )
-      .get(engineeringId, userId),
+      engineeringId,
+      userId,
+    ),
   );
 }

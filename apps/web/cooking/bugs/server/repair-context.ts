@@ -1,4 +1,5 @@
 import type { AppDatabase } from '@/platform/database';
+import { parseRow } from '@/platform/database/row-mapper';
 import { PlatformError } from '@/platform/errors';
 import { z } from 'zod';
 
@@ -59,9 +60,8 @@ export class BugRepairContextService {
   constructor(private readonly db: AppDatabase) {}
 
   get(bugId: string): BugRepairContext {
-    const row = this.db
-      .prepare(
-        `SELECT bug.id bug_id, bug.submission_id, bug.title, bug.operation_path,
+    const row = this.db.get(
+      `SELECT bug.id bug_id, bug.submission_id, bug.title, bug.operation_path,
                 bug.actual_result, bug.expected_result,
                 submission.title submission_title,
                 submission.requirement_description,
@@ -72,12 +72,11 @@ export class BugRepairContextService {
          JOIN cooking_submission_item item ON item.id = bug.submission_item_id
          JOIN cooking_engineering_binding binding ON binding.id = item.binding_id
          WHERE bug.id = ?`,
-      )
-      .get(bugId) as ContextRow | undefined;
+      bugId,
+    ) as ContextRow | undefined;
     if (!row) throw new PlatformError('NOT_FOUND', '待修复缺陷不存在');
-    const attachments = this.db
-      .prepare(
-        `SELECT file.id, file.original_name, attachment.role
+    const attachments = this.db.all<AttachmentRow>(
+      `SELECT file.id, file.original_name, attachment.role
          FROM cooking_bug_attachment attachment
          JOIN platform_file file ON file.id = attachment.file_id
          WHERE attachment.bug_id = ?
@@ -85,18 +84,17 @@ export class BugRepairContextService {
            WHEN 'ACTUAL_RESULT' THEN 0
            WHEN 'EXPECTED_RESULT' THEN 1
          END, attachment.position`,
-      )
-      .all(bugId) as AttachmentRow[];
+      bugId,
+    );
     const actualResult = attachments
       .filter(({ role }) => role === 'ACTUAL_RESULT')
       .map(mapAttachment);
     const expectedResult = attachments
       .filter(({ role }) => role === 'EXPECTED_RESULT')
       .map(mapAttachment);
-    const feedback = (
-      this.db
-        .prepare(
-          `SELECT content FROM (
+    const feedback = this.db
+      .all<{ content: string }>(
+        `SELECT content FROM (
              SELECT comment content, created_at, id
              FROM cooking_verification_record
              WHERE bug_id = ? AND result = 'FAILED'
@@ -104,20 +102,13 @@ export class BugRepairContextService {
              SELECT feedback content, created_at, id
              FROM cooking_reopen_record WHERE bug_id = ?
            ) ORDER BY created_at, id`,
-        )
-        .all(bugId, bugId) as Array<{ content: string }>
-    ).map(({ content }) => content);
+        bugId,
+        bugId,
+      )
+      .map(({ content }) => content);
 
-    return BugRepairContextSchema.parse({
-      bugId: row.bug_id,
-      submissionId: row.submission_id,
-      submissionTitle: row.submission_title,
-      requirementDescription: row.requirement_description,
-      engineeringName: row.engineering_name,
-      repositoryUrl: row.repository_url,
-      targetBranch: row.target_branch,
-      runnerId: row.runner_id,
-      bindingId: row.binding_id,
+    return parseRow(BugRepairContextSchema, {
+      ...row,
       report: {
         title: row.title,
         operationPath: row.operation_path,

@@ -7,18 +7,14 @@ import {
   useReducer,
   useRef,
   useState,
-  useSyncExternalStore,
   useTransition,
   type CSSProperties,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
 } from 'react';
 import type { User } from '@/platform/auth/contract';
 import { createClientId } from '@/cooking/shared/ui/client-id';
 import {
   SIDEBAR_MAX_WIDTH,
   SIDEBAR_MIN_WIDTH,
-  clampSidebarWidth,
 } from '@/cooking/shared/ui/sidebar-width';
 import {
   CookingWorkspaceSnapshotSchema,
@@ -41,13 +37,7 @@ import {
 import { EnvironmentStatus } from './environment-status';
 import { SubmissionComposer } from './submission-composer';
 import { workspaceReducer, parseInvalidation } from './workspace-state';
-import {
-  subscribeSidebarWidth,
-  getSidebarWidthSnapshot,
-  SIDEBAR_STORAGE_KEY,
-  writeSidebarWidthCookie,
-  SIDEBAR_CHANGE_EVENT,
-} from './sidebar-preference';
+import { useSidebarWidth } from './sidebar-preference';
 
 import {
   messageOf,
@@ -88,16 +78,8 @@ export function SubmissionWorkspace({
     useState<SubmissionCreationCatalog | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const storedSidebarWidth = useSyncExternalStore(
-    subscribeSidebarWidth,
-    () => getSidebarWidthSnapshot(initialSidebarWidth),
-    () => initialSidebarWidth,
-  );
-  const [sidebarWidthOverride, setSidebarWidthOverride] = useState<
-    number | null
-  >(null);
-  const sidebarWidth = sidebarWidthOverride ?? storedSidebarWidth;
-  const [sidebarResizing, setSidebarResizing] = useState(false);
+  const { sidebarWidth, sidebarResizing, resizerHandlers } =
+    useSidebarWidth(initialSidebarWidth);
   const [includeClosed, setIncludeClosed] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -106,20 +88,6 @@ export function SubmissionWorkspace({
   const snapshotRef = useRef(initialSnapshot);
   const refreshInFlight = useRef<Promise<void> | null>(null);
   const requestedRevision = useRef(initialSnapshot?.revision ?? 0);
-  const sidebarDrag = useRef<{
-    currentWidth: number;
-    startWidth: number;
-    startX: number;
-  } | null>(null);
-
-  useEffect(() => {
-    const stored = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
-    if (!stored) return;
-    const storedWidth = Number(stored);
-    if (!(Number.isFinite(storedWidth) && storedWidth > 0)) return;
-    writeSidebarWidthCookie(clampSidebarWidth(storedWidth));
-  }, []);
-
   const selectedId = snapshot?.submission.submission.id ?? null;
 
   const refreshSnapshot = useCallback(
@@ -227,73 +195,25 @@ export function SubmissionWorkspace({
     });
   }
 
-  function saveSidebarWidth(width: number) {
-    window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(width));
-    writeSidebarWidthCookie(width);
-    window.dispatchEvent(new Event(SIDEBAR_CHANGE_EVENT));
-  }
-
-  function beginSidebarResize(event: ReactPointerEvent<HTMLDivElement>) {
-    if (event.button !== 0 || window.matchMedia('(max-width: 760px)').matches)
-      return;
-    sidebarDrag.current = {
-      currentWidth: sidebarWidth,
-      startWidth: sidebarWidth,
-      startX: event.clientX,
-    };
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setSidebarResizing(true);
-  }
-
-  function resizeSidebar(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!sidebarDrag.current) return;
-    const nextWidth = clampSidebarWidth(
-      sidebarDrag.current.startWidth +
-        event.clientX -
-        sidebarDrag.current.startX,
-    );
-    sidebarDrag.current.currentWidth = nextWidth;
-    setSidebarWidthOverride(nextWidth);
-  }
-
-  function finishSidebarResize(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!sidebarDrag.current) return;
-    const finalWidth = sidebarDrag.current.currentWidth;
-    sidebarDrag.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId))
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    setSidebarWidthOverride(null);
-    setSidebarResizing(false);
-    saveSidebarWidth(finalWidth);
-  }
-
-  function cancelSidebarResize(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!sidebarDrag.current) return;
-    sidebarDrag.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId))
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    setSidebarWidthOverride(null);
-    setSidebarResizing(false);
-  }
-
-  function resizeSidebarWithKeyboard(
-    event: ReactKeyboardEvent<HTMLDivElement>,
+  function runMutation<T>(
+    action: () => Promise<
+      { ok: true; result: T } | { ok: false; error: { message: string } }
+    >,
+    onSuccess: (result: T) => Promise<void>,
+    fallback: string,
   ) {
-    const step = event.shiftKey ? 32 : 16;
-    const nextWidth =
-      event.key === 'Home'
-        ? SIDEBAR_MIN_WIDTH
-        : event.key === 'End'
-          ? clampSidebarWidth(SIDEBAR_MAX_WIDTH)
-          : event.key === 'ArrowLeft'
-            ? clampSidebarWidth(sidebarWidth - step)
-            : event.key === 'ArrowRight'
-              ? clampSidebarWidth(sidebarWidth + step)
-              : null;
-    if (nextWidth === null) return;
-    event.preventDefault();
-    saveSidebarWidth(nextWidth);
-    setSidebarWidthOverride(null);
+    startTransition(async () => {
+      try {
+        const response = await action();
+        if (!response.ok) {
+          setError(response.error.message);
+          return;
+        }
+        await onSuccess(response.result);
+      } catch (actionError) {
+        setError(messageOf(actionError, fallback));
+      }
+    });
   }
 
   const visibleSubmissions = includeClosed
@@ -319,28 +239,19 @@ export function SubmissionWorkspace({
           onBackToList={() => setShowDetails(false)}
           onCloseSubmission={() => {
             if (!snapshot) return;
-            startTransition(async () => {
-              try {
-                const result = await closeSubmissionAction(
-                  snapshot.submission.submission.id,
-                  {
-                    mutationId: createClientId(),
-                    expectedVersion: snapshot.submission.submission.version,
-                  },
-                );
-                if (!result.ok) {
-                  setError(result.error.message);
-                  return;
-                }
+            runMutation(
+              () =>
+                closeSubmissionAction(snapshot.submission.submission.id, {
+                  mutationId: createClientId(),
+                  expectedVersion: snapshot.submission.submission.version,
+                }),
+              async (result) => {
                 setError(null);
                 setNotice('提测单已关闭，环境已释放，清理任务已排队。');
-                await refreshSnapshot(result.result.revision);
-              } catch (actionError) {
-                setError(
-                  messageOf(actionError, '关闭提测单失败，请稍后重试。'),
-                );
-              }
-            });
+                await refreshSnapshot(result.revision);
+              },
+              '关闭提测单失败，请稍后重试。',
+            );
           }}
           onCreate={openSubmissionComposer}
           onIncludeClosedChange={setIncludeClosed}
@@ -355,48 +266,35 @@ export function SubmissionWorkspace({
             expectedVersion,
             resolution,
           ) => {
-            startTransition(async () => {
-              try {
-                const result = await resolveCleanupInteractionAction(
-                  interactionId,
-                  {
-                    mutationId: createClientId(),
-                    expectedVersion,
-                    resolution,
-                  },
-                );
-                if (!result.ok) {
-                  setError(result.error.message);
-                  return;
-                }
-                setError(null);
-                setNotice('清理交互已提交给 Codex。');
-                await refreshSnapshot(result.result.revision);
-              } catch (actionError) {
-                setError(
-                  messageOf(actionError, '提交清理交互失败，请稍后重试。'),
-                );
-              }
-            });
-          }}
-          onRetryCleanup={(cleanupId, expectedVersion) => {
-            startTransition(async () => {
-              try {
-                const result = await retryCleanupAction(cleanupId, {
+            runMutation(
+              () =>
+                resolveCleanupInteractionAction(interactionId, {
                   mutationId: createClientId(),
                   expectedVersion,
-                });
-                if (!result.ok) {
-                  setError(result.error.message);
-                  return;
-                }
+                  resolution,
+                }),
+              async (result) => {
+                setError(null);
+                setNotice('清理交互已提交给 Codex。');
+                await refreshSnapshot(result.revision);
+              },
+              '提交清理交互失败，请稍后重试。',
+            );
+          }}
+          onRetryCleanup={(cleanupId, expectedVersion) => {
+            runMutation(
+              () =>
+                retryCleanupAction(cleanupId, {
+                  mutationId: createClientId(),
+                  expectedVersion,
+                }),
+              async (result) => {
                 setError(null);
                 setNotice('本地资源清理已重新排队。');
-                await refreshSnapshot(result.result.revision);
-              } catch (actionError) {
-                setError(messageOf(actionError, '重试清理失败，请稍后重试。'));
-              }
-            });
+                await refreshSnapshot(result.revision);
+              },
+              '重试清理失败，请稍后重试。',
+            );
           }}
           onSelect={selectSubmission}
           onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
@@ -406,35 +304,26 @@ export function SubmissionWorkspace({
           syncState={syncState}
           updateDetails={(title, requirementDescription, targetBranches) => {
             if (!snapshot) return;
-            startTransition(async () => {
-              try {
-                const result = await updateSubmissionAction(
-                  snapshot.submission.submission.id,
-                  {
-                    mutationId: createClientId(),
-                    expectedVersion: snapshot.submission.submission.version,
-                    title,
-                    requirementDescription,
-                    targetBranches,
-                  },
-                );
-                if (!result.ok) {
-                  setError(result.error.message);
-                  return;
-                }
+            runMutation(
+              () =>
+                updateSubmissionAction(snapshot.submission.submission.id, {
+                  mutationId: createClientId(),
+                  expectedVersion: snapshot.submission.submission.version,
+                  title,
+                  requirementDescription,
+                  targetBranches,
+                }),
+              async (result) => {
                 dispatch({
                   type: 'UPDATE_SUBMISSION',
-                  submission: result.result,
+                  submission: result,
                 });
-                await refreshSnapshot(result.result.workspaceRevision);
+                await refreshSnapshot(result.workspaceRevision);
                 setNotice('提测信息已更新。');
                 setError(null);
-              } catch (actionError) {
-                setError(
-                  messageOf(actionError, '保存提测信息失败，请稍后重试。'),
-                );
-              }
-            });
+              },
+              '保存提测信息失败，请稍后重试。',
+            );
           }}
           updating={pending}
         />
@@ -447,12 +336,7 @@ export function SubmissionWorkspace({
           aria-valuemin={SIDEBAR_MIN_WIDTH}
           aria-valuenow={sidebarWidth}
           className="collab-rail-resizer"
-          onKeyDown={resizeSidebarWithKeyboard}
-          onLostPointerCapture={finishSidebarResize}
-          onPointerCancel={cancelSidebarResize}
-          onPointerDown={beginSidebarResize}
-          onPointerMove={resizeSidebar}
-          onPointerUp={finishSidebarResize}
+          {...resizerHandlers}
           role="separator"
           tabIndex={sidebarCollapsed ? -1 : 0}
         />

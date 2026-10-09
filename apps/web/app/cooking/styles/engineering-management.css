@@ -1,0 +1,466 @@
+.engineering-environments {
+  border-top: 1px solid var(--line);
+  padding: 20px 22px 22px;
+}
+
+.engineering-environments .collaboration-section-title button {
+  background: transparent;
+  border: 1px solid var(--strong-line);
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 800;
+  min-height: 34px;
+  padding: 0 11px;
+}
+
+.engineering-environments button:focus-visible {
+  outline: 2px solid var(--accent-dark);
+  outline-offset: 3px;
+}
+
+.engineering-environments__title > div {
+  display: grid;
+  gap: 4px;
+}
+
+.engineering-environments__title > div > small {
+  display: block;
+}
+
+.engineering-environments > article {
+  background: color-mix(in srgb, var(--panel), transparent 22%);
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 10px;
+  padding: 16px;
+}
+
+.engineering-environment-note {
+  align-self: end;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.6;
+  margin: 0;
+  padding: 10px 0;
+}
+
+.engineering-environment-card__header {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  padding-bottom: 10px;
+}
+
+.engineering-environment-card__header > strong {
+  font-size: 10px;
+}
+
+.engineering-remove-environment {
+  background: transparent;
+  border: 1px solid var(--strong-line);
+  color: var(--ink);
+  font-size: 10px;
+  justify-self: start;
+  min-height: 30px;
+  padding: 0 10px;
+}
+
+.engineering-editor > .dialog-actions {
+  background: color-mix(in srgb, var(--paper), transparent 4%);
+  border-top: 1px solid var(--line);
+  margin-top: auto;
+  padding: 14px 22px;
+}
+
+.engineering-catalog-dialog .dialog-actions > a,
+.engineering-catalog-dialog .dialog-actions > button,
+.engineering-catalog-dialog .dialog-actions > form > button {
+  height: 38px;
+  box-shadow: none;
+  min-height: 38px;
+}
+
+.engineering-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 22px;
+}
+
+.engineering-detail > * {
+  flex: 0 0 auto;
+}
+
+.engineering-detail dl {
+  border-block: 1px solid var(--line);
+  margin: 0;
+}
+
+.engineering-detail dl > div {
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+}
+
+.engineering-detail dl > div:last-child {
+  border-bottom: 0;
+}
+
+.engineering-detail dt,
+.engineering-detail dd {
+  font-size: 11px;
+  line-height: 1.55;
+  margin: 0;
+  overflow-wrap: anywhere;
+  padding: 11px 10px;
+}
+
+.engineering-detail dt {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.engineering-detail__environments,
+.engineering-detail__bindings {
+  display: grid;
+  gap: 8px;
+}
+
+.engineering-detail__environments article {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 8px 14px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 11px 4px;
+}
+
+.engineering-detail__environments article > div {
+  display: grid;
+  gap: 3px;
+}
+
+.engineering-detail__environments strong {
+  font-size: 12px;
+}
+
+.engineering-detail__environments small,
+.engineering-detail__environments span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.engineering-detail__environments code {
+  background: var(--paper-deep);
+  border-left: 2px solid var(--accent);
+  font-size: 10px;
+  grid-column: 1 / -1;
+  overflow-wrap: anywhere;
+  padding: 9px 10px;
+}
+
+.engineering-detail__bindings ul {
+  border-block: 1px solid var(--line);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.engineering-detail__bindings li {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  padding: 11px 4px;
+}
+
+.engineering-detail__bindings li:last-child {
+  border-bottom: 0;
+}
+
+.engineering-detail__bindings li > span {
+  display: grid;
+  gap: 3px;
+}
+
+.engineering-detail__bindings li small,
+.engineering-detail__bindings li em,
+.engineering-binding-form small {
+  color: var(--muted);
+  font-size: 10px;
+  font-style: normal;
+}
+
+.engineering-binding-form {
+  background: var(--paper-deep);
+  border: 1px solid var(--line);
+  padding: 14px;
+}
+
+.engineering-binding-disclosure {
+  border-top: 1px solid var(--line);
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.engineering-binding-disclosure > summary {
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+  list-style: none;
+  width: fit-content;
+}
+
+.engineering-binding-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.engineering-binding-disclosure > summary::before {
+  content: '＋';
+  margin-right: 6px;
+}
+
+.engineering-binding-disclosure[open] > summary::before {
+  content: '−';
+}
+
+.bug-dialog .engineering-binding-disclosure .engineering-binding-form {
+  align-items: end;
+  background: transparent;
+  border: 0;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 14px 0 0;
+}
+
+.engineering-binding-disclosure .engineering-binding-form button {
+  height: 36px;
+  min-height: 36px;
+  min-width: auto;
+}
+
+.engineering-binding-disclosure .engineering-binding-form select {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font: inherit;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 10px;
+  width: 100%;
+}
+
+.engineering-binding-form input {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  min-height: 42px;
+  min-width: 0;
+  padding: 0 10px;
+  width: 100%;
+}
+
+.engineering-binding-form button {
+  background: transparent;
+  border: 1px solid var(--strong-line);
+  color: var(--ink);
+  min-height: 42px;
+  min-width: 112px;
+  padding-inline: 14px;
+  white-space: nowrap;
+}
+
+.engineering-binding-form small {
+  line-height: 1.55;
+}
+
+.engineering-catalog-dialog
+  :where(
+    input:not([type='hidden']):not([type='checkbox']):not([type='radio']),
+    select,
+    textarea
+  ) {
+  appearance: none;
+  background-color: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--strong-line);
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--ink);
+  font: inherit;
+  min-height: 38px;
+  padding: 0 2px;
+
+  &:focus-visible {
+    border-bottom-color: var(--accent);
+    box-shadow: 0 1px 0 var(--accent);
+    outline: 0;
+  }
+}
+
+.engineering-catalog-dialog select {
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 9px) 50%,
+    calc(100% - 5px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  padding-right: 22px;
+}
+
+.engineering-catalog-dialog textarea {
+  padding-block: 9px;
+}
+
+.engineering-catalog-dialog :where(input, textarea)::placeholder {
+  color: var(--muted);
+  opacity: 0.75;
+}
+
+.engineering-catalog-dialog :where(input, select, textarea):disabled {
+  background-color: var(--paper-deep);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+@media (max-width: 760px) {
+  .engineering-catalog-overlay {
+    padding: 8px;
+  }
+
+  .engineering-catalog-dialog {
+    max-height: calc(100dvh - 16px);
+  }
+
+  .engineering-catalog-dialog > .engineering-dialog__header {
+    padding: 15px 16px;
+  }
+
+  .engineering-catalog {
+    display: block;
+  }
+
+  .engineering-catalog__intro {
+    align-items: stretch;
+    padding: 14px 16px;
+  }
+
+  .engineering-catalog__intro p {
+    align-self: center;
+  }
+
+  .engineering-group {
+    padding: 18px 16px;
+  }
+
+  .engineering-group + .engineering-group {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .engineering-editor__heading,
+  .engineering-editor__grid,
+  .engineering-environments,
+  .engineering-detail {
+    padding-inline: 16px;
+  }
+
+  .engineering-editor__grid,
+  .engineering-environments > article {
+    grid-template-columns: 1fr;
+  }
+
+  .engineering-binding-form button {
+    width: 100%;
+  }
+
+  .engineering-environments > article .field-wide {
+    grid-column: auto;
+  }
+
+  .engineering-editor > .dialog-actions {
+    flex-wrap: wrap;
+    padding: 12px 16px;
+  }
+
+  .engineering-catalog-dialog .dialog-actions > button {
+    flex: 1 1 120px;
+    width: auto;
+  }
+
+  .engineering-detail dl > div {
+    grid-template-columns: 1fr;
+  }
+
+  .engineering-detail dt {
+    padding-bottom: 0;
+  }
+
+  .engineering-detail dd {
+    padding-top: 5px;
+  }
+}
+
+.collaboration-empty {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.7;
+  margin: 0;
+}
+
+.collaboration-ledger {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.collaboration-ledger > section {
+  border-bottom: 1px solid var(--strong-line);
+  min-width: 0;
+  padding: 22px;
+}
+
+.collaboration-ledger > section:nth-child(odd) {
+  border-right: 1px solid var(--strong-line);
+}
+
+.collaboration-ledger > section:last-child {
+  border-bottom: 0;
+}
+
+.collaboration-ledger > section:last-child:nth-child(odd) {
+  border-right: 0;
+  grid-column: 1 / -1;
+}
+
+.collaboration-section-title {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.collaboration-section-title span {
+  color: var(--accent-dark);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+}
+
+.collaboration-section-title small {
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.collaboration-member-list,
+.collaboration-invitation-list,
+.project-inbox-list {
+  display: grid;
+  gap: 8px;
+}

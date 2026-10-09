@@ -1,19 +1,20 @@
-import { z } from 'zod';
-import {
-  ExecutionStateSchema,
-  type JsonObject,
-} from '@agent-party-time/execution-contract';
 import { BugIdSchema } from '@/cooking/bugs/contract';
 import { CommitShaSchema } from '@/cooking/repair/contract';
 import {
+  CookingAttachmentViewSchema,
   CookingInteractionViewSchema,
   CookingMutationIdSchema,
+  VersionedCookingMutationSchema,
+  CookingValidationSchema,
   CookingVisualPresentationSchema,
 } from '@/cooking/shared/contract';
+import { outputJsonSchema } from '@/cooking/shared/output-schema';
 import {
   SubmissionIdSchema,
   SubmissionItemIdSchema,
 } from '@/cooking/submissions/contract';
+import { ExecutionStateSchema } from '@agent-party-time/execution-contract';
+import { z } from 'zod';
 
 export const UpdateBatchIdSchema = z.uuid();
 export const UpdateAttemptIdSchema = z.uuid();
@@ -26,68 +27,52 @@ export const UpdateBatchStateSchema = z.enum([
   'COMPLETED',
 ]);
 
-export const UpdateValidationSchema = z.object({
-  name: z.string().trim().min(1).max(240),
-  status: z.enum(['PASSED', 'FAILED', 'SKIPPED']),
-  detail: z.string().trim().max(300),
+export const UpdateValidationSchema = CookingValidationSchema;
+
+const UpdateResultFields = {
+  completedActions: z.array(z.string().trim().min(1).max(300)).max(5),
+  validations: z.array(UpdateValidationSchema).max(5),
+  warnings: z.array(z.string().trim().min(1).max(300)).max(3),
+};
+
+const CompletedUpdateExecutionResultSchema = z.strictObject({
+  outcome: z.literal('COMPLETED'),
+  ...UpdateResultFields,
 });
 
-const CompletedUpdateExecutionResultSchema = z
-  .object({
-    outcome: z.literal('COMPLETED'),
-    completedActions: z.array(z.string().trim().min(1).max(300)).max(5),
-    validations: z.array(UpdateValidationSchema).max(5),
-    warnings: z.array(z.string().trim().min(1).max(300)).max(3),
-  })
-  .strict();
+const PushedUpdateExecutionResultSchema = z.strictObject({
+  outcome: z.literal('PUSHED'),
+  ...UpdateResultFields,
+});
 
-const PushedUpdateExecutionResultSchema = z
-  .object({
-    outcome: z.literal('PUSHED'),
-    completedActions: z.array(z.string().trim().min(1).max(300)).max(5),
-    validations: z.array(UpdateValidationSchema).max(5),
-    warnings: z.array(z.string().trim().min(1).max(300)).max(3),
-  })
-  .strict();
+const FailedUpdateExecutionResultSchema = z.strictObject({
+  outcome: z.literal('FAILED'),
+  failedStep: z.string().trim().min(1).max(240),
+  reason: z.string().trim().min(1).max(500),
+  ...UpdateResultFields,
+  pendingActions: z.array(z.string().trim().min(1).max(300)).max(5),
+});
 
-const FailedUpdateExecutionResultSchema = z
-  .object({
-    outcome: z.literal('FAILED'),
-    failedStep: z.string().trim().min(1).max(240),
-    reason: z.string().trim().min(1).max(500),
-    completedActions: z.array(z.string().trim().min(1).max(300)).max(5),
-    validations: z.array(UpdateValidationSchema).max(5),
-    warnings: z.array(z.string().trim().min(1).max(300)).max(3),
-    pendingActions: z.array(z.string().trim().min(1).max(300)).max(5),
-  })
-  .strict();
+export const LocalScriptUpdateExecutionResultSchema = z.strictObject({
+  result: z.discriminatedUnion('outcome', [
+    CompletedUpdateExecutionResultSchema,
+    FailedUpdateExecutionResultSchema,
+  ]),
+});
 
-export const LocalScriptUpdateExecutionResultSchema = z
-  .object({
-    result: z.discriminatedUnion('outcome', [
-      CompletedUpdateExecutionResultSchema,
-      FailedUpdateExecutionResultSchema,
-    ]),
-  })
-  .strict();
+export const CiCdUpdateExecutionResultSchema = z.strictObject({
+  result: z.discriminatedUnion('outcome', [
+    PushedUpdateExecutionResultSchema,
+    FailedUpdateExecutionResultSchema,
+  ]),
+});
 
-export const CiCdUpdateExecutionResultSchema = z
-  .object({
-    result: z.discriminatedUnion('outcome', [
-      PushedUpdateExecutionResultSchema,
-      FailedUpdateExecutionResultSchema,
-    ]),
-  })
-  .strict();
-
-export const LocalScriptUpdateOutputJsonSchema = updateOutputJsonSchema([
-  'COMPLETED',
-  'FAILED',
-]);
-export const CiCdUpdateOutputJsonSchema = updateOutputJsonSchema([
-  'PUSHED',
-  'FAILED',
-]);
+export const LocalScriptUpdateOutputJsonSchema = outputJsonSchema(
+  LocalScriptUpdateExecutionResultSchema,
+);
+export const CiCdUpdateOutputJsonSchema = outputJsonSchema(
+  CiCdUpdateExecutionResultSchema,
+);
 
 export const PendingDeliveryViewSchema = z.object({
   submissionItemId: SubmissionItemIdSchema,
@@ -122,19 +107,7 @@ const UpdateAttemptResultViewSchema = z.discriminatedUnion('outcome', [
   }),
 ]);
 
-export const UpdateAttachmentViewSchema = z.object({
-  id: z.uuid(),
-  originalName: z.string().trim().min(1).max(255),
-  mediaType: z.enum([
-    'image/png',
-    'image/jpeg',
-    'image/webp',
-    'text/plain',
-    'application/json',
-  ]),
-  sizeBytes: z.number().int().positive(),
-  createdAt: z.iso.datetime(),
-});
+export const UpdateAttachmentViewSchema = CookingAttachmentViewSchema;
 
 export const UpdateBatchTimelineNodeSchema = z.discriminatedUnion('kind', [
   z.object({
@@ -200,26 +173,19 @@ export const FreezeUpdateInputSchema = z.object({
   mutationId: CookingMutationIdSchema,
 });
 
-export const RetryUpdateInputSchema = z.object({
-  mutationId: CookingMutationIdSchema,
-  expectedVersion: z.number().int().positive(),
-});
+export const RetryUpdateInputSchema = VersionedCookingMutationSchema;
 
 export const SynchronizeUpdateSessionInputSchema = RetryUpdateInputSchema;
 
 export const ExternalDeploymentReportInputSchema = z.discriminatedUnion(
   'outcome',
   [
-    z.object({
-      mutationId: CookingMutationIdSchema,
-      expectedVersion: z.number().int().positive(),
+    VersionedCookingMutationSchema.extend({
       outcome: z.literal('SUCCEEDED'),
       summary: z.string().trim().min(1).max(8_000).optional(),
       attachmentIds: z.array(z.uuid()).max(5),
     }),
-    z.object({
-      mutationId: CookingMutationIdSchema,
-      expectedVersion: z.number().int().positive(),
+    VersionedCookingMutationSchema.extend({
       outcome: z.literal('FAILED'),
       summary: z.string().trim().min(1).max(8_000),
       attachmentIds: z.array(z.uuid()).max(5),
@@ -227,16 +193,10 @@ export const ExternalDeploymentReportInputSchema = z.discriminatedUnion(
   ],
 );
 
-export const UpdateBatchCommandInputSchema = z.object({
-  mutationId: CookingMutationIdSchema,
-  expectedVersion: z.number().int().positive(),
-});
-
-export const ResolveUpdateInteractionInputSchema = z.object({
-  mutationId: CookingMutationIdSchema,
-  expectedVersion: z.number().int().positive(),
-  resolution: z.json(),
-});
+export const ResolveUpdateInteractionInputSchema =
+  RetryUpdateInputSchema.extend({
+    resolution: z.json(),
+  });
 
 export const UpdateMutationResultSchema = z.object({
   batchId: UpdateBatchIdSchema,
@@ -245,18 +205,10 @@ export const UpdateMutationResultSchema = z.object({
   revision: z.number().int().positive(),
 });
 
-export type LocalScriptUpdateExecutionResult = z.infer<
-  typeof LocalScriptUpdateExecutionResultSchema
->;
-export type CiCdUpdateExecutionResult = z.infer<
-  typeof CiCdUpdateExecutionResultSchema
->;
-export type PendingDeliveryView = z.infer<typeof PendingDeliveryViewSchema>;
 export type UpdateBatchView = z.infer<typeof UpdateBatchViewSchema>;
 export type UpdateWorkspaceProjection = z.infer<
   typeof UpdateWorkspaceProjectionSchema
 >;
-export type FreezeUpdateInput = z.infer<typeof FreezeUpdateInputSchema>;
 export type RetryUpdateInput = z.infer<typeof RetryUpdateInputSchema>;
 export type SynchronizeUpdateSessionInput = z.infer<
   typeof SynchronizeUpdateSessionInputSchema
@@ -264,110 +216,7 @@ export type SynchronizeUpdateSessionInput = z.infer<
 export type ExternalDeploymentReportInput = z.infer<
   typeof ExternalDeploymentReportInputSchema
 >;
-export type UpdateBatchCommandInput = z.infer<
-  typeof UpdateBatchCommandInputSchema
->;
 export type ResolveUpdateInteractionInput = z.infer<
   typeof ResolveUpdateInteractionInputSchema
 >;
 export type UpdateMutationResult = z.infer<typeof UpdateMutationResultSchema>;
-
-function updateOutputJsonSchema(
-  outcomes: ['COMPLETED' | 'PUSHED', 'FAILED'],
-): JsonObject {
-  return {
-    type: 'object',
-    properties: {
-      result: {
-        anyOf: [
-          updateSuccessOutputSchema(outcomes[0]),
-          updateFailedOutputSchema(),
-        ],
-      },
-    },
-    required: ['result'],
-    additionalProperties: false,
-  };
-}
-
-function updateSuccessOutputSchema(
-  outcome: 'COMPLETED' | 'PUSHED',
-): JsonObject {
-  return {
-    type: 'object',
-    properties: {
-      outcome: { type: 'string', enum: [outcome] },
-      completedActions: {
-        type: 'array',
-        items: { type: 'string', minLength: 1, maxLength: 300 },
-        maxItems: 5,
-      },
-      validations: {
-        type: 'array',
-        items: updateValidationOutputSchema(),
-        maxItems: 5,
-      },
-      warnings: {
-        type: 'array',
-        items: { type: 'string', minLength: 1, maxLength: 300 },
-        maxItems: 3,
-      },
-    },
-    required: ['outcome', 'completedActions', 'validations', 'warnings'],
-    additionalProperties: false,
-  };
-}
-
-function updateFailedOutputSchema(): JsonObject {
-  return {
-    type: 'object',
-    properties: {
-      outcome: { type: 'string', enum: ['FAILED'] },
-      failedStep: { type: 'string', minLength: 1, maxLength: 240 },
-      reason: { type: 'string', minLength: 1, maxLength: 500 },
-      completedActions: {
-        type: 'array',
-        items: { type: 'string', minLength: 1, maxLength: 300 },
-        maxItems: 5,
-      },
-      validations: {
-        type: 'array',
-        items: updateValidationOutputSchema(),
-        maxItems: 5,
-      },
-      warnings: {
-        type: 'array',
-        items: { type: 'string', minLength: 1, maxLength: 300 },
-        maxItems: 3,
-      },
-      pendingActions: {
-        type: 'array',
-        items: { type: 'string', minLength: 1, maxLength: 300 },
-        maxItems: 5,
-      },
-    },
-    required: [
-      'outcome',
-      'failedStep',
-      'reason',
-      'completedActions',
-      'validations',
-      'warnings',
-      'pendingActions',
-    ],
-    additionalProperties: false,
-  };
-}
-
-function updateValidationOutputSchema(): JsonObject {
-  return {
-    type: 'object',
-    properties: {
-      name: { type: 'string', minLength: 1, maxLength: 240 },
-      status: { type: 'string', enum: ['PASSED', 'FAILED', 'SKIPPED'] },
-      detail: { type: 'string', maxLength: 300 },
-    },
-    required: ['name', 'status', 'detail'],
-    additionalProperties: false,
-  };
-}

@@ -1,37 +1,21 @@
-import { afterEach, describe, expect, test } from 'bun:test';
-import { createHash } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { AuthService } from '@/platform/auth/service';
-import type { AppDatabase } from '@/platform/database';
-import { openDatabase } from '@/platform/database';
+import { expectRowCount, testDatabases } from '@/testing/database';
+import { seedUsers } from '@/testing/users';
+import { describe, expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 import { RunnerService } from './service';
 
-const directories: string[] = [];
-const databases: AppDatabase[] = [];
+const createDatabase = testDatabases();
+
 const installationId = '00000000-0000-4000-8000-000000000010';
 
 async function setup() {
-  const directory = await mkdtemp(join(tmpdir(), 'agent-party-time-runner-'));
-  directories.push(directory);
-  const database = openDatabase(join(directory, 'server.sqlite'));
-  databases.push(database);
+  const { directory, database } = await createDatabase();
   const auth = new AuthService(database);
-  const users = {
-    owner: await auth.seedUser({
-      id: 'runner-owner',
-      username: 'runner-owner',
-      displayName: 'Runner 所有者',
-      password: 'password',
-    }),
-    other: await auth.seedUser({
-      id: 'runner-other',
-      username: 'runner-other',
-      displayName: '其他用户',
-      password: 'password',
-    }),
-  };
+  const users = await seedUsers(auth, {
+    owner: ['runner-owner', 'Runner 所有者'],
+    other: ['runner-other', '其他用户'],
+  });
   let now = new Date('2026-07-26T10:00:00Z');
   let codeIndex = 0;
   let credentialIndex = 0;
@@ -57,34 +41,22 @@ async function setup() {
   };
 }
 
-afterEach(async () => {
-  for (const database of databases.splice(0)) database.close();
-  await Promise.all(
-    directories
-      .splice(0)
-      .map((directory) => rm(directory, { force: true, recursive: true })),
-  );
-});
-
 describe('Runner pairing', () => {
   test('Server 只保存配对码 Hash，成功交换后 Credential 只明文返回一次', async () => {
     const { database, service, users } = await setup();
     const issue = service.issuePairingCode(users.owner.id, 60_000);
-    const pairingRow = database
-      .query<{ code_hash: string }, []>(
-        'SELECT code_hash FROM platform_runner_pairing_code',
-      )
-      .get();
+    const pairingRow = database.get<{ code_hash: string }>(
+      'SELECT code_hash FROM platform_runner_pairing_code',
+    );
     expect(pairingRow?.code_hash).not.toBe(issue.code);
     expect(pairingRow?.code_hash).not.toContain(issue.code);
 
     const paired = service.pair(issue.code, '开发机 Runner');
     expect(paired.runner.ownerUserId).toBe(users.owner.id);
-    const runnerRow = database
-      .query<{ credential_hash: string }, []>(
-        'SELECT credential_hash FROM platform_runner WHERE id = ?',
-      )
-      .get(paired.runner.id);
+    const runnerRow = database.get<{ credential_hash: string }>(
+      'SELECT credential_hash FROM platform_runner WHERE id = ?',
+      paired.runner.id,
+    );
     expect(runnerRow?.credential_hash).not.toBe(paired.credential);
     expect(JSON.stringify(runnerRow)).not.toContain(paired.credential);
     expect(() => service.pair(issue.code, '重复 Runner')).toThrow(
@@ -116,12 +88,14 @@ describe('Agent 浏览器授权', () => {
       suggestedName: '本机 Agent',
     });
     expect(issue.requestId).not.toContain(verifier);
-    const stored = database
-      .query<{ verifier_hash: string; approval_token_hash: string | null }, []>(
-        `SELECT verifier_hash, approval_token_hash
+    const stored = database.get<{
+      verifier_hash: string;
+      approval_token_hash: string | null;
+    }>(
+      `SELECT verifier_hash, approval_token_hash
          FROM platform_runner_authorization_request WHERE id = ?`,
-      )
-      .get(issue.requestId);
+      issue.requestId,
+    );
     expect(stored?.verifier_hash).not.toBe(verifier);
 
     expect(service.claimAuthorization(issue.requestId, verifier)).toEqual({
@@ -139,12 +113,11 @@ describe('Agent 浏览器授权', () => {
     });
     expect(approval.approvalToken).toBeTruthy();
     expect(
-      database
-        .query<{ approval_token_hash: string }, []>(
-          `SELECT approval_token_hash
+      database.get<{ approval_token_hash: string }>(
+        `SELECT approval_token_hash
            FROM platform_runner_authorization_request WHERE id = ?`,
-        )
-        .get(issue.requestId)?.approval_token_hash,
+        issue.requestId,
+      )?.approval_token_hash,
     ).not.toBe(approval.approvalToken);
     expect(() =>
       service.prepareAuthorizationApproval(users.other.id, issue.requestId),
@@ -206,13 +179,7 @@ describe('Agent 浏览器授权', () => {
     expect(service.claimAuthorization(issue.requestId, verifier)).toMatchObject(
       { state: 'REJECTED' },
     );
-    expect(
-      database
-        .query<{ count: number }, []>(
-          'SELECT COUNT(*) count FROM platform_runner',
-        )
-        .get()?.count,
-    ).toBe(0);
+    expectRowCount(database, 'platform_runner').toBe(0);
     setNow('2026-07-26T10:00:02Z');
     expect(service.claimAuthorization(issue.requestId, verifier)).toMatchObject(
       { state: 'REJECTED' },
@@ -221,52 +188,31 @@ describe('Agent 浏览器授权', () => {
 
   test('同一安装重新授权复用 Agent 并轮换 Credential', async () => {
     const { database, service, setNow, users } = await setup();
-    const firstVerifier = 'a'.repeat(43);
-    const firstIssue = service.createAuthorizationRequest({
-      installationId,
-      verifierHash: createHash('sha256').update(firstVerifier).digest('hex'),
-      fingerprint: '1111-2222-3333',
-      suggestedName: '首次 Agent',
-    });
-    const firstApproval = service.prepareAuthorizationApproval(
-      users.owner.id,
-      firstIssue.requestId,
-    );
-    service.approveAuthorization(
-      users.owner.id,
-      firstIssue.requestId,
-      firstApproval.approvalToken!,
-      '首次 Agent',
-    );
-    const first = service.claimAuthorization(
-      firstIssue.requestId,
-      firstVerifier,
-    );
+    const authorize = (verifier: string, fingerprint: string, name: string) => {
+      const issue = service.createAuthorizationRequest({
+        installationId,
+        verifierHash: createHash('sha256').update(verifier).digest('hex'),
+        fingerprint,
+        suggestedName: name,
+      });
+      const approval = service.prepareAuthorizationApproval(
+        users.owner.id,
+        issue.requestId,
+      );
+      service.approveAuthorization(
+        users.owner.id,
+        issue.requestId,
+        approval.approvalToken!,
+        name,
+      );
+      return service.claimAuthorization(issue.requestId, verifier);
+    };
+    const first = authorize('a'.repeat(43), '1111-2222-3333', '首次 Agent');
     expect(first.state).toBe('AUTHORIZED');
     if (first.state !== 'AUTHORIZED') throw new Error('首次授权失败');
 
     setNow('2026-07-26T10:01:00Z');
-    const secondVerifier = 'b'.repeat(43);
-    const secondIssue = service.createAuthorizationRequest({
-      installationId,
-      verifierHash: createHash('sha256').update(secondVerifier).digest('hex'),
-      fingerprint: '4444-5555-6666',
-      suggestedName: '再次 Agent',
-    });
-    const secondApproval = service.prepareAuthorizationApproval(
-      users.owner.id,
-      secondIssue.requestId,
-    );
-    service.approveAuthorization(
-      users.owner.id,
-      secondIssue.requestId,
-      secondApproval.approvalToken!,
-      '再次 Agent',
-    );
-    const second = service.claimAuthorization(
-      secondIssue.requestId,
-      secondVerifier,
-    );
+    const second = authorize('b'.repeat(43), '4444-5555-6666', '再次 Agent');
     expect(second.state).toBe('AUTHORIZED');
     if (second.state !== 'AUTHORIZED') throw new Error('再次授权失败');
 
@@ -276,13 +222,7 @@ describe('Agent 浏览器授权', () => {
       version: first.runner.version + 1,
       createdAt: first.runner.createdAt,
     });
-    expect(
-      database
-        .query<{ count: number }, []>(
-          'SELECT COUNT(*) count FROM platform_runner',
-        )
-        .get()?.count,
-    ).toBe(1);
+    expectRowCount(database, 'platform_runner').toBe(1);
     expect(() => service.heartbeat(first.credential)).toThrow(
       expect.objectContaining({ code: 'NOT_AUTHENTICATED' }),
     );
@@ -299,11 +239,10 @@ describe('Runner credential and heartbeat', () => {
     const heartbeat = service.heartbeat(paired.credential, 1);
     expect(heartbeat.lastSeenAt).toBe('2026-07-26T10:00:00.000Z');
     expect(
-      database
-        .query<{ available_slots: number }, [string]>(
-          'SELECT available_slots FROM platform_runner WHERE id = ?',
-        )
-        .get(paired.runner.id)?.available_slots,
+      database.get<{ available_slots: number }>(
+        'SELECT available_slots FROM platform_runner WHERE id = ?',
+        paired.runner.id,
+      )?.available_slots,
     ).toBe(1);
     expect(service.listRunners(users.owner.id)[0]?.online).toBe(true);
     setNow('2026-07-26T10:00:31Z');
@@ -343,12 +282,13 @@ describe('Runner credential and heartbeat', () => {
       service.issuePairingCode(users.owner.id).code,
       '可恢复 Agent',
     );
-    service.heartbeat(paired.credential);
+    const heartbeat = service.heartbeat(paired.credential);
     const revoked = service.revokeRunner(
       users.owner.id,
       paired.runner.id,
       paired.runner.version,
     );
+    expect(revoked.lastSeenAt).toBe(heartbeat.lastSeenAt);
 
     expect(() =>
       service.reactivateRunner(users.other.id, revoked.id, revoked.version),

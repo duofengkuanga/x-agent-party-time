@@ -1,0 +1,47 @@
+/* Global button interaction contract. Persistent semantic states are excluded. */
+.collab-shell
+  button:not(:disabled):not(.collab-bug-card__open):not(.is-active):not(
+    [aria-current]
+  ):not([aria-pressed='true']):not([aria-expanded='true']) {
+  background: transparent !important;
+  border-color: var(--strong-line) !important;
+  color: var(--ink) !important;
+
+  &:hover {
+    background: var(--accent) !important;
+    border-color: var(--accent) !important;
+    color: #fffaf0 !important;
+  }
+}
+
+.collab-shell
+  :where(
+    a.repair-primary,
+    a.collab-primary,
+    a.collab-quiet-button,
+    .project-settings__row-actions a,
+    .collab-form__blocked a,
+    .collab-empty-stage__actions a
+  ) {
+  background: transparent !important;
+  border-color: var(--strong-line) !important;
+  color: var(--ink) !important;
+
+  &:hover {
+    background: var(--accent) !important;
+    border-color: var(--accent) !important;
+    color: #fffaf0 !important;
+
+    :where(span, strong, small, b, i, em, kbd) {
+      color: inherit !important;
+    }
+  }
+}
+
+.collab-shell
+  button:not(:disabled):not(.is-active):not([aria-current]):not(
+    [aria-pressed='true']
+  ):not([aria-expanded='true']):hover
+  :where(span, strong, small, b, i, em, kbd) {
+  color: inherit !important;
+}

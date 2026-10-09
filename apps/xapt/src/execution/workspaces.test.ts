@@ -1,74 +1,44 @@
-import { afterEach, describe, expect, test } from 'bun:test';
-import {
-  mkdir,
-  mkdtemp,
-  readFile,
-  readlink,
-  rm,
-  writeFile,
-} from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { testDirectories } from '../testing/directories';
+import type { ExecutionWorkspace } from '@agent-party-time/execution-contract';
+import { describe, expect, test } from 'bun:test';
+import { mkdir, readFile, readlink, rm, writeFile } from 'node:fs/promises';
+
 import { join } from 'node:path';
 import { xaptPaths } from '../platform/paths';
 import { GitExecutionWorkspaceManager } from './workspaces';
 
-const directories: string[] = [];
+const createTestDirectory = testDirectories('apt-workspaces-');
 
-afterEach(async () => {
-  await Promise.all(
-    directories
-      .splice(0)
-      .map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
+function repairWorkspace(id: string): ExecutionWorkspace {
+  return {
+    key: `bug-repair:${id}`,
+    isolation: 'BRANCH_WORKTREE',
+    baseRef: 'origin/main',
+    branch: `apt/repair/${id}`,
+  };
+}
+
+function updateWorkspace(id: string): ExecutionWorkspace {
+  return {
+    key: `update-batch:${id}`,
+    isolation: 'DETACHED_WORKTREE',
+    baseRef: 'origin/main',
+  };
+}
 
 describe('GitExecutionWorkspaceManager', () => {
   test('Repair 使用唯一分支，Update 使用 Detached HEAD 且目录互不串扰', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'apt-workspaces-'));
-    directories.push(root);
-    const remote = join(root, 'remote.git');
-    const source = join(root, 'source');
-    const binding = join(root, 'binding');
-    await run(['git', 'init', '--bare', remote]);
-    await run(['git', 'init', source]);
-    await run([
-      'git',
-      '-C',
-      source,
-      'config',
-      'user.email',
-      'test@example.com',
-    ]);
-    await run(['git', '-C', source, 'config', 'user.name', 'Test']);
-    await writeFile(join(source, 'README.md'), 'baseline\n');
-    await writeFile(
-      join(source, '.gitignore'),
-      'node_modules/\n.env.local\n.DS_Store\n',
-    );
-    await run(['git', '-C', source, 'add', 'README.md', '.gitignore']);
-    await run(['git', '-C', source, 'commit', '-m', 'baseline']);
-    await run(['git', '-C', source, 'branch', '-M', 'main']);
-    await run(['git', '-C', source, 'remote', 'add', 'origin', remote]);
-    await run(['git', '-C', source, 'push', '-u', 'origin', 'main']);
-    await run(['git', 'clone', remote, binding]);
-    await run(['git', '-C', binding, 'switch', 'main']);
+    const { root, source, binding } = await createRepository({
+      ignoreLocalFiles: true,
+    });
 
     const paths = xaptPaths(root);
     const manager = new GitExecutionWorkspaceManager(paths);
     const repair = cwd(
-      await manager.prepare(binding, {
-        key: 'bug-repair:bug-1',
-        isolation: 'BRANCH_WORKTREE',
-        baseRef: 'origin/main',
-        branch: 'apt/repair/bug-1',
-      }),
+      await manager.prepare(binding, repairWorkspace('bug-1')),
     );
     const update = cwd(
-      await manager.prepare(binding, {
-        key: 'update-batch:batch-1',
-        isolation: 'DETACHED_WORKTREE',
-        baseRef: 'origin/main',
-      }),
+      await manager.prepare(binding, updateWorkspace('batch-1')),
     );
 
     expect(repair).not.toBe(update);
@@ -83,11 +53,7 @@ describe('GitExecutionWorkspaceManager', () => {
     await run(['git', '-C', source, 'commit', '-m', 'latest']);
     await run(['git', '-C', source, 'push', 'origin', 'main']);
     const latestUpdate = cwd(
-      await manager.prepare(binding, {
-        key: 'update-batch:batch-2',
-        isolation: 'DETACHED_WORKTREE',
-        baseRef: 'origin/main',
-      }),
+      await manager.prepare(binding, updateWorkspace('batch-2')),
     );
     expect(await output(['git', '-C', latestUpdate, 'rev-parse', 'HEAD'])).toBe(
       await output(['git', '-C', binding, 'rev-parse', 'origin/main']),
@@ -100,23 +66,11 @@ describe('GitExecutionWorkspaceManager', () => {
 
     const restarted = new GitExecutionWorkspaceManager(paths);
     expect(
-      cwd(
-        await restarted.prepare(binding, {
-          key: 'bug-repair:bug-1',
-          isolation: 'BRANCH_WORKTREE',
-          baseRef: 'origin/main',
-          branch: 'apt/repair/bug-1',
-        }),
-      ),
+      cwd(await restarted.prepare(binding, repairWorkspace('bug-1'))),
     ).toBe(repair);
-    expect(
-      await restarted.resolve(binding, {
-        key: 'bug-repair:bug-1',
-        isolation: 'BRANCH_WORKTREE',
-        baseRef: 'origin/main',
-        branch: 'apt/repair/bug-1',
-      }),
-    ).toBe(repair);
+    expect(await restarted.resolve(binding, repairWorkspace('bug-1'))).toBe(
+      repair,
+    );
     await expect(
       restarted.resolve(binding, {
         key: 'missing-workspace',
@@ -128,32 +82,19 @@ describe('GitExecutionWorkspaceManager', () => {
 
     await run(['git', '-C', repair, 'switch', '-c', 'wrong-branch']);
     await expect(
-      restarted.prepare(binding, {
-        key: 'bug-repair:bug-1',
-        isolation: 'BRANCH_WORKTREE',
-        baseRef: 'origin/main',
-        branch: 'apt/repair/bug-1',
-      }),
+      restarted.prepare(binding, repairWorkspace('bug-1')),
     ).rejects.toThrow('身份不匹配');
     await run(['git', '-C', repair, 'switch', 'apt/repair/bug-1']);
     await run(['git', '-C', binding, 'branch', '-D', 'wrong-branch']);
 
     const replaced = cwd(
-      await restarted.prepare(binding, {
-        key: 'update-batch:replaced',
-        isolation: 'DETACHED_WORKTREE',
-        baseRef: 'origin/main',
-      }),
+      await restarted.prepare(binding, updateWorkspace('replaced')),
     );
     await run(['git', '-C', binding, 'worktree', 'remove', replaced]);
     await mkdir(replaced);
     await run(['git', 'init', replaced]);
     await expect(
-      restarted.prepare(binding, {
-        key: 'update-batch:replaced',
-        isolation: 'DETACHED_WORKTREE',
-        baseRef: 'origin/main',
-      }),
+      restarted.prepare(binding, updateWorkspace('replaced')),
     ).rejects.toThrow('身份不匹配');
     await rm(replaced, { recursive: true, force: true });
 
@@ -190,34 +131,9 @@ describe('GitExecutionWorkspaceManager', () => {
   });
 
   test('新 worktree 镜像主工程被忽略内容，复用不覆盖已存在项', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'apt-workspaces-'));
-    directories.push(root);
-    const remote = join(root, 'remote.git');
-    const source = join(root, 'source');
-    const binding = join(root, 'binding');
-    await run(['git', 'init', '--bare', remote]);
-    await run(['git', 'init', source]);
-    await run([
-      'git',
-      '-C',
-      source,
-      'config',
-      'user.email',
-      'test@example.com',
-    ]);
-    await run(['git', '-C', source, 'config', 'user.name', 'Test']);
-    await writeFile(join(source, 'README.md'), 'baseline\n');
-    await writeFile(
-      join(source, '.gitignore'),
-      'node_modules/\n.env.local\n.DS_Store\n',
-    );
-    await run(['git', '-C', source, 'add', 'README.md', '.gitignore']);
-    await run(['git', '-C', source, 'commit', '-m', 'baseline']);
-    await run(['git', '-C', source, 'branch', '-M', 'main']);
-    await run(['git', '-C', source, 'remote', 'add', 'origin', remote]);
-    await run(['git', '-C', source, 'push', '-u', 'origin', 'main']);
-    await run(['git', 'clone', remote, binding]);
-    await run(['git', '-C', binding, 'switch', 'main']);
+    const { root, binding } = await createRepository({
+      ignoreLocalFiles: true,
+    });
 
     await mkdir(join(binding, 'node_modules'), { recursive: true });
     await writeFile(join(binding, 'node_modules', 'dep.js'), 'dep\n');
@@ -229,12 +145,7 @@ describe('GitExecutionWorkspaceManager', () => {
     const paths = xaptPaths(root);
     const manager = new GitExecutionWorkspaceManager(paths);
     const repair = cwd(
-      await manager.prepare(binding, {
-        key: 'bug-repair:mirror-1',
-        isolation: 'BRANCH_WORKTREE',
-        baseRef: 'origin/main',
-        branch: 'apt/repair/mirror-1',
-      }),
+      await manager.prepare(binding, repairWorkspace('mirror-1')),
     );
 
     expect(await readlink(join(repair, 'node_modules'))).toBe(
@@ -255,12 +166,7 @@ describe('GitExecutionWorkspaceManager', () => {
 
     await writeFile(join(repair, '.env.local'), 'LOCAL=1\n');
     const reused = cwd(
-      await manager.prepare(binding, {
-        key: 'bug-repair:mirror-1',
-        isolation: 'BRANCH_WORKTREE',
-        baseRef: 'origin/main',
-        branch: 'apt/repair/mirror-1',
-      }),
+      await manager.prepare(binding, repairWorkspace('mirror-1')),
     );
     expect(reused).toBe(repair);
     expect(await readFile(join(repair, '.env.local'), 'utf8')).toBe(
@@ -269,56 +175,16 @@ describe('GitExecutionWorkspaceManager', () => {
   });
 
   test('removeWorkspaces 先全量校验再删除，force 覆盖未提交修改', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'apt-workspaces-'));
-    directories.push(root);
-    const remote = join(root, 'remote.git');
-    const source = join(root, 'source');
-    const binding = join(root, 'binding');
-    await run(['git', 'init', '--bare', remote]);
-    await run(['git', 'init', source]);
-    await run([
-      'git',
-      '-C',
-      source,
-      'config',
-      'user.email',
-      'test@example.com',
-    ]);
-    await run(['git', '-C', source, 'config', 'user.name', 'Test']);
-    await writeFile(join(source, 'README.md'), 'baseline\n');
-    await run(['git', '-C', source, 'add', 'README.md']);
-    await run(['git', '-C', source, 'commit', '-m', 'baseline']);
-    await run(['git', '-C', source, 'branch', '-M', 'main']);
-    await run(['git', '-C', source, 'remote', 'add', 'origin', remote]);
-    await run(['git', '-C', source, 'push', '-u', 'origin', 'main']);
-    await run(['git', 'clone', remote, binding]);
-    await run(['git', '-C', binding, 'switch', 'main']);
+    const { root, binding } = await createRepository();
 
     const paths = xaptPaths(root);
     const manager = new GitExecutionWorkspaceManager(paths);
     const repair = cwd(
-      await manager.prepare(binding, {
-        key: 'bug-repair:bug-1',
-        isolation: 'BRANCH_WORKTREE',
-        baseRef: 'origin/main',
-        branch: 'apt/repair/bug-1',
-      }),
+      await manager.prepare(binding, repairWorkspace('bug-1')),
     );
-    const clean = cwd(
-      await manager.prepare(binding, {
-        key: 'bug-repair:bug-2',
-        isolation: 'BRANCH_WORKTREE',
-        baseRef: 'origin/main',
-        branch: 'apt/repair/bug-2',
-      }),
-    );
+    const clean = cwd(await manager.prepare(binding, repairWorkspace('bug-2')));
     const missing = cwd(
-      await manager.prepare(binding, {
-        key: 'bug-repair:bug-3',
-        isolation: 'BRANCH_WORKTREE',
-        baseRef: 'origin/main',
-        branch: 'apt/repair/bug-3',
-      }),
+      await manager.prepare(binding, repairWorkspace('bug-3')),
     );
 
     expect(await manager.workspaceKeys()).toEqual([
@@ -373,6 +239,40 @@ describe('GitExecutionWorkspaceManager', () => {
     expect(heads).not.toContain('apt/repair/bug-3');
   });
 });
+
+async function createRepository({
+  ignoreLocalFiles = false,
+}: { ignoreLocalFiles?: boolean } = {}) {
+  const root = await createTestDirectory();
+  const remote = join(root, 'remote.git');
+  const source = join(root, 'source');
+  const binding = join(root, 'binding');
+  await run(['git', 'init', '--bare', remote]);
+  await run(['git', 'init', source]);
+  await run(['git', '-C', source, 'config', 'user.email', 'test@example.com']);
+  await run(['git', '-C', source, 'config', 'user.name', 'Test']);
+  await writeFile(join(source, 'README.md'), 'baseline\n');
+  if (ignoreLocalFiles)
+    await writeFile(
+      join(source, '.gitignore'),
+      'node_modules/\n.env.local\n.DS_Store\n',
+    );
+  await run([
+    'git',
+    '-C',
+    source,
+    'add',
+    'README.md',
+    ...(ignoreLocalFiles ? ['.gitignore'] : []),
+  ]);
+  await run(['git', '-C', source, 'commit', '-m', 'baseline']);
+  await run(['git', '-C', source, 'branch', '-M', 'main']);
+  await run(['git', '-C', source, 'remote', 'add', 'origin', remote]);
+  await run(['git', '-C', source, 'push', '-u', 'origin', 'main']);
+  await run(['git', 'clone', remote, binding]);
+  await run(['git', '-C', binding, 'switch', 'main']);
+  return { root, source, binding };
+}
 
 function cwd(
   prepared:

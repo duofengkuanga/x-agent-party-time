@@ -17,6 +17,7 @@ describe('ProtocolAgent', () => {
       serverUrl: 'https://apt.example.com/path-is-ignored',
       credential: `credential-${'x'.repeat(32)}`,
       fetch: async (input, init) => {
+        expect(init?.signal).toBeUndefined();
         const request =
           input instanceof Request ? input : new Request(String(input), init);
         requests.push(request);

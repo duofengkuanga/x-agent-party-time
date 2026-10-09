@@ -3,7 +3,10 @@ import { existsSync, readlinkSync, realpathSync } from 'node:fs';
 import { dirname, normalize, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DaemonControlClient } from '../apps/xapt/src/daemon/control.js';
-import type { DaemonSnapshot } from '../apps/xapt/src/daemon/status.js';
+import {
+  stoppedSnapshot,
+  type DaemonSnapshot,
+} from '../apps/xapt/src/daemon/status.js';
 import { xaptPaths } from '../apps/xapt/src/platform/paths.js';
 
 export type ServiceKey = 'app' | 'agent';
@@ -57,11 +60,6 @@ const SERVICE_DEFINITIONS: readonly ServiceDefinition[] = [
         relativeCwds: ['apps/web'],
       },
     ],
-  },
-  {
-    key: 'agent',
-    label: 'Agent',
-    matchers: [],
   },
 ];
 
@@ -206,16 +204,6 @@ function printStatus(
   console.log('开发服务状态：');
 
   for (const definition of SERVICE_DEFINITIONS) {
-    if (definition.key === 'agent') {
-      const detail =
-        agent.service === 'RUNNING'
-          ? `运行中，${agent.activeSlots} / ${agent.totalSlots} 个执行槽使用中`
-          : agent.service === 'UNRESPONSIVE'
-            ? '无响应'
-            : '未运行';
-      console.log(`- ${definition.label}：${detail}`);
-      continue;
-    }
     const serviceRoots = roots.filter(
       (entry) => entry.service === definition.key,
     );
@@ -229,6 +217,13 @@ function printStatus(
       .join('、');
     console.log(`- ${definition.label}：运行中，${instances}`);
   }
+  const agentDetail =
+    agent.service === 'RUNNING'
+      ? `运行中，${agent.activeSlots} / ${agent.totalSlots} 个执行槽使用中`
+      : agent.service === 'UNRESPONSIVE'
+        ? '无响应'
+        : '未运行';
+  console.log(`- Agent：${agentDetail}`);
 }
 
 function processIsAlive(pid: number): boolean {
@@ -307,13 +302,12 @@ async function stopServices(
 
   const serviceRoots = findServiceRoots(processes);
   const grouped = SERVICE_DEFINITIONS.map((definition) => {
-    if (definition.key === 'agent')
-      return agent.service === 'RUNNING' ? 'Agent 1 组' : null;
     const count = serviceRoots.filter(
       (entry) => entry.service === definition.key,
     ).length;
     return count > 0 ? `${definition.label} ${count} 组` : null;
   }).filter((value): value is string => value !== null);
+  if (agent.service === 'RUNNING') grouped.push('Agent 1 组');
 
   console.log(`正在停止：${grouped.join('、')}。`);
   const errors = signalProcesses(targetPids, 'SIGTERM');
@@ -354,13 +348,13 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
   let agent: DaemonSnapshot;
   const controlSocket = xaptPaths(developmentHome).controlSocket;
   if (!existsSync(controlSocket)) {
-    agent = stoppedSnapshotForDevelopment();
+    agent = stoppedSnapshot('development');
   } else {
     try {
       agent = await control.status();
     } catch {
       agent = {
-        ...stoppedSnapshotForDevelopment(),
+        ...stoppedSnapshot('development'),
         service: 'UNRESPONSIVE',
       };
     }
@@ -373,25 +367,6 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
   return stopServices(rows, processes, agent, async () => {
     await control.stop(false);
   });
-}
-
-function stoppedSnapshotForDevelopment(): DaemonSnapshot {
-  return {
-    service: 'STOPPED',
-    connection: 'UNCONFIGURED',
-    activity: 'IDLE',
-    version: 'development',
-    codexVersion: null,
-    serverOrigin: null,
-    agentName: null,
-    lastHeartbeatAt: null,
-    activeSlots: 0,
-    totalSlots: 3,
-    waitingInteractions: 0,
-    outboxCount: 0,
-    bindingCount: 0,
-    bindingActive: false,
-  };
 }
 
 const invokedPath = process.argv[1] ? resolve(process.argv[1]) : '';

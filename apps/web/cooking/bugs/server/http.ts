@@ -1,8 +1,4 @@
-import {
-  errorResponse,
-  jsonResponse,
-  normalizeRequestError,
-} from '@/platform/http/responses';
+import { jsonOperation } from '@/platform/http/responses';
 import { bearerCredential } from '@/platform/runner/http';
 import type { RunnerService } from '@/platform/runner/service';
 import type { BugService } from './bug-service';
@@ -13,12 +9,14 @@ export async function handleBugDelete(
   runners: Pick<RunnerService, 'authenticateCredential'>,
   bugs: Pick<BugService, 'deleteBugs'>,
 ): Promise<Response> {
-  try {
-    const credential = bearerCredential(request);
-    runners.authenticateCredential(credential);
-    const body = BugDeleteRequestSchema.parse(await request.json());
-    return jsonResponse(BugDeleteResponseSchema.parse(bugs.deleteBugs(body)));
-  } catch (error) {
-    return errorResponse(normalizeRequestError(error), '删除缺陷');
-  }
+  return jsonOperation(
+    BugDeleteResponseSchema,
+    async () => {
+      const credential = bearerCredential(request);
+      runners.authenticateCredential(credential);
+      const body = BugDeleteRequestSchema.parse(await request.json());
+      return bugs.deleteBugs(body);
+    },
+    { operation: '删除缺陷' },
+  );
 }

@@ -27,59 +27,48 @@ describe('Project settings route state', () => {
     );
   });
 
-  test('非法 project、panel 与 engineering 回到最近可访问父级', () => {
-    expect(
-      normalizeProjectSettingsRoute(
-        { projectId: 'missing', panel: 'engineering' },
-        access,
-      ),
-    ).toEqual({});
-    expect(
-      normalizeProjectSettingsRoute(
-        { projectId: 'owned', panel: 'unknown', engineeringId: 'x' },
-        access,
-      ),
-    ).toEqual({});
-    expect(
-      normalizeProjectSettingsRoute(
-        {
-          projectId: 'owned',
-          panel: 'engineering',
-          engineeringId: 'missing',
-          mode: 'members',
-        },
-        access,
-      ),
-    ).toEqual({ projectId: 'owned', panel: 'engineering' });
-  });
-
-  test('无权限 project panel、new engineering 与 mode 被规范化', () => {
-    expect(
-      normalizeProjectSettingsRoute(
-        { projectId: 'member', panel: 'project' },
-        access,
-      ),
-    ).toEqual({ projectId: 'member', panel: 'collaboration' });
-    expect(
-      normalizeProjectSettingsRoute(
-        { projectId: 'member', panel: 'engineering', engineeringId: 'new' },
-        access,
-      ),
-    ).toEqual({ projectId: 'member', panel: 'engineering' });
-    expect(
-      normalizeProjectSettingsRoute(
-        {
-          projectId: 'member',
-          panel: 'engineering',
-          engineeringId: 'engineering-one',
-          mode: 'environments',
-        },
-        access,
-      ),
-    ).toEqual({
-      projectId: 'member',
-      panel: 'engineering',
-      engineeringId: 'engineering-one',
-    });
+  test.each([
+    ['未知项目', { projectId: 'missing', panel: 'engineering' }, {}],
+    [
+      '未知面板',
+      { projectId: 'owned', panel: 'unknown', engineeringId: 'x' },
+      {},
+    ],
+    [
+      '未知工程',
+      {
+        projectId: 'owned',
+        panel: 'engineering',
+        engineeringId: 'missing',
+        mode: 'members',
+      },
+      { projectId: 'owned', panel: 'engineering' },
+    ],
+    [
+      '非所有者的项目面板',
+      { projectId: 'member', panel: 'project' },
+      { projectId: 'member', panel: 'collaboration' },
+    ],
+    [
+      '非所有者新建工程',
+      { projectId: 'member', panel: 'engineering', engineeringId: 'new' },
+      { projectId: 'member', panel: 'engineering' },
+    ],
+    [
+      '非所有者管理工程',
+      {
+        projectId: 'member',
+        panel: 'engineering',
+        engineeringId: 'engineering-one',
+        mode: 'environments',
+      },
+      {
+        projectId: 'member',
+        panel: 'engineering',
+        engineeringId: 'engineering-one',
+      },
+    ],
+  ] as const)('%s 回到最近可访问父级', (_case, route, expected) => {
+    expect(normalizeProjectSettingsRoute(route, access)).toEqual(expected);
   });
 });

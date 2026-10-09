@@ -1,0 +1,149 @@
+.collaboration-member {
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 34px minmax(0, 1fr) auto auto;
+  padding: 9px;
+}
+
+.collaboration-member > span {
+  align-items: center;
+  background: var(--ink);
+  color: var(--paper);
+  display: flex;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 17px;
+  font-style: italic;
+  height: 34px;
+  justify-content: center;
+}
+
+.collaboration-member > div,
+.collaboration-invitation-list article > div,
+.project-inbox-list article > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.collaboration-member strong,
+.collaboration-invitation-list strong {
+  font-size: 10px;
+}
+
+.collaboration-member small,
+.collaboration-invitation-list small {
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.collaboration-member em {
+  border: 1px solid var(--strong-line);
+  font-size: 7px;
+  font-style: normal;
+  font-weight: 900;
+  padding: 4px 5px;
+}
+
+.collaboration-member button,
+.collaboration-invitation-list button,
+.project-inbox-list article > div:last-child > button:first-child {
+  background: transparent;
+  border: 1px solid var(--strong-line);
+  color: var(--ink);
+  font-size: 8px;
+  padding: 6px;
+}
+
+.bug-dialog .collaboration-member form,
+.bug-dialog .collaboration-invitation-list form {
+  display: block;
+  padding: 0;
+}
+
+.project-inbox-list {
+  padding: 22px;
+}
+
+.project-inbox-list article {
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--strong-line);
+  box-shadow: 3px 3px 0 color-mix(in srgb, var(--ink), transparent 82%);
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  padding: 15px;
+}
+
+.project-inbox-list article small,
+.project-inbox-list article span {
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.project-inbox-list article strong {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 19px;
+  font-style: italic;
+}
+
+.project-inbox-list article > em {
+  color: var(--warning);
+  font-size: 8px;
+  font-style: normal;
+}
+
+.project-inbox-list article > div:last-child {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.bug-dialog .project-inbox-list form {
+  display: block;
+  padding: 0;
+}
+
+.project-inbox-list form button {
+  background: transparent;
+  border: 1px solid var(--strong-line);
+  color: var(--ink);
+  min-height: 36px;
+  padding: 0 12px;
+}
+
+.bug-dialog .collaboration-invite-form {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 0;
+}
+
+.collaboration-invite-form select {
+  background: var(--panel);
+  border: 1px solid var(--strong-line);
+  color: inherit;
+  font: inherit;
+  min-height: 42px;
+  padding: 0 12px;
+}
+
+.collaboration-invite-form .repair-primary {
+  min-height: 42px;
+}
+
+.collaboration-invitation-list article {
+  align-items: center;
+  border: 1px dashed var(--line);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  padding: 10px;
+}
+
+.collaboration-invitation-list article > span {
+  color: var(--warning);
+  font-size: 8px;
+}

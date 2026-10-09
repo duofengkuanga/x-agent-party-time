@@ -1,189 +1,12 @@
-import { afterEach, describe, expect, test } from 'bun:test';
+import { mutation } from '@/cooking/testing/project';
+import { expectRowCount, testDatabases } from '@/testing/database';
+import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { AuthService } from '@/platform/auth/service';
-import type { AppDatabase } from '@/platform/database';
-import { openDatabase } from '@/platform/database';
-import { LocalFileStore } from '@/platform/files/local-file-store';
-import { RunnerService } from '@/platform/runner/service';
-import { BindingService } from '@/cooking/bindings/server/binding-service';
-import { EngineeringService } from '@/cooking/engineering/server/engineering-service';
-import { ProjectService } from '@/cooking/projects/server/project-service';
-import { SubmissionService } from '@/cooking/submissions/server/submission-service';
-import { RepairService } from '@/cooking/repair/server/repair-service';
 import { ZodError } from 'zod';
-import { BugService } from './bug-service';
 import { BugRepairContextService } from './repair-context';
+import { bugFixture, createBug, createAssignedBug } from './bug-fixture';
 
-const directories: string[] = [];
-const databases: AppDatabase[] = [];
-
-async function setup() {
-  const directory = await mkdtemp(join(tmpdir(), 'agent-party-time-bugs-'));
-  directories.push(directory);
-  const database = openDatabase(join(directory, 'server.sqlite'));
-  databases.push(database);
-  const auth = new AuthService(database);
-  const users = {
-    owner: await auth.seedUser(user('bug-owner', '项目所有者')),
-    tester: await auth.seedUser(user('bug-tester', '测试负责人')),
-    developerA: await auth.seedUser(user('bug-dev-a', '开发甲')),
-    developerB: await auth.seedUser(user('bug-dev-b', '开发乙')),
-    member: await auth.seedUser(user('bug-member', '普通成员')),
-    outsider: await auth.seedUser(user('bug-outsider', '项目外用户')),
-  };
-  const projects = new ProjectService(database);
-  const project = projects.createProject(users.owner.id, {
-    mutationId: randomUUID(),
-    name: '缺陷协作项目',
-  }).project;
-  for (const invited of [
-    users.tester,
-    users.developerA,
-    users.developerB,
-    users.member,
-  ]) {
-    const invitation = projects.inviteUser(users.owner.id, project.id, {
-      mutationId: randomUUID(),
-      username: invited.username,
-    });
-    projects.respondToInvitation(invited.id, invitation.id, {
-      mutationId: randomUUID(),
-      expectedVersion: invitation.version,
-      decision: 'ACCEPT',
-    });
-  }
-  const engineering = new EngineeringService(database);
-  const front = engineering.createEngineering(users.owner.id, project.id, {
-    mutationId: randomUUID(),
-    name: '前端工程',
-    type: 'FRONTEND',
-    identifier: 'web',
-  });
-  const back = engineering.createEngineering(users.owner.id, project.id, {
-    mutationId: randomUUID(),
-    name: '后端工程',
-    type: 'BACKEND',
-    identifier: 'api',
-  });
-  engineering.addMember(users.owner.id, front.id, users.developerA.id, {
-    mutationId: randomUUID(),
-  });
-  engineering.addMember(users.owner.id, back.id, users.developerB.id, {
-    mutationId: randomUUID(),
-  });
-  const frontEnvironment = engineering.createEnvironment(
-    users.owner.id,
-    front.id,
-    {
-      mutationId: randomUUID(),
-      name: '前端测试环境',
-      deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' },
-    },
-  );
-  const backEnvironment = engineering.createEnvironment(
-    users.owner.id,
-    back.id,
-    {
-      mutationId: randomUUID(),
-      name: '后端测试环境',
-      deployment: { kind: 'CI_CD' },
-    },
-  );
-  const runners = new RunnerService(database);
-  const runnerA = runners.pair(
-    runners.issuePairingCode(users.developerA.id).code,
-    '开发甲 Runner',
-  );
-  const runnerB = runners.pair(
-    runners.issuePairingCode(users.developerB.id).code,
-    '开发乙 Runner',
-  );
-  const bindings = new BindingService(database);
-  const frontBinding = bindings.createBinding(
-    users.developerA.id,
-    front.id,
-    runnerA.runner.id,
-    randomUUID(),
-  );
-  const backBinding = bindings.createBinding(
-    users.developerB.id,
-    back.id,
-    runnerB.runner.id,
-    randomUUID(),
-  );
-  bindings.confirmRepository(
-    runnerA.runner.id,
-    frontBinding.id,
-    'https://example.com/front.git',
-  );
-  bindings.confirmRepository(
-    runnerB.runner.id,
-    backBinding.id,
-    'https://example.com/back.git',
-  );
-  const submission = new SubmissionService(database).createSubmission(
-    users.owner.id,
-    project.id,
-    {
-      mutationId: randomUUID(),
-      title: '双工程提测',
-      requirementDescription: '验证全局缺陷队列',
-      testerUserId: users.tester.id,
-      items: [
-        {
-          engineeringId: front.id,
-          responsibleUserId: users.developerA.id,
-          bindingId: frontBinding.id,
-          targetBranch: 'feature/front',
-          environmentId: frontEnvironment.id,
-        },
-        {
-          engineeringId: back.id,
-          responsibleUserId: users.developerB.id,
-          bindingId: backBinding.id,
-          targetBranch: 'feature/back',
-          environmentId: backEnvironment.id,
-        },
-      ],
-    },
-  );
-  const items = database
-    .prepare(
-      `SELECT id, engineering_id FROM cooking_submission_item
-       WHERE submission_id = ? ORDER BY position`,
-    )
-    .all(submission.id) as Array<{ id: string; engineering_id: string }>;
-  const events: Array<{ submissionId: string; revision: number }> = [];
-  const service = new BugService(
-    database,
-    () => new Date('2026-07-27T03:00:00.000Z'),
-    undefined,
-    (submissionId, revision) => events.push({ submissionId, revision }),
-  );
-  return {
-    database,
-    directory,
-    events,
-    files: new LocalFileStore(database, join(directory, 'files')),
-    items: { front: items[0]!.id, back: items[1]!.id },
-    project,
-    service,
-    submission,
-    users,
-  };
-}
-
-afterEach(async () => {
-  for (const database of databases.splice(0)) database.close();
-  await Promise.all(
-    directories
-      .splice(0)
-      .map((directory) => rm(directory, { force: true, recursive: true })),
-  );
-});
+const setup = bugFixture(testDatabases());
 
 describe('BugService', () => {
   test('Repair Context 按报告角色投影附件与执行来源', async () => {
@@ -244,19 +67,12 @@ describe('BugService', () => {
       }),
     ).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
     expect(() =>
-      fixture.service.createBug(
-        fixture.users.tester.id,
-        fixture.submission.id,
-        {
-          mutationId: randomUUID(),
-          submissionItemId: null,
-          title: '附件过多',
-          actualResultAttachmentIds: Array.from({ length: 6 }, () =>
-            randomUUID(),
-          ),
-          expectedResultAttachmentIds: [],
-        },
-      ),
+      createBug(fixture, fixture.users.tester.id, {
+        title: '附件过多',
+        actualResultAttachmentIds: Array.from({ length: 6 }, () =>
+          randomUUID(),
+        ),
+      }),
     ).toThrow();
     const file = await fixture.files.put({
       bytes: new TextEncoder().encode('复现记录'),
@@ -271,30 +87,17 @@ describe('BugService', () => {
       uploadedByUserId: fixture.users.tester.id,
     });
     expect(() =>
-      fixture.service.createBug(
-        fixture.users.tester.id,
-        fixture.submission.id,
-        {
-          mutationId: randomUUID(),
-          submissionItemId: null,
-          title: '附件不能跨结果重复使用',
-          actualResultAttachmentIds: [file.id],
-          expectedResultAttachmentIds: [file.id],
-        },
-      ),
+      createBug(fixture, fixture.users.tester.id, {
+        title: '附件不能跨结果重复使用',
+        actualResultAttachmentIds: [file.id],
+        expectedResultAttachmentIds: [file.id],
+      }),
     ).toThrow(ZodError);
     expect(() =>
-      fixture.service.createBug(
-        fixture.users.tester.id,
-        fixture.submission.id,
-        {
-          mutationId: randomUUID(),
-          submissionItemId: null,
-          title: '同一结果不能重复添加附件',
-          actualResultAttachmentIds: [file.id, file.id],
-          expectedResultAttachmentIds: [],
-        },
-      ),
+      createBug(fixture, fixture.users.tester.id, {
+        title: '同一结果不能重复添加附件',
+        actualResultAttachmentIds: [file.id, file.id],
+      }),
     ).toThrow(ZodError);
     const result = createBug(fixture, fixture.users.tester.id, {
       title: '  结算按钮无响应  ',
@@ -346,8 +149,7 @@ describe('BugService', () => {
       fixture.users.tester.id,
       result.bug.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: result.bug.version,
+        ...mutation(result.bug.version),
         submissionItemId: null,
         title: result.bug.report.title,
         actualResultAttachmentIds: [],
@@ -375,8 +177,7 @@ describe('BugService', () => {
       fixture.users.developerB.id,
       created.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: 1,
+        ...mutation(1),
         submissionItemId: fixture.items.front,
       },
     ).bug;
@@ -392,23 +193,20 @@ describe('BugService', () => {
     expect(assignedView?.presentation.assignmentLabel).toBe('前端工程（web）');
     expect(
       fixture.database
-        .query<{ name: string }, []>('PRAGMA table_info(cooking_bug)')
-        .all()
+        .all<{ name: string }>('PRAGMA table_info(cooking_bug)')
         .map(({ name }) => name)
         .filter((name) => name.startsWith('engineering_')),
     ).toEqual([]);
     expect(() =>
       fixture.service.requestRepair(fixture.users.developerB.id, assigned.id, {
-        mutationId: randomUUID(),
-        expectedVersion: assigned.version,
+        ...mutation(assigned.version),
       }),
     ).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
     const repairing = fixture.service.requestRepair(
       fixture.users.tester.id,
       assigned.id,
       {
-        mutationId: randomUUID(),
-        expectedVersion: assigned.version,
+        ...mutation(assigned.version),
       },
     ).bug;
     expect(repairing).toMatchObject({
@@ -418,8 +216,7 @@ describe('BugService', () => {
     });
     expect(() =>
       fixture.service.updateReport(fixture.users.tester.id, repairing.id, {
-        mutationId: randomUUID(),
-        expectedVersion: repairing.version,
+        ...mutation(repairing.version),
         submissionItemId: fixture.items.front,
         title: '不能覆盖',
         actualResultAttachmentIds: [],
@@ -519,404 +316,13 @@ describe('BugService', () => {
     expect(fixture.events).toEqual([
       { submissionId: fixture.submission.id, revision: first.revision },
     ]);
-    expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          `SELECT COUNT(*) count FROM cooking_audit_event
-           WHERE target_id = ? AND action = 'BUG_CREATED'`,
-        )
-        .get(first.bug.id)?.count,
-    ).toBe(1);
+    expectRowCount(fixture.database, 'cooking_audit_event', {
+      target_id: first.bug.id,
+      action: 'BUG_CREATED',
+    }).toBe(1);
     expect(
       fixture.service.workspace(fixture.users.tester.id, fixture.submission.id)
         .bugs,
     ).toHaveLength(1);
   });
-
-  test('deleteBugs 校验缺陷存在与参数互斥', async () => {
-    const fixture = await setup();
-    expect(() => fixture.service.deleteBugs({})).toThrow(ZodError);
-    expect(() => fixture.service.deleteBugs({ bugIds: [] })).toThrow(ZodError);
-    expect(() =>
-      fixture.service.deleteBugs({
-        bugIds: [randomUUID()],
-        all: true,
-      }),
-    ).toThrow(ZodError);
-    expect(() =>
-      fixture.service.deleteBugs({ bugIds: [randomUUID()] }),
-    ).toThrow(expect.objectContaining({ code: 'NOT_FOUND' }));
-  });
-
-  test('deleteBugs 删除无执行的普通缺陷并推进提测版本', async () => {
-    const fixture = await setup();
-    const first = createBug(fixture, fixture.users.tester.id, {
-      title: '待删除缺陷一',
-    });
-    const second = createBug(fixture, fixture.users.tester.id, {
-      title: '待删除缺陷二',
-    });
-    const revisionBefore = fixture.service.workspace(
-      fixture.users.tester.id,
-      fixture.submission.id,
-    ).bugs.length;
-    expect(revisionBefore).toBe(2);
-
-    const result = fixture.service.deleteBugs({
-      bugIds: [first.bug.id, second.bug.id],
-    });
-    expect(result.deletedBugIds).toEqual([first.bug.id, second.bug.id]);
-    expect(result.deletedExecutionIds).toEqual([]);
-    expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          'SELECT COUNT(*) count FROM cooking_bug WHERE id = ?',
-        )
-        .get(first.bug.id)?.count,
-    ).toBe(0);
-    expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          `SELECT COUNT(*) count FROM cooking_mutation
-           WHERE resource_type = 'BUG' AND resource_id = ?`,
-        )
-        .get(first.bug.id)?.count,
-    ).toBe(0);
-    expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          `SELECT COUNT(*) count FROM cooking_audit_event
-           WHERE target_type = 'BUG' AND target_id = ?`,
-        )
-        .get(second.bug.id)?.count,
-    ).toBe(0);
-    expect(fixture.events.at(-1)).toEqual({
-      submissionId: fixture.submission.id,
-      revision: 4,
-    });
-  });
-
-  test('deleteBugs 存在非终态执行且未 force 时拒绝删除', async () => {
-    const fixture = await setup();
-    const bug = createAssignedBug(fixture, '进行中缺陷', fixture.items.front);
-    new RepairService(fixture.database).createInitialExecution(bug.id);
-    expect(() => fixture.service.deleteBugs({ bugIds: [bug.id] })).toThrow(
-      expect.objectContaining({ code: 'RESOURCE_CONFLICT' }),
-    );
-    expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          'SELECT COUNT(*) count FROM cooking_bug WHERE id = ?',
-        )
-        .get(bug.id)?.count,
-    ).toBe(1);
-  });
-
-  test('deleteBugs --force 删除链式修复执行与关联上下文', async () => {
-    const fixture = await setup();
-    const bug = createAssignedBug(fixture, '链式修复缺陷', fixture.items.front);
-    const repairs = new RepairService(fixture.database);
-    const first = repairs.createInitialExecution(bug.id);
-    fixture.database
-      .prepare(
-        `UPDATE platform_execution
-         SET state = 'FAILED', finished_at = ? WHERE id = ?`,
-      )
-      .run('2026-07-27T03:30:00.000Z', first);
-    const second = repairs.createInitialExecution(bug.id);
-    fixture.database
-      .prepare(
-        `UPDATE platform_execution
-         SET state = 'SUCCEEDED', finished_at = ? WHERE id = ?`,
-      )
-      .run('2026-07-27T04:00:00.000Z', second);
-    const previous = fixture.database
-      .query<{ previous_execution_id: string | null }, [string]>(
-        'SELECT previous_execution_id FROM platform_execution WHERE id = ?',
-      )
-      .get(second)?.previous_execution_id;
-    expect(previous).toBe(first);
-
-    const result = fixture.service.deleteBugs({
-      bugIds: [bug.id],
-      force: true,
-    });
-    expect(new Set(result.deletedExecutionIds)).toEqual(
-      new Set([first, second]),
-    );
-    expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          'SELECT COUNT(*) count FROM platform_execution WHERE id = ?',
-        )
-        .get(first)?.count,
-    ).toBe(0);
-    expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          'SELECT COUNT(*) count FROM cooking_repair_attempt WHERE bug_id = ?',
-        )
-        .get(bug.id)?.count,
-    ).toBe(0);
-    expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          'SELECT COUNT(*) count FROM cooking_bug_repair_context WHERE bug_id = ?',
-        )
-        .get(bug.id)?.count,
-    ).toBe(0);
-    expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          'SELECT COUNT(*) count FROM cooking_bug WHERE id = ?',
-        )
-        .get(bug.id)?.count,
-    ).toBe(0);
-  });
-
-  test('deleteBugs --all --force 清理空的统一更新批次与活动执行', async () => {
-    const fixture = await setup();
-    const bug = createAssignedBug(fixture, '批次内缺陷', fixture.items.front);
-    const repairs = new RepairService(fixture.database);
-    const executionId = repairs.createInitialExecution(bug.id);
-    fixture.database
-      .prepare(
-        `UPDATE platform_execution
-         SET state = 'SUCCEEDED', finished_at = ? WHERE id = ?`,
-      )
-      .run('2026-07-27T04:00:00.000Z', executionId);
-    const now = '2026-07-27T04:00:00.000Z';
-    const batchId = randomUUID();
-    fixture.database
-      .prepare(
-        `INSERT INTO cooking_update_batch(
-           id, submission_id, submission_item_id, state, version,
-           active_execution_id, session_id, deployment_json, frozen_at,
-           created_at, updated_at
-         ) VALUES (?, ?, ?, 'RUNNING', 1, ?, NULL, '{}', ?, ?, ?)`,
-      )
-      .run(
-        batchId,
-        fixture.submission.id,
-        fixture.items.front,
-        executionId,
-        now,
-        now,
-        now,
-      );
-    fixture.database
-      .prepare(
-        `INSERT INTO cooking_update_batch_entry(
-           batch_id, bug_id, position, commits_json, manual_operations_json
-         ) VALUES (?, ?, 0, '[]', '[]')`,
-      )
-      .run(batchId, bug.id);
-    fixture.database
-      .prepare(
-        `INSERT INTO cooking_update_attempt(
-           id, batch_id, execution_id, attempt, outcome_json, created_at, finished_at
-         ) VALUES (?, ?, ?, 1, NULL, ?, NULL)`,
-      )
-      .run(randomUUID(), batchId, executionId, now);
-
-    const sync = addSessionSync(fixture.database, executionId, 'FAILED');
-    fixture.database.run(
-      'INSERT INTO cooking_update_session_sync(id, batch_id, execution_id, session_id, created_at) VALUES (?, ?, ?, ?, ?)',
-      [randomUUID(), batchId, sync, 'update-session', now],
-    );
-    const result = fixture.service.deleteBugs({ all: true, force: true });
-    expect(new Set(result.deletedExecutionIds)).toEqual(
-      new Set([executionId, sync]),
-    );
-    expect(
-      fixture.database
-        .query('SELECT id FROM cooking_update_session_sync')
-        .all(),
-    ).toEqual([]);
-    expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          `SELECT COUNT(*) count FROM cooking_update_batch_entry WHERE bug_id = ?`,
-        )
-        .get(bug.id)?.count,
-    ).toBe(0);
-    expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          `SELECT COUNT(*) count FROM cooking_update_attempt WHERE execution_id = ?`,
-        )
-        .get(executionId)?.count,
-    ).toBe(0);
-    expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          'SELECT COUNT(*) count FROM cooking_update_batch WHERE id = ?',
-        )
-        .get(batchId)?.count,
-    ).toBe(0);
-    expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          'SELECT COUNT(*) count FROM platform_execution WHERE id = ?',
-        )
-        .get(executionId)?.count,
-    ).toBe(0);
-  });
-
-  test.each(['QUEUED', 'FAILED'])(
-    'deleteBugs 收集修复会话同步执行（%s）',
-    async (state) => {
-      const fixture = await setup();
-      const bug = createAssignedBug(fixture, '同步缺陷', fixture.items.front);
-      const parent = new RepairService(fixture.database).createInitialExecution(
-        bug.id,
-      );
-      fixture.database.run(
-        "UPDATE platform_execution SET state = 'FAILED' WHERE id = ?",
-        [parent],
-      );
-      const sync = addSessionSync(fixture.database, parent, state);
-      fixture.database.run(
-        'INSERT INTO cooking_repair_session_sync(id, bug_id, execution_id, session_id, created_at) VALUES (?, ?, ?, ?, ?)',
-        [
-          randomUUID(),
-          bug.id,
-          sync,
-          'test-session',
-          '2026-07-27T04:00:00.000Z',
-        ],
-      );
-      if (state === 'QUEUED') {
-        expect(() => fixture.service.deleteBugs({ all: true })).toThrow(
-          expect.objectContaining({ code: 'RESOURCE_CONFLICT' }),
-        );
-      }
-      const result = fixture.service.deleteBugs({ all: true, force: true });
-      expect(new Set(result.deletedExecutionIds)).toEqual(
-        new Set([parent, sync]),
-      );
-      expect(
-        fixture.database
-          .query('SELECT id FROM cooking_repair_session_sync')
-          .all(),
-      ).toEqual([]);
-      expect(fixture.database.query('PRAGMA foreign_key_check').all()).toEqual(
-        [],
-      );
-    },
-  );
-
-  test('deleteBugs 遇到范围外的后继执行时明确拒绝并回滚', async () => {
-    const fixture = await setup();
-    const bug = createAssignedBug(fixture, '额外依赖', fixture.items.front);
-    const parent = new RepairService(fixture.database).createInitialExecution(
-      bug.id,
-    );
-    const successor = addSessionSync(fixture.database, parent, 'FAILED');
-    expect(() =>
-      fixture.service.deleteBugs({ all: true, force: true }),
-    ).toThrow(
-      expect.objectContaining({
-        code: 'RESOURCE_CONFLICT',
-        message: expect.stringContaining('本次删除范围外'),
-      }),
-    );
-    expect(
-      fixture.database
-        .query('SELECT id FROM cooking_bug WHERE id = ?')
-        .get(bug.id),
-    ).not.toBeNull();
-    expect(
-      fixture.database
-        .query('SELECT id FROM cooking_repair_attempt WHERE execution_id = ?')
-        .get(parent),
-    ).not.toBeNull();
-    expect(
-      fixture.database
-        .query('SELECT id FROM platform_execution WHERE id = ?')
-        .get(successor),
-    ).not.toBeNull();
-  });
-
-  test('deleteBugs --all 删除全部缺陷', async () => {
-    const fixture = await setup();
-    createBug(fixture, fixture.users.tester.id, { title: '全部清理一' });
-    createBug(fixture, fixture.users.tester.id, { title: '全部清理二' });
-    const result = fixture.service.deleteBugs({ all: true });
-    expect(result.deletedBugIds).toHaveLength(2);
-    expect(
-      fixture.database
-        .query<{ count: number }, [string]>(
-          'SELECT COUNT(*) count FROM cooking_bug WHERE submission_id = ?',
-        )
-        .get(fixture.submission.id)?.count,
-    ).toBe(0);
-  });
 });
-
-function createBug(
-  fixture: Awaited<ReturnType<typeof setup>>,
-  actorUserId: string,
-  values: {
-    title: string;
-    operationPath?: string;
-    actualResultAttachmentIds?: string[];
-    expectedResultAttachmentIds?: string[];
-  },
-) {
-  return fixture.service.createBug(actorUserId, fixture.submission.id, {
-    mutationId: randomUUID(),
-    submissionItemId: null,
-    title: values.title,
-    operationPath: values.operationPath,
-    actualResultAttachmentIds: values.actualResultAttachmentIds ?? [],
-    expectedResultAttachmentIds: values.expectedResultAttachmentIds ?? [],
-  });
-}
-
-function createAssignedBug(
-  fixture: Awaited<ReturnType<typeof setup>>,
-  title: string,
-  submissionItemId: string,
-) {
-  return fixture.service.createBug(
-    fixture.users.tester.id,
-    fixture.submission.id,
-    {
-      mutationId: randomUUID(),
-      submissionItemId,
-      title,
-      actualResultAttachmentIds: [],
-      expectedResultAttachmentIds: [],
-    },
-  ).bug;
-}
-
-function mutation(expectedVersion: number) {
-  return { mutationId: randomUUID(), expectedVersion };
-}
-
-function user(id: string, displayName: string) {
-  return {
-    id,
-    username: id,
-    displayName,
-    password: 'password',
-  };
-}
-
-function addSessionSync(
-  database: AppDatabase,
-  parent: string,
-  state: string,
-): string {
-  const id = randomUUID();
-  database.run(
-    `INSERT INTO platform_execution(id, owner_namespace, owner_kind, owner_id, attempt,
-      previous_execution_id, runner_id, binding_id, approval_policy, state, created_at)
-     SELECT ?, 'cooking', 'SESSION_SYNC', ?, 1, id, runner_id, binding_id, 'never', ?, created_at
-     FROM platform_execution WHERE id = ?`,
-    [id, randomUUID(), state, parent],
-  );
-  return id;
-}

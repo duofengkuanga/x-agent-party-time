@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
-export function AgentAuthorizationRefresh({ active }: { active: boolean }) {
+export function AutoRefresh({ active = true }: { active?: boolean }) {
   const router = useRouter();
 
   useEffect(() => {

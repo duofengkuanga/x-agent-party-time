@@ -1,13 +1,7 @@
-import { afterEach, describe, expect, test } from 'bun:test';
-import {
-  chmod,
-  mkdtemp,
-  readFile,
-  rm,
-  stat,
-  writeFile,
-} from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { testDirectories } from '../testing/directories';
+import { describe, expect, test } from 'bun:test';
+import { chmod, readFile, rm, stat, writeFile } from 'node:fs/promises';
+
 import { join } from 'node:path';
 import type { ClaimedExecution } from '@agent-party-time/execution-contract';
 import { NodeLocalFileSystem, type LocalFileSystem } from '../platform/files';
@@ -23,17 +17,16 @@ import {
 } from './schemas';
 import { BindingStateError, LocalStateError, LocalStateStore } from './store';
 
-const homes: string[] = [];
+const temporaryHome = testDirectories('xapt-state-');
 const runnerId = '00000000-0000-4000-8000-000000000001';
 const bindingId = '00000000-0000-4000-8000-000000000002';
 const executionId = '00000000-0000-4000-8000-000000000003';
 const outboxId = '00000000-0000-4000-8000-000000000004';
-
-afterEach(async () => {
-  await Promise.all(
-    homes.splice(0).map((home) => rm(home, { recursive: true, force: true })),
-  );
-});
+const connection = {
+  schemaVersion: CONNECTION_STATE_SCHEMA_VERSION,
+  serverUrl: 'https://apt.example.com',
+  runnerId,
+} as const;
 
 test('各类持久化状态独立演进 Schema', () => {
   expect(CONNECTION_STATE_SCHEMA_VERSION).toBe(1);
@@ -79,11 +72,7 @@ test('全新 Home 初始化权限并且不读取或修改旧 Runner 目录', asy
 test('删除连接状态不删除稳定安装身份', async () => {
   const { paths, store } = await initializedStore();
   const first = await store.installationId();
-  await store.saveConnection({
-    schemaVersion: CONNECTION_STATE_SCHEMA_VERSION,
-    serverUrl: 'https://apt.example.com',
-    runnerId,
-  });
+  await store.saveConnection(connection);
 
   await store.removeConnection();
 
@@ -140,11 +129,7 @@ test('Binding 映射可重启恢复、重复写入幂等且冲突不覆盖', asy
 test('连接、Binding、Execution、Outbox 与安装状态可重启读取且不保存 Credential', async () => {
   const { paths, store } = await initializedStore();
   const now = '2026-08-03T08:00:00.000Z';
-  await store.saveConnection({
-    schemaVersion: CONNECTION_STATE_SCHEMA_VERSION,
-    serverUrl: 'https://apt.example.com',
-    runnerId,
-  });
+  await store.saveConnection(connection);
   await store.saveBindings({
     schemaVersion: BINDING_STATE_SCHEMA_VERSION,
     bindings: {
@@ -194,11 +179,7 @@ test('连接、Binding、Execution、Outbox 与安装状态可重启读取且不
 
   const restarted = new LocalStateStore(paths, new NodeLocalFileSystem());
   await restarted.preflight();
-  expect(await restarted.loadConnection()).toEqual({
-    schemaVersion: CONNECTION_STATE_SCHEMA_VERSION,
-    serverUrl: 'https://apt.example.com',
-    runnerId,
-  });
+  expect(await restarted.loadConnection()).toEqual(connection);
   expect(await restarted.loadExecutions()).toHaveLength(1);
   expect(await restarted.loadExecutionResultBaseline(executionId)).toEqual({
     gitHead: 'baseline-commit',
@@ -233,11 +214,7 @@ test('连接、Binding、Execution、Outbox 与安装状态可重启读取且不
 
 test('删除全部 Cache 不影响长期状态或恢复状态', async () => {
   const { paths, store } = await initializedStore();
-  await store.saveConnection({
-    schemaVersion: CONNECTION_STATE_SCHEMA_VERSION,
-    serverUrl: 'https://apt.example.com',
-    runnerId,
-  });
+  await store.saveConnection(connection);
   await store.saveBindings({
     schemaVersion: BINDING_STATE_SCHEMA_VERSION,
     bindings: {},
@@ -269,15 +246,9 @@ describe('状态失败关闭', () => {
 
   test('错误权限拒绝读取而不泄露内容', async () => {
     const { paths, store } = await initializedStore();
-    await writeFile(
-      paths.connection,
-      `${JSON.stringify({
-        schemaVersion: CONNECTION_STATE_SCHEMA_VERSION,
-        serverUrl: 'https://apt.example.com',
-        runnerId,
-      })}\n`,
-      { mode: 0o600 },
-    );
+    await writeFile(paths.connection, `${JSON.stringify(connection)}\n`, {
+      mode: 0o600,
+    });
     await chmod(paths.connection, 0o644);
 
     const error = await captureError(() => store.loadConnection());
@@ -299,13 +270,7 @@ describe('状态失败关闭', () => {
     const files = new RejectingWriteFileSystem(new NodeLocalFileSystem());
     const store = new LocalStateStore(paths, files);
 
-    const error = await captureError(() =>
-      store.saveConnection({
-        schemaVersion: CONNECTION_STATE_SCHEMA_VERSION,
-        serverUrl: 'https://apt.example.com',
-        runnerId,
-      }),
-    );
+    const error = await captureError(() => store.saveConnection(connection));
     expect((error as LocalStateError).code).toBe('WRITE_FAILED');
     expect(error.message).not.toContain(paths.home);
   });
@@ -314,9 +279,7 @@ describe('状态失败关闭', () => {
     const { paths, store } = await initializedStore();
     await expect(
       store.saveConnection({
-        schemaVersion: CONNECTION_STATE_SCHEMA_VERSION,
-        serverUrl: 'https://apt.example.com',
-        runnerId,
+        ...connection,
         credential: 'credential-secret',
       } as never),
     ).rejects.toThrow();
@@ -418,12 +381,6 @@ function recoveryExecution(now: string): ClaimedExecution {
     finishedAt: null,
     recoveredInteraction: null,
   };
-}
-
-async function temporaryHome(): Promise<string> {
-  const home = await mkdtemp(join(tmpdir(), 'xapt-state-'));
-  homes.push(home);
-  return home;
 }
 
 async function captureError(run: () => Promise<unknown>): Promise<Error> {

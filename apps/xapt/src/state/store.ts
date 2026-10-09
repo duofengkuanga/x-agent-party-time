@@ -239,17 +239,7 @@ export class LocalStateStore {
   }
 
   async preflight(): Promise<void> {
-    for (const path of [
-      this.paths.installRoot,
-      this.paths.versions,
-      this.paths.applicationSupport,
-      this.paths.run,
-      this.paths.state,
-      this.paths.outbox,
-      this.paths.executions,
-      this.paths.resultBaselines,
-      this.paths.workspaces,
-    ])
+    for (const path of this.stateDirectories())
       await this.requirePrivateDirectory(path);
     await this.readState(
       this.paths.identity,
@@ -343,7 +333,7 @@ export class LocalStateStore {
     }
   }
 
-  private managedDirectories(): string[] {
+  private stateDirectories(): string[] {
     return [
       this.paths.installRoot,
       this.paths.versions,
@@ -354,6 +344,12 @@ export class LocalStateStore {
       this.paths.executions,
       this.paths.resultBaselines,
       this.paths.workspaces,
+    ];
+  }
+
+  private managedDirectories(): string[] {
+    return [
+      ...this.stateDirectories(),
       this.paths.caches,
       this.paths.updateCache,
       this.paths.attachmentCache,
@@ -380,27 +376,23 @@ export class LocalStateStore {
   }
 }
 
-export type LocalStateErrorCode =
-  | 'MISSING_STATE'
-  | 'INSECURE_PERMISSIONS'
-  | 'CORRUPT_STATE'
-  | 'UNSUPPORTED_SCHEMA'
-  | 'WRITE_FAILED';
+const LOCAL_STATE_ERROR_REASON = {
+  MISSING_STATE: '状态文件缺失',
+  INSECURE_PERMISSIONS: '状态文件权限不安全',
+  CORRUPT_STATE: '状态文件已损坏或包含未知字段',
+  UNSUPPORTED_SCHEMA: '状态 Schema 不受当前版本支持',
+  WRITE_FAILED: '状态文件无法安全写入',
+};
+
+export type LocalStateErrorCode = keyof typeof LOCAL_STATE_ERROR_REASON;
 
 export class LocalStateError extends Error {
   constructor(
     readonly code: LocalStateErrorCode,
     readonly stateName: string,
   ) {
-    const reason: Record<LocalStateErrorCode, string> = {
-      MISSING_STATE: '状态文件缺失',
-      INSECURE_PERMISSIONS: '状态文件权限不安全',
-      CORRUPT_STATE: '状态文件已损坏或包含未知字段',
-      UNSUPPORTED_SCHEMA: '状态 Schema 不受当前版本支持',
-      WRITE_FAILED: '状态文件无法安全写入',
-    };
     super(
-      `${stateName}：${reason[code]}。下一步：请检查该状态后重试；不要继续启动 daemon。`,
+      `${stateName}：${LOCAL_STATE_ERROR_REASON[code]}。下一步：请检查该状态后重试；不要继续启动 daemon。`,
     );
     this.name = 'LocalStateError';
   }

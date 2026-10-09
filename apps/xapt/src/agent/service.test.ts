@@ -1,7 +1,6 @@
-import { afterEach, expect, test } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { testDirectories } from '../testing/directories';
+import { expect, test } from 'bun:test';
+
 import type {
   RunnerBindingRef,
   RunnerBindingWork,
@@ -22,15 +21,9 @@ import type {
 } from './connection';
 import type { RunnerBindingHttp } from './server-http';
 
-const homes: string[] = [];
+const createTestDirectory = testDirectories('xapt-agent-service-');
 const bindingId = '00000000-0000-4000-8000-000000000201';
 const requestId = '00000000-0000-4000-8000-000000000202';
-
-afterEach(async () => {
-  await Promise.all(
-    homes.splice(0).map((home) => rm(home, { recursive: true, force: true })),
-  );
-});
 
 test('合法 Binding 先持久化本机映射，再只向 Server 发送仓库 Origin', async () => {
   const fixture = await createFixture('/private/local/repository');
@@ -145,8 +138,7 @@ async function createFixture(
   repositoryPath: string | null,
   executions?: ExecutionService,
 ) {
-  const home = await mkdtemp(join(tmpdir(), 'xapt-agent-service-'));
-  homes.push(home);
+  const home = await createTestDirectory();
   const state = new LocalStateStore(xaptPaths(home), new NodeLocalFileSystem());
   await state.initialize();
   const session: AuthenticatedRunnerSession = {

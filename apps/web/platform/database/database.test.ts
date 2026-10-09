@@ -15,6 +15,19 @@ async function temporaryDatabasePath(): Promise<string> {
   return join(directory, 'server.sqlite');
 }
 
+function tableNames(
+  database: ReturnType<typeof openDatabase>,
+  pattern: string,
+): string[] {
+  return database
+    .all<{ name: string }>(
+      `SELECT name FROM sqlite_master
+       WHERE type = 'table' AND name LIKE ? ORDER BY name`,
+      pattern,
+    )
+    .map(({ name }) => name);
+}
+
 afterEach(async () => {
   await Promise.all(
     temporaryDirectories
@@ -29,34 +42,21 @@ describe('Server SQLite schema', () => {
     const database = openDatabase(path);
     try {
       expect(
-        database
-          .query<{ user_version: number }, []>('PRAGMA user_version')
-          .get()?.user_version,
+        database.get<{ user_version: number }>('PRAGMA user_version')
+          ?.user_version,
       ).toBe(SERVER_SCHEMA_VERSION);
       expect(
-        database
-          .query<{ foreign_keys: number }, []>('PRAGMA foreign_keys')
-          .get()?.foreign_keys,
+        database.get<{ foreign_keys: number }>('PRAGMA foreign_keys')
+          ?.foreign_keys,
       ).toBe(1);
       expect(
-        database
-          .query<{ journal_mode: string }, []>('PRAGMA journal_mode')
-          .get()?.journal_mode,
+        database.get<{ journal_mode: string }>('PRAGMA journal_mode')
+          ?.journal_mode,
       ).toBe('wal');
       expect(
-        database.query<{ timeout: number }, []>('PRAGMA busy_timeout').get()
-          ?.timeout,
+        database.get<{ timeout: number }>('PRAGMA busy_timeout')?.timeout,
       ).toBe(5_000);
-      expect(
-        database
-          .query<{ name: string }, []>(
-            `SELECT name FROM sqlite_master
-             WHERE type = 'table' AND name LIKE 'platform_%'
-             ORDER BY name`,
-          )
-          .all()
-          .map(({ name }) => name),
-      ).toEqual([
+      expect(tableNames(database, 'platform_%')).toEqual([
         'platform_execution',
         'platform_execution_attachment',
         'platform_execution_interaction',
@@ -69,21 +69,17 @@ describe('Server SQLite schema', () => {
       ]);
       expect(
         database
-          .query<{ name: string }, []>('PRAGMA table_info(platform_runner)')
-          .all()
+          .all<{ name: string }>('PRAGMA table_info(platform_runner)')
           .map(({ name }) => name),
       ).toContain('installation_id');
       expect(
-        database
-          .query<{ name: string }, []>(
-            `SELECT name FROM sqlite_master
-             WHERE type = 'index' AND name = 'platform_runner_owner_installation'`,
-          )
-          .get()?.name,
+        database.get<{ name: string }>(`SELECT name FROM sqlite_master
+             WHERE type = 'index' AND name = 'platform_runner_owner_installation'`)
+          ?.name,
       ).toBe('platform_runner_owner_installation');
       expect(
         database
-          .query<{ name: string }, []>(
+          .all<{ name: string }>(
             `SELECT name FROM sqlite_master
              WHERE type = 'table' AND name IN (
                'cooking_bug_feedback',
@@ -92,7 +88,6 @@ describe('Server SQLite schema', () => {
                'cooking_reopen_attachment'
              ) ORDER BY name`,
           )
-          .all()
           .map(({ name }) => name),
       ).toEqual([
         'cooking_reopen_attachment',
@@ -100,51 +95,24 @@ describe('Server SQLite schema', () => {
         'cooking_verification_attachment',
       ]);
       expect(
-        database
-          .query<{ sql: string }, []>(
-            `SELECT sql FROM sqlite_master
-             WHERE type = 'table' AND name = 'cooking_cleanup'`,
-          )
-          .get()?.sql,
+        database.get<{ sql: string }>(`SELECT sql FROM sqlite_master
+             WHERE type = 'table' AND name = 'cooking_cleanup'`)?.sql,
       ).not.toContain('BUG_CANCELLED');
-      expect(
-        database
-          .query<{ name: string }, []>(
-            `SELECT name FROM sqlite_master
-             WHERE type = 'table' AND name LIKE 'cooking_%repair%'
-             ORDER BY name`,
-          )
-          .all()
-          .map(({ name }) => name),
-      ).toEqual([
+      expect(tableNames(database, 'cooking_%repair%')).toEqual([
         'cooking_bug_repair_context',
         'cooking_repair_attempt',
         'cooking_repair_session_sync',
       ]);
       expect(
         database
-          .query<{ name: string }, []>('PRAGMA table_info(cooking_bug)')
-          .all()
+          .all<{ name: string }>('PRAGMA table_info(cooking_bug)')
           .map(({ name }) => name),
       ).not.toContain('notes');
       expect(
-        database
-          .query<{ sql: string }, []>(
-            `SELECT sql FROM sqlite_master
-             WHERE type = 'table' AND name = 'cooking_bug_attachment'`,
-          )
-          .get()?.sql,
+        database.get<{ sql: string }>(`SELECT sql FROM sqlite_master
+             WHERE type = 'table' AND name = 'cooking_bug_attachment'`)?.sql,
       ).toContain("role IN ('ACTUAL_RESULT', 'EXPECTED_RESULT')");
-      expect(
-        database
-          .query<{ name: string }, []>(
-            `SELECT name FROM sqlite_master
-             WHERE type = 'table' AND name LIKE 'cooking_%update%'
-             ORDER BY name`,
-          )
-          .all()
-          .map(({ name }) => name),
-      ).toEqual([
+      expect(tableNames(database, 'cooking_%update%')).toEqual([
         'cooking_update_attempt',
         'cooking_update_batch',
         'cooking_update_batch_entry',

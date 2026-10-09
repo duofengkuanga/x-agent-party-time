@@ -1,66 +1,41 @@
-import { afterEach, expect, test } from 'bun:test';
-import { mkdtemp, mkdir, rm } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { serializeDeterministicJson } from '@agent-party-time/execution-contract';
-import type {
-  ClaimedExecution,
-  CompleteExecutionRequest,
-  Execution,
-  ExecutionResultAssertion,
-  ExecutionRenewResponse,
-  ExecutionStartRequest,
-  JsonObject,
-  JsonValue,
-} from '@agent-party-time/execution-contract';
-import { NodeLocalFileSystem } from '../platform/files';
-import { xaptPaths } from '../platform/paths';
-import { LocalStateStore } from '../state/store';
+import { expect, test } from 'bun:test';
 import { EXECUTION_STATE_SCHEMA_VERSION } from '../state/schemas';
-import type { AuthenticatedRunnerSession } from '../agent/connection';
-import type { RunnerExecutionHttp } from '../agent/server-http';
-import type { AttachmentMaterializer } from './attachments';
-import type {
-  CodexExecutionInput,
-  CodexExecutor,
-  StartedCodexExecution,
-} from '../codex/contract';
 import { CodexAppServerError } from '../codex/errors';
-import { ExecutionService } from './service';
+import { ExecutionRecovery } from './recovery';
+import { ExecutionResultVerificationError } from './result-verification';
 import {
-  ExecutionResultVerificationError,
-  type ExecutionResultVerifier,
-} from './result-verification';
-import type { SkillBundleManager } from '../skills/manager';
-import type { ExecutionWorkspaceManager } from './workspaces';
+  bindingId,
+  claimedExecution,
+  continuationTurn,
+  createFixture,
+  executionId,
+  leaseToken,
+  session,
+  skillBinding,
+} from './service-fixture';
 
-const homes: string[] = [];
-const executionId = '00000000-0000-4000-8000-000000000301';
-const bindingId = '00000000-0000-4000-8000-000000000302';
-const runnerId = '00000000-0000-4000-8000-000000000303';
-const leaseToken = 'lease-token-at-least-thirty-two-characters';
-const skillBinding = {
-  skillName: 'agent-party-time-repair-bug' as const,
-  bundleHash: 'a'.repeat(64),
-  sourceRevision: 'b'.repeat(40),
+const branchWorkspace = {
+  key: 'bug-repair:bug-1',
+  isolation: 'BRANCH_WORKTREE' as const,
+  baseRef: 'origin/main',
+  branch: 'apt/repair/bug-1',
 };
-const session: AuthenticatedRunnerSession = {
-  serverOrigin: 'https://apt.example.com',
-  credential: 'credential-secret-at-least-thirty-two-characters',
-};
+const commitAssertions = [
+  { kind: 'GIT_COMMITS_CREATED' as const, resultPath: ['result', 'commits'] },
+];
 
-afterEach(async () => {
-  await Promise.all(
-    homes.splice(0).map((home) => rm(home, { recursive: true, force: true })),
-  );
-});
+async function cycleToIdle(
+  fixture: Awaited<ReturnType<typeof createFixture>>,
+): Promise<boolean> {
+  const claimed = await fixture.service.cycle(session);
+  await fixture.service.waitForIdle();
+  return claimed;
+}
 
 test('单槽完成领取、Codex Session、START 与结构化 Outcome happy path', async () => {
   const fixture = await createFixture();
 
-  expect(await fixture.service.cycle(session)).toBe(true);
-  await fixture.service.waitForIdle();
+  expect(await cycleToIdle(fixture)).toBe(true);
 
   expect(fixture.http.claimSlots).toEqual([3]);
   expect(fixture.http.starts).toEqual([
@@ -92,8 +67,7 @@ test('单槽完成领取、Codex Session、START 与结构化 Outcome happy path
 test('已有 Task 通过 codexTurn 继续原 Thread', async () => {
   const fixture = await createFixture({ taskId: 'thread-existing' });
 
-  await fixture.service.cycle(session);
-  await fixture.service.waitForIdle();
+  await cycleToIdle(fixture);
 
   expect(fixture.executor.inputs[0]?.taskId).toBe('thread-existing');
   expect(fixture.executor.inputs[0]?.skill).toBeNull();
@@ -104,8 +78,7 @@ test('首次执行保存结果校验基线供后续同步复用', async () => {
     capturedBaseline: { gitHead: 'baseline-commit' },
   });
 
-  await fixture.service.cycle(session);
-  await fixture.service.waitForIdle();
+  await cycleToIdle(fixture);
 
   expect(await fixture.state.loadExecutionResultBaseline(executionId)).toEqual({
     gitHead: 'baseline-commit',
@@ -116,23 +89,15 @@ test('同步会话使用原执行基线和断言校验结果', async () => {
   const previousExecutionId = '00000000-0000-4000-8000-000000000399';
   const fixture = await createFixture({
     readSessionId: 'manual-session',
-    readResultAssertions: [
-      { kind: 'GIT_COMMITS_CREATED', resultPath: ['result', 'commits'] },
-    ],
+    readResultAssertions: commitAssertions,
     previousExecutionId,
-    workspace: {
-      key: 'bug-repair:bug-1',
-      isolation: 'BRANCH_WORKTREE',
-      baseRef: 'origin/main',
-      branch: 'apt/repair/bug-1',
-    },
+    workspace: branchWorkspace,
   });
   await fixture.state.saveExecutionResultBaseline(previousExecutionId, {
     gitHead: 'baseline-commit',
   });
 
-  await fixture.service.cycle(session);
-  await fixture.service.waitForIdle();
+  await cycleToIdle(fixture);
 
   expect(fixture.verifiedBaselines).toEqual([{ gitHead: 'baseline-commit' }]);
   expect(fixture.http.starts[0]).toMatchObject({
@@ -155,8 +120,7 @@ test('同步会话拒绝不符合原任务结果约束的结果', async () => {
     },
   });
 
-  await fixture.service.cycle(session);
-  await fixture.service.waitForIdle();
+  await cycleToIdle(fixture);
 
   expect(fixture.http.starts[0]).toMatchObject({
     kind: 'START_FAILED',
@@ -172,23 +136,15 @@ test('同步会话保留原结果证据校验失败原因', async () => {
   const previousExecutionId = '00000000-0000-4000-8000-000000000398';
   const fixture = await createFixture({
     readSessionId: 'manual-session',
-    readResultAssertions: [
-      { kind: 'GIT_COMMITS_CREATED', resultPath: ['result', 'commits'] },
-    ],
+    readResultAssertions: commitAssertions,
     previousExecutionId,
-    workspace: {
-      key: 'bug-repair:bug-1',
-      isolation: 'BRANCH_WORKTREE',
-      baseRef: 'origin/main',
-      branch: 'apt/repair/bug-1',
-    },
+    workspace: branchWorkspace,
     resultValidationFailure: new ExecutionResultVerificationError(
       '本机 Commit 结果校验缺少执行前基线',
     ),
   });
 
-  await fixture.service.cycle(session);
-  await fixture.service.waitForIdle();
+  await cycleToIdle(fixture);
 
   expect(fixture.http.starts[0]).toMatchObject({
     kind: 'START_FAILED',
@@ -203,16 +159,9 @@ test('同步会话保留原结果证据校验失败原因', async () => {
 test('同步会话接受不声明提交的有效业务失败结果', async () => {
   const fixture = await createFixture({
     readSessionId: 'manual-session',
-    readResultAssertions: [
-      { kind: 'GIT_COMMITS_CREATED', resultPath: ['result', 'commits'] },
-    ],
+    readResultAssertions: commitAssertions,
     previousExecutionId: '00000000-0000-4000-8000-000000000397',
-    workspace: {
-      key: 'bug-repair:bug-1',
-      isolation: 'BRANCH_WORKTREE',
-      baseRef: 'origin/main',
-      branch: 'apt/repair/bug-1',
-    },
+    workspace: branchWorkspace,
     readOutputJsonSchema: {
       type: 'object',
       properties: {
@@ -235,8 +184,7 @@ test('同步会话接受不声明提交的有效业务失败结果', async () =>
     },
   });
 
-  await fixture.service.cycle(session);
-  await fixture.service.waitForIdle();
+  await cycleToIdle(fixture);
 
   expect(fixture.http.starts[0]).toMatchObject({ kind: 'STARTED' });
   expect(fixture.http.outcomes[0]).toMatchObject({
@@ -247,23 +195,15 @@ test('同步会话接受不声明提交的有效业务失败结果', async () =>
 test('同步会话不泄露原工作区解析错误', async () => {
   const fixture = await createFixture({
     readSessionId: 'manual-session',
-    readResultAssertions: [
-      { kind: 'GIT_COMMITS_CREATED', resultPath: ['result', 'commits'] },
-    ],
+    readResultAssertions: commitAssertions,
     previousExecutionId: '00000000-0000-4000-8000-000000000396',
-    workspace: {
-      key: 'bug-repair:bug-1',
-      isolation: 'BRANCH_WORKTREE',
-      baseRef: 'origin/main',
-      branch: 'apt/repair/bug-1',
-    },
+    workspace: branchWorkspace,
     workspaceResolveFailure: new Error(
       '/Users/example/private-worktree 不可读取',
     ),
   });
 
-  await fixture.service.cycle(session);
-  await fixture.service.waitForIdle();
+  await cycleToIdle(fixture);
 
   expect(fixture.http.starts[0]).toMatchObject({
     kind: 'START_FAILED',
@@ -281,8 +221,7 @@ test('只读会话无法确认时投递可操作的同步失败', async () => {
     ),
   });
 
-  await fixture.service.cycle(session);
-  await fixture.service.waitForIdle();
+  await cycleToIdle(fixture);
 
   expect(fixture.http.starts).toEqual([
     {
@@ -303,8 +242,7 @@ test('按 Execution 携带的审批约束启动 Codex', async () => {
   for (const approvalPolicy of ['never', 'on-request'] as const) {
     const fixture = await createFixture({ approvalPolicy });
 
-    await fixture.service.cycle(session);
-    await fixture.service.waitForIdle();
+    await cycleToIdle(fixture);
 
     expect(fixture.executor.inputs[0]?.approvalPolicy).toBe(approvalPolicy);
   }
@@ -318,8 +256,7 @@ test('Codex 结构化结果失败只收敛当前 Execution，不退出服务', a
     ),
   });
 
-  await fixture.service.cycle(session);
-  await fixture.service.waitForIdle();
+  await cycleToIdle(fixture);
 
   expect(fixture.http.outcomes[0]).toMatchObject({
     outcome: {
@@ -343,8 +280,7 @@ test('本机 Commit 结果断言失败时不提交 Codex 成功结果', async ()
     ),
   });
 
-  await fixture.service.cycle(session);
-  await fixture.service.waitForIdle();
+  await cycleToIdle(fixture);
 
   expect(fixture.http.outcomes[0]).toMatchObject({
     outcome: {
@@ -360,8 +296,7 @@ test('本机 Commit 结果断言失败时不提交 Codex 成功结果', async ()
 
 test('Outcome 网络失败进入 Outbox，重启后先重放再尝试领取', async () => {
   const fixture = await createFixture({ failOutcome: true });
-  await fixture.service.cycle(session);
-  await fixture.service.waitForIdle();
+  await cycleToIdle(fixture);
   expect(await fixture.state.loadOutbox()).toHaveLength(1);
   expect(await fixture.state.loadExecutions()).toHaveLength(1);
 
@@ -425,8 +360,7 @@ test('Codex Interaction 经 Server 解决后继续原 Session', async () => {
     answers: { question: { answers: ['ok'] } },
   };
 
-  await fixture.service.cycle(session);
-  await fixture.service.waitForIdle();
+  await cycleToIdle(fixture);
 
   expect(fixture.http.openedInteractions).toHaveLength(1);
   expect(fixture.http.outcomes[0]).toMatchObject({
@@ -454,8 +388,7 @@ test('恢复后的已解决 Interaction 直接回填给恢复的 Codex Session',
     },
   };
 
-  await fixture.service.cycle(session);
-  await fixture.service.waitForIdle();
+  await cycleToIdle(fixture);
 
   expect(fixture.executor.inputs[0]?.taskId).toBe('thread-recovered');
   expect(fixture.http.openedInteractions).toEqual([]);
@@ -506,14 +439,12 @@ test('续租将最新 Lease 过期时间写入崩溃恢复记录', async () => {
     updatedAt: '2026-08-03T08:00:00.000Z',
   });
 
-  await (
-    fixture.service as unknown as {
-      persistRenewedLease: (
-        execution: ClaimedExecution,
-        expiresAt: string,
-      ) => Promise<void>;
-    }
-  ).persistRenewedLease(execution, '2026-08-03T10:00:00.000Z');
+  fixture.http.renewedExpiresAt = '2026-08-03T10:00:00.000Z';
+  await new ExecutionRecovery(
+    fixture.http,
+    fixture.state,
+    () => new Date(),
+  ).renew(session, execution);
   fixture.setNow('2026-08-03T09:30:00.000Z');
 
   const restarted = fixture.restartedService();
@@ -521,352 +452,6 @@ test('续租将最新 Lease 过期时间写入崩溃恢复记录', async () => {
   expect(await fixture.state.loadExecutions()).toHaveLength(1);
   expect(restarted.projection.recoveryRequired).toBe(true);
 });
-
-async function createFixture(
-  options: {
-    taskId?: string;
-    executorFailure?: Error;
-    failOutcome?: boolean;
-    deferredExecutor?: boolean;
-    interactionExecutor?: boolean;
-    readSessionId?: string;
-    readSessionFailure?: Error;
-    readResultAssertions?: ExecutionResultAssertion[];
-    readOutputJsonSchema?: JsonObject;
-    readResult?: JsonValue;
-    workspaceResolveFailure?: Error;
-    previousExecutionId?: string;
-    capturedBaseline?: { gitHead: string } | null;
-    owner?: ClaimedExecution['owner'];
-    approvalPolicy?: ClaimedExecution['approvalPolicy'];
-    workspace?: ClaimedExecution['workspace'];
-    resultAssertions?: ExecutionResultAssertion[];
-    resultValidationFailure?: ExecutionResultVerificationError;
-  } = {},
-) {
-  const home = await mkdtemp(join(tmpdir(), 'xapt-execution-'));
-  homes.push(home);
-  const paths = xaptPaths(home);
-  const files = new NodeLocalFileSystem();
-  const state = new LocalStateStore(paths, files);
-  await state.initialize();
-  const repositoryPath = join(home, 'repository');
-  await mkdir(repositoryPath);
-  await state.bind(bindingId, repositoryPath);
-  const claimed = claimedExecution(
-    options.taskId ?? null,
-    executionId,
-    bindingId,
-    options.owner,
-    options.approvalPolicy,
-    options.workspace,
-  );
-  if (options.readSessionId)
-    claimed.codexTurn = {
-      kind: 'READ_SESSION',
-      taskId: options.readSessionId,
-      outputJsonSchema: options.readOutputJsonSchema ?? { type: 'object' },
-      resultAssertions: options.readResultAssertions,
-    };
-  if (options.previousExecutionId)
-    claimed.previousExecutionId = options.previousExecutionId;
-  if (claimed.codexTurn && claimed.codexTurn.kind !== 'READ_SESSION')
-    claimed.codexTurn.resultAssertions = options.resultAssertions;
-  const http = new FakeExecutionHttp(claimed);
-  http.failOutcome = options.failOutcome ?? false;
-  const executor = new FakeCodexExecutor(
-    options.executorFailure,
-    options.deferredExecutor ?? false,
-    options.interactionExecutor ?? false,
-    options.readSessionFailure,
-    options.readResult,
-  );
-  let now = new Date('2026-08-03T08:00:00.000Z');
-  let nextId = 400;
-  const verifiedBaselines: Array<{ gitHead: string } | null> = [];
-  const build = () =>
-    new ExecutionService(
-      http,
-      state,
-      files,
-      {
-        materialize: async () => [],
-        artifactsDirectory: (id: string) => join(paths.logs, id),
-      } as unknown as AttachmentMaterializer,
-      {
-        prepare: async () => ({ kind: 'EXECUTE', cwd: repositoryPath }),
-        resolve: async () => {
-          if (options.workspaceResolveFailure)
-            throw options.workspaceResolveFailure;
-          return repositoryPath;
-        },
-      } as ExecutionWorkspaceManager,
-      executor,
-      {
-        resolveCurrent: async () => ({
-          ...skillBinding,
-          path: join(home, 'skills', skillBinding.bundleHash),
-        }),
-        resolveBound: async (identity: typeof skillBinding) => ({
-          ...identity,
-          path: join(home, 'skills', identity.bundleHash),
-        }),
-      } as unknown as SkillBundleManager,
-      {
-        capture: async () => options.capturedBaseline ?? null,
-        verify: async (_repositoryPath, _assertions, baseline) => {
-          verifiedBaselines.push(baseline);
-          if (options.resultValidationFailure)
-            throw options.resultValidationFailure;
-        },
-      } as ExecutionResultVerifier,
-      () => now,
-      () => `00000000-0000-4000-8000-${String(nextId++).padStart(12, '0')}`,
-    );
-  return {
-    paths,
-    files,
-    state,
-    repositoryPath,
-    http,
-    executor,
-    verifiedBaselines,
-    service: build(),
-    restartedService: build,
-    setNow(value: string) {
-      now = new Date(value);
-    },
-  };
-}
-
-class FakeExecutionHttp implements RunnerExecutionHttp {
-  async deleteBugs(): Promise<{
-    deletedBugIds: string[];
-    deletedExecutionIds: string[];
-  }> {
-    return { deletedBugIds: [], deletedExecutionIds: [] };
-  }
-
-  claimed: ClaimedExecution[];
-  readonly claimSlots: number[] = [];
-  readonly starts: ExecutionStartRequest[] = [];
-  readonly outcomes: CompleteExecutionRequest[] = [];
-  readonly events: string[] = [];
-  failOutcome = false;
-  interactionResolution: JsonValue = {};
-  readonly openedInteractions: unknown[] = [];
-
-  constructor(...executions: ClaimedExecution[]) {
-    this.claimed = executions;
-  }
-
-  async claimExecutions(
-    _origin: string,
-    _credential: string,
-    availableSlots: number,
-  ): Promise<ClaimedExecution[]> {
-    this.events.push('claim');
-    this.claimSlots.push(availableSlots);
-    return this.claimed.splice(0, availableSlots);
-  }
-
-  async startExecution(
-    _origin: string,
-    _credential: string,
-    _executionId: string,
-    request: ExecutionStartRequest,
-  ): Promise<Execution> {
-    this.events.push('start');
-    this.starts.push(request);
-    return {} as Execution;
-  }
-
-  async renewExecution(): Promise<ExecutionRenewResponse> {
-    return {
-      expiresAt: '2026-08-03T09:00:00.000Z',
-      cancellationRequested: false,
-    };
-  }
-
-  async completeExecution(
-    _origin: string,
-    _credential: string,
-    _executionId: string,
-    request: CompleteExecutionRequest,
-  ): Promise<Execution> {
-    this.events.push('complete');
-    if (this.failOutcome) throw new Error('network');
-    this.outcomes.push(request);
-    return {} as Execution;
-  }
-
-  async openInteraction(
-    _origin: string,
-    _credential: string,
-    executionId: string,
-    request: unknown,
-  ) {
-    this.openedInteractions.push(request);
-    return {
-      id: '00000000-0000-4000-8000-000000000350',
-      executionId,
-      kind: 'USER_INPUT' as const,
-      method: 'item/tool/requestUserInput',
-      payload: {},
-      state: 'PENDING' as const,
-      resolution: null,
-      createdAt: '2026-08-03T08:00:00.000Z',
-      resolvedAt: null,
-    };
-  }
-
-  async waitInteraction(
-    _origin: string,
-    _credential: string,
-    executionId: string,
-  ) {
-    return {
-      interaction: {
-        id: '00000000-0000-4000-8000-000000000350',
-        executionId,
-        kind: 'USER_INPUT' as const,
-        method: 'item/tool/requestUserInput',
-        payload: {},
-        state: 'RESOLVED' as const,
-        resolution: this.interactionResolution,
-        createdAt: '2026-08-03T08:00:00.000Z',
-        resolvedAt: '2026-08-03T08:01:00.000Z',
-      },
-      laneAcquired: true,
-    };
-  }
-
-  async downloadExecutionFile(): Promise<Uint8Array> {
-    return new Uint8Array();
-  }
-}
-
-class FakeCodexExecutor implements CodexExecutor {
-  readonly inputs: CodexExecutionInput[] = [];
-  private readonly resolvers: Array<(value: JsonValue) => void> = [];
-
-  constructor(
-    private readonly failure?: Error,
-    private readonly deferred = false,
-    private readonly interaction = false,
-    private readonly readFailure?: Error,
-    private readonly readResult: JsonValue = { summary: 'done' },
-  ) {}
-
-  async begin(input: CodexExecutionInput): Promise<StartedCodexExecution> {
-    this.inputs.push(input);
-    const completion = this.interaction
-      ? new Promise<JsonValue>((resolve, reject) =>
-          setTimeout(
-            () =>
-              input
-                .onInteraction({
-                  method: 'item/tool/requestUserInput',
-                  payload: { questions: [{ id: 'question' }] },
-                })
-                .then(resolve, reject),
-            0,
-          ),
-        )
-      : this.deferred
-        ? new Promise<JsonValue>((resolve) => this.resolvers.push(resolve))
-        : this.failure
-          ? new Promise<JsonValue>((_resolve, reject) =>
-              setTimeout(() => reject(this.failure), 10),
-            )
-          : Promise.resolve({ summary: 'done' });
-    return {
-      sessionId: input.taskId ?? 'thread-new',
-      completion,
-    };
-  }
-
-  async readLastCompletedTurn() {
-    if (this.readFailure) throw this.readFailure;
-    return { turnId: 'turn-latest', result: this.readResult };
-  }
-
-  resolveNext(): void {
-    this.resolvers.shift()?.({ summary: 'done' });
-  }
-
-  resolveAll(): void {
-    for (;;) {
-      const resolve = this.resolvers.shift();
-      if (!resolve) return;
-      resolve({ summary: 'done' });
-    }
-  }
-}
-
-function claimedExecution(
-  taskId: string | null,
-  id = executionId,
-  localBindingId = bindingId,
-  owner: ClaimedExecution['owner'] = {
-    namespace: 'test',
-    kind: 'task',
-    id: 'task-1',
-  },
-  approvalPolicy: ClaimedExecution['approvalPolicy'] = 'on-request',
-  workspace: ClaimedExecution['workspace'] = null,
-): ClaimedExecution {
-  return {
-    id,
-    owner,
-    attempt: 1,
-    previousExecutionId: null,
-    runnerId,
-    bindingId: localBindingId,
-    priority: 0,
-    approvalPolicy,
-    state: 'CLAIMED',
-    codexTurn: taskId ? continuationTurn(taskId) : initialTurn(),
-    workspace,
-    attachments: [],
-    sessionId: null,
-    lease: {
-      token: leaseToken,
-      expiresAt: '2026-08-03T09:00:00.000Z',
-    },
-    outcome: null,
-    cancellationRequested: false,
-    createdAt: '2026-08-03T07:00:00.000Z',
-    claimedAt: '2026-08-03T08:00:00.000Z',
-    startedAt: null,
-    finishedAt: null,
-    recoveredInteraction: null,
-  };
-}
-
-function initialTurn(): ClaimedExecution['codexTurn'] {
-  const executionBrief = { instruction: '只返回 JSON' };
-  return {
-    kind: 'INITIAL',
-    requiredSkillName: skillBinding.skillName,
-    executionBrief,
-    executionBriefHash: createHash('sha256')
-      .update(serializeDeterministicJson(executionBrief))
-      .digest('hex'),
-    outputJsonSchema: { type: 'object' },
-    taskSkillBinding: null,
-  };
-}
-
-function continuationTurn(taskId: string): ClaimedExecution['codexTurn'] {
-  return {
-    kind: 'CONTINUATION',
-    taskId,
-    taskSkillBinding: skillBinding,
-    input: '继续完成上次未完成的任务。',
-    outputJsonSchema: { type: 'object' },
-  };
-}
 
 async function waitUntil(condition: () => boolean): Promise<void> {
   const deadline = Date.now() + 1_000;

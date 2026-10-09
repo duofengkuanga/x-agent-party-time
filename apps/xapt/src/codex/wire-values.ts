@@ -61,3 +61,12 @@ export function parseStructuredResult(message: string): JsonValue | undefined {
 export function safeMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Codex 本机服务请求失败';
 }
+
+export function latestAgentMessage(items: unknown): string | undefined {
+  if (!Array.isArray(items)) return;
+  for (let index = items.length - 1; index >= 0; index--) {
+    const item = asRecord(items[index]);
+    if (item.type === 'agentMessage' && typeof item.text === 'string')
+      return item.text;
+  }
+}

@@ -1,16 +1,8 @@
+import { createCooking } from '@/cooking/runtime/create-cooking';
+import { deliveryProject } from '@/cooking/testing/project';
+import { openDatabase } from '@/platform/database';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
-import { AuthService } from '@/platform/auth/service';
-import { openDatabase } from '@/platform/database';
-import { ExecutionService } from '@/platform/execution/service';
-import { RunnerService } from '@/platform/runner/service';
-import { BindingService } from '@/cooking/bindings/server/binding-service';
-import { BugService } from '@/cooking/bugs/server/bug-service';
-import { EngineeringService } from '@/cooking/engineering/server/engineering-service';
-import { cookingExecutionProjection } from '@/cooking/runtime/execution-projection';
-import { ProjectService } from '@/cooking/projects/server/project-service';
-import { RepairService } from '@/cooking/repair/server/repair-service';
-import { SubmissionService } from '@/cooking/submissions/server/submission-service';
 
 export type BrowserFixture = {
   developerUsername: string;
@@ -26,117 +18,40 @@ export async function seedBrowserFixture(
   const db = openDatabase(join(home, 'server', 'server.sqlite'));
   try {
     const password = 'browser-test-password';
-    const auth = new AuthService(db);
-    const owner = await auth.seedUser({
-      id: randomUUID(),
-      username: 'browser-owner',
-      displayName: '浏览器测试负责人',
-      password,
-    });
-    const tester = await auth.seedUser({
-      id: randomUUID(),
-      username: 'browser-tester',
-      displayName: '浏览器测试执行人',
-      password,
-    });
-    const developer = await auth.seedUser({
-      id: randomUUID(),
-      username: 'browser-developer',
-      displayName: '浏览器测试开发者',
-      password,
-    });
-
-    const projects = new ProjectService(db);
-    const project = projects.createProject(owner.id, {
-      mutationId: randomUUID(),
+    const {
+      users,
+      project,
+      submission,
+      items,
+      pairedRunner: paired,
+    } = await deliveryProject(db, {
       name: '浏览器验收项目',
-    }).project;
-    for (const invited of [tester, developer]) {
-      const invitation = projects.inviteUser(owner.id, project.id, {
-        mutationId: randomUUID(),
-        username: invited.username,
-      });
-      projects.respondToInvitation(invited.id, invitation.id, {
-        mutationId: randomUUID(),
-        expectedVersion: invitation.version,
-        decision: 'ACCEPT',
-      });
-    }
-
-    const engineering = new EngineeringService(db);
-    const source = engineering.createEngineering(owner.id, project.id, {
-      mutationId: randomUUID(),
-      name: '浏览器前端工程',
-      type: 'FRONTEND',
-      identifier: 'browser-web',
-    });
-    engineering.addMember(owner.id, source.id, developer.id, {
-      mutationId: randomUUID(),
-    });
-    const environment = engineering.createEnvironment(owner.id, source.id, {
-      mutationId: randomUUID(),
-      name: '浏览器测试环境',
-      deployment: { kind: 'CI_CD' },
-    });
-
-    const runners = new RunnerService(db);
-    const paired = runners.pair(
-      runners.issuePairingCode(developer.id).code,
-      '浏览器测试 Agent',
-    );
-    const bindings = new BindingService(db);
-    const binding = bindings.createBinding(
-      developer.id,
-      source.id,
-      paired.runner.id,
-      randomUUID(),
-    );
-    bindings.confirmRepository(
-      paired.runner.id,
-      binding.id,
-      'https://example.com/browser.git',
-    );
-
-    const submission = new SubmissionService(db).createSubmission(
-      owner.id,
-      project.id,
-      {
-        mutationId: randomUUID(),
-        title: '浏览器架构验收提测',
-        requirementDescription: '覆盖路由、Action、附件和缺陷生命周期交互',
-        testerUserId: tester.id,
-        items: [
-          {
-            engineeringId: source.id,
-            responsibleUserId: developer.id,
-            bindingId: binding.id,
-            targetBranch: 'feature/browser-test',
-            environmentId: environment.id,
-          },
-        ],
+      prefix: 'browser',
+      password,
+      runnerName: '浏览器测试 Agent',
+      people: {
+        owner: ['browser-owner', '浏览器测试负责人', randomUUID()],
+        tester: ['browser-tester', '浏览器测试执行人', randomUUID()],
+        developer: ['browser-developer', '浏览器测试开发者', randomUUID()],
       },
-    );
-    const item = db
-      .prepare('SELECT id FROM cooking_submission_item WHERE submission_id = ?')
-      .get(submission.id) as { id: string };
-
-    const repairs = new RepairService(db, new ExecutionService(db));
-    const executions = new ExecutionService(
-      db,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      cookingExecutionProjection(db, {
-        BUG_REPAIR: repairs,
-        SESSION_SYNC: repairs,
-        UPDATE_BATCH: { projectExecution: () => {} },
-        CLEANUP: { projectExecution: () => {} },
-      }),
-    );
-    const bugs = new BugService(db, undefined, undefined, undefined, {
-      requested: (bugId) => repairs.createInitialExecution(bugId),
+      sources: [
+        {
+          name: '浏览器前端工程',
+          type: 'FRONTEND',
+          identifier: 'browser-web',
+          environment: '浏览器测试环境',
+          deployment: { kind: 'CI_CD' },
+          repository: 'https://example.com/browser.git',
+          branch: 'feature/browser-test',
+        },
+      ],
+      title: '浏览器架构验收提测',
+      description: '覆盖路由、Action、附件和缺陷生命周期交互',
     });
+    const { tester, developer } = users;
+    const item = items[0]!;
+
+    const { executions, bugs } = createCooking(db);
 
     const createBug = (title: string) =>
       bugs.createBug(tester.id, submission.id, {
@@ -186,10 +101,7 @@ export async function seedBrowserFixture(
           },
         },
       });
-      db.prepare('UPDATE cooking_bug SET stage = ? WHERE id = ?').run(
-        stage,
-        bug.id,
-      );
+      db.run('UPDATE cooking_bug SET stage = ? WHERE id = ?', [stage, bug.id]);
       return bug;
     };
 

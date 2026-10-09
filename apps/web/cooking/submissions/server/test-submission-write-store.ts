@@ -3,10 +3,9 @@ import type { AppDatabase } from '@/platform/database';
 import type { CookingWriteInput } from '@/cooking/shared/server/write-store';
 import { CookingWriteStore } from '@/cooking/shared/server/write-store';
 
-type WorkspaceInvalidation = {
-  submissionId: string;
-  revision: number;
-};
+type RevisionedWorkspace =
+  | { revision: number; workspaceRevision?: never }
+  | { workspaceRevision: number; revision?: never };
 
 export class TestSubmissionWriteStore {
   private readonly writes: CookingWriteStore;
@@ -23,54 +22,54 @@ export class TestSubmissionWriteStore {
     this.writes = new CookingWriteStore(db, now, createId);
   }
 
-  run<T>(
+  run<T extends RevisionedWorkspace>(
     input: CookingWriteInput<T> & {
-      invalidation: (result: T) => WorkspaceInvalidation;
+      submissionId: (result: T) => string;
     },
   ): T {
-    const { invalidation, ...write } = input;
-    const tracked = this.writes.runTracked(write);
-    if (!tracked.replayed) {
-      const event = invalidation(tracked.result);
-      this.onInvalidated(event.submissionId, event.revision);
-    }
+    const tracked = this.writes.runTracked(input);
+    if (!tracked.replayed)
+      this.onInvalidated(
+        input.submissionId(tracked.result),
+        tracked.result.revision ?? tracked.result.workspaceRevision,
+      );
     return tracked.result;
   }
 
   bumpRevision(submissionId: string, updatedAt: string): number {
     return (
-      this.db
-        .prepare(
-          `UPDATE cooking_test_submission
+      this.db.get(
+        `UPDATE cooking_test_submission
            SET workspace_revision = workspace_revision + 1, updated_at = ?
            WHERE id = ? RETURNING workspace_revision revision`,
-        )
-        .get(updatedAt, submissionId) as { revision: number }
+        updatedAt,
+        submissionId,
+      ) as { revision: number }
     ).revision;
   }
 
   bumpRevisionForBug(bugId: string, updatedAt: string): number {
     return (
-      this.db
-        .prepare(
-          `UPDATE cooking_test_submission
+      this.db.get(
+        `UPDATE cooking_test_submission
            SET workspace_revision = workspace_revision + 1, updated_at = ?
            WHERE id = (SELECT submission_id FROM cooking_bug WHERE id = ?)
            RETURNING workspace_revision revision`,
-        )
-        .get(updatedAt, bugId) as { revision: number }
+        updatedAt,
+        bugId,
+      ) as { revision: number }
     ).revision;
   }
 
   bumpActiveRevision(submissionId: string, updatedAt: string): number | null {
-    const row = this.db
-      .prepare(
-        `UPDATE cooking_test_submission
+    const row = this.db.get(
+      `UPDATE cooking_test_submission
          SET workspace_revision = workspace_revision + 1, updated_at = ?
          WHERE id = ? AND status = 'ACTIVE'
          RETURNING workspace_revision revision`,
-      )
-      .get(updatedAt, submissionId) as { revision: number } | undefined;
+      updatedAt,
+      submissionId,
+    ) as { revision: number } | undefined;
     return row?.revision ?? null;
   }
 

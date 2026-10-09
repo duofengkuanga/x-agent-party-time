@@ -1,13 +1,9 @@
 import { handleBugDelete } from '@/cooking/bugs/server/http';
-import { afterEach, describe, expect, test } from 'bun:test';
-import { createHash } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { AuthService } from '@/platform/auth/service';
-import type { AppDatabase } from '@/platform/database';
-import { openDatabase } from '@/platform/database';
-import { RunnerService } from './service';
+import { testDatabases } from '@/testing/database';
+import { seedTestUser } from '@/testing/users';
+import { describe, expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 import {
   handleRunnerAuthorizationClaim,
   handleRunnerAuthorizationCreate,
@@ -19,34 +15,22 @@ import {
   handleRunnerPair,
   handleRunnerSelfRevocation,
 } from './http';
+import { RunnerService } from './service';
 
-const directories: string[] = [];
-const databases: AppDatabase[] = [];
+const createDatabase = testDatabases();
 
 async function setup() {
-  const directory = await mkdtemp(join(tmpdir(), 'agent-party-time-http-'));
-  directories.push(directory);
-  const database = openDatabase(join(directory, 'server.sqlite'));
-  databases.push(database);
+  const { directory, database } = await createDatabase();
   const auth = new AuthService(database);
-  const user = await auth.seedUser({
-    id: 'http-runner-user',
-    username: 'http-runner-user',
-    displayName: 'HTTP Runner 用户',
-    password: 'password',
-  });
+  const user = await seedTestUser(auth, [
+    'http-runner-user',
+    'HTTP Runner 用户',
+  ]);
   const runners = new RunnerService(database);
-  return { runners, user };
+  const pair = (name: string) =>
+    runners.pair(runners.issuePairingCode(user.id).code, name);
+  return { runners, user, pair };
 }
-
-afterEach(async () => {
-  for (const database of databases.splice(0)) database.close();
-  await Promise.all(
-    directories
-      .splice(0)
-      .map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
 
 describe('Runner HTTP protocol', () => {
   test('Pair Route 只在成功响应返回一次明文 Credential', async () => {
@@ -71,11 +55,8 @@ describe('Runner HTTP protocol', () => {
   });
 
   test('Heartbeat 和 Binding Route 只接受 Bearer Credential', async () => {
-    const { runners, user } = await setup();
-    const paired = runners.pair(
-      runners.issuePairingCode(user.id).code,
-      'Bearer Runner',
-    );
+    const { runners, pair } = await setup();
+    const paired = pair('Bearer Runner');
     const unauthorized = await handleRunnerHeartbeat(
       new Request('http://server/api/runner/heartbeat', { method: 'POST' }),
       runners,
@@ -131,15 +112,9 @@ describe('Runner HTTP protocol', () => {
   });
 
   test('Agent 自撤销只能撤销当前 Credential，撤销后立即失效', async () => {
-    const { runners, user } = await setup();
-    const current = runners.pair(
-      runners.issuePairingCode(user.id).code,
-      'Current Agent',
-    );
-    const other = runners.pair(
-      runners.issuePairingCode(user.id).code,
-      'Other Agent',
-    );
+    const { runners, pair } = await setup();
+    const current = pair('Current Agent');
+    const other = pair('Other Agent');
 
     const response = await handleRunnerSelfRevocation(
       bearerRequest('http://server/api/runner', current.credential, 'DELETE'),
@@ -213,11 +188,8 @@ describe('Runner HTTP protocol', () => {
   });
 
   test('Agent 只通过 Bearer 出站领取并完成 Binding 请求', async () => {
-    const { runners, user } = await setup();
-    const paired = runners.pair(
-      runners.issuePairingCode(user.id).code,
-      'Binding Agent',
-    );
+    const { runners, pair } = await setup();
+    const paired = pair('Binding Agent');
     const work = {
       requestId: '00000000-0000-4000-8000-000000000011',
       bindingId: '00000000-0000-4000-8000-000000000012',
@@ -286,11 +258,8 @@ describe('Runner HTTP protocol', () => {
   });
 
   test('缺陷删除 Route 只接受 Bearer Credential', async () => {
-    const { runners, user } = await setup();
-    const paired = runners.pair(
-      runners.issuePairingCode(user.id).code,
-      'Bug Delete Agent',
-    );
+    const { runners, pair } = await setup();
+    const paired = pair('Bug Delete Agent');
     const unauthorized = await handleBugDelete(
       bearerJsonRequest(
         'http://server/api/cooking/bugs/delete',
@@ -327,11 +296,8 @@ describe('Runner HTTP protocol', () => {
   });
 
   test('缺陷删除 Route 返回操作原因、建议和诊断编号', async () => {
-    const { runners, user } = await setup();
-    const paired = runners.pair(
-      runners.issuePairingCode(user.id).code,
-      'Error Agent',
-    );
+    const { runners, pair } = await setup();
+    const paired = pair('Error Agent');
     const response = await handleBugDelete(
       bearerJsonRequest(
         'http://server/api/cooking/bugs/delete',
@@ -358,11 +324,8 @@ describe('Runner HTTP protocol', () => {
   });
 
   test('缺陷删除 Route 非法请求结构返回安全 Validation Error', async () => {
-    const { runners, user } = await setup();
-    const paired = runners.pair(
-      runners.issuePairingCode(user.id).code,
-      'Bug Delete Malformed Agent',
-    );
+    const { runners, pair } = await setup();
+    const paired = pair('Bug Delete Malformed Agent');
     const malformed = await handleBugDelete(
       new Request('http://server/api/cooking/bugs/delete', {
         method: 'POST',

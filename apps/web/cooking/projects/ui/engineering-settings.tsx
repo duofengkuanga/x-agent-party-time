@@ -18,7 +18,7 @@ import {
 import { DeploymentFields } from '@/cooking/engineering/ui/deployment-fields';
 import { EngineeringCreateEnvironments } from './engineering-create-environments';
 import { BindingDeleteForm } from './binding-delete-form';
-import { BindingRequestRefresh } from './binding-request-refresh';
+import { AutoRefresh } from '@/cooking/shared/ui/auto-refresh';
 import { EngineeringTaskHeading, EngineeringFields } from './settings-fields';
 import {
   deploymentLabel,
@@ -366,7 +366,7 @@ export function EngineeringDetail({
             className="engineering-binding-request"
             data-state={bindingRequest.state}
           >
-            <BindingRequestRefresh
+            <AutoRefresh
               active={['PENDING', 'PROCESSING'].includes(bindingRequest.state)}
             />
             <strong>{bindingRequestLabel(bindingRequest.state)}</strong>

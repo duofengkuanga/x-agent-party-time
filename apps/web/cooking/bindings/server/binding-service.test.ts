@@ -1,59 +1,25 @@
-import { afterEach, describe, expect, test } from 'bun:test';
-import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { AuthService } from '@/platform/auth/service';
-import type { AppDatabase } from '@/platform/database';
-import { openDatabase } from '@/platform/database';
-import { RunnerService } from '@/platform/runner/service';
+import { projectScenario } from '@/cooking/testing/scenario';
 import { EngineeringService } from '@/cooking/engineering/server/engineering-service';
-import { ProjectService } from '@/cooking/projects/server/project-service';
+import { RunnerService } from '@/platform/runner/service';
+import { expectRowCount, testDatabases } from '@/testing/database';
+import { describe, expect, test } from 'bun:test';
+import { randomUUID } from 'node:crypto';
 import { BindingRequestService } from './binding-request-service';
 import { BindingService } from './binding-service';
 
-const directories: string[] = [];
-const databases: AppDatabase[] = [];
+const createDatabase = testDatabases();
 
 async function setup() {
-  const directory = await mkdtemp(join(tmpdir(), 'agent-party-time-binding-'));
-  directories.push(directory);
-  const database = openDatabase(join(directory, 'server.sqlite'));
-  databases.push(database);
-  const auth = new AuthService(database);
-  const users = {
-    owner: await auth.seedUser({
-      id: 'binding-owner',
-      username: 'binding-owner',
-      displayName: 'Binding 所有者',
-      password: 'password',
-    }),
-    member: await auth.seedUser({
-      id: 'binding-member',
-      username: 'binding-member',
-      displayName: 'Binding 成员',
-      password: 'password',
-    }),
-    other: await auth.seedUser({
-      id: 'binding-other',
-      username: 'binding-other',
-      displayName: 'Binding 外部用户',
-      password: 'password',
-    }),
-  };
-  const projects = new ProjectService(database);
-  const project = projects.createProject(users.owner.id, {
-    mutationId: randomUUID(),
+  const { directory, database } = await createDatabase();
+  const { users, project } = await projectScenario(database, {
     name: 'Binding 项目',
-  }).project;
-  const invitation = projects.inviteUser(users.owner.id, project.id, {
-    mutationId: randomUUID(),
-    username: users.member.username,
-  });
-  projects.respondToInvitation(users.member.id, invitation.id, {
-    mutationId: randomUUID(),
-    expectedVersion: invitation.version,
-    decision: 'ACCEPT',
+    owner: 'owner',
+    members: ['member'],
+    people: {
+      owner: ['binding-owner', 'Binding 所有者'],
+      member: ['binding-member', 'Binding 成员'],
+      other: ['binding-other', 'Binding 外部用户'],
+    },
   });
   const engineeringService = new EngineeringService(database);
   const engineering = engineeringService.createEngineering(
@@ -98,14 +64,17 @@ async function setup() {
   };
 }
 
-afterEach(async () => {
-  for (const database of databases.splice(0)) database.close();
-  await Promise.all(
-    directories
-      .splice(0)
-      .map((directory) => rm(directory, { force: true, recursive: true })),
+async function onlineRequest() {
+  const fixture = await setup();
+  fixture.runnerService.heartbeat(fixture.runners.member.credential);
+  const request = fixture.requestService.createRequest(
+    fixture.users.member.id,
+    fixture.engineering.id,
+    fixture.runners.member.runner.id,
+    randomUUID(),
   );
-});
+  return { ...fixture, request };
+}
 
 describe('BindingService', () => {
   test('工程成员只能用自己的有效 Runner 建立稳定 Binding', async () => {
@@ -127,6 +96,15 @@ describe('BindingService', () => {
         randomUUID(),
       ),
     ).toEqual(binding);
+    expect(() =>
+      service.createReservedBinding(
+        users.member.id,
+        engineering.id,
+        runners.member.runner.id,
+        randomUUID(),
+        randomUUID(),
+      ),
+    ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
     expect(service.listBindingsForRunner(runners.member.runner.id)).toEqual([
       binding,
     ]);
@@ -169,10 +147,7 @@ describe('BindingService', () => {
       randomUUID(),
     );
     const columns = database
-      .query<{ name: string }, []>(
-        'PRAGMA table_info(cooking_engineering_binding)',
-      )
-      .all()
+      .all<{ name: string }>('PRAGMA table_info(cooking_engineering_binding)')
       .map(({ name }) => name);
     expect(columns).toEqual([
       'id',
@@ -226,14 +201,9 @@ test('首次 Runner Binding 确认仓库身份，后续 Binding 必须匹配', a
       'ssh://git@example.com/team/project',
     ),
   ).toBe('https://example.com/team/project.git');
-  expect(
-    database
-      .query<{ count: number }, []>(
-        `SELECT COUNT(*) count FROM cooking_audit_event
-         WHERE action = 'ENGINEERING_REPOSITORY_CONFIRMED'`,
-      )
-      .get()?.count,
-  ).toBe(1);
+  expectRowCount(database, 'cooking_audit_event', {
+    action: 'ENGINEERING_REPOSITORY_CONFIRMED',
+  }).toBe(1);
   expect(() =>
     service.confirmRepository(
       runners.member.runner.id,
@@ -248,26 +218,13 @@ describe('Web 驱动工程绑定', () => {
     const {
       database,
       engineering,
+      request,
       requestService,
-      runnerService,
       runners,
       service,
       users,
-    } = await setup();
-    runnerService.heartbeat(runners.member.credential);
-    const request = requestService.createRequest(
-      users.member.id,
-      engineering.id,
-      runners.member.runner.id,
-      randomUUID(),
-    );
-    expect(
-      database
-        .query<{ count: number }, []>(
-          'SELECT COUNT(*) count FROM cooking_engineering_binding',
-        )
-        .get()?.count,
-    ).toBe(0);
+    } = await onlineRequest();
+    expectRowCount(database, 'cooking_engineering_binding').toBe(0);
     expect(requestService.claimNext(runners.other.runner.id)).toBeNull();
     const work = requestService.claimNext(runners.member.runner.id);
     expect(work).toMatchObject({ requestId: request.id });
@@ -303,21 +260,8 @@ describe('Web 驱动工程绑定', () => {
   });
 
   test('取消目录选择或请求过期不会留下页面可见绑定', async () => {
-    const {
-      engineering,
-      requestService,
-      runnerService,
-      runners,
-      service,
-      users,
-    } = await setup();
-    runnerService.heartbeat(runners.member.credential);
-    const request = requestService.createRequest(
-      users.member.id,
-      engineering.id,
-      runners.member.runner.id,
-      randomUUID(),
-    );
+    const { engineering, request, requestService, runners, service, users } =
+      await onlineRequest();
     requestService.claimNext(runners.member.runner.id);
     expect(
       requestService.complete(runners.member.runner.id, request.id, {
@@ -375,25 +319,23 @@ describe('删除未使用工程绑定', () => {
     const submissionId = randomUUID();
     const itemId = randomUUID();
     const createdAt = '2026-07-26T11:00:00.000Z';
-    database
-      .prepare(
-        `INSERT INTO cooking_test_submission(
+    database.run(
+      `INSERT INTO cooking_test_submission(
            id, project_id, title, requirement_description, tester_user_id,
            status, version, workspace_revision, created_by_user_id,
            created_at, updated_at, closed_at
          ) VALUES (?, ?, '删除保护', '验证绑定历史', ?, 'ACTIVE', 1, 1, ?, ?, ?, NULL)`,
-      )
-      .run(
+      [
         submissionId,
         project.id,
         users.owner.id,
         users.owner.id,
         createdAt,
         createdAt,
-      );
-    database
-      .prepare(
-        `INSERT INTO cooking_submission_item(
+      ],
+    );
+    database.run(
+      `INSERT INTO cooking_submission_item(
            id, submission_id, position, engineering_id, engineering_name,
            engineering_type, engineering_identifier, repository_url,
            responsible_user_id, responsible_username,
@@ -403,8 +345,7 @@ describe('删除未使用工程绑定', () => {
          ) VALUES (?, ?, 0, ?, 'Binding 工程', 'FRONTEND', 'binding-web',
                    'https://example.com/team/project.git', ?, ?, ?, ?, ?,
                    'main', ?, '测试环境', '{"kind":"CI_CD"}', ?)`,
-      )
-      .run(
+      [
         itemId,
         submissionId,
         engineering.id,
@@ -415,20 +356,15 @@ describe('删除未使用工程绑定', () => {
         binding.id,
         randomUUID(),
         createdAt,
-      );
+      ],
+    );
     expect(() =>
       service.deleteBinding(users.member.id, binding.id, randomUUID()),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
     expect(service.listBindings(users.member.id, engineering.id)).toHaveLength(
       1,
     );
-    expect(
-      database
-        .query<{ count: number }, []>(
-          'SELECT COUNT(*) count FROM cooking_submission_item WHERE id = ?',
-        )
-        .get(itemId)?.count,
-    ).toBe(1);
+    expectRowCount(database, 'cooking_submission_item', { id: itemId }).toBe(1);
   });
 
   test('已被执行历史引用的绑定不能删除', async () => {
@@ -440,9 +376,8 @@ describe('删除未使用工程绑定', () => {
       randomUUID(),
     );
     const executionId = randomUUID();
-    database
-      .prepare(
-        `INSERT INTO platform_execution(
+    database.run(
+      `INSERT INTO platform_execution(
            id, owner_namespace, owner_kind, owner_id, attempt,
            runner_id, binding_id, priority, approval_policy, state,
            outcome_json, reported_outcome_json, cancellation_requested,
@@ -451,23 +386,17 @@ describe('删除未使用工程绑定', () => {
            ?, 'COOKING', 'REPAIR', 'historical-owner', 1, ?, ?, 0,
            'on-request', 'SUCCEEDED', '{}', '{}', 0, ?, ?
          )`,
-      )
-      .run(
+      [
         executionId,
         runners.member.runner.id,
         binding.id,
         '2026-07-26T11:00:00.000Z',
         '2026-07-26T11:01:00.000Z',
-      );
+      ],
+    );
     expect(() =>
       service.deleteBinding(users.member.id, binding.id, randomUUID()),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
-    expect(
-      database
-        .query<{ count: number }, []>(
-          'SELECT COUNT(*) count FROM platform_execution WHERE id = ?',
-        )
-        .get(executionId)?.count,
-    ).toBe(1);
+    expectRowCount(database, 'platform_execution', { id: executionId }).toBe(1);
   });
 });

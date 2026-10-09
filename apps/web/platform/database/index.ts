@@ -1,15 +1,26 @@
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { Database } from 'bun:sqlite';
+import { Database, type SQLQueryBindings } from 'bun:sqlite';
 import { serverPaths } from '@/platform/config';
 import { initializeSchema } from './schema';
 
-export type AppDatabase = Database;
+export class AppDatabase extends Database {
+  get<T = unknown>(sql: string, ...bindings: SQLQueryBindings[]): T | null {
+    return this.prepare<T, SQLQueryBindings[]>(sql).get(...bindings);
+  }
+
+  all<T = unknown>(sql: string, ...bindings: SQLQueryBindings[]): T[] {
+    return this.prepare<T, SQLQueryBindings[]>(sql).all(...bindings);
+  }
+}
 
 export function openDatabase(databasePath: string): AppDatabase {
   const resolvedPath = resolve(databasePath);
   mkdirSync(dirname(resolvedPath), { recursive: true, mode: 0o700 });
-  const database = new Database(resolvedPath, { create: true, strict: true });
+  const database = new AppDatabase(resolvedPath, {
+    create: true,
+    strict: true,
+  });
   try {
     initializeSchema(database);
     return database;
