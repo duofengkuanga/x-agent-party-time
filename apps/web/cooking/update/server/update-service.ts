@@ -1,26 +1,15 @@
 import { DeploymentMethodSchema } from '@/cooking/engineering/contract';
 import { requireSubmissionAccess } from '@/cooking/shared/server/access';
-import {
-  isTerminal,
-  requireTaskSkillBinding,
-} from '@/cooking/shared/server/execution-state';
 import { requireBindableFiles } from '@/cooking/shared/server/attachments';
 import { requireEnvironment } from '@/cooking/submissions/server/environment-access';
 import { TestSubmissionWriteStore } from '@/cooking/submissions/server/test-submission-write-store';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
-import { createContinuationCodexTurn } from '@/platform/execution/codex-turn';
 import { ExecutionService } from '@/platform/execution/service';
 import { randomUUID } from 'node:crypto';
 import {
-  buildUpdateExternalFailureInput,
-  buildUpdateRetryInput,
-} from '../brief';
-import {
-  CiCdUpdateOutputJsonSchema,
   ExternalDeploymentReportInputSchema,
   FreezeUpdateInputSchema,
-  LocalScriptUpdateOutputJsonSchema,
   ResolveUpdateInteractionInputSchema,
   RetryUpdateInputSchema,
   UpdateMutationResultSchema,
@@ -152,102 +141,22 @@ export class UpdateService {
             'INVALID_TRANSITION',
             '只有失败的更新批次可以重新执行',
           );
-        const latest = this.queries.latestAttempt(batchId);
-        if (!latest || !isTerminal(latest.state))
-          throw new PlatformError('RESOURCE_CONFLICT', '当前更新执行尚未结束');
-        const source = batch.source;
-        const deployment = DeploymentMethodSchema.parse(
-          JSON.parse(batch.deployment_json),
+        const { executionId, revision } = this.delivery.retryFailedBatch(
+          batch,
+          input.expectedVersion,
         );
-        const externalReport =
-          deployment.kind === 'CI_CD'
-            ? this.queries.latestUnconsumedFailedReport(batchId)
-            : undefined;
-        const attachmentIds = externalReport
-          ? this.queries.externalReportAttachmentIds(externalReport.id)
-          : [];
-        if (!batch.session_id)
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '原更新任务不存在，不能自动重建',
-          );
-        const previousExecution = this.executions.get(latest.execution_id);
-        const continuationInput = externalReport
-          ? buildUpdateExternalFailureInput({
-              reportRound: externalReport.round,
-              summary: externalReport.summary!,
-              attachments: this.queries
-                .externalReportAttachments(externalReport.id)
-                .map(({ id, original_name }) => ({
-                  fileId: id,
-                  originalName: original_name,
-                })),
-            })
-          : buildUpdateRetryInput();
-        const attemptId = this.createId();
-        const execution = this.executions.enqueue({
-          owner: { namespace: 'cooking', kind: 'UPDATE_BATCH', id: attemptId },
-          attempt: latest.attempt + 1,
-          previousExecutionId: latest.execution_id,
-          runnerId: source.runner_id,
-          bindingId: source.binding_id,
-          priority: 0,
-          approvalPolicy: 'never',
-          codexTurn: createContinuationCodexTurn({
-            taskId: batch.session_id,
-            taskSkillBinding: requireTaskSkillBinding(
-              previousExecution,
-              '更新',
-            ),
-            text: continuationInput,
-            outputJsonSchema:
-              deployment.kind === 'LOCAL_SCRIPT'
-                ? LocalScriptUpdateOutputJsonSchema
-                : CiCdUpdateOutputJsonSchema,
-          }),
-          workspace: {
-            key: `update-batch:${batchId}`,
-            isolation: 'DETACHED_WORKTREE',
-            baseRef: `origin/${source.target_branch}`,
-          },
-          attachmentIds,
-        });
-        const now = this.now().toISOString();
-        this.db.run(
-          `INSERT INTO cooking_update_attempt(
-               id, batch_id, execution_id, continuation_report_id, attempt,
-               outcome_json, created_at, finished_at
-             ) VALUES (?, ?, ?, ?, ?, NULL, ?, NULL)`,
-          [
-            attemptId,
-            batchId,
-            execution.id,
-            externalReport?.id ?? null,
-            latest.attempt + 1,
-            now,
-          ],
-        );
-        const update = this.db.run(
-          `UPDATE cooking_update_batch
-             SET state = 'READY', active_execution_id = ?,
-                 version = version + 1, updated_at = ?
-             WHERE id = ? AND version = ? AND state = 'FAILED'`,
-          [execution.id, now, batchId, input.expectedVersion],
-        );
-        if (update.changes !== 1) throw staleBatch();
-        const revision = this.writes.bumpRevision(batch.submission_id, now);
         return {
           result: {
             batchId,
             batchVersion: input.expectedVersion + 1,
-            executionId: execution.id,
+            executionId,
             revision,
           },
           resourceId: batchId,
           audit: {
             projectId: batch.source.project_id,
             action: 'UPDATE_BATCH_RETRIED',
-            details: { executionId: execution.id },
+            details: { executionId },
           },
         };
       },
@@ -270,64 +179,20 @@ export class UpdateService {
       perform: () => {
         const batch = this.requireBatchResponsible(actorUserId, batchId);
         this.requireBatchVersion(batch, input.expectedVersion);
-        const latest = this.queries.latestAttempt(batchId);
-        if (
-          batch.state !== 'FAILED' ||
-          !latest ||
-          !isTerminal(latest.state) ||
-          !batch.session_id
-        )
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '当前没有可同步的失败更新会话',
-          );
-        if (this.queries.hasActiveSessionSync(batchId))
-          throw new PlatformError('RESOURCE_CONFLICT', '更新会话正在同步');
-        const source = batch.source;
-        const previousExecution = this.executions.get(latest.execution_id);
-        if (!previousExecution.codexTurn)
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '原更新任务缺少结果约束，不能同步',
-          );
-        const syncId = this.createId();
-        const execution = this.executions.enqueue({
-          id: this.createId(),
-          owner: { namespace: 'cooking', kind: 'SESSION_SYNC', id: syncId },
-          attempt: 1,
-          previousExecutionId: latest.execution_id,
-          runnerId: source.runner_id,
-          bindingId: source.binding_id,
-          priority: 0,
-          approvalPolicy: 'never',
-          codexTurn: {
-            kind: 'READ_SESSION',
-            taskId: batch.session_id,
-            outputJsonSchema: previousExecution.codexTurn.outputJsonSchema,
-            resultAssertions: previousExecution.codexTurn.resultAssertions,
-          },
-          workspace: null,
-          attachmentIds: [],
-        });
-        const now = this.now().toISOString();
-        this.db.run(
-          `INSERT INTO cooking_update_session_sync(id, batch_id, execution_id, session_id, created_at)
-           VALUES (?, ?, ?, ?, ?)`,
-          [syncId, batchId, execution.id, batch.session_id, now],
-        );
-        const revision = this.writes.bumpRevision(batch.submission_id, now);
+        const { executionId, revision } =
+          this.delivery.synchronizeFailedBatch(batch);
         return {
           result: {
             batchId,
             batchVersion: batch.version,
-            executionId: execution.id,
+            executionId,
             revision,
           },
           resourceId: batchId,
           audit: {
-            projectId: source.project_id,
+            projectId: batch.source.project_id,
             action: 'UPDATE_SESSION_SYNC_REQUESTED',
-            details: { executionId: execution.id },
+            details: { executionId },
           },
         };
       },
