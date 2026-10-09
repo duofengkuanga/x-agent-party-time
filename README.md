@@ -215,7 +215,7 @@ packages/runner-conformance/  协议验收 Adapter
 
 大文件按职责拆分：缺陷看板协调状态，附件、报告编辑、修复时间线、更新详情与交互记录分别实现；提测工作区把同步状态、侧栏偏好、详情和清理交互分开。时间线通过 `bugs/ui/progress-timeline.tsx` 统一列表结构、标题、时间与摘要显示，Repair 执行状态文案由 `shared/execution-labels.ts` 同时供 Server 与 UI 使用，各业务记录只定义内容。
 
-修复与更新的命令、执行投影、查询分别位于 `server/*-service.ts`、`server/*-projection.ts`、`server/*-queries.ts`；更新候选计时、Batch 冻结与后续 Execution 装配集中在 `update-delivery.ts`。生命周期的缺陷状态命令集中在 `bug-lifecycle-commands.ts`，Cleanup 位于 `cleanup-service.ts`，提测关闭及后续 Cleanup 编排集中在 `submission-closure.ts`；`LifecycleService` 保留统一调用入口。工程服务保留统一调用入口，内部由 `engineering-queries.ts` 集中读取与权限检查、`environment-service.ts` 管理环境写入，写入结果复用查询侧的记录映射。结果解释与行类型仍位于 `results.ts`、`records.ts`。
+修复与更新的命令、执行投影、查询分别位于 `server/*-service.ts`、`server/*-projection.ts`、`server/*-queries.ts`；更新候选计时、Batch 冻结与交付 Execution 准备集中在 `update-delivery.ts`，只读 Session Synchronization 请求由 `UpdateService` 处理。生命周期的缺陷状态命令集中在 `bug-lifecycle-commands.ts`，Cleanup 位于 `cleanup-service.ts`，提测关闭及后续 Cleanup 编排集中在 `submission-closure.ts`；`LifecycleService` 保留统一调用入口。工程服务保留统一调用入口，内部由 `engineering-queries.ts` 集中读取与权限检查、`environment-service.ts` 管理环境写入，写入结果复用查询侧的记录映射。结果解释与行类型仍位于 `results.ts`、`records.ts`。
 
 提测服务保留 `submission-service.ts` 作为调用入口，由 `submission-queries.ts` 集中有权限的读取和工作区投影；环境使用权由 `environment-access.ts` 判断。
 
