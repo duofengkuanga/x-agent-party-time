@@ -3,7 +3,7 @@ import { PlatformError } from '@/platform/errors';
 import { PLATFORM_SCHEMA } from './platform-schema';
 import { COOKING_SCHEMA } from './cooking-schema';
 
-export const SERVER_SCHEMA_VERSION = 25;
+export const SERVER_SCHEMA_VERSION = 26;
 
 const SCHEMA = PLATFORM_SCHEMA + COOKING_SCHEMA;
 

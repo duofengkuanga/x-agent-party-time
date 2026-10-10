@@ -42,6 +42,15 @@ export async function seedBrowserFixture(home: string): Promise<BrowserFixture> 
           repository: 'https://example.com/browser.git',
           branch: 'feature/browser-test',
         },
+        {
+          name: '浏览器后端工程',
+          type: 'BACKEND',
+          identifier: 'browser-api',
+          environment: '浏览器后端环境',
+          deployment: { kind: 'CI_CD' },
+          repository: 'https://example.com/browser-api.git',
+          branch: 'feature/browser-test',
+        },
       ],
       title: '浏览器架构验收提测',
       description: '覆盖路由、Action、附件和缺陷生命周期交互',
@@ -49,7 +58,7 @@ export async function seedBrowserFixture(home: string): Promise<BrowserFixture> 
     const { tester, developer } = users;
     const item = items[0]!;
 
-    const { executions, bugs } = createCooking(db);
+    const { executions, bugs, lifecycle } = createCooking(db);
 
     const createBug = (title: string) =>
       bugs.createBug(tester.id, submission.id, {
@@ -65,6 +74,37 @@ export async function seedBrowserFixture(home: string): Promise<BrowserFixture> 
 
     createBug('待取消缺陷');
     createBug('待请求修复缺陷');
+
+    for (const title of ['定位数据缺失缺陷', '待增加协作缺陷']) {
+      const failedBug = createBug(title);
+      bugs.requestRepair(tester.id, failedBug.id, {
+        mutationId: randomUUID(),
+        expectedVersion: failedBug.version,
+      });
+      const failedExecution = (await executions.claim(paired.runner.id, 1, 0))[0]!;
+      executions.start(paired.runner.id, failedExecution.id, {
+        kind: 'STARTED',
+        leaseToken: failedExecution.lease.token,
+        sessionId: `browser-failed-${failedBug.id}`,
+        taskSkillBinding: fixtureSkillBinding('agent-party-time-repair-bug'),
+      });
+      executions.complete(paired.runner.id, failedExecution.id, {
+        leaseToken: failedExecution.lease.token,
+        sessionId: `browser-failed-${failedBug.id}`,
+        outcome: {
+          kind: 'SUCCEEDED',
+          result: {
+            result: {
+              outcome: 'FAILED',
+              failedStep: '修复',
+              reason: '地块缺少定位数据，问题尚未解决。',
+              completedActions: ['确认三条地块的边界为空'],
+              pendingActions: ['核查边界数据并验证标签渲染'],
+            },
+          },
+        },
+      });
+    }
 
     const completeRepair = async (
       title: string,
@@ -88,18 +128,29 @@ export async function seedBrowserFixture(home: string): Promise<BrowserFixture> 
         outcome: {
           kind: 'SUCCEEDED',
           result: {
-            outcome: 'COMPLETED',
-            completionKind: 'CHANGES_COMMITTED',
-            summary: `${title} 已修复`,
-            changes: ['完成浏览器验收夹具修复'],
-            validations: [{ name: '夹具验证', status: 'PASSED' }],
-            warnings: [],
-            commits: ['abcdef1'],
-            manualOperations: [],
+            result: {
+              outcome: 'COMPLETED',
+              completionKind: 'TARGET_ALREADY_FIXED',
+              changes: [],
+              validations: [{ name: '夹具验证', status: 'PASSED', detail: '' }],
+              warnings: [],
+              commits: [],
+              manualOperations: [],
+            },
           },
         },
       });
-      db.run('UPDATE cooking_bug SET stage = ? WHERE id = ?', [stage, bug.id]);
+      if (stage === 'DONE') {
+        const current = bugs
+          .workspace(tester.id, submission.id)
+          .bugs.find(({ id }) => id === bug.id)!;
+        lifecycle.verifyBug(tester.id, bug.id, {
+          mutationId: randomUUID(),
+          expectedVersion: current.version,
+          result: 'PASSED',
+          attachmentIds: [],
+        });
+      }
       return bug;
     };
 

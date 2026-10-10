@@ -10,7 +10,13 @@ import {
   type InteractiveActionResult,
 } from '@/cooking/shared/server/action-transport';
 import { bugService } from '@/cooking/runtime/services';
-import type { AssignBugInput, BugMutationResult, RequestRepairInput } from '../contract';
+import type {
+  AssignBugInput,
+  BugMutationResult,
+  LinkedBugsMutationResult,
+  RequestRepairInput,
+} from '../contract';
+import type { RouteBugInput } from '../contract';
 
 export type BugActionResult = InteractiveActionResult<BugMutationResult>;
 
@@ -22,8 +28,8 @@ const REPORT_UPLOAD_OPTIONS = {
 export async function createBugAction(
   submissionId: string,
   formData: FormData,
-): Promise<BugActionResult> {
-  return runInteractiveMutation({
+): Promise<InteractiveActionResult<BugMutationResult | LinkedBugsMutationResult>> {
+  return runInteractiveMutation<BugMutationResult | LinkedBugsMutationResult>({
     validationEvent: 'cooking_bug_action_validation_failed',
     command: async ({ userId, uploadFiles }) => {
       const actualResultAttachmentIds = await uploadFiles(
@@ -36,7 +42,7 @@ export async function createBugAction(
         'expectedResultAttachments',
         REPORT_UPLOAD_OPTIONS,
       );
-      const result = bugService().createBug(userId, submissionId, {
+      const report = {
         mutationId: formField(formData, 'mutationId'),
         submissionItemId: nullableFormField(formData, 'submissionItemId'),
         title: formField(formData, 'title'),
@@ -45,7 +51,20 @@ export async function createBugAction(
         expectedResult: optionalFormField(formData, 'expectedResult'),
         actualResultAttachmentIds,
         expectedResultAttachmentIds,
-      });
+      };
+      const submissionItemIds = formStringList(formData, 'submissionItemIds');
+      if (submissionItemIds.length) {
+        const result = bugService().createLinkedBugs(userId, submissionId, {
+          ...report,
+          submissionItemIds,
+        });
+        return {
+          result,
+          boundFileIds: result.boundAttachmentIds,
+          refreshPaths: ['/cooking', `/cooking/${submissionId}`],
+        };
+      }
+      const result = bugService().createBug(userId, submissionId, report);
       return bugSuccess(result);
     },
   });
@@ -105,6 +124,13 @@ export async function requestRepairAction(
   input: RequestRepairInput,
 ): Promise<BugActionResult> {
   return simpleBugAction((userId) => bugService().requestRepair(userId, bugId, input));
+}
+
+export async function routeBugAction(
+  bugId: string,
+  input: RouteBugInput,
+): Promise<BugActionResult> {
+  return simpleBugAction((userId) => bugService().routeBug(userId, bugId, input));
 }
 
 function simpleBugAction(

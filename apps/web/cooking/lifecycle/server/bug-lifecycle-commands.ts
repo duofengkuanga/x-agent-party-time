@@ -220,6 +220,13 @@ export class BugLifecycleCommands {
       transition.operation,
       (source) => {
         this.requireBugVersion(source, input.expectedVersion);
+        if (
+          this.db.get(
+            'SELECT 1 FROM cooking_bug WHERE id = ? AND transferred_at IS NOT NULL',
+            bugId,
+          )
+        )
+          throw new PlatformError('INVALID_TRANSITION', '因转交关闭的缺陷不能恢复或取消');
         if (kind === 'cancel' && source.stage !== transition.from)
           throw new PlatformError('INVALID_TRANSITION', '只有待修复缺陷可以取消');
         const now = this.now().toISOString();

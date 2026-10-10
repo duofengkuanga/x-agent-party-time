@@ -336,7 +336,29 @@
 }
 
 .collab-progress-timeline[data-summary-only='true'] .collab-progress-summary {
-  gap: 0;
+  gap: 13px;
+}
+
+.collab-form .collab-joint-choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.collab-joint-choice input[type='checkbox'] {
+  accent-color: var(--accent);
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  min-height: 16px;
+  margin: 0;
+  padding: 0;
+}
+
+.collab-handoff-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .collab-progress-timeline[data-summary-only='true']

@@ -13,12 +13,14 @@ export function BugDrawer({
   onChanged,
   onClose,
   onEdit,
+  onOpen,
   snapshot,
 }: {
   drawer: Drawer;
   onChanged: (revision: number, message: string) => void;
   onClose: () => void;
   onEdit: (bugId: string) => void;
+  onOpen: (bugId: string) => void;
   snapshot: CookingWorkspaceSnapshot;
 }) {
   const bug =
@@ -74,7 +76,9 @@ export function BugDrawer({
           />
         ) : drawer.mode === 'view' ? (
           <BugDetail
+            key={bug!.id}
             bug={bug!}
+            onOpen={onOpen}
             onChanged={onChanged}
             onEdit={
               bug!.availableActions.some((action) =>

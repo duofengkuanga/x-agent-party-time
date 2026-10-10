@@ -72,6 +72,8 @@ export const BugSchema = z.object({
   stage: BugStageSchema,
   report: BugReportSchema,
   reportLockedAt: z.iso.datetime().nullable(),
+  collaborationLocked: z.boolean(),
+  transferredAt: z.iso.datetime().nullable(),
   archivedAt: z.iso.datetime().nullable(),
   archivedByUserId: UserIdSchema.nullable(),
   version: z.number().int().positive(),
@@ -94,6 +96,17 @@ export const CreateBugInputSchema = CreateBugInputBaseSchema.superRefine(
   requireDisjointAttachments,
 );
 
+export const CreateLinkedBugsInputSchema = CreateBugInputBaseSchema.omit({
+  submissionItemId: true,
+})
+  .extend({
+    submissionItemIds: z
+      .array(SubmissionItemIdSchema)
+      .length(2)
+      .refine((ids) => new Set(ids).size === 2, '请选择不同的前端和后端工程'),
+  })
+  .superRefine(requireDisjointAttachments);
+
 export const UpdateBugReportInputSchema = CreateBugInputBaseSchema.extend({
   expectedVersion: z.number().int().positive(),
 }).superRefine(requireDisjointAttachments);
@@ -104,9 +117,17 @@ export const AssignBugInputSchema = VersionedCookingMutationSchema.extend({
 
 export const RequestRepairInputSchema = VersionedCookingMutationSchema;
 
+export const RouteBugInputSchema = VersionedCookingMutationSchema.extend({
+  kind: z.enum(['TRANSFER', 'COLLABORATE']),
+  targetSubmissionItemId: SubmissionItemIdSchema,
+});
+export type RouteBugInput = z.infer<typeof RouteBugInputSchema>;
+
 export const BugAttachmentViewSchema = CookingAttachmentViewSchema;
 
 export const BugActionSchema = z.enum([
+  'TRANSFER',
+  'COLLABORATE',
   'EDIT_REPORT',
   'ASSIGN',
   'REQUEST_REPAIR',
@@ -122,6 +143,28 @@ export const BugActionSchema = z.enum([
 export const BugViewSchema = BugSchema.omit({
   report: true,
 }).extend({
+  routing: z.object({
+    targets: z.array(
+      z.object({
+        id: SubmissionItemIdSchema,
+        name: z.string(),
+        type: EngineeringTypeSchema,
+      }),
+    ),
+    transferReason: z.string().nullable(),
+    collaborationReason: z.string().nullable(),
+  }),
+  relatedBugs: z.array(
+    z.object({
+      id: BugIdSchema.nullable(),
+      shortId: z.number().int().positive(),
+      title: BugTitleSchema,
+      kind: z.enum(['JOINT', 'TRANSFER', 'COLLABORATION']),
+      stageLabel: z.string(),
+      engineeringName: z.string().nullable(),
+      handoffText: z.string(),
+    }),
+  ),
   report: BugReportBaseSchema.omit({
     actualResultAttachmentIds: true,
     expectedResultAttachmentIds: true,
@@ -157,6 +200,18 @@ export const BugMutationResultSchema = z.object({
   boundAttachmentIds: BugMutationAttachmentIdsSchema,
   unboundAttachmentIds: BugMutationAttachmentIdsSchema,
 });
+
+export const LinkedBugsMutationResultSchema = z.object({
+  bugs: z.array(BugSchema).length(2),
+  revision: z.number().int().positive(),
+  boundAttachmentIds: BugMutationAttachmentIdsSchema,
+});
+export const RouteBugMutationResultSchema = BugMutationResultSchema.extend({
+  createdBug: BugSchema,
+});
+export type RouteBugMutationResult = z.infer<typeof RouteBugMutationResultSchema>;
+export type CreateLinkedBugsInput = z.infer<typeof CreateLinkedBugsInputSchema>;
+export type LinkedBugsMutationResult = z.infer<typeof LinkedBugsMutationResultSchema>;
 
 export type Bug = z.infer<typeof BugSchema>;
 export type BugView = z.infer<typeof BugViewSchema>;

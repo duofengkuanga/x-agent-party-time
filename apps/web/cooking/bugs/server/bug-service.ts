@@ -1,3 +1,6 @@
+import { BugRelations } from './bug-relations';
+import { bugRoutingPolicy } from './bug-routing-policy';
+import { projectAttemptResult } from '@/cooking/repair/server/results';
 import { requireBindableFiles } from '@/cooking/shared/server/attachments';
 import { BugDeletion } from './bug-deletion';
 import {
@@ -14,6 +17,14 @@ import {
   AssignBugInputSchema,
   BugMutationResultSchema,
   CreateBugInputSchema,
+  CreateLinkedBugsInputSchema,
+  RouteBugInputSchema,
+  RouteBugMutationResultSchema,
+  type RouteBugInput,
+  type RouteBugMutationResult,
+  LinkedBugsMutationResultSchema,
+  type CreateLinkedBugsInput,
+  type LinkedBugsMutationResult,
   RequestRepairInputSchema,
   UpdateBugReportInputSchema,
   type AssignBugInput,
@@ -72,30 +83,8 @@ export class BugService {
         const attachmentIds = reportAttachmentIds(parsed);
         requireBindableFiles(this.db, actorUserId, attachmentIds);
         const now = this.now().toISOString();
-        const bugId = this.createId();
-        const shortId = this.queries.nextShortId(submissionId);
-        const report = normalizedReport(parsed);
-        this.db.run(
-          `INSERT INTO cooking_bug(
-               id, short_id, submission_id, submission_item_id, stage,
-               title, operation_path, actual_result, expected_result,
-               report_locked_at, version, created_by_user_id, created_at, updated_at
-             ) VALUES (?, ?, ?, ?, 'WAITING_FOR_REPAIR', ?, ?, ?, ?, NULL, 1, ?, ?, ?)`,
-          [
-            bugId,
-            shortId,
-            submissionId,
-            parsed.submissionItemId,
-            report.title,
-            report.operationPath ?? null,
-            report.actualResult ?? null,
-            report.expectedResult ?? null,
-            actorUserId,
-            now,
-            now,
-          ],
-        );
-        this.bindReportAttachments(bugId, parsed, now);
+        const bugId = this.insertBug(actorUserId, submissionId, parsed, now);
+        const shortId = this.queries.requireBug(bugId).shortId;
         const revision = this.writes.bumpRevision(submissionId, now);
         const bug = this.queries.requireBug(bugId);
         return {
@@ -120,6 +109,221 @@ export class BugService {
     });
   }
 
+  createLinkedBugs(
+    actorUserId: string,
+    submissionId: string,
+    input: CreateLinkedBugsInput,
+  ): LinkedBugsMutationResult {
+    const parsed = CreateLinkedBugsInputSchema.parse(input);
+    return this.writes.run({
+      mutationId: parsed.mutationId,
+      actorUserId,
+      operation: 'BUG_CREATE_LINKED',
+      resourceType: 'BUG',
+      resultSchema: LinkedBugsMutationResultSchema,
+      submissionId: () => submissionId,
+      perform: () => {
+        const access = this.queries.requireAccess(actorUserId, submissionId);
+        this.requireActive(access);
+        if (actorUserId !== access.tester_user_id)
+          throw new PlatformError('PERMISSION_DENIED', '只有测试负责人可以登记缺陷');
+        const items = parsed.submissionItemIds.map((id) =>
+          this.queries.requireItem(submissionId, id)!,
+        );
+        if (new Set(items.map((item) => item.engineering_type)).size !== 2)
+          throw new PlatformError(
+            'VALIDATION_FAILED',
+            '请选择一个前端工程和一个后端工程',
+          );
+        const attachmentIds = reportAttachmentIds(parsed);
+        requireBindableFiles(this.db, actorUserId, attachmentIds);
+        const now = this.now().toISOString();
+        const bugs = items.map((item) => {
+          const id = this.insertBug(
+            actorUserId,
+            submissionId,
+            { ...parsed, submissionItemId: item.id },
+            now,
+          );
+          this.db.run('UPDATE cooking_bug SET collaboration_locked = 1 WHERE id = ?', [
+            id,
+          ]);
+          return this.queries.requireBug(id);
+        });
+        new BugRelations(this.db).add({
+          id: this.createId(),
+          source: bugs[0]!,
+          target: bugs[1]!,
+          kind: 'JOINT',
+          handoffText: '',
+          actorUserId,
+          now,
+        });
+        return {
+          result: {
+            bugs,
+            revision: this.writes.bumpRevision(submissionId, now),
+            boundAttachmentIds: attachmentIds,
+          },
+          resourceId: bugs[0]!.id,
+          audit: {
+            projectId: access.project_id,
+            action: 'BUGS_REGISTERED',
+            details: { bugIds: bugs.map(({ id }) => id) },
+          },
+        };
+      },
+    });
+  }
+
+  private insertBug(
+    actorUserId: string,
+    submissionId: string,
+    input: Omit<CreateBugInput, 'mutationId'>,
+    now: string,
+  ): string {
+    const id = this.createId();
+    const report = normalizedReport(input);
+    this.db.run(
+      `INSERT INTO cooking_bug(id, short_id, submission_id, submission_item_id, stage,
+        title, operation_path, actual_result, expected_result, report_locked_at,
+        version, created_by_user_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'WAITING_FOR_REPAIR', ?, ?, ?, ?, NULL, 1, ?, ?, ?)`,
+      [
+        id,
+        this.queries.nextShortId(submissionId),
+        submissionId,
+        input.submissionItemId,
+        report.title,
+        report.operationPath ?? null,
+        report.actualResult ?? null,
+        report.expectedResult ?? null,
+        actorUserId,
+        now,
+        now,
+      ],
+    );
+    this.bindReportAttachments(id, input, now);
+    return id;
+  }
+
+  routeBug(
+    actorUserId: string,
+    bugId: string,
+    input: RouteBugInput,
+  ): RouteBugMutationResult {
+    const parsed = RouteBugInputSchema.parse(input);
+    return this.writes.run({
+      mutationId: parsed.mutationId,
+      actorUserId,
+      operation: `BUG_${parsed.kind}:${bugId}`,
+      resourceType: 'BUG',
+      resultSchema: RouteBugMutationResultSchema,
+      submissionId: (result) => result.bug.submissionId,
+      perform: () => {
+        const bug = this.queries.requireBug(bugId);
+        const access = this.queries.requireAccess(actorUserId, bug.submissionId);
+        this.requireActive(access);
+        if (bug.version !== parsed.expectedVersion) throw staleBug();
+        const sourceItem = this.queries.requireItem(
+          bug.submissionId,
+          bug.submissionItemId,
+        );
+        if (
+          actorUserId !== access.tester_user_id &&
+          actorUserId !== sourceItem?.responsible_user_id
+        )
+          throw new PlatformError(
+            'PERMISSION_DENIED',
+            '只有测试负责人或原工程负责人可以操作',
+          );
+        const policy = bugRoutingPolicy(this.db, bug, actorUserId);
+        const blocked =
+          parsed.kind === 'TRANSFER' ? policy.transferReason : policy.collaborationReason;
+        if (blocked) throw new PlatformError('INVALID_TRANSITION', blocked);
+        if (!policy.targets.some(({ id }) => id === parsed.targetSubmissionItemId))
+          throw new PlatformError('VALIDATION_FAILED', '请选择当前提测单中的另一端工程');
+        const now = this.now().toISOString();
+        const targetId = this.insertBug(
+          actorUserId,
+          bug.submissionId,
+          { ...bug.report, submissionItemId: parsed.targetSubmissionItemId },
+          now,
+        );
+        const latest = this.db.get(
+          'SELECT outcome_json FROM cooking_repair_attempt WHERE bug_id = ? ORDER BY attempt DESC LIMIT 1',
+          bug.id,
+        ) as { outcome_json: string };
+        const result = projectAttemptResult(latest.outcome_json, false);
+        const handoffText =
+          result.outcome === 'FAILED'
+            ? [
+                `失败阶段：${result.failedStep}`,
+                `失败原因：${result.reason}`,
+                '已完成事项：',
+                ...result.completedActions,
+                '未执行事项：',
+                ...result.pendingActions,
+              ].join('\n')
+            : [
+                '修改内容：',
+                ...result.changes,
+                '检查结果：',
+                ...result.validations.map(
+                  (check) =>
+                    `${check.name}：${{ PASSED: '通过', FAILED: '失败', SKIPPED: '跳过' }[check.status]}${check.detail ? `；${check.detail}` : ''}`,
+                ),
+                '警告：',
+                ...result.warnings,
+              ].join('\n');
+        new BugRelations(this.db).add({
+          id: this.createId(),
+          source: bug,
+          target: this.queries.requireBug(targetId),
+          kind: parsed.kind === 'TRANSFER' ? 'TRANSFER' : 'COLLABORATION',
+          handoffText,
+          actorUserId,
+          now,
+        });
+        this.db.run(
+          "UPDATE cooking_bug SET stage = 'REPAIRING', report_locked_at = ?, version = version + 1 WHERE id = ?",
+          [now, targetId],
+        );
+        this.repairHooks.requested(targetId);
+        if (parsed.kind === 'TRANSFER') {
+          this.db.run(
+            "UPDATE cooking_bug SET stage = 'CANCELLED', transferred_at = ?, version = version + 1, updated_at = ? WHERE id = ?",
+            [now, now, bug.id],
+          );
+        } else {
+          this.db.run(
+            'UPDATE cooking_bug SET collaboration_locked = 1, version = version + 1, updated_at = ? WHERE id IN (?, ?)',
+            [now, bug.id, targetId],
+          );
+        }
+        return {
+          result: {
+            bug: this.queries.requireBug(bug.id),
+            createdBug: this.queries.requireBug(targetId),
+            revision: this.writes.bumpRevision(bug.submissionId, now),
+            boundAttachmentIds: [],
+            unboundAttachmentIds: [],
+          },
+          resourceId: bug.id,
+          audit: {
+            projectId: access.project_id,
+            action: `BUG_${parsed.kind}`,
+            details: {
+              sourceBugId: bug.id,
+              targetBugId: targetId,
+              targetSubmissionItemId: parsed.targetSubmissionItemId,
+            },
+          },
+        };
+      },
+    });
+  }
+
   updateReport(
     actorUserId: string,
     bugId: string,
@@ -135,6 +339,8 @@ export class BugService {
         if (actorUserId !== access.tester_user_id)
           throw new PlatformError('PERMISSION_DENIED', '只有测试负责人可以编辑缺陷报告');
         this.requireEditableReport(bug, parsed.expectedVersion);
+        if (bug.collaborationLocked && parsed.submissionItemId !== bug.submissionItemId)
+          throw new PlatformError('INVALID_TRANSITION', '前后端关联单不能调整工程归属');
         this.queries.requireItem(bug.submissionId, parsed.submissionItemId);
         const attachmentIds = reportAttachmentIds(parsed);
         requireBindableFiles(this.db, actorUserId, attachmentIds, bug.id);
@@ -163,7 +369,12 @@ export class BugService {
           action: 'BUG_REPORT_UPDATED',
           boundAttachmentIds: attachmentIds,
           unboundAttachmentIds: previousAttachmentIds.filter(
-            (fileId) => !attachmentIds.includes(fileId),
+            (fileId) =>
+              !attachmentIds.includes(fileId) &&
+              !this.db.get(
+                'SELECT 1 FROM cooking_bug_attachment WHERE file_id = ? LIMIT 1',
+                fileId,
+              ),
           ),
           details: {
             submissionItemId: parsed.submissionItemId,
@@ -193,6 +404,8 @@ export class BugService {
           !this.queries.isAnyResponsible(actorUserId, bug.submissionId)
         )
           throw new PlatformError('PERMISSION_DENIED', '当前成员不能分诊此缺陷');
+        if (bug.collaborationLocked && parsed.submissionItemId !== bug.submissionItemId)
+          throw new PlatformError('INVALID_TRANSITION', '前后端关联单不能调整工程归属');
         this.queries.requireItem(bug.submissionId, parsed.submissionItemId);
         const update = this.db.run(
           `UPDATE cooking_bug

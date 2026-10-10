@@ -135,6 +135,9 @@ export class BugDeletion {
       `DELETE FROM cooking_bug WHERE id IN (${ids})`,
     ])
       this.db.run(sql, bugIds);
+    this.db.run(
+      'DELETE FROM cooking_bug_relation WHERE source_bug_id IS NULL AND target_bug_id IS NULL',
+    );
   }
 
   private deleteExecutions(executionIds: string[]): string[] {

@@ -382,6 +382,7 @@ export function BugBoard({
           }}
           onClose={() => setDrawer(null)}
           onEdit={(bugId) => setDrawer({ mode: 'edit', bugId })}
+          onOpen={(bugId) => setDrawer({ mode: 'view', bugId })}
           snapshot={snapshot}
         />
       ) : null}

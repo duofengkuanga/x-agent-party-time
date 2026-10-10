@@ -101,7 +101,11 @@ export class BugRepairContextService {
              UNION ALL
              SELECT feedback content, created_at, id
              FROM cooking_reopen_record WHERE bug_id = ?
+             UNION ALL
+             SELECT handoff_text content, created_at, id
+             FROM cooking_bug_relation WHERE target_bug_id = ? AND handoff_text != ''
            ) ORDER BY created_at, id`,
+        bugId,
         bugId,
         bugId,
       )

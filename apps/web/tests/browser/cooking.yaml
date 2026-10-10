@@ -6,6 +6,137 @@ setup:
   - click: '.auth-submit'
   - wait: { load: networkidle }
 cases:
+  - name: joint registration creates two independent linked bugs with shared evidence
+    steps:
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: { load: networkidle }
+      - eval: "[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('登记缺陷'))?.click(); true"
+      - wait: '#collab-bug-form'
+      - click: '#collab-bug-form input[type="checkbox"]'
+      - fill:
+          {
+            sel: '#collab-bug-form input[maxlength="240"]',
+            text: 浏览器前后端关联单,
+          }
+      - eval: >-
+          (() => { const input = document.querySelector('[aria-label="实际结果附件"] input[type="file"]');
+          const transfer = new DataTransfer(); transfer.items.add(new File(['joint proof'], 'joint-proof.txt', { type: 'text/plain' }));
+          Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
+          input.dispatchEvent(new Event('change', { bubbles: true })); return true; })()
+      - click: 'button[form="collab-bug-form"]'
+      - wait: 1000
+      - click: 'button[aria-label^="浏览器前后端关联单，前端，"]'
+      - wait: '[role="dialog"]'
+    assert:
+      - count:
+          {
+            sel: 'article[data-stage="WAITING_FOR_REPAIR"] button[aria-label^="浏览器前后端关联单，"]',
+            eq: 2,
+          }
+      - text: { sel: '[role="dialog"]', contains: joint-proof.txt }
+      - text: { sel: '[aria-label="关联缺陷"]', contains: 浏览器后端工程 }
+      - hidden: '[aria-label="人工工程流转"]'
+
+  - name: linked bug opens the other engineering without losing shared evidence
+    steps:
+      - click: '[aria-label="关联缺陷"] button'
+      - wait: 350
+    assert:
+      - text: { sel: '[role="dialog"]', contains: 后端 · 浏览器后端工程 }
+      - text: { sel: '[role="dialog"]', contains: joint-proof.txt }
+      - text: { sel: '[aria-label="关联缺陷"]', contains: 浏览器前端工程 }
+      - hidden: '[aria-label="人工工程流转"]'
+
+  - name: tester reads the actual unfinished repair result
+    steps:
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: { load: networkidle }
+      - click: 'button[aria-label^="定位数据缺失缺陷，"]'
+      - wait: '[role="dialog"]'
+    assert:
+      - text:
+          { sel: '[role="dialog"]', contains: 地块缺少定位数据，问题尚未解决。 }
+      - text: { sel: '[role="dialog"]', contains: 确认三条地块的边界为空 }
+      - text: { sel: '[role="dialog"]', contains: 核查边界数据并验证标签渲染 }
+      - hidden: '[role="dialog"] .collab-session-facts code'
+
+  - name: manual transfer closes the source and queues a related backend bug
+    steps:
+      - eval: "[...document.querySelectorAll('[aria-label=人工工程流转] button')].find((button) => button.textContent === '转交后端')?.click(); true"
+      - wait: '[aria-label="确认工程流转"]'
+      - eval: "[...document.querySelectorAll('[aria-label=确认工程流转] button')].find((button) => button.textContent === '确认转交')?.click(); true"
+      - wait: 1200
+    assert:
+      - text: { sel: '[role="dialog"]', contains: 已关闭（转交） }
+      - text: { sel: '[aria-label="关联缺陷"]', contains: 浏览器后端工程 }
+      - visible: 'article[data-stage="REPAIRING"] button[aria-label^="定位数据缺失缺陷，后端，"]'
+      - hidden: 'article.collab-bug-card button[aria-label^="定位数据缺失缺陷，前端，"]'
+
+  - name: handoff evidence is available on the target and running tasks disable routing
+    steps:
+      - click: '[aria-label="关联缺陷"] button'
+      - wait: 350
+      - click: '[aria-label="关联缺陷"] summary'
+    assert:
+      - text:
+          {
+            sel: '[aria-label="关联缺陷"] details[open]',
+            contains: 核查边界数据并验证标签渲染,
+          }
+      - eval: "[...document.querySelectorAll('[aria-label=人工工程流转] button')].every((button) => button.disabled)"
+      - text: { sel: '[aria-label="人工工程流转"]', contains: 等待当前 }
+
+  - name: manual collaboration keeps the original and disables further routing on both
+    steps:
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: { load: networkidle }
+      - click: 'button[aria-label^="待增加协作缺陷，前端，"]'
+      - wait: '[role="dialog"]'
+      - eval: "[...document.querySelectorAll('[aria-label=人工工程流转] button')].find((button) => button.textContent === '增加后端协作')?.click(); true"
+      - wait: '[aria-label="确认工程流转"]'
+      - eval: "[...document.querySelectorAll('[aria-label=确认工程流转] button')].find((button) => button.textContent === '确认增加协作')?.click(); true"
+      - wait: 1200
+    assert:
+      - count:
+          {
+            sel: 'article[data-stage="REPAIRING"] button[aria-label^="待增加协作缺陷，"]',
+            eq: 2,
+          }
+      - text: { sel: '[role="dialog"]', contains: 自动修复未完成 }
+      - text:
+          {
+            sel: '[aria-label="关联缺陷"]',
+            contains: 前后端关联单分别处理与验收,
+          }
+      - hidden: '[aria-label="人工工程流转"]'
+
+  - name: joint registration remains reachable with keyboard focus in night theme
+    steps:
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: { load: networkidle }
+      - click: 'button[aria-label="切换暗夜主题"]'
+      - eval: "[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('登记缺陷'))?.click(); true"
+      - wait: '#collab-bug-form'
+      - click: '#collab-bug-form input[type="checkbox"]'
+      - press: Tab
+    assert:
+      - visible: '.collab-shell[data-theme="night"]'
+      - visible: 'select[aria-label="前端工程"]'
+      - visible: 'select[aria-label="后端工程"]'
+      - eval: "document.activeElement === document.querySelector('select[aria-label=前端工程]')"
+      - visible: 'button[form="collab-bug-form"]'
+
+  - name: existing completed repair validations remain visible to the tester
+    steps:
+      - click: 'button[aria-label="关闭详情抽屉"]'
+      - click: 'button[aria-label="切换纸张主题"]'
+      - click: 'button[aria-label^="待验证返修缺陷，"]'
+      - wait: '[role="dialog"]'
+    assert:
+      - text: { sel: '[role="dialog"]', contains: 夹具验证 }
+      - text: { sel: '[role="dialog"]', contains: 通过 }
+      - hidden: '[role="dialog"] .collab-repair-timeline code'
+
   - name: tester sees all seeded workflow states
     steps:
       - open: __BASE_URL__/cooking/__SUBMISSION_ID__

@@ -85,7 +85,7 @@ _Avoid_: Retry、Resume、Manual Repair Node
 ## 缺陷交付
 
 **Bug**:
-测试负责人在 Test Submission 中报告的实际结果与预期结果之间的偏差。
+测试负责人在 Test Submission 中报告的实际结果与预期结果之间的偏差所对应的独立处理单元；确定归属后，一条 Bug 对应一个 Engineering，独立修复、交付和验收。同一次登记涉及多个 Engineering 时，对应多条相互关联的 Bug。
 _Avoid_: Issue、Ticket
 
 **Repair Attempt**:

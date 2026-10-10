@@ -1,3 +1,5 @@
+import { BugRelations, stageLabel } from './bug-relations';
+import { bugRoutingPolicy } from './bug-routing-policy';
 import { parseRow, type DatabaseRow } from '@/platform/database/row-mapper';
 import { environmentReady } from '@/cooking/submissions/server/environment-access';
 import { CookingAttachmentViewSchema } from '@/cooking/shared/contract';
@@ -51,16 +53,6 @@ type BugAttachmentPreview = Pick<
   'id' | 'originalName' | 'mediaType' | 'sizeBytes' | 'createdAt'
 >;
 
-const STAGE_LABELS: Record<Bug['stage'], string> = {
-  WAITING_FOR_REPAIR: '待修复',
-  REPAIRING: '修复中',
-  WAITING_FOR_UPDATE: '待更新',
-  UPDATING: '更新中',
-  WAITING_FOR_VERIFICATION: '待验证',
-  DONE: '已完成',
-  CANCELLED: '已取消',
-};
-
 export class BugQueries {
   constructor(private readonly db: AppDatabase) {}
 
@@ -75,9 +67,12 @@ export class BugQueries {
       .map((row) => {
         const attachments = this.attachmentsForBug(row.id);
         const bug = mapBug(row, attachments);
+        const routing = bugRoutingPolicy(this.db, bug, userId);
         const item = this.requireItem(submissionId, bug.submissionItemId);
         return {
           ...bug,
+          routing,
+          relatedBugs: new BugRelations(this.db).list(bug.id),
           report: {
             title: bug.report.title,
             ...(bug.report.operationPath
@@ -100,9 +95,9 @@ export class BugQueries {
                 responsibleUser: itemUser(item),
               }
             : null,
-          availableActions: this.availableActions(userId, access, bug),
+          availableActions: this.availableActions(userId, access, bug, routing),
           presentation: {
-            stageLabel: STAGE_LABELS[bug.stage],
+            stageLabel: bug.transferredAt ? '已关闭（转交）' : stageLabel(bug.stage),
             assignmentLabel: item
               ? `${item.engineering_name}（${item.engineering_identifier}）`
               : '暂未确定工程',
@@ -246,11 +241,18 @@ export class BugQueries {
     };
   }
 
-  private availableActions(userId: string, access: AccessRow, bug: Bug) {
+  private availableActions(
+    userId: string,
+    access: AccessRow,
+    bug: Bug,
+    routing: ReturnType<typeof bugRoutingPolicy>,
+  ) {
     if (access.submission_status !== 'ACTIVE') return [];
     const tester = userId === access.tester_user_id;
     const anyResponsible = this.isAnyResponsible(userId, bug.submissionId);
     const actions: Array<
+      | 'TRANSFER'
+      | 'COLLABORATE'
       | 'EDIT_REPORT'
       | 'ASSIGN'
       | 'REQUEST_REPAIR'
@@ -262,15 +264,20 @@ export class BugQueries {
       | 'ARCHIVE'
       | 'UNARCHIVE'
     > = [];
+    if (!routing.transferReason) actions.push('TRANSFER');
+    if (!routing.collaborationReason) actions.push('COLLABORATE');
     if (!bug.reportLockedAt) {
       if (tester) actions.push('EDIT_REPORT');
-      if (tester || access.membership_role === 'OWNER' || anyResponsible)
+      if (
+        !bug.collaborationLocked &&
+        (tester || access.membership_role === 'OWNER' || anyResponsible)
+      )
         actions.push('ASSIGN');
     }
     if (!tester) return actions;
     if (bug.stage === 'WAITING_FOR_REPAIR' && bug.submissionItemId && !bug.archivedAt)
       actions.push('REQUEST_REPAIR', 'CANCEL');
-    if (bug.stage === 'CANCELLED') actions.push('RESTORE');
+    if (bug.stage === 'CANCELLED' && !bug.transferredAt) actions.push('RESTORE');
     if (
       bug.stage === 'WAITING_FOR_VERIFICATION' &&
       bug.submissionItemId &&
@@ -296,6 +303,7 @@ export class BugQueries {
 function mapBug(row: BugRow, attachmentIds: ReportAttachmentIds): Bug {
   return parseRow(BugSchema, {
     ...row,
+    collaboration_locked: Boolean(row.collaboration_locked),
     report: {
       title: row.title,
       ...(row.operation_path ? { operationPath: row.operation_path } : {}),

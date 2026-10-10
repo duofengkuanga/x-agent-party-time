@@ -224,6 +224,8 @@ CREATE TABLE cooking_bug (
   actual_result TEXT,
   expected_result TEXT,
   report_locked_at TEXT,
+  collaboration_locked INTEGER NOT NULL DEFAULT 0 CHECK (collaboration_locked IN (0, 1)),
+  transferred_at TEXT,
   archived_at TEXT,
   archived_by_user_id TEXT REFERENCES platform_user(id) ON DELETE RESTRICT,
   version INTEGER NOT NULL CHECK (version > 0),
@@ -241,6 +243,22 @@ CREATE INDEX cooking_bug_submission_stage
 CREATE INDEX cooking_bug_item_stage
   ON cooking_bug(submission_item_id, stage, short_id);
 
+CREATE TABLE cooking_bug_relation (
+  id TEXT PRIMARY KEY,
+  source_bug_id TEXT REFERENCES cooking_bug(id) ON DELETE SET NULL,
+  target_bug_id TEXT REFERENCES cooking_bug(id) ON DELETE SET NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('JOINT', 'TRANSFER', 'COLLABORATION')),
+  source_short_id INTEGER NOT NULL,
+  target_short_id INTEGER NOT NULL,
+  source_title TEXT NOT NULL,
+  target_title TEXT NOT NULL,
+  handoff_text TEXT NOT NULL,
+  actor_user_id TEXT NOT NULL REFERENCES platform_user(id) ON DELETE RESTRICT,
+  created_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX cooking_bug_relation_source ON cooking_bug_relation(source_bug_id);
+CREATE INDEX cooking_bug_relation_target ON cooking_bug_relation(target_bug_id);
+
 CREATE TABLE cooking_bug_lifecycle_event (
   id TEXT PRIMARY KEY,
   bug_id TEXT NOT NULL REFERENCES cooking_bug(id) ON DELETE CASCADE,
@@ -252,11 +270,12 @@ CREATE INDEX cooking_bug_lifecycle_event_bug
   ON cooking_bug_lifecycle_event(bug_id, created_at, id);
 
 CREATE TABLE cooking_bug_attachment (
-  file_id TEXT PRIMARY KEY REFERENCES platform_file(id) ON DELETE RESTRICT,
+  file_id TEXT NOT NULL REFERENCES platform_file(id) ON DELETE RESTRICT,
   bug_id TEXT NOT NULL REFERENCES cooking_bug(id) ON DELETE CASCADE,
   role TEXT NOT NULL CHECK (role IN ('ACTUAL_RESULT', 'EXPECTED_RESULT')),
   position INTEGER NOT NULL CHECK (position >= 0),
   created_at TEXT NOT NULL,
+  PRIMARY KEY(bug_id, file_id),
   UNIQUE(bug_id, role, position)
 ) STRICT;
 CREATE INDEX cooking_bug_attachment_bug

@@ -7,6 +7,7 @@ export type ProgressHeading = {
   occurredAt: string;
   outcome?: string;
   summaryTitle?: string;
+  summaryContent?: ReactNode;
   content: ReactNode;
 };
 
@@ -59,7 +60,7 @@ export function ProgressTimeline<T extends { id: string; kind: string }>({
                   </strong>
                   <time>{formatDateTime(heading.occurredAt)}</time>
                 </header>
-                {summaryOnly ? null : heading.content}
+                {summaryOnly ? heading.summaryContent : heading.content}
               </article>
             </li>
           );

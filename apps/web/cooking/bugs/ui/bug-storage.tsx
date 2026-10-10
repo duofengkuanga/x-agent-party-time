@@ -143,7 +143,8 @@ export function StoredBugList({
                       {bugLabel(bug)} · {bug.report.title}
                     </strong>
                     <small>
-                      {bug.presentation.assignmentLabel} · {info.state}
+                      {bug.presentation.assignmentLabel} ·{' '}
+                      {bug.transferredAt ? '已关闭（转交）' : info.state}
                     </small>
                     <small>
                       {formatDateTime(

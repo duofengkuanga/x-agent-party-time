@@ -201,18 +201,21 @@ function describeBugProgress(
           </p>
         ),
       };
-    case 'REPAIR_ATTEMPT':
+    case 'REPAIR_ATTEMPT': {
+      const content = (
+        <RepairAttemptTimelineArticle
+          {...context}
+          isLatestRepairAttempt={node.id === latestRepairAttemptId}
+          node={node}
+        />
+      );
       return {
         title: `第 ${node.attempt} 轮修复${node.result?.outcome === 'COMPLETED' ? '已完成' : node.result?.outcome === 'FAILED' ? '未完成' : '进行中'}`,
         occurredAt: node.finishedAt ?? node.startedAt ?? node.queuedAt,
-        content: (
-          <RepairAttemptTimelineArticle
-            {...context}
-            isLatestRepairAttempt={node.id === latestRepairAttemptId}
-            node={node}
-          />
-        ),
+        content,
+        summaryContent: node.result ? content : null,
       };
+    }
   }
 }
 

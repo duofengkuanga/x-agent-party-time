@@ -16,6 +16,7 @@ import { formatDateTime, pendingDeliveryFor } from './board-model';
 
 import { Detail } from './detail-fields';
 import { BugResultDetail, RepairAttemptDetails } from './repair-timeline';
+import { BugRouting } from './bug-routing';
 
 import { UpdateBatchDetails } from './update-details';
 
@@ -26,11 +27,13 @@ export function BugDetail({
   bug,
   onChanged,
   onEdit,
+  onOpen,
   snapshot,
 }: {
   bug: BugView;
   onChanged: (revision: number, message: string) => void;
   onEdit: (() => void) | null;
+  onOpen: (bugId: string) => void;
   snapshot: CookingWorkspaceSnapshot;
 }) {
   const [detailView, setDetailView] = useState<'repair' | 'update'>('repair');
@@ -185,6 +188,38 @@ export function BugDetail({
           </Detail>
         </dl>
       </header>
+      {bug.relatedBugs.length ? (
+        <section className="collab-bug-detail-section" aria-label="关联缺陷">
+          <h3>关联缺陷</h3>
+          {bug.transferredAt ? (
+            <p>本单已关闭，原因：转交其他工程。此关闭不代表验收通过。</p>
+          ) : null}
+          {bug.collaborationLocked ? (
+            <p>前后端关联单分别处理与验收，不再转交或增加协作。</p>
+          ) : null}
+          {bug.relatedBugs.map((related, index) => (
+            <div key={related.id ?? `deleted-${index}`}>
+              {related.id ? (
+                <button type="button" onClick={() => onOpen(related.id!)}>
+                  缺陷-{String(related.shortId).padStart(3, '0')} ·{' '}
+                  {related.title}
+                </button>
+              ) : (
+                <p>{related.title}（已删除）</p>
+              )}
+              <p>
+                {related.engineeringName ?? '历史工程'} · {related.stageLabel}
+              </p>
+              {related.handoffText ? (
+                <details>
+                  <summary>原单排查结果</summary>
+                  <p className="collab-handoff-text">{related.handoffText}</p>
+                </details>
+              ) : null}
+            </div>
+          ))}
+        </section>
+      ) : null}
       <nav aria-label="缺陷进展视图" className="collab-bug-detail-tabs">
         <button
           aria-current={detailView === 'repair' ? 'page' : undefined}
@@ -218,6 +253,7 @@ export function BugDetail({
           </section>
         )}
       </div>
+      <BugRouting bug={bug} onChanged={onChanged} />
       <div data-progress-kind="update">
         {updateBatch ? (
           <UpdateBatchDetails

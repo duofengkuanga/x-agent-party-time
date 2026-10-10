@@ -124,6 +124,10 @@ export function BugForm({
   const [submissionItemId, setSubmissionItemId] = useState(
     bug?.submissionItemId ?? '',
   );
+  const [joint, setJoint] = useState(false);
+  const [frontItemId, setFrontItemId] = useState(frontendItems[0]?.id ?? '');
+  const [backItemId, setBackItemId] = useState(backendItems[0]?.id ?? '');
+  const [mutationId] = useState(createClientId);
   const [title, setTitle] = useState(bug?.report.title ?? '');
   const [operationPath, setOperationPath] = useState(
     bug?.report.operationPath ?? '',
@@ -161,9 +165,13 @@ export function BugForm({
           return;
         }
         const formData = new FormData();
-        formData.set('mutationId', createClientId());
+        formData.set('mutationId', mutationId);
         if (bug) formData.set('expectedVersion', String(bug.version));
         formData.set('submissionItemId', submissionItemId);
+        if (!bug && joint) {
+          formData.append('submissionItemIds', frontItemId);
+          formData.append('submissionItemIds', backItemId);
+        }
         formData.set('title', title);
         formData.set('operationPath', operationPath);
         formData.set('actualResult', actualResult);
@@ -185,7 +193,11 @@ export function BugForm({
         }
         onChanged(
           result.result.revision,
-          bug ? '缺陷已保存。' : '缺陷已登记。',
+          bug
+            ? '缺陷已保存。'
+            : joint
+              ? '已登记两张前后端关联单。'
+              : '缺陷已登记。',
         );
       } catch (submitError) {
         setError(messageOf(submitError, '无法保存缺陷。'));
@@ -202,33 +214,78 @@ export function BugForm({
       >
         <fieldset disabled={!canAssign || saving}>
           <legend>问题归属</legend>
-          <label>
-            <span>具体工程</span>
-            <select
-              onChange={(event) => setSubmissionItemId(event.target.value)}
-              value={submissionItemId}
-            >
-              <option value="">暂不确定</option>
-              {frontendItems.length ? (
-                <optgroup label="前端">
+          {!bug ? (
+            <label className="collab-joint-choice">
+              <input
+                type="checkbox"
+                checked={joint}
+                disabled={!frontendItems.length || !backendItems.length}
+                onChange={(event) => setJoint(event.target.checked)}
+              />
+              <span>前端＋后端（自动登记两张关联单）</span>
+            </label>
+          ) : null}
+          {joint ? (
+            <>
+              <label>
+                <span>前端工程</span>
+                <select
+                  aria-label="前端工程"
+                  value={frontItemId}
+                  onChange={(event) => setFrontItemId(event.target.value)}
+                >
                   {frontendItems.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.engineering.name}（{item.engineering.identifier}）
                     </option>
                   ))}
-                </optgroup>
-              ) : null}
-              {backendItems.length ? (
-                <optgroup label="后端">
+                </select>
+              </label>
+              <label>
+                <span>后端工程</span>
+                <select
+                  aria-label="后端工程"
+                  value={backItemId}
+                  onChange={(event) => setBackItemId(event.target.value)}
+                >
                   {backendItems.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.engineering.name}（{item.engineering.identifier}）
                     </option>
                   ))}
-                </optgroup>
-              ) : null}
-            </select>
-          </label>
+                </select>
+              </label>
+              <p>两张单分别进入待修复，各自更新和验收。</p>
+            </>
+          ) : (
+            <label>
+              <span>具体工程</span>
+              <select
+                onChange={(event) => setSubmissionItemId(event.target.value)}
+                value={submissionItemId}
+              >
+                <option value="">暂不确定</option>
+                {frontendItems.length ? (
+                  <optgroup label="前端">
+                    {frontendItems.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.engineering.name}（{item.engineering.identifier}）
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null}
+                {backendItems.length ? (
+                  <optgroup label="后端">
+                    {backendItems.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.engineering.name}（{item.engineering.identifier}）
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null}
+              </select>
+            </label>
+          )}
         </fieldset>
         <fieldset disabled={!canEditReport || saving}>
           <legend>缺陷内容</legend>
