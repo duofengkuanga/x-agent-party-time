@@ -69,7 +69,7 @@ describe('SubmissionService create', () => {
     }
   });
 
-  test('提测项固定工程名称、归属和稳定标识快照', async () => {
+  test('提测项显示最新工程名称，归属及执行配置仍保持创建时快照', async () => {
     const fixture = await setup();
     const submission = createSubmission(fixture, [
       item(fixture, 'front', 'developerA', 'frontA', 'feature/snapshot'),
@@ -84,6 +84,10 @@ describe('SubmissionService create', () => {
       fixture.users.owner.id,
       fixture.engineering.front.id,
     );
+    const before = fixture.service.getWorkspace(
+      fixture.users.developerA.id,
+      submission.id,
+    ).submission.items[0]!;
     engineering.updateEngineering(fixture.users.owner.id, fixture.engineering.front.id, {
       ...mutation(current.version),
       name: '改名后的工程',
@@ -92,12 +96,11 @@ describe('SubmissionService create', () => {
     });
 
     expect(
-      fixture.service.getWorkspace(fixture.users.creator.id, submission.id).submission
-        .items[0]?.engineering,
-    ).toMatchObject({
-      name: '前端工程',
-      type: 'FRONTEND',
-      identifier: 'web',
+      fixture.service.getWorkspace(fixture.users.developerA.id, submission.id).submission
+        .items[0],
+    ).toEqual({
+      ...before,
+      engineering: { ...before.engineering, name: '改名后的工程' },
     });
   });
 

@@ -387,12 +387,13 @@ export class LifecycleQueries {
                 submission.status submission_status,
                 submission.title submission_title,
                 submission.tester_user_id, item.responsible_user_id,
-                item.binding_id, binding.runner_id, item.engineering_name,
+                item.binding_id, binding.runner_id, engineering.name engineering_name,
                 item.target_branch, bug.archived_at,
                 bug.archived_by_user_id
          FROM cooking_bug bug
          JOIN cooking_test_submission submission ON submission.id = bug.submission_id
          LEFT JOIN cooking_submission_item item ON item.id = bug.submission_item_id
+         LEFT JOIN cooking_engineering engineering ON engineering.id = item.engineering_id
          LEFT JOIN cooking_engineering_binding binding ON binding.id = item.binding_id
          WHERE bug.id = ?`,
       bugId,
@@ -403,9 +404,10 @@ export class LifecycleQueries {
 
   itemCleanupSource(submissionItemId: string) {
     const row = this.db.get(
-      `SELECT item.binding_id, binding.runner_id, item.engineering_name,
+      `SELECT item.binding_id, binding.runner_id, engineering.name engineering_name,
                 item.target_branch, submission.title submission_title
          FROM cooking_submission_item item
+         JOIN cooking_engineering engineering ON engineering.id = item.engineering_id
          JOIN cooking_engineering_binding binding ON binding.id = item.binding_id
          JOIN cooking_test_submission submission ON submission.id = item.submission_id
          WHERE item.id = ?`,
@@ -426,10 +428,11 @@ export class LifecycleQueries {
   cleanupSource(cleanupId: string): CleanupSourceRow {
     const row = this.db.get(
       `SELECT cleanup.*, item.responsible_user_id, item.binding_id,
-                binding.runner_id, item.engineering_name, item.target_branch,
+                binding.runner_id, engineering.name engineering_name, item.target_branch,
                 submission.title submission_title, submission.project_id
          FROM cooking_cleanup cleanup
          JOIN cooking_submission_item item ON item.id = cleanup.submission_item_id
+         JOIN cooking_engineering engineering ON engineering.id = item.engineering_id
          JOIN cooking_engineering_binding binding ON binding.id = item.binding_id
          JOIN cooking_test_submission submission ON submission.id = cleanup.submission_id
          WHERE cleanup.id = ?`,

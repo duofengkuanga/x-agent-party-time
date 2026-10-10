@@ -82,7 +82,10 @@ export type SubmissionItemRow = {
   created_at: string;
 };
 
-type WorkspaceSubmissionItemRow = SubmissionItemRow & { bug_count: number };
+type WorkspaceSubmissionItemRow = SubmissionItemRow & {
+  bug_count: number;
+  current_engineering_name: string;
+};
 
 export class SubmissionQueries {
   constructor(private readonly db: AppDatabase) {}
@@ -130,17 +133,21 @@ export class SubmissionQueries {
     const row = this.requireSubmissionAccess(userId, submissionId);
     const items = this.db
       .all<WorkspaceSubmissionItemRow>(
-        `SELECT item.*,
+        `SELECT item.*, engineering.name current_engineering_name,
                 (
                   SELECT COUNT(*) FROM cooking_bug bug
                   WHERE bug.submission_item_id = item.id
                 ) bug_count
          FROM cooking_submission_item item
-         WHERE submission_id = ?
-         ORDER BY position, id`,
+         JOIN cooking_engineering engineering ON engineering.id = item.engineering_id
+         WHERE item.submission_id = ?
+         ORDER BY item.position, item.id`,
         submissionId,
       )
-      .map((row) => ({ item: mapItem(row), hasBug: row.bug_count > 0 }));
+      .map((row) => ({
+        item: mapItem({ ...row, engineering_name: row.current_engineering_name }),
+        hasBug: row.bug_count > 0,
+      }));
     const canEdit =
       row.status === 'ACTIVE' &&
       (row.created_by_user_id === userId || row.membership_role === 'OWNER');

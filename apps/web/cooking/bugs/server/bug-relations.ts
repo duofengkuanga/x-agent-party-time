@@ -48,10 +48,11 @@ export class BugRelations {
     }>(
       `SELECT other.id, CASE WHEN link.source_bug_id = ? THEN link.target_short_id ELSE link.source_short_id END short_id,
         COALESCE(other.title, CASE WHEN link.source_bug_id = ? THEN link.target_title ELSE link.source_title END) title,
-        link.kind, other.stage, other.transferred_at, item.engineering_name, link.handoff_text
+        link.kind, other.stage, other.transferred_at, engineering.name engineering_name, link.handoff_text
        FROM cooking_bug_relation link
        LEFT JOIN cooking_bug other ON other.id = CASE WHEN link.source_bug_id = ? THEN link.target_bug_id ELSE link.source_bug_id END
        LEFT JOIN cooking_submission_item item ON item.id = other.submission_item_id
+       LEFT JOIN cooking_engineering engineering ON engineering.id = item.engineering_id
        WHERE link.source_bug_id = ? OR link.target_bug_id = ? ORDER BY link.created_at, link.id`,
       bugId,
       bugId,

@@ -175,12 +175,13 @@ export class BugQueries {
   requireItem(submissionId: string, itemId: string | null): ItemRow | null {
     if (!itemId) return null;
     const row = this.db.get(
-      `SELECT id, engineering_name, engineering_type,
-                engineering_identifier, responsible_user_id,
-                responsible_username, responsible_display_name,
-                responsible_user_created_at, binding_id
-         FROM cooking_submission_item
-         WHERE id = ? AND submission_id = ?`,
+      `SELECT item.id, engineering.name engineering_name, item.engineering_type,
+                item.engineering_identifier, item.responsible_user_id,
+                item.responsible_username, item.responsible_display_name,
+                item.responsible_user_created_at, item.binding_id
+         FROM cooking_submission_item item
+         JOIN cooking_engineering engineering ON engineering.id = item.engineering_id
+         WHERE item.id = ? AND item.submission_id = ?`,
       itemId,
       submissionId,
     ) as ItemRow | undefined;

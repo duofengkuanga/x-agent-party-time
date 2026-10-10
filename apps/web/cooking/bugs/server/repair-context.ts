@@ -65,11 +65,12 @@ export class BugRepairContextService {
                 bug.actual_result, bug.expected_result,
                 submission.title submission_title,
                 submission.requirement_description,
-                item.engineering_name, item.repository_url, item.target_branch,
+                engineering.name engineering_name, item.repository_url, item.target_branch,
                 item.binding_id, binding.runner_id
          FROM cooking_bug bug
          JOIN cooking_test_submission submission ON submission.id = bug.submission_id
          JOIN cooking_submission_item item ON item.id = bug.submission_item_id
+         JOIN cooking_engineering engineering ON engineering.id = item.engineering_id
          JOIN cooking_engineering_binding binding ON binding.id = item.binding_id
          WHERE bug.id = ?`,
       bugId,
