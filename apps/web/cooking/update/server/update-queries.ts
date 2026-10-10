@@ -329,10 +329,11 @@ export class UpdateQueries {
       `SELECT submission.id submission_id, item.id submission_item_id,
                 submission.project_id, submission.status submission_status,
                 submission.title submission_title,
-                item.engineering_name, item.repository_url, item.target_branch,
+                engineering.name engineering_name, item.repository_url, item.target_branch,
                 item.environment_name, item.deployment_json,
                 item.responsible_user_id, item.binding_id, binding.runner_id
          FROM cooking_submission_item item
+         JOIN cooking_engineering engineering ON engineering.id = item.engineering_id
          JOIN cooking_test_submission submission ON submission.id = item.submission_id
          JOIN cooking_engineering_binding binding ON binding.id = item.binding_id
          WHERE item.id = ?`,

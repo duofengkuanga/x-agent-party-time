@@ -65,9 +65,10 @@ export function environmentConflict(
   const row = db.get(
     `SELECT lock.submission_id, lock.submission_item_id,
       submission.title, submission.workspace_revision, submission.tester_user_id,
-      item.environment_name, item.engineering_name, tester.display_name tester_name, membership.role
+      item.environment_name, engineering.name engineering_name, tester.display_name tester_name, membership.role
     FROM cooking_submission_environment_lock lock
     JOIN cooking_submission_item item ON item.id = lock.submission_item_id
+    JOIN cooking_engineering engineering ON engineering.id = item.engineering_id
     JOIN cooking_test_submission submission ON submission.id = lock.submission_id
     JOIN cooking_project_membership membership ON membership.project_id = submission.project_id AND membership.user_id = ?
     JOIN platform_user tester ON tester.id = submission.tester_user_id

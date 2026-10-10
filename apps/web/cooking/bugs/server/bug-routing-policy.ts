@@ -19,8 +19,10 @@ export function bugRoutingPolicy(db: AppDatabase, bug: Bug, actorUserId: string)
   const targets =
     authorized && source.engineering_type
       ? db.all<{ id: string; name: string; type: 'FRONTEND' | 'BACKEND' }>(
-          `SELECT id, engineering_name name, engineering_type type FROM cooking_submission_item
-     WHERE submission_id = ? AND engineering_type != ? ORDER BY position`,
+          `SELECT item.id, engineering.name, item.engineering_type type
+           FROM cooking_submission_item item
+           JOIN cooking_engineering engineering ON engineering.id = item.engineering_id
+           WHERE item.submission_id = ? AND item.engineering_type != ? ORDER BY item.position`,
           bug.submissionId,
           source.engineering_type,
         )
