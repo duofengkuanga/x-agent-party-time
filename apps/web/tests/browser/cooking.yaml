@@ -6,6 +6,110 @@ setup:
   - click: '.auth-submit'
   - wait: { load: networkidle }
 cases:
+  - name: bug registration accepts a 4.1 MB screenshot
+    steps:
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: { load: networkidle }
+      - eval: "[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('登记缺陷'))?.click(); true"
+      - wait: '#collab-bug-form'
+      - fill:
+          {
+            sel: '#collab-bug-form input[maxlength="240"]',
+            text: 大截图登记回归,
+          }
+      - eval: >-
+          (() => { const input = document.querySelector('[aria-label="预期结果附件"] input[type="file"]');
+          const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
+          const bytes = new Uint8Array(Math.ceil(4.1 * 1024 * 1024));
+          bytes.set(Uint8Array.from(atob(canvas.toDataURL().split(',')[1]), (c) => c.charCodeAt(0)));
+          const transfer = new DataTransfer(); transfer.items.add(new File([bytes], 'large-screenshot.png', { type: 'image/png' }));
+          Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
+          input.dispatchEvent(new Event('change', { bubbles: true })); return true; })()
+      - click: 'button[form="collab-bug-form"]'
+      - wait: 1500
+    assert:
+      - hidden: '#collab-bug-form'
+      - visible: 'article[data-stage="WAITING_FOR_REPAIR"] button[aria-label^="大截图登记回归，"]'
+
+  - name: interrupted registration explains uncertainty and preserves the draft for retry
+    steps:
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: { load: networkidle }
+      - eval: "[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('登记缺陷'))?.click(); true"
+      - wait: '#collab-bug-form'
+      - fill:
+          {
+            sel: '#collab-bug-form input[maxlength="240"]',
+            text: 网络中断保留草稿,
+          }
+      - eval: >-
+          (() => { const original = window.fetch;
+          window.fetch = (...args) => {
+          if (new Headers(args[1]?.headers).has('Next-Action')) {
+          window.fetch = original; return Promise.reject(new TypeError('Failed to fetch')); }
+          return original(...args); }; return true; })()
+      - click: 'button[form="collab-bug-form"]'
+      - wait: '[role="alert"]'
+    assert:
+      - text: { sel: '[role="alert"]', contains: 未收到服务器响应 }
+      - text: { sel: '[role="alert"]', contains: 先核对当前记录 }
+      - eval: 'document.querySelector(''#collab-bug-form input[maxlength="240"]'').value === ''网络中断保留草稿'''
+      - eval: '!document.querySelector(''button[form="collab-bug-form"]'').disabled'
+
+  - name: retry succeeds after the connection recovers
+    steps:
+      - click: 'button[form="collab-bug-form"]'
+      - wait: 1500
+    assert:
+      - hidden: '#collab-bug-form'
+      - count: { sel: 'button[aria-label^="网络中断保留草稿，"]', eq: 1 }
+
+  - name: oversized attachment explains which file to replace in night theme
+    steps:
+      - click: 'button[aria-label="切换暗夜主题"]'
+      - eval: "[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('登记缺陷'))?.click(); true"
+      - wait: '#collab-bug-form'
+      - eval: >-
+          (() => { const input = document.querySelector('[aria-label="实际结果附件"] input[type="file"]');
+          const transfer = new DataTransfer(); transfer.items.add(new File([new Uint8Array(11 * 1024 * 1024)], 'too-large.png', { type: 'image/png' }));
+          Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
+          input.dispatchEvent(new Event('change', { bubbles: true })); return true; })()
+    assert:
+      - text:
+          {
+            sel: '[aria-label="实际结果附件"]',
+            contains: '「too-large.png」（11.0 MB）超过单个附件 10 MB',
+          }
+      - count:
+          { sel: '[aria-label="实际结果附件"] .collab-attachment-tile', eq: 0 }
+      - visible: 'button[form="collab-bug-form"]'
+
+  - name: both report groups accept five attachments at the 10 MB boundary
+    steps:
+      - click: 'button[aria-label="关闭详情抽屉"]'
+      - click: 'button[aria-label="切换纸张主题"]'
+      - eval: "[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('登记缺陷'))?.click(); true"
+      - wait: '#collab-bug-form'
+      - fill:
+          {
+            sel: '#collab-bug-form input[maxlength="240"]',
+            text: 双组附件上限登记,
+          }
+      - eval: >-
+          (() => { for (const label of ['实际结果附件', '预期结果附件']) {
+          const input = document.querySelector(`[aria-label="${label}"] input[type="file"]`);
+          const transfer = new DataTransfer(); for (let i = 0; i < 5; i++)
+          transfer.items.add(new File([new Uint8Array(10 * 1024 * 1024)], `${label}-${i}.txt`, { type: 'text/plain' }));
+          Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
+          input.dispatchEvent(new Event('change', { bubbles: true })); } return true; })()
+      - click: 'button[form="collab-bug-form"]'
+      - wait: 'button[aria-label^="双组附件上限登记，"]'
+      - click: 'button[aria-label^="双组附件上限登记，"]'
+      - wait: '[role="dialog"]'
+    assert:
+      - count:
+          { sel: '[role="dialog"] .collab-bug-detail-attachments li', eq: 10 }
+
   - name: joint registration creates two independent linked bugs with shared evidence
     steps:
       - open: __BASE_URL__/cooking/__SUBMISSION_ID__

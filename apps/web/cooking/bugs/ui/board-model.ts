@@ -161,7 +161,3 @@ export function stopCardAction(action: () => void) {
 export function bugVersionOf(result: WorkspaceActionResult): number | null {
   return result.ok && 'bugVersion' in result.result ? result.result.bugVersion : null;
 }
-
-export function messageOf(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
-}

@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { messageOf, type WorkspaceActionResult } from './board-model';
+import { type WorkspaceActionResult } from './board-model';
+import { messageOf } from '@/cooking/shared/ui/action-error';
 
 export function useWorkspaceMutation<Notice extends string | null>(
   onChanged: (revision: number, message: Notice) => void,

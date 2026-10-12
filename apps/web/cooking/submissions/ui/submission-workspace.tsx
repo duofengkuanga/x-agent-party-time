@@ -1,5 +1,6 @@
 'use client';
 
+import { messageOf } from '@/cooking/shared/ui/action-error';
 import { useRouter } from 'next/navigation';
 import {
   useCallback,
@@ -39,11 +40,7 @@ import { SubmissionComposer } from './submission-composer';
 import { workspaceReducer, parseInvalidation } from './workspace-state';
 import { useSidebarWidth } from './sidebar-preference';
 
-import {
-  messageOf,
-  EmptyStage,
-  SubmissionComposerLoading,
-} from './workspace-feedback';
+import { EmptyStage, SubmissionComposerLoading } from './workspace-feedback';
 
 import { SubmissionRail } from './submission-rail';
 
@@ -108,8 +105,11 @@ export function SubmissionWorkspace({
               { cache: 'no-store' },
             );
             const body = await response.json();
-            if (!response.ok)
-              throw new Error(body.error?.message ?? '无法刷新提测工作区');
+            if (!response.ok) {
+              setError(body.error?.message ?? '无法刷新提测工作区');
+              dispatch({ type: 'SET_SYNC_STATE', syncState: 'reconnecting' });
+              return;
+            }
             next = CookingWorkspaceSnapshotSchema.parse(body);
             snapshotRef.current = next;
             dispatch({ type: 'REPLACE_SNAPSHOT', snapshot: next });

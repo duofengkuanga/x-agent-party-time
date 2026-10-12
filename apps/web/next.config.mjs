@@ -14,6 +14,12 @@ const allowedDevOrigins = Array.from(
 const nextConfig = {
   reactStrictMode: true,
   allowedDevOrigins,
+  experimental: {
+    serverActions: {
+      // Two report groups × five 10 MiB files, plus multipart fields and headers.
+      bodySizeLimit: '101mb',
+    },
+  },
   distDir: process.env.AGENT_PARTY_TIME_NEXT_DIST_DIR ?? '.next',
 };
 
