@@ -22,6 +22,7 @@ export function BugRouting({
   const target = bug.routing.targets.find(({ id }) => id === targetId);
   if (
     !target ||
+    (bug.routing.transferReason && bug.routing.collaborationReason) ||
     bug.collaborationLocked ||
     bug.transferredAt ||
     ['DONE', 'CANCELLED'].includes(bug.stage)
@@ -32,6 +33,7 @@ export function BugRouting({
     <section
       className="collab-bug-detail-section collab-form"
       aria-label="人工工程流转"
+      data-progress-kind="repair"
     >
       <h3>人工处理</h3>
       <p>阅读修复结果后，判断是否需要其他工程处理。</p>

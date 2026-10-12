@@ -176,7 +176,7 @@ cases:
       - visible: 'article[data-stage="REPAIRING"] button[aria-label^="定位数据缺失缺陷，后端，"]'
       - hidden: 'article.collab-bug-card button[aria-label^="定位数据缺失缺陷，前端，"]'
 
-  - name: handoff evidence is available on the target and running tasks disable routing
+  - name: handoff evidence is available on the target and running tasks hide routing
     steps:
       - click: '[aria-label="关联缺陷"] button'
       - wait: 350
@@ -187,8 +187,7 @@ cases:
             sel: '[aria-label="关联缺陷"] details[open]',
             contains: 核查边界数据并验证标签渲染,
           }
-      - eval: "[...document.querySelectorAll('[aria-label=人工工程流转] button')].every((button) => button.disabled)"
-      - text: { sel: '[aria-label="人工工程流转"]', contains: 等待当前 }
+      - hidden: '[aria-label="人工工程流转"]'
 
   - name: manual collaboration keeps the original and disables further routing on both
     steps:
