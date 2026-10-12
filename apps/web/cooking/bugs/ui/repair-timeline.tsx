@@ -5,6 +5,7 @@ import {
   type ProgressHeading,
 } from './progress-timeline';
 import { ValidationResults } from './validation-results';
+import { SessionFacts } from './session-facts';
 
 import type { BugRepairView } from '@/cooking/repair/contract';
 import {
@@ -87,6 +88,12 @@ export function RepairAttemptDetails({
           : '按修复生命周期从旧到新记录。'
       }
       summaryOnly={summaryOnly}
+      sessionDetails={
+        <SessionFacts
+          label="修复会话"
+          attempts={timeline.filter((node) => node.kind === 'REPAIR_ATTEMPT')}
+        />
+      }
     >
       {(node) => describeBugProgress(node, context, latestRepairAttemptId)}
     </ProgressTimeline>
@@ -232,12 +239,6 @@ function RepairAttemptTimelineArticle({
 }) {
   return (
     <>
-      <dl className="collab-bug-detail-list collab-session-facts">
-        {node.sessionId ? (
-          <Detail label="修复会话 ID">{node.sessionId}</Detail>
-        ) : null}
-        <Detail label="Agent">{node.agentName}</Detail>
-      </dl>
       {node.interactions.map((interaction) => (
         <CookingInteractionRecord
           interaction={interaction}

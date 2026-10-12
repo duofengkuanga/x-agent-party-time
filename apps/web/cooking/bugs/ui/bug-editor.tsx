@@ -125,8 +125,16 @@ export function BugForm({
     bug?.submissionItemId ?? '',
   );
   const [joint, setJoint] = useState(false);
-  const [frontItemId, setFrontItemId] = useState(frontendItems[0]?.id ?? '');
-  const [backItemId, setBackItemId] = useState(backendItems[0]?.id ?? '');
+  const [frontItemId, setFrontItemId] = useState(
+    frontendItems.find((item) => item.id === bug?.submissionItemId)?.id ??
+      frontendItems[0]?.id ??
+      '',
+  );
+  const [backItemId, setBackItemId] = useState(
+    backendItems.find((item) => item.id === bug?.submissionItemId)?.id ??
+      backendItems[0]?.id ??
+      '',
+  );
   const [mutationId] = useState(createClientId);
   const [title, setTitle] = useState(bug?.report.title ?? '');
   const [operationPath, setOperationPath] = useState(
@@ -151,23 +159,45 @@ export function BugForm({
     event.preventDefault();
     startSaving(async () => {
       try {
+        const primaryItemId = joint
+          ? bug?.submissionItemId &&
+            [frontItemId, backItemId].includes(bug.submissionItemId)
+            ? bug.submissionItemId
+            : frontItemId
+          : submissionItemId;
+        const additionalSubmissionItemId = joint
+          ? primaryItemId === frontItemId
+            ? backItemId
+            : frontItemId
+          : undefined;
         if (bug && !canEditReport) {
           const result = await assignBugAction(bug.id, {
-            mutationId: createClientId(),
+            mutationId,
             expectedVersion: bug.version,
-            submissionItemId: submissionItemId || null,
+            submissionItemId: primaryItemId || null,
+            additionalSubmissionItemId,
           });
           if (!result.ok) {
             setError(result.error.message);
             return;
           }
-          onChanged(result.result.revision, '问题归属已更新。');
+          onChanged(
+            result.result.revision,
+            joint
+              ? '已调整为前端＋后端，两张关联单分别待修复。'
+              : '问题归属已更新。',
+          );
           return;
         }
         const formData = new FormData();
         formData.set('mutationId', mutationId);
         if (bug) formData.set('expectedVersion', String(bug.version));
-        formData.set('submissionItemId', submissionItemId);
+        formData.set('submissionItemId', primaryItemId);
+        if (bug && additionalSubmissionItemId)
+          formData.set(
+            'additionalSubmissionItemId',
+            additionalSubmissionItemId,
+          );
         if (!bug && joint) {
           formData.append('submissionItemIds', frontItemId);
           formData.append('submissionItemIds', backItemId);
@@ -194,7 +224,9 @@ export function BugForm({
         onChanged(
           result.result.revision,
           bug
-            ? '缺陷已保存。'
+            ? joint
+              ? '缺陷已保存，并补建另一工程的关联单。'
+              : '缺陷已保存。'
             : joint
               ? '已登记两张前后端关联单。'
               : '缺陷已登记。',
@@ -214,7 +246,10 @@ export function BugForm({
       >
         <fieldset disabled={!canAssign || saving}>
           <legend>问题归属</legend>
-          {!bug ? (
+          {canAssign &&
+          (!bug ||
+            (!bug.collaborationLocked &&
+              bug.stage === 'WAITING_FOR_REPAIR')) ? (
             <label className="collab-joint-choice">
               <input
                 type="checkbox"
@@ -222,7 +257,11 @@ export function BugForm({
                 disabled={!frontendItems.length || !backendItems.length}
                 onChange={(event) => setJoint(event.target.checked)}
               />
-              <span>前端＋后端（自动登记两张关联单）</span>
+              <span>
+                {bug
+                  ? '前端＋后端（保留本单，新增关联单）'
+                  : '前端＋后端（自动登记两张关联单）'}
+              </span>
             </label>
           ) : null}
           {joint ? (

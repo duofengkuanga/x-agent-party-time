@@ -91,6 +91,10 @@ export async function updateBugReportAction(
         mutationId: formField(formData, 'mutationId'),
         expectedVersion: integerFormField(formData, 'expectedVersion'),
         submissionItemId: nullableFormField(formData, 'submissionItemId'),
+        additionalSubmissionItemId: optionalFormField(
+          formData,
+          'additionalSubmissionItemId',
+        ),
         title: formField(formData, 'title'),
         operationPath: optionalFormField(formData, 'operationPath'),
         actualResult: optionalFormField(formData, 'actualResult'),

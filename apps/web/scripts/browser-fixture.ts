@@ -84,6 +84,14 @@ export async function seedBrowserFixture(home: string): Promise<BrowserFixture> 
 
     createBug('待取消缺陷');
     createBug('待请求修复缺陷');
+    bugs.createBug(tester.id, submission.id, {
+      mutationId: randomUUID(),
+      submissionItemId: null,
+      title: '待前后端分诊缺陷',
+      expectedResult: '前端和后端共同完成',
+      actualResultAttachmentIds: [],
+      expectedResultAttachmentIds: [],
+    });
 
     for (const title of ['定位数据缺失缺陷', '待增加协作缺陷']) {
       const failedBug = createBug(title);

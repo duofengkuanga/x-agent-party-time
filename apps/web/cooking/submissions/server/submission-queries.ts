@@ -226,9 +226,11 @@ export class SubmissionQueries {
         })),
         availableActions: [
           ...(row.status === 'ACTIVE' &&
+          items.length < 20 &&
           (canEdit ||
             row.tester_user_id === userId ||
-            items.some(({ item }) => item.responsibleUser.id === userId))
+            items.some(({ item }) => item.responsibleUser.id === userId)) &&
+          this.hasAvailableEngineering(row)
             ? (['ADD_ITEMS'] as const)
             : []),
           ...(canEdit ? (['EDIT_DETAILS'] as const) : []),
@@ -289,6 +291,33 @@ export class SubmissionQueries {
     ) as SubmissionAccessRow | undefined;
     if (!row) throw new PlatformError('NOT_FOUND', SUBMISSION_HIDDEN_MESSAGE);
     return row;
+  }
+
+  private hasAvailableEngineering(submission: SubmissionAccessRow): boolean {
+    return Boolean(
+      this.db.get(
+        `SELECT 1 FROM cooking_engineering engineering
+       WHERE engineering.project_id = ? AND engineering.archived_at IS NULL
+         AND engineering.repository_state = 'CONFIRMED'
+         AND NOT EXISTS (SELECT 1 FROM cooking_submission_item item
+           WHERE item.submission_id = ? AND item.engineering_id = engineering.id)
+         AND EXISTS (SELECT 1 FROM cooking_environment environment
+           WHERE environment.engineering_id = engineering.id)
+         AND EXISTS (
+           SELECT 1 FROM cooking_engineering_binding binding
+           JOIN cooking_engineering_membership member
+             ON member.engineering_id = binding.engineering_id AND member.user_id = binding.user_id
+           JOIN cooking_project_membership project_member
+             ON project_member.project_id = engineering.project_id AND project_member.user_id = binding.user_id
+           JOIN platform_runner runner ON runner.id = binding.runner_id
+             AND runner.owner_user_id = binding.user_id AND runner.revoked_at IS NULL
+           WHERE binding.engineering_id = engineering.id AND binding.user_id != ?
+         ) LIMIT 1`,
+        submission.project_id,
+        submission.id,
+        submission.tester_user_id,
+      ),
+    );
   }
 
   private getUser(userId: string): User {

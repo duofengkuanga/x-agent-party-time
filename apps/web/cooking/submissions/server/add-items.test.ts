@@ -154,3 +154,47 @@ test('活动提测实时读取部署方式，关闭提测保留历史配置', as
       ?.technical?.deployment,
   ).toEqual({ kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' });
 });
+
+test('全部工程已加入后不再显示追加入口', async () => {
+  const f = await setup();
+  const submission = createSubmission(f, [
+    item(f, 'front', 'developerA', 'frontA', 'main'),
+  ]);
+  expect(
+    f.service.getWorkspace(f.users.tester.id, submission.id).submission.availableActions,
+  ).toContain('ADD_ITEMS');
+  f.service.addItems(f.users.tester.id, submission.id, {
+    mutationId: randomUUID(),
+    expectedVersion: submission.version,
+    items: [item(f, 'back', 'developerB', 'backB', 'main')],
+  });
+  expect(
+    f.service.getWorkspace(f.users.tester.id, submission.id).submission.availableActions,
+  ).not.toContain('ADD_ITEMS');
+});
+
+test('剩余工程缺少有效环境或绑定时隐藏入口，恢复配置后重新出现', async () => {
+  const f = await setup();
+  const submission = createSubmission(f, [
+    item(f, 'front', 'developerA', 'frontA', 'main'),
+  ]);
+  const actions = () =>
+    f.service.getWorkspace(f.users.tester.id, submission.id).submission.availableActions;
+  f.database.run('UPDATE cooking_engineering SET archived_at = ? WHERE id = ?', [
+    new Date().toISOString(),
+    f.engineering.back.id,
+  ]);
+  expect(actions()).not.toContain('ADD_ITEMS');
+  f.database.run('UPDATE cooking_engineering SET archived_at = NULL WHERE id = ?', [
+    f.engineering.back.id,
+  ]);
+  expect(actions()).toContain('ADD_ITEMS');
+  f.database.run('UPDATE platform_runner SET revoked_at = ?', [new Date().toISOString()]);
+  expect(actions()).not.toContain('ADD_ITEMS');
+  f.database.run('UPDATE platform_runner SET revoked_at = NULL');
+  expect(actions()).toContain('ADD_ITEMS');
+  f.database.run('DELETE FROM cooking_environment WHERE id = ?', [
+    f.environments.back.id,
+  ]);
+  expect(actions()).not.toContain('ADD_ITEMS');
+});

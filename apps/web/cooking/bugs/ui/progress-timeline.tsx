@@ -18,6 +18,7 @@ export function ProgressTimeline<T extends { id: string; kind: string }>({
   summaryOnly,
   update = false,
   children,
+  sessionDetails,
 }: {
   nodes: T[];
   title: string;
@@ -25,6 +26,7 @@ export function ProgressTimeline<T extends { id: string; kind: string }>({
   summaryOnly: boolean;
   update?: boolean;
   children: (node: T) => ProgressHeading;
+  sessionDetails?: ReactNode;
 }) {
   return (
     <section
@@ -37,6 +39,7 @@ export function ProgressTimeline<T extends { id: string; kind: string }>({
           <p>{description}</p>
         </div>
       </header>
+      {sessionDetails}
       <ol
         className={`collab-repair-timeline${update ? ' collab-update-timeline' : ''}`}
       >

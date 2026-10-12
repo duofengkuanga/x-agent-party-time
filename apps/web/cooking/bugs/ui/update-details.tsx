@@ -6,6 +6,7 @@ import {
   type ProgressHeading,
 } from './progress-timeline';
 import { ValidationResults } from './validation-results';
+import { SessionFacts } from './session-facts';
 
 import { createClientId } from '@/cooking/shared/ui/client-id';
 import { repairStateLabel } from '@/cooking/shared/execution-labels';
@@ -105,6 +106,14 @@ export function UpdateBatchDetails({
             : `${batch.engineeringName} 的统一更新执行记录。`
         }
         summaryOnly={summaryOnly}
+        sessionDetails={
+          <SessionFacts
+            label="更新会话"
+            attempts={batch.timeline.filter(
+              (node) => node.kind === 'UPDATE_ATTEMPT',
+            )}
+          />
+        }
         update
       >
         {(node) => {
@@ -147,11 +156,6 @@ export function UpdateBatchDetails({
             ...heading,
             content: (
               <>
-                {node.sessionId ? (
-                  <dl className="collab-bug-detail-list collab-session-facts">
-                    <Detail label="更新会话 ID">{node.sessionId}</Detail>
-                  </dl>
-                ) : null}
                 {node.result ? (
                   <>
                     {node.result.outcome === 'FAILED' ? (

@@ -2,6 +2,152 @@
   width: min(940px, 100%);
 }
 
+.collab-bug-drawer--split {
+  height: min(820px, calc(100dvh - 48px));
+  width: min(1180px, 100%);
+}
+
+.collab-dialog.collab-bug-drawer--split > .collab-bug-drawer__chrome {
+  align-items: start;
+  flex: 0 0 auto;
+  gap: 24px;
+  max-height: 35%;
+  overflow-y: auto;
+  padding: 20px 24px;
+}
+
+.collab-bug-drawer__heading {
+  min-width: 0;
+}
+
+.collab-bug-drawer--split > .collab-bug-drawer__chrome h2 {
+  font-family: inherit;
+  font-size: 21px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1.5;
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.collab-bug-identity {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 10px;
+  gap: 6px 10px;
+}
+
+.collab-bug-identity code {
+  font: inherit;
+  overflow-wrap: anywhere;
+}
+
+.collab-bug-identity button {
+  font-size: 10px;
+  min-height: 24px;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+
+.collab-bug-drawer--split > .collab-bug-drawer__body {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.7fr);
+  max-height: none;
+  overflow: hidden;
+}
+
+.collab-bug-detail-context,
+.collab-bug-detail-activity {
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.collab-bug-detail-context {
+  background: color-mix(in srgb, var(--paper), var(--panel) 50%);
+  border-right: 1px solid var(--line);
+  padding: 20px 24px;
+}
+
+.collab-bug-detail-context__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 14px;
+}
+
+.collab-bug-detail-context__actions:empty {
+  display: none;
+}
+
+.collab-bug-detail-context__actions button {
+  font-size: 11px;
+  min-height: 30px;
+}
+
+.collab-bug-detail-context > dl {
+  display: grid;
+  gap: 18px;
+  margin: 0;
+}
+
+.collab-bug-detail-context > dl > div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.collab-bug-detail-context dt {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.collab-bug-detail-context dd {
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.collab-bug-detail-context .collab-bug-detail-fact {
+  display: block;
+  overflow: visible;
+  white-space: pre-wrap;
+}
+
+.collab-bug-detail-context > .collab-bug-detail-section {
+  border-bottom: 0;
+  border-top: 1px solid var(--line);
+  margin-top: 20px;
+  padding: 20px 0 0;
+}
+
+.collab-bug-detail-activity > [data-progress-kind] {
+  scroll-margin-top: 48px;
+}
+
+@media (max-width: 850px) {
+  .collab-bug-drawer--split > .collab-bug-drawer__body {
+    display: block;
+    overflow-y: auto;
+  }
+
+  .collab-bug-detail-context,
+  .collab-bug-detail-activity {
+    overflow: visible;
+  }
+
+  .collab-bug-detail-context {
+    border-bottom: 1px solid var(--line);
+    border-right: 0;
+  }
+}
+
 .collab-dialog > .collab-bug-drawer__chrome {
   align-items: center;
   min-height: 43px;
@@ -38,8 +184,10 @@
 }
 
 .collab-bug-drawer__body[data-detail-view='repair']
+  > .collab-bug-detail-activity
   > [data-progress-kind='update'],
 .collab-bug-drawer__body[data-detail-view='update']
+  > .collab-bug-detail-activity
   > [data-progress-kind='repair'] {
   display: none;
 }
@@ -62,28 +210,8 @@
   z-index: 4;
 }
 
-.collab-bug-drawer__body[data-detail-view] > .collab-bug-detail-hero {
-  grid-template-columns: 300px minmax(0, 1fr);
-  padding-bottom: 18px;
-  position: relative;
-  top: auto;
-}
-
 .collab-bug-detail-hero > div {
   min-width: 0;
-}
-
-.collab-bug-detail-hero__title {
-  align-content: start;
-  display: grid;
-  gap: 10px;
-  width: 300px;
-}
-
-.collab-bug-detail-hero__title > button {
-  font-size: 9px;
-  justify-self: start;
-  padding: 4px 9px;
 }
 
 .collab-bug-detail-hero > div > small {
@@ -104,23 +232,12 @@
   overflow-wrap: anywhere;
 }
 
-.collab-bug-detail-hero__title h2 {
-  font-size: 20px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .collab-bug-detail-hero > dl {
   align-self: start;
   display: grid;
   gap: 8px 14px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin: 0;
-}
-
-.collab-bug-drawer__body[data-detail-view] > .collab-bug-detail-hero > dl {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .collab-bug-detail-hero > dl > div {
@@ -157,26 +274,6 @@
   display: grid;
   gap: 6px;
   min-width: 0;
-}
-
-.collab-bug-id {
-  align-items: center;
-  display: inline-flex;
-  gap: 6px;
-  min-width: 0;
-}
-
-.collab-bug-id code {
-  font-size: 9px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.collab-bug-id button {
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  font-size: 9px;
-  padding: 1px 6px;
 }
 
 .collab-bug-detail-tabs {
@@ -477,10 +574,57 @@
   margin-top: 9px;
 }
 
-.collab-session-facts {
-  background: color-mix(in srgb, var(--paper), var(--blue) 4%);
-  border: 1px dashed var(--line);
-  padding: 8px 10px;
+.collab-session-overview {
+  border-block: 1px solid var(--line);
+  display: grid;
+  gap: 12px;
+  padding: 12px 0;
+}
+
+.collab-session-overview dl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 28px;
+  margin: 0;
+}
+
+.collab-session-overview dl > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.collab-session-overview dt {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.collab-session-overview dd {
+  font-size: 11px;
+  line-height: 1.6;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.collab-session-overview > div > p {
+  color: var(--muted);
+  margin-bottom: 7px;
+}
+
+.collab-routing-confirmation {
+  display: grid;
+  gap: 12px;
+}
+
+.collab-routing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.collab-routing-actions > button {
+  min-height: 34px;
+  padding: 6px 12px;
 }
 
 .collab-bug-detail-empty {
@@ -488,17 +632,11 @@
 }
 
 @media (max-width: 760px) {
-  .collab-bug-detail-hero,
-  .collab-bug-drawer__body[data-detail-view] > .collab-bug-detail-hero {
+  .collab-bug-detail-hero {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .collab-bug-detail-hero__title {
-    width: 100%;
-  }
-
-  .collab-bug-detail-hero > dl,
-  .collab-bug-drawer__body[data-detail-view] > .collab-bug-detail-hero > dl {
+  .collab-bug-detail-hero > dl {
     grid-template-columns: minmax(0, 1fr);
   }
 

@@ -87,6 +87,14 @@ export function SubmissionDetails({
         </div>
       </dl>
       <div className="collab-submission-projects">
+        <div className="collab-submission-projects__heading">
+          <h3>
+            提测工程 <span>{view.items.length}</span>
+          </h3>
+          {view.availableActions.includes('ADD_ITEMS') ? (
+            <AddSubmissionItems key={submission.id} view={view} />
+          ) : null}
+        </div>
         <table aria-label="提测工程配置">
           <thead>
             <tr>
@@ -110,9 +118,11 @@ export function SubmissionDetails({
                 : undefined;
               return (
                 <tr key={item.id}>
-                  <td>{item.engineering.name}</td>
-                  <td>{item.responsibleUser.displayName}</td>
-                  <td>
+                  <td data-label="工程">{item.engineering.name}</td>
+                  <td data-label="负责人">
+                    {item.responsibleUser.displayName}
+                  </td>
+                  <td data-label="目标分支">
                     {item.availableActions.includes('EDIT_TARGET_BRANCH') ? (
                       <input
                         aria-label={`${item.engineering.name}目标分支`}
@@ -130,45 +140,45 @@ export function SubmissionDetails({
                         value={targetBranches[item.id] ?? item.targetBranch}
                       />
                     ) : (
-                      item.targetBranch
+                      <code>{item.targetBranch}</code>
                     )}
                   </td>
-                  <td>
-                    <span>
-                      {item.environment.name}
-                      {item.technical
-                        ? ` / ${
-                            item.technical.deployment.kind === 'LOCAL_SCRIPT'
-                              ? '本地脚本'
-                              : '持续集成与部署'
-                          }`
-                        : ''}
-                    </span>
-                    {item.technical?.deployment.kind === 'LOCAL_SCRIPT' ? (
-                      <small>{item.technical.deployment.command}</small>
-                    ) : null}
-                    {cleanup ? (
-                      <small>清理：{cleanup.presentation.statusLabel}</small>
-                    ) : null}
-                    {cleanup && cleanupInteraction ? (
-                      <CleanupInteractionPanel
-                        cleanupVersion={cleanup.version}
-                        interaction={cleanupInteraction}
-                        onResolve={onResolveCleanupInteraction}
-                        pending={updating}
-                      />
-                    ) : null}
-                    {cleanup?.availableActions.includes('RETRY_CLEANUP') ? (
-                      <button
-                        disabled={updating}
-                        onClick={() =>
-                          onRetryCleanup(cleanup.id, cleanup.version)
-                        }
-                        type="button"
-                      >
-                        重试清理
-                      </button>
-                    ) : null}
+                  <td data-label="环境 / 部署">
+                    <div className="collab-submission-deployment">
+                      <span>{item.environment.name}</span>
+                      {item.technical ? (
+                        <small>
+                          {item.technical.deployment.kind === 'LOCAL_SCRIPT'
+                            ? '本地脚本'
+                            : '持续集成与部署'}
+                        </small>
+                      ) : null}
+                      {item.technical?.deployment.kind === 'LOCAL_SCRIPT' ? (
+                        <code>{item.technical.deployment.command}</code>
+                      ) : null}
+                      {cleanup ? (
+                        <small>清理：{cleanup.presentation.statusLabel}</small>
+                      ) : null}
+                      {cleanup && cleanupInteraction ? (
+                        <CleanupInteractionPanel
+                          cleanupVersion={cleanup.version}
+                          interaction={cleanupInteraction}
+                          onResolve={onResolveCleanupInteraction}
+                          pending={updating}
+                        />
+                      ) : null}
+                      {cleanup?.availableActions.includes('RETRY_CLEANUP') ? (
+                        <button
+                          disabled={updating}
+                          onClick={() =>
+                            onRetryCleanup(cleanup.id, cleanup.version)
+                          }
+                          type="button"
+                        >
+                          重试清理
+                        </button>
+                      ) : null}
+                    </div>
                   </td>
                 </tr>
               );
@@ -178,12 +188,9 @@ export function SubmissionDetails({
       </div>
       {submission.status === 'ACTIVE' &&
       view.items.some((item) => item.technical) ? (
-        <small>
-          部署配置读取工程当前设置；已开始修复的缺陷沿用首次修复时的配置。
-        </small>
-      ) : null}
-      {view.availableActions.includes('ADD_ITEMS') ? (
-        <AddSubmissionItems key={submission.id} view={view} />
+        <p className="collab-submission-config-note">
+          部署配置与工程同步。已开始修复的缺陷保留原配置。
+        </p>
       ) : null}
       {canSave ? (
         <form

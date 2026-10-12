@@ -23,6 +23,7 @@ export function ItemEditor({
   project,
   selectedEngineeringIds,
   testerUserId,
+  showHeading = true,
 }: {
   draft: ItemDraft;
   index: number;
@@ -31,6 +32,7 @@ export function ItemEditor({
   project: CatalogProject;
   selectedEngineeringIds: string[];
   testerUserId: string;
+  showHeading?: boolean;
 }) {
   const engineering =
     project.engineerings.find(({ id }) => id === draft.engineeringId) ??
@@ -43,17 +45,19 @@ export function ItemEditor({
   );
   return (
     <article className="collab-create-item">
-      <header>
-        <div>
-          <b>{String(index + 1).padStart(2, '0')}</b>
-          <h3>提测工程</h3>
-        </div>
-        {onRemove ? (
-          <button onClick={onRemove} type="button">
-            移除
-          </button>
-        ) : null}
-      </header>
+      {showHeading ? (
+        <header>
+          <div>
+            <b>{String(index + 1).padStart(2, '0')}</b>
+            <h3>提测工程</h3>
+          </div>
+          {onRemove ? (
+            <button onClick={onRemove} type="button">
+              移除
+            </button>
+          ) : null}
+        </header>
+      ) : null}
       <div className="collab-form__grid collab-form__grid--four">
         <label>
           <span>工程</span>

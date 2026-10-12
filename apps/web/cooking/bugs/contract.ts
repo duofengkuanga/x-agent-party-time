@@ -109,10 +109,12 @@ export const CreateLinkedBugsInputSchema = CreateBugInputBaseSchema.omit({
 
 export const UpdateBugReportInputSchema = CreateBugInputBaseSchema.extend({
   expectedVersion: z.number().int().positive(),
+  additionalSubmissionItemId: SubmissionItemIdSchema.optional(),
 }).superRefine(requireDisjointAttachments);
 
 export const AssignBugInputSchema = VersionedCookingMutationSchema.extend({
   submissionItemId: SubmissionItemIdSchema.nullable(),
+  additionalSubmissionItemId: SubmissionItemIdSchema.optional(),
 });
 
 export const RequestRepairInputSchema = VersionedCookingMutationSchema;

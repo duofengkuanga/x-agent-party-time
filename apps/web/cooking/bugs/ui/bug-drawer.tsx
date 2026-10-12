@@ -7,6 +7,7 @@ import { drawerTitle, bugLabel } from './board-model';
 import { UpdateBatchDetails } from './update-details';
 import { BugDetail } from './bug-detail';
 import { BugForm } from './bug-editor';
+import { BugIdentity } from './bug-identity';
 
 export function BugDrawer({
   drawer,
@@ -48,11 +49,16 @@ export function BugDrawer({
             : drawerTitle(drawer.mode, bug)
         }
         aria-modal="true"
-        className="collab-dialog collab-bug-drawer"
+        className={`collab-dialog collab-bug-drawer${drawer.mode === 'view' ? ' collab-bug-drawer--split' : ''}`}
         role="dialog"
       >
         <header className={viewing ? 'collab-bug-drawer__chrome' : undefined}>
-          {viewing ? (
+          {drawer.mode === 'view' && bug ? (
+            <div className="collab-bug-drawer__heading">
+              <h2>{bug.report.title}</h2>
+              <BugIdentity key={bug.id} bugId={bug.id} />
+            </div>
+          ) : viewing ? (
             <small>
               {drawer.mode === 'batch' ? '统一更新批次详情' : '缺陷详情'}
             </small>

@@ -68,9 +68,74 @@
 
 .collab-submission-projects {
   container-type: inline-size;
-  margin-top: 14px;
+  margin-top: 22px;
   max-width: 100%;
   min-width: 0;
+}
+
+.collab-submission-projects__heading {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.collab-submission-projects__heading h3 {
+  align-items: baseline;
+  display: flex;
+  font-size: 13px;
+  gap: 8px;
+  margin: 0;
+}
+
+.collab-submission-projects__heading h3 span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.collab-submission-projects__heading .collab-add-items-trigger {
+  background: transparent;
+  border: 1px solid var(--line);
+  font-size: 11px;
+  min-height: 30px;
+  padding: 5px 10px;
+  white-space: nowrap;
+}
+
+.collab-submission-config-note {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.7;
+  margin: 10px 0 0;
+}
+
+.collab-submission-header > .collab-form {
+  border-top: 1px solid var(--line);
+  margin-top: 20px;
+  padding-top: 16px;
+}
+
+.collab-submission-header > .collab-form > button {
+  justify-self: end;
+  font-size: 11px;
+  min-height: 32px;
+}
+
+.collab-submission-deployment {
+  display: grid;
+  gap: 4px;
+}
+
+.collab-submission-deployment small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.collab-submission-deployment code {
+  font-size: 10px;
+  overflow-wrap: anywhere;
 }
 
 .collab-submission-projects table {
@@ -84,11 +149,11 @@
 .collab-submission-projects th,
 .collab-submission-projects td {
   border: 1px solid var(--line);
-  padding: 6px 7px;
+  padding: 10px;
   text-align: left;
   min-width: 0;
   overflow-wrap: anywhere;
-  vertical-align: middle;
+  vertical-align: top;
   white-space: normal;
 }
 

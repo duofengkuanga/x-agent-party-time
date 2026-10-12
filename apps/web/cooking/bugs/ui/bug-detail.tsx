@@ -37,7 +37,6 @@ export function BugDetail({
   snapshot: CookingWorkspaceSnapshot;
 }) {
   const [detailView, setDetailView] = useState<'repair' | 'update'>('repair');
-  const [copied, setCopied] = useState(false);
   const [verificationFeedback, setVerificationFeedback] = useState('');
   const [verificationFiles, setVerificationFiles] = useState<File[]>([]);
   const { error, pending, run } = useWorkspaceMutation(onChanged);
@@ -103,9 +102,8 @@ export function BugDetail({
       data-detail-view={detailView}
       ref={detailBodyRef}
     >
-      <header className="collab-bug-detail-hero">
-        <div className="collab-bug-detail-hero__title">
-          <h2 title={bug.report.title}>{bug.report.title}</h2>
+      <aside className="collab-bug-detail-context" aria-label="缺陷资料">
+        <div className="collab-bug-detail-context__actions">
           {onEdit ? (
             <button onClick={onEdit} type="button">
               {bug.availableActions.includes('EDIT_REPORT')
@@ -168,278 +166,264 @@ export function BugDetail({
               </span>
             </Detail>
           ) : null}
-          <Detail label="缺陷 ID">
-            <span className="collab-bug-id">
-              <code>{bug.id}</code>
+        </dl>
+        {bug.relatedBugs.length ? (
+          <section className="collab-bug-detail-section" aria-label="关联缺陷">
+            <h3>关联缺陷</h3>
+            {bug.transferredAt ? (
+              <p>本单已关闭，原因：转交其他工程。此关闭不代表验收通过。</p>
+            ) : null}
+            {bug.collaborationLocked ? (
+              <p>前后端关联单分别处理与验收，不再转交或增加协作。</p>
+            ) : null}
+            {bug.relatedBugs.map((related, index) => (
+              <div key={related.id ?? `deleted-${index}`}>
+                {related.id ? (
+                  <button type="button" onClick={() => onOpen(related.id!)}>
+                    缺陷-{String(related.shortId).padStart(3, '0')} ·{' '}
+                    {related.title}
+                  </button>
+                ) : (
+                  <p>{related.title}（已删除）</p>
+                )}
+                <p>
+                  {related.engineeringName ?? '历史工程'} · {related.stageLabel}
+                </p>
+                {related.handoffText ? (
+                  <details>
+                    <summary>原单排查结果</summary>
+                    <p className="collab-handoff-text">{related.handoffText}</p>
+                  </details>
+                ) : null}
+              </div>
+            ))}
+          </section>
+        ) : null}
+      </aside>
+      <section className="collab-bug-detail-activity" aria-label="缺陷处理流程">
+        <nav aria-label="缺陷进展视图" className="collab-bug-detail-tabs">
+          <button
+            aria-current={detailView === 'repair' ? 'page' : undefined}
+            onClick={() => showDetailView('repair')}
+            type="button"
+          >
+            修复进展
+          </button>
+          <button
+            aria-current={detailView === 'update' ? 'page' : undefined}
+            onClick={() => showDetailView('update')}
+            type="button"
+          >
+            更新进展
+          </button>
+        </nav>
+        <div data-progress-kind="repair">
+          {repairProgress.length ? (
+            <RepairAttemptDetails
+              bug={bug}
+              pending={pending}
+              repair={repair}
+              run={run}
+              summaryOnly={summaryOnly}
+              timeline={repairProgress}
+            />
+          ) : (
+            <section className="collab-bug-detail-section">
+              <h3>修复进展</h3>
+              <p className="collab-bug-detail-empty">暂无修复记录</p>
+            </section>
+          )}
+        </div>
+        <BugRouting bug={bug} onChanged={onChanged} />
+        <div data-progress-kind="update">
+          {updateBatch ? (
+            <UpdateBatchDetails
+              batch={updateBatch}
+              embedded
+              onChanged={onChanged}
+              summaryOnly={summaryOnly}
+            />
+          ) : updateProgress.length ? (
+            <RepairAttemptDetails
+              bug={bug}
+              pending={pending}
+              repair={repair}
+              run={run}
+              summaryOnly={summaryOnly}
+              timeline={updateProgress}
+            />
+          ) : !pendingDelivery ? (
+            <section className="collab-bug-detail-section">
+              <h3>更新进展</h3>
+              <p className="collab-bug-detail-empty">暂无更新记录</p>
+            </section>
+          ) : null}
+        </div>
+        {pendingDelivery ? (
+          <section
+            className="collab-bug-detail-section"
+            data-progress-kind="update"
+          >
+            <h3>待统一更新</h3>
+            <p>
+              最新候选已记录；静默截止时间：
+              {formatDateTime(pendingDelivery.eligibleAt)}
+              （<UpdateCountdown eligibleAt={pendingDelivery.eligibleAt} />）
+            </p>
+          </section>
+        ) : null}
+        {bug.availableActions.includes('REQUEST_REPAIR') ? (
+          <section
+            className="collab-bug-detail-section"
+            data-progress-kind="repair"
+          >
+            <h3>修复操作</h3>
+            <button
+              disabled={pending}
+              onClick={() =>
+                run(
+                  () =>
+                    requestRepairAction(bug.id, {
+                      mutationId: createClientId(),
+                      expectedVersion: bug.version,
+                    }),
+                  '缺陷已提交自动修复。',
+                )
+              }
+              type="button"
+            >
+              开始自动修复
+            </button>
+          </section>
+        ) : null}
+        {pendingDelivery?.availableActions.includes('FREEZE_NOW') ? (
+          <section
+            className="collab-bug-detail-section"
+            data-progress-kind="update"
+          >
+            <h3>更新操作</h3>
+            <button
+              disabled={pending || !submissionItemId}
+              onClick={() =>
+                run(
+                  () =>
+                    freezeUpdateNowAction(submissionItemId!, {
+                      mutationId: createClientId(),
+                    }),
+                  '当前待更新缺陷已冻结为统一更新批次。',
+                )
+              }
+              type="button"
+            >
+              立即统一更新
+            </button>
+          </section>
+        ) : null}
+        {bug.availableActions.includes('REOPEN') ? (
+          <section
+            className="collab-bug-detail-section"
+            data-progress-kind="repair"
+          >
+            <h3>重新打开</h3>
+            <div className="collab-form collab-bug-verification">
+              <textarea
+                maxLength={8_000}
+                onChange={(event) =>
+                  setVerificationFeedback(event.target.value)
+                }
+                placeholder="描述重新出现的问题"
+                rows={3}
+                value={verificationFeedback}
+              />
+              <AttachmentPicker
+                files={verificationFiles}
+                inputRef={verificationFileInput}
+                onChange={setVerificationFiles}
+              />
               <button
-                aria-label="复制删除命令"
+                disabled={pending || !verificationFeedback.trim()}
                 onClick={() => {
-                  void navigator.clipboard.writeText(
-                    `xapt bugs delete ${bug.id}`,
+                  const formData = new FormData();
+                  formData.set('mutationId', createClientId());
+                  formData.set('expectedVersion', String(bug.version));
+                  formData.set('feedback', verificationFeedback);
+                  verificationFiles.forEach((file) =>
+                    formData.append('attachments', file),
                   );
-                  setCopied(true);
-                  window.setTimeout(() => setCopied(false), 1600);
+                  run(
+                    () => reopenBugAction(bug.id, formData),
+                    '缺陷已重新打开并进入修复。',
+                    () => {
+                      setVerificationFeedback('');
+                      setVerificationFiles([]);
+                      if (verificationFileInput.current)
+                        verificationFileInput.current.value = '';
+                    },
+                  );
                 }}
                 type="button"
               >
-                {copied ? '已复制' : '复制'}
+                重新打开
               </button>
-            </span>
-          </Detail>
-        </dl>
-      </header>
-      {bug.relatedBugs.length ? (
-        <section className="collab-bug-detail-section" aria-label="关联缺陷">
-          <h3>关联缺陷</h3>
-          {bug.transferredAt ? (
-            <p>本单已关闭，原因：转交其他工程。此关闭不代表验收通过。</p>
-          ) : null}
-          {bug.collaborationLocked ? (
-            <p>前后端关联单分别处理与验收，不再转交或增加协作。</p>
-          ) : null}
-          {bug.relatedBugs.map((related, index) => (
-            <div key={related.id ?? `deleted-${index}`}>
-              {related.id ? (
-                <button type="button" onClick={() => onOpen(related.id!)}>
-                  缺陷-{String(related.shortId).padStart(3, '0')} ·{' '}
-                  {related.title}
-                </button>
-              ) : (
-                <p>{related.title}（已删除）</p>
-              )}
-              <p>
-                {related.engineeringName ?? '历史工程'} · {related.stageLabel}
-              </p>
-              {related.handoffText ? (
-                <details>
-                  <summary>原单排查结果</summary>
-                  <p className="collab-handoff-text">{related.handoffText}</p>
-                </details>
-              ) : null}
             </div>
-          ))}
-        </section>
-      ) : null}
-      <nav aria-label="缺陷进展视图" className="collab-bug-detail-tabs">
-        <button
-          aria-current={detailView === 'repair' ? 'page' : undefined}
-          onClick={() => showDetailView('repair')}
-          type="button"
-        >
-          修复进展
-        </button>
-        <button
-          aria-current={detailView === 'update' ? 'page' : undefined}
-          onClick={() => showDetailView('update')}
-          type="button"
-        >
-          更新进展
-        </button>
-      </nav>
-      <div data-progress-kind="repair">
-        {repairProgress.length ? (
-          <RepairAttemptDetails
-            bug={bug}
-            pending={pending}
-            repair={repair}
-            run={run}
-            summaryOnly={summaryOnly}
-            timeline={repairProgress}
-          />
-        ) : (
-          <section className="collab-bug-detail-section">
-            <h3>修复进展</h3>
-            <p className="collab-bug-detail-empty">暂无修复记录</p>
-          </section>
-        )}
-      </div>
-      <BugRouting bug={bug} onChanged={onChanged} />
-      <div data-progress-kind="update">
-        {updateBatch ? (
-          <UpdateBatchDetails
-            batch={updateBatch}
-            embedded
-            onChanged={onChanged}
-            summaryOnly={summaryOnly}
-          />
-        ) : updateProgress.length ? (
-          <RepairAttemptDetails
-            bug={bug}
-            pending={pending}
-            repair={repair}
-            run={run}
-            summaryOnly={summaryOnly}
-            timeline={updateProgress}
-          />
-        ) : !pendingDelivery ? (
-          <section className="collab-bug-detail-section">
-            <h3>更新进展</h3>
-            <p className="collab-bug-detail-empty">暂无更新记录</p>
           </section>
         ) : null}
-      </div>
-      {pendingDelivery ? (
-        <section
-          className="collab-bug-detail-section"
-          data-progress-kind="update"
-        >
-          <h3>待统一更新</h3>
-          <p>
-            最新候选已记录；静默截止时间：
-            {formatDateTime(pendingDelivery.eligibleAt)}
-            （<UpdateCountdown eligibleAt={pendingDelivery.eligibleAt} />）
-          </p>
-        </section>
-      ) : null}
-      {bug.availableActions.includes('REQUEST_REPAIR') ? (
-        <section
-          className="collab-bug-detail-section"
-          data-progress-kind="repair"
-        >
-          <h3>修复操作</h3>
-          <button
-            disabled={pending}
-            onClick={() =>
-              run(
-                () =>
-                  requestRepairAction(bug.id, {
-                    mutationId: createClientId(),
-                    expectedVersion: bug.version,
-                  }),
-                '缺陷已提交自动修复。',
-              )
-            }
-            type="button"
+        {bug.availableActions.includes('RESTORE') ? (
+          <section
+            className="collab-bug-detail-section"
+            data-progress-kind="repair"
           >
-            开始自动修复
-          </button>
-        </section>
-      ) : null}
-      {pendingDelivery?.availableActions.includes('FREEZE_NOW') ? (
-        <section
-          className="collab-bug-detail-section"
-          data-progress-kind="update"
-        >
-          <h3>更新操作</h3>
-          <button
-            disabled={pending || !submissionItemId}
-            onClick={() =>
-              run(
-                () =>
-                  freezeUpdateNowAction(submissionItemId!, {
-                    mutationId: createClientId(),
-                  }),
-                '当前待更新缺陷已冻结为统一更新批次。',
-              )
-            }
-            type="button"
-          >
-            立即统一更新
-          </button>
-        </section>
-      ) : null}
-      {bug.availableActions.includes('REOPEN') ? (
-        <section
-          className="collab-bug-detail-section"
-          data-progress-kind="repair"
-        >
-          <h3>重新打开</h3>
-          <div className="collab-form collab-bug-verification">
-            <textarea
-              maxLength={8_000}
-              onChange={(event) => setVerificationFeedback(event.target.value)}
-              placeholder="描述重新出现的问题"
-              rows={3}
-              value={verificationFeedback}
-            />
-            <AttachmentPicker
-              files={verificationFiles}
-              inputRef={verificationFileInput}
-              onChange={setVerificationFiles}
-            />
+            <h3>恢复缺陷</h3>
+            <p>恢复后回到待修复，原始缺陷资料仍可继续编辑。</p>
             <button
-              disabled={pending || !verificationFeedback.trim()}
-              onClick={() => {
-                const formData = new FormData();
-                formData.set('mutationId', createClientId());
-                formData.set('expectedVersion', String(bug.version));
-                formData.set('feedback', verificationFeedback);
-                verificationFiles.forEach((file) =>
-                  formData.append('attachments', file),
-                );
+              disabled={pending}
+              onClick={() =>
                 run(
-                  () => reopenBugAction(bug.id, formData),
-                  '缺陷已重新打开并进入修复。',
-                  () => {
-                    setVerificationFeedback('');
-                    setVerificationFiles([]);
-                    if (verificationFileInput.current)
-                      verificationFileInput.current.value = '';
-                  },
-                );
-              }}
+                  () =>
+                    restoreBugAction(bug.id, {
+                      mutationId: createClientId(),
+                      expectedVersion: bug.version,
+                    }),
+                  '缺陷已恢复到待修复。',
+                )
+              }
               type="button"
             >
-              重新打开
+              恢复到待修复
             </button>
-          </div>
-        </section>
-      ) : null}
-      {bug.availableActions.includes('RESTORE') ? (
-        <section
-          className="collab-bug-detail-section"
-          data-progress-kind="repair"
-        >
-          <h3>恢复缺陷</h3>
-          <p>恢复后回到待修复，原始缺陷资料仍可继续编辑。</p>
-          <button
-            disabled={pending}
-            onClick={() =>
-              run(
-                () =>
-                  restoreBugAction(bug.id, {
-                    mutationId: createClientId(),
-                    expectedVersion: bug.version,
-                  }),
-                '缺陷已恢复到待修复。',
-              )
-            }
-            type="button"
+          </section>
+        ) : null}
+        {bug.availableActions.includes('UNARCHIVE') ? (
+          <section
+            className="collab-bug-detail-section"
+            data-progress-kind="repair"
           >
-            恢复到待修复
-          </button>
-        </section>
-      ) : null}
-      {bug.availableActions.includes('UNARCHIVE') ? (
-        <section
-          className="collab-bug-detail-section"
-          data-progress-kind="repair"
-        >
-          <h3>移出归档</h3>
-          <p>移出后仍保持已完成，并重新显示在看板中。</p>
-          <button
-            disabled={pending}
-            onClick={() =>
-              run(
-                () =>
-                  unarchiveBugAction(bug.id, {
-                    mutationId: createClientId(),
-                    expectedVersion: bug.version,
-                  }),
-                '缺陷已移出归档。',
-              )
-            }
-            type="button"
-          >
-            移出归档
-          </button>
-        </section>
-      ) : null}
-      {error ? (
-        <p className="collab-form__error" role="alert">
-          {error}
-        </p>
-      ) : null}
+            <h3>移出归档</h3>
+            <p>移出后仍保持已完成，并重新显示在看板中。</p>
+            <button
+              disabled={pending}
+              onClick={() =>
+                run(
+                  () =>
+                    unarchiveBugAction(bug.id, {
+                      mutationId: createClientId(),
+                      expectedVersion: bug.version,
+                    }),
+                  '缺陷已移出归档。',
+                )
+              }
+              type="button"
+            >
+              移出归档
+            </button>
+          </section>
+        ) : null}
+        {error ? (
+          <p className="collab-form__error" role="alert">
+            {error}
+          </p>
+        ) : null}
+      </section>
     </div>
   );
 }

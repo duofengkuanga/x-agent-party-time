@@ -6,6 +6,38 @@ setup:
   - click: '.auth-submit'
   - wait: { load: networkidle }
 cases:
+  - name: bug details keep title and id above two independently scrolling columns
+    steps:
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: 'button[aria-label^="待取消缺陷，"]'
+      - click: 'button[aria-label^="待取消缺陷，"]'
+      - wait: '.collab-bug-drawer--split'
+    assert:
+      - text: { sel: '.collab-bug-drawer__heading h2', equals: 待取消缺陷 }
+      - visible: '.collab-bug-drawer__heading .collab-bug-identity code'
+      - hidden: '.collab-bug-drawer__heading dl'
+      - text: { sel: '.collab-bug-detail-context', contains: 预期结果 }
+      - text: { sel: '.collab-bug-detail-context', contains: 实际结果 }
+      - eval: 'document.querySelector(".collab-bug-detail-context").getBoundingClientRect().right <= document.querySelector(".collab-bug-detail-activity").getBoundingClientRect().left + 1'
+      - eval: '[".collab-bug-detail-context", ".collab-bug-detail-activity"].every((selector) => getComputedStyle(document.querySelector(selector)).overflowY === "auto")'
+
+  - name: switching process tabs preserves the defect fields on the left
+    steps:
+      - click: '.collab-bug-detail-tabs button:last-child'
+    assert:
+      - visible: '.collab-bug-detail-activity > [data-progress-kind="update"]'
+      - hidden: '.collab-bug-detail-activity > [data-progress-kind="repair"]'
+      - visible: '.collab-bug-detail-context'
+      - text:
+          { sel: '.collab-bug-detail-context', contains: 待取消缺陷 的预期结果 }
+
+  - name: repair process and report editing remain reachable
+    steps:
+      - click: '.collab-bug-detail-tabs button:first-child'
+    assert:
+      - visible: '.collab-bug-detail-activity > [data-progress-kind="repair"]'
+      - visible: '.collab-bug-detail-context__actions button'
+
   - name: bug registration accepts a 4.1 MB screenshot
     steps:
       - open: __BASE_URL__/cooking/__SUBMISSION_ID__
@@ -63,6 +95,18 @@ cases:
     assert:
       - hidden: '#collab-bug-form'
       - count: { sel: 'button[aria-label^="网络中断保留草稿，"]', eq: 1 }
+
+  - name: tester can save an existing report as two linked engineering defects
+    steps:
+      - click: 'button[aria-label^="网络中断保留草稿，"]'
+      - click: '.collab-bug-detail-context__actions button'
+      - wait: '#collab-bug-form'
+      - click: '.collab-joint-choice input'
+      - click: 'button[form="collab-bug-form"]'
+      - wait: 1500
+    assert:
+      - hidden: '#collab-bug-form'
+      - count: { sel: 'button[aria-label^="网络中断保留草稿，"]', eq: 2 }
 
   - name: oversized attachment explains which file to replace in night theme
     steps:
@@ -162,7 +206,9 @@ cases:
           { sel: '[role="dialog"]', contains: 地块缺少定位数据，问题尚未解决。 }
       - text: { sel: '[role="dialog"]', contains: 确认三条地块的边界为空 }
       - text: { sel: '[role="dialog"]', contains: 核查边界数据并验证标签渲染 }
-      - hidden: '[role="dialog"] .collab-session-facts code'
+      - hidden: '[role="dialog"] .collab-session-overview code'
+      - eval: 'parseFloat(getComputedStyle(document.querySelector(".collab-routing-actions")).columnGap) >= 8'
+      - hidden: '.collab-repair-timeline .collab-session-overview'
 
   - name: manual transfer closes the source and queues a related backend bug
     steps:
@@ -428,6 +474,22 @@ cases:
     assert:
       - text: { sel: '[role="dialog"]', contains: 实际决定：仅允许这一次 }
 
+  - name: responsible developer can assign an existing defect to frontend and backend
+    steps:
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: 'button[aria-label^="待前后端分诊缺陷，"]'
+      - click: 'button[aria-label^="待前后端分诊缺陷，"]'
+      - click: '.collab-bug-detail-context__actions button'
+      - wait: '#collab-bug-form'
+      - click: '.collab-joint-choice input'
+      - click: 'button[form="collab-bug-form"]'
+      - wait: 1500
+    assert:
+      - hidden: '#collab-bug-form'
+      - count: { sel: 'button[aria-label^="待前后端分诊缺陷，"]', eq: 2 }
+      - visible: 'article[data-stage="WAITING_FOR_REPAIR"] button[aria-label^="待前后端分诊缺陷，前端"]'
+      - visible: 'article[data-stage="WAITING_FOR_REPAIR"] button[aria-label^="待前后端分诊缺陷，后端"]'
+
   - name: occupied environment shows explicit takeover confirmation and retains form on cancel
     steps:
       - open: __BASE_URL__/cooking/__SUBMISSION_ID__
@@ -498,15 +560,15 @@ cases:
       - text: { sel: '.collab-environment-notices', contains: 已暂停使用环境 }
       - text: { sel: '.collab-environment-notices', contains: 重新取得环境 }
 
-  - name: add engineering loads in a full width dialog with keyboard focus
+  - name: add engineering opens a compact dialog with keyboard focus
     steps:
       - click: 'button[aria-label="查看浏览器架构验收提测详情"]'
-      - click: '.collab-submission-header > button'
+      - click: '.collab-add-items-trigger'
       - wait: '.collab-add-items-dialog select'
     assert:
       - visible: '.collab-add-items-dialog[open]'
       - eval: 'document.querySelector(".collab-add-items-dialog").contains(document.activeElement)'
-      - eval: 'document.querySelector(".collab-add-items-dialog").getBoundingClientRect().width > 600'
+      - eval: 'document.querySelector(".collab-add-items-dialog").getBoundingClientRect().width <= 620'
       - eval: '[...document.querySelector(".collab-add-items-dialog select").options].filter((option) => !option.disabled).length === 1'
       - text: { sel: '.collab-add-items-dialog', contains: 浏览器追加工程 }
 
@@ -528,7 +590,7 @@ cases:
     steps:
       - press: Escape
       - click: 'button[aria-label="切换暗夜主题"]'
-      - click: '.collab-submission-header > button'
+      - click: '.collab-add-items-trigger'
       - wait: '.collab-add-items-dialog select'
     assert:
       - visible: '.collab-shell[data-theme="night"] .collab-add-items-dialog[open]'
@@ -550,10 +612,7 @@ cases:
           { sel: 'table[aria-label="提测工程配置"]', contains: feature/extra }
       - eval: 'document.querySelectorAll("article.collab-bug-card").length === window.addItemsBugCount'
 
-  - name: no remaining engineering shows an empty state and disables submission
-    steps:
-      - click: '.collab-submission-header > button'
-      - wait: 1000
+  - name: no remaining engineering hides the add button
     assert:
-      - text: { sel: '.collab-add-items-dialog', contains: 没有可追加的工程 }
-      - eval: 'document.querySelector(".collab-add-items-dialog button[type=submit]").disabled'
+      - hidden: '.collab-add-items-trigger'
+      - hidden: '.collab-add-items-dialog'

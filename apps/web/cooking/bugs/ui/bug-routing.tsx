@@ -53,54 +53,60 @@ export function BugRouting({
         </select>
       </label>
       {confirmation ? (
-        <div role="group" aria-label="确认工程流转">
+        <div
+          role="group"
+          aria-label="确认工程流转"
+          className="collab-routing-confirmation"
+        >
           <p>
             {confirmation === 'TRANSFER'
               ? '确认后将关闭本单，并创建关联新单自动排队修复。关闭不代表验收通过。'
               : '确认后将保留本单，并创建另一工程的关联单自动排队修复。原会话后续由工程负责人手动继续。'}
           </p>
-          <button
-            type="button"
-            disabled={pending}
-            onClick={() => setConfirmation(null)}
-          >
-            取消
-          </button>
-          <button
-            type="button"
-            disabled={
-              pending ||
-              Boolean(
-                confirmation === 'TRANSFER'
-                  ? bug.routing.transferReason
-                  : bug.routing.collaborationReason,
-              )
-            }
-            onClick={() =>
-              run(
-                () =>
-                  routeBugAction(bug.id, {
-                    mutationId,
-                    expectedVersion: bug.version,
-                    targetSubmissionItemId: targetId,
-                    kind: confirmation,
-                  }),
-                confirmation === 'TRANSFER'
-                  ? '原单已转交关闭，新单已进入修复队列。'
-                  : '已创建协作单并进入修复队列，原单保留。',
-                () => setConfirmation(null),
-              )
-            }
-          >
-            {pending
-              ? '处理中…'
-              : confirmation === 'TRANSFER'
-                ? '确认转交'
-                : '确认增加协作'}
-          </button>
+          <div className="collab-routing-actions">
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => setConfirmation(null)}
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              disabled={
+                pending ||
+                Boolean(
+                  confirmation === 'TRANSFER'
+                    ? bug.routing.transferReason
+                    : bug.routing.collaborationReason,
+                )
+              }
+              onClick={() =>
+                run(
+                  () =>
+                    routeBugAction(bug.id, {
+                      mutationId,
+                      expectedVersion: bug.version,
+                      targetSubmissionItemId: targetId,
+                      kind: confirmation,
+                    }),
+                  confirmation === 'TRANSFER'
+                    ? '原单已转交关闭，新单已进入修复队列。'
+                    : '已创建协作单并进入修复队列，原单保留。',
+                  () => setConfirmation(null),
+                )
+              }
+            >
+              {pending
+                ? '处理中…'
+                : confirmation === 'TRANSFER'
+                  ? '确认转交'
+                  : '确认增加协作'}
+            </button>
+          </div>
         </div>
       ) : (
-        <div>
+        <div className="collab-routing-actions">
           <button
             type="button"
             disabled={pending || Boolean(bug.routing.transferReason)}

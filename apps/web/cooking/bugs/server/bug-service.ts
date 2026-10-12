@@ -339,9 +339,11 @@ export class BugService {
         if (actorUserId !== access.tester_user_id)
           throw new PlatformError('PERMISSION_DENIED', '只有测试负责人可以编辑缺陷报告');
         this.requireEditableReport(bug, parsed.expectedVersion);
-        if (bug.collaborationLocked && parsed.submissionItemId !== bug.submissionItemId)
-          throw new PlatformError('INVALID_TRANSITION', '前后端关联单不能调整工程归属');
-        this.queries.requireItem(bug.submissionId, parsed.submissionItemId);
+        this.requireAssignment(
+          bug,
+          parsed.submissionItemId,
+          parsed.additionalSubmissionItemId,
+        );
         const attachmentIds = reportAttachmentIds(parsed);
         requireBindableFiles(this.db, actorUserId, attachmentIds, bug.id);
         const report = normalizedReport(parsed);
@@ -364,6 +366,12 @@ export class BugService {
         );
         if (update.changes !== 1) throw staleBug();
         this.replaceReportAttachments(bug.id, parsed, now);
+        const relatedBugId = this.addAssignedEngineering(
+          actorUserId,
+          bug.id,
+          now,
+          parsed.additionalSubmissionItemId,
+        );
         const previousAttachmentIds = reportAttachmentIds(bug.report);
         return {
           action: 'BUG_REPORT_UPDATED',
@@ -378,6 +386,7 @@ export class BugService {
           ),
           details: {
             submissionItemId: parsed.submissionItemId,
+            relatedBugId,
             attachmentCount: attachmentIds.length,
           },
         };
@@ -404,9 +413,11 @@ export class BugService {
           !this.queries.isAnyResponsible(actorUserId, bug.submissionId)
         )
           throw new PlatformError('PERMISSION_DENIED', '当前成员不能分诊此缺陷');
-        if (bug.collaborationLocked && parsed.submissionItemId !== bug.submissionItemId)
-          throw new PlatformError('INVALID_TRANSITION', '前后端关联单不能调整工程归属');
-        this.queries.requireItem(bug.submissionId, parsed.submissionItemId);
+        this.requireAssignment(
+          bug,
+          parsed.submissionItemId,
+          parsed.additionalSubmissionItemId,
+        );
         const update = this.db.run(
           `UPDATE cooking_bug
              SET submission_item_id = ?, version = version + 1, updated_at = ?
@@ -414,12 +425,68 @@ export class BugService {
           [parsed.submissionItemId, now, bug.id, parsed.expectedVersion],
         );
         if (update.changes !== 1) throw staleBug();
+        const relatedBugId = this.addAssignedEngineering(
+          actorUserId,
+          bug.id,
+          now,
+          parsed.additionalSubmissionItemId,
+        );
         return {
           action: 'BUG_ASSIGNED',
-          details: { submissionItemId: parsed.submissionItemId },
+          details: { submissionItemId: parsed.submissionItemId, relatedBugId },
         };
       },
     );
+  }
+
+  private requireAssignment(
+    bug: Bug,
+    itemId: string | null,
+    additionalItemId?: string,
+  ): void {
+    if (bug.collaborationLocked && (itemId !== bug.submissionItemId || additionalItemId))
+      throw new PlatformError('INVALID_TRANSITION', '前后端关联单不能调整工程归属');
+    const primary = this.queries.requireItem(bug.submissionId, itemId);
+    if (!additionalItemId) return;
+    if (bug.stage !== 'WAITING_FOR_REPAIR' || bug.archivedAt || bug.transferredAt)
+      throw new PlatformError('INVALID_TRANSITION', '只有待修复缺陷可以调整为前端＋后端');
+    const additional = this.queries.requireItem(bug.submissionId, additionalItemId)!;
+    if (
+      !primary ||
+      primary.id === additional.id ||
+      primary.engineering_type === additional.engineering_type
+    )
+      throw new PlatformError('VALIDATION_FAILED', '请选择一个前端工程和一个后端工程');
+  }
+
+  private addAssignedEngineering(
+    actorUserId: string,
+    bugId: string,
+    now: string,
+    itemId?: string,
+  ): string | undefined {
+    if (!itemId) return;
+    const source = this.queries.requireBug(bugId);
+    const targetId = this.insertBug(
+      actorUserId,
+      source.submissionId,
+      { ...source.report, submissionItemId: itemId },
+      now,
+    );
+    this.db.run('UPDATE cooking_bug SET collaboration_locked = 1 WHERE id IN (?, ?)', [
+      bugId,
+      targetId,
+    ]);
+    new BugRelations(this.db).add({
+      id: this.createId(),
+      source,
+      target: this.queries.requireBug(targetId),
+      kind: 'JOINT',
+      handoffText: '',
+      actorUserId,
+      now,
+    });
+    return targetId;
   }
 
   requestRepair(

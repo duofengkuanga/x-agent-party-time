@@ -28,7 +28,7 @@ export function AddSubmissionItems({
   const router = useRouter();
   const trigger = useRef<HTMLButtonElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
-  const heading = useRef<HTMLHeadingElement>(null);
+  const closeButton = useRef<HTMLButtonElement>(null);
   const [opened, setOpened] = useState(false);
   const [pending, setPending] = useState(false);
   const [project, setProject] = useState<
@@ -43,9 +43,12 @@ export function AddSubmissionItems({
     if (!opened) return;
     const element = dialog.current;
     element?.showModal();
-    heading.current?.focus();
+    closeButton.current?.focus();
     return () => element?.close();
   }, [opened]);
+  useEffect(() => {
+    if (project) closeButton.current?.focus();
+  }, [project]);
 
   async function open() {
     setOpened(true);
@@ -113,6 +116,7 @@ export function AddSubmissionItems({
   return (
     <>
       <button
+        className="collab-add-items-trigger"
         ref={trigger}
         type="button"
         disabled={pending || view.items.length >= 20}
@@ -134,15 +138,15 @@ export function AddSubmissionItems({
               }}
             >
               <header>
-                <h2 id="add-submission-items-title" ref={heading} tabIndex={-1}>
-                  追加提测工程
-                </h2>
+                <h2 id="add-submission-items-title">追加工程</h2>
                 <button
+                  ref={closeButton}
+                  aria-label="关闭追加工程"
                   type="button"
                   disabled={pending}
                   onClick={() => setOpened(false)}
                 >
-                  关闭
+                  ×
                 </button>
               </header>
               <form
@@ -163,6 +167,7 @@ export function AddSubmissionItems({
                 {project && draft ? (
                   <fieldset disabled={pending}>
                     <ItemEditor
+                      showHeading={false}
                       draft={draft}
                       index={view.items.length}
                       project={project}
@@ -180,6 +185,13 @@ export function AddSubmissionItems({
                 {error ? <p role="alert">{error}</p> : null}
                 <EnvironmentConflicts conflicts={conflicts} />
                 <div className="collab-dialog__actions">
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={() => setOpened(false)}
+                  >
+                    取消
+                  </button>
                   {!draft && error ? (
                     <button
                       type="button"
