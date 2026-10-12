@@ -48,6 +48,11 @@ This project is indexed by GitNexus as **x-agent-party-time** (2039 symbols, 674
 
 - 不创建、不维护 `CLAUDE.md`、`.claude/` 或其他 Claude Code 兼容副本。
 
+## Git 交付
+
+- 本项目默认直接在 `main` 开发、Commit 并 Push 到 `origin/main`，无需另开分支。用户已授权此流程，覆盖用户级工程边界中仅因处于 `main` 而暂停交付的默认规则；其他工程边界继续适用。
+- 交付前核对当前分支和工作区；交付完成以 `origin/main` 已包含本轮提交为准。
+
 ## 开发期不兼容策略
 
 - 除非用户明确指出存在生产数据、已发布协议或外部系统契约，否则直接修正到最新领域模型、Schema、协议、路由和行为，不实现向后兼容。
