@@ -19,6 +19,8 @@ import {
 } from './submission-items';
 import {
   CreateSubmissionInputSchema,
+  AddSubmissionItemsInputSchema,
+  type AddSubmissionItemsInput,
   TestSubmissionSchema,
   UpdateSubmissionInputSchema,
   EnvironmentCommandSchema,
@@ -184,6 +186,151 @@ export class SubmissionService {
     input: CreateSubmissionInput,
   ): EnvironmentConflict[] {
     return environmentConflictsForSubmission(this.db, actorUserId, projectId, input);
+  }
+
+  addItems(
+    actorUserId: string,
+    submissionId: string,
+    input: AddSubmissionItemsInput,
+  ): TestSubmission {
+    const parsed = AddSubmissionItemsInputSchema.parse(input);
+    const takeovers = parsed.environmentTakeovers ?? [];
+    if (
+      new Set(takeovers.map((value) => value.environmentId)).size !== takeovers.length ||
+      takeovers.some(
+        (value) =>
+          !parsed.items.some((item) => item.environmentId === value.environmentId),
+      )
+    )
+      throw new PlatformError('VALIDATION_FAILED', '环境切换确认与追加工程不匹配');
+    const invalidations = new Map<string, number>();
+    const result = this.writes.run({
+      mutationId: parsed.mutationId,
+      actorUserId,
+      operation: 'SUBMISSION_ADD_ITEMS',
+      resourceType: 'TEST_SUBMISSION',
+      resultSchema: TestSubmissionSchema,
+      submissionId: (result) => result.id,
+      perform: () => {
+        const current = this.requireSubmissionAccess(actorUserId, submissionId);
+        const existing = this.db.all<SubmissionItemRow & { position: number }>(
+          'SELECT * FROM cooking_submission_item WHERE submission_id = ? ORDER BY position',
+          submissionId,
+        );
+        if (
+          current.membership_role !== 'OWNER' &&
+          current.created_by_user_id !== actorUserId &&
+          current.tester_user_id !== actorUserId &&
+          !existing.some((item) => item.responsible_user_id === actorUserId)
+        )
+          throw new PlatformError(
+            'PERMISSION_DENIED',
+            '只有提测负责人、创建人或项目所有者可以追加工程',
+          );
+        if (current.status !== 'ACTIVE')
+          throw new PlatformError('INVALID_TRANSITION', '已关闭提测单不能追加工程');
+        if (current.version !== parsed.expectedVersion)
+          throw new PlatformError('STALE_STATE', '提测单已更新，请刷新后重试');
+        if (existing.length + parsed.items.length > 20)
+          throw new PlatformError('VALIDATION_FAILED', '一张提测单最多包含二十个工程');
+        const engineeringIds = new Set(existing.map((item) => item.engineering_id));
+        const environmentIds = new Set(existing.map((item) => item.environment_id));
+        const now = this.now().toISOString();
+        const itemIds: string[] = [];
+        for (const [index, item] of parsed.items.entries()) {
+          if (
+            engineeringIds.has(item.engineeringId) ||
+            environmentIds.has(item.environmentId)
+          )
+            throw new PlatformError(
+              'VALIDATION_FAILED',
+              '同一工程或环境在一张提测单中只能出现一次',
+            );
+          engineeringIds.add(item.engineeringId);
+          environmentIds.add(item.environmentId);
+          if (item.responsibleUserId === current.tester_user_id)
+            throw new PlatformError(
+              'VALIDATION_FAILED',
+              '测试负责人不能同时担任提测项负责人',
+            );
+          const source = snapshotItemSource(this.db, current.project_id, item);
+          const itemId = this.createId();
+          insertItem(
+            this.db,
+            submissionId,
+            itemId,
+            (existing.at(-1)?.position ?? -1) + index + 1,
+            source,
+            item.targetBranch,
+            now,
+          );
+          const previous = releaseEnvironmentForTakeover(
+            this.db,
+            actorUserId,
+            item.environmentId,
+            takeovers.find((value) => value.environmentId === item.environmentId),
+          );
+          this.db.run(
+            `INSERT INTO cooking_submission_environment_lock(
+            environment_id, engineering_id, submission_id, submission_item_id, created_at, deployment_confirmed
+          ) VALUES (?, ?, ?, ?, ?, ?)`,
+            [
+              item.environmentId,
+              item.engineeringId,
+              submissionId,
+              itemId,
+              now,
+              previous ? 0 : 1,
+            ],
+          );
+          for (const observer of environmentObservers(
+            this.db,
+            item.environmentId,
+            submissionId,
+          ))
+            invalidations.set(observer, 0);
+          itemIds.push(itemId);
+        }
+        for (const observer of invalidations.keys())
+          invalidations.set(observer, this.writes.bumpRevision(observer, now));
+        const stored = this.db.get<SubmissionRow>(
+          `UPDATE cooking_test_submission
+          SET version = version + 1, workspace_revision = workspace_revision + 1, updated_at = ?
+          WHERE id = ? AND version = ? RETURNING *`,
+          now,
+          submissionId,
+          parsed.expectedVersion,
+        );
+        if (!stored) throw new PlatformError('STALE_STATE', '提测单已更新，请刷新后重试');
+        return {
+          result: mapSubmission(stored),
+          resourceId: submissionId,
+          audit: {
+            projectId: current.project_id,
+            action: 'SUBMISSION_ITEMS_ADDED',
+            details: { itemIds, environmentTakeovers: takeovers },
+          },
+        };
+      },
+    });
+    for (const [id, revision] of invalidations)
+      this.writes.publishInvalidation(id, revision);
+    return result;
+  }
+
+  addedItemConflicts(
+    actorUserId: string,
+    submissionId: string,
+    input: AddSubmissionItemsInput,
+  ): EnvironmentConflict[] {
+    const current = this.requireSubmissionAccess(actorUserId, submissionId);
+    const parsed = AddSubmissionItemsInputSchema.parse(input);
+    return environmentConflictsForSubmission(this.db, actorUserId, current.project_id, {
+      ...parsed,
+      title: current.title,
+      requirementDescription: current.requirement_description,
+      testerUserId: current.tester_user_id,
+    });
   }
 
   changeEnvironment(

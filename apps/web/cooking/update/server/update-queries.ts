@@ -287,11 +287,13 @@ export class UpdateQueries {
   candidates(submissionItemId: string): CandidateRow[] {
     return this.db.all<CandidateRow>(
       `SELECT bug.id bug_id, bug.short_id, bug.title,
+                deployment.deployment_json,
                 context.pending_commits_json,
                 context.pending_manual_operations_json,
                 context.last_candidate_at
          FROM cooking_bug bug
          JOIN cooking_bug_repair_context context ON context.bug_id = bug.id
+         JOIN cooking_bug_deployment deployment ON deployment.bug_id = bug.id
          WHERE bug.submission_item_id = ?
            AND bug.stage = 'WAITING_FOR_UPDATE'
            AND context.last_candidate_at IS NOT NULL

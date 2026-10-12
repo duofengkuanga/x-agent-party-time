@@ -19,7 +19,7 @@ afterEach(async () => {
 });
 
 describe('开发数据库准备', () => {
-  test('重建 Schema 版本不匹配的 .scratch 开发数据', async () => {
+  test('未知版本保留开发数据并明确失败', async () => {
     await mkdir(scratchRoot, { recursive: true });
     const home = await mkdtemp(join(scratchRoot, 'prepare-development-'));
     temporaryDirectories.push(home);
@@ -28,27 +28,26 @@ describe('开发数据库准备', () => {
 
     const oldDatabase = new Database(paths.database, { create: true });
     oldDatabase.exec('CREATE TABLE stale_data(id TEXT PRIMARY KEY) STRICT');
-    oldDatabase.exec(`PRAGMA user_version = ${SERVER_SCHEMA_VERSION - 1}`);
+    oldDatabase.exec('PRAGMA user_version = 20');
     oldDatabase.close();
 
-    expect(prepareDevelopmentDatabase({ AGENT_PARTY_TIME_HOME: home })).toEqual({
-      database: paths.database,
-      reset: true,
-    });
+    expect(() => prepareDevelopmentDatabase({ AGENT_PARTY_TIME_HOME: home })).toThrow(
+      '数据已保留',
+    );
 
     const currentDatabase = new Database(paths.database, { readonly: true });
     try {
       expect(
         currentDatabase.query<{ user_version: number }, []>('PRAGMA user_version').get()
           ?.user_version,
-      ).toBe(SERVER_SCHEMA_VERSION);
+      ).toBe(20);
       expect(
         currentDatabase
           .query<{ name: string }, []>(
             "SELECT name FROM sqlite_master WHERE name = 'stale_data'",
           )
           .get(),
-      ).toBeNull();
+      ).toEqual({ name: 'stale_data' });
     } finally {
       currentDatabase.close();
     }

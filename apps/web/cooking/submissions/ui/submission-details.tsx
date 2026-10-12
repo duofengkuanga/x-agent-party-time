@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import type { JsonValue } from '@agent-party-time/execution-contract';
 import { type CookingWorkspaceSnapshot } from '@/cooking/workspace/contract';
 import { CleanupInteractionPanel } from './cleanup-interaction';
+import { AddSubmissionItems } from './add-submission-items';
 
 export function SubmissionDetails({
   onResolveCleanupInteraction,
@@ -143,6 +144,9 @@ export function SubmissionDetails({
                           }`
                         : ''}
                     </span>
+                    {item.technical?.deployment.kind === 'LOCAL_SCRIPT' ? (
+                      <small>{item.technical.deployment.command}</small>
+                    ) : null}
                     {cleanup ? (
                       <small>清理：{cleanup.presentation.statusLabel}</small>
                     ) : null}
@@ -172,6 +176,15 @@ export function SubmissionDetails({
           </tbody>
         </table>
       </div>
+      {submission.status === 'ACTIVE' &&
+      view.items.some((item) => item.technical) ? (
+        <small>
+          部署配置读取工程当前设置；已开始修复的缺陷沿用首次修复时的配置。
+        </small>
+      ) : null}
+      {view.availableActions.includes('ADD_ITEMS') ? (
+        <AddSubmissionItems key={submission.id} view={view} />
+      ) : null}
       {canSave ? (
         <form
           className="collab-form"

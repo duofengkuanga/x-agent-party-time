@@ -17,6 +17,7 @@ export type ItemSourceRow = {
 };
 
 export type CandidateRow = {
+  deployment_json: string;
   bug_id: string;
   short_id: number;
   title: string;

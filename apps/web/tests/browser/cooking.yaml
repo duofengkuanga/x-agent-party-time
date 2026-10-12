@@ -497,3 +497,63 @@ cases:
     assert:
       - text: { sel: '.collab-environment-notices', contains: 已暂停使用环境 }
       - text: { sel: '.collab-environment-notices', contains: 重新取得环境 }
+
+  - name: add engineering loads in a full width dialog with keyboard focus
+    steps:
+      - click: 'button[aria-label="查看浏览器架构验收提测详情"]'
+      - click: '.collab-submission-header > button'
+      - wait: '.collab-add-items-dialog select'
+    assert:
+      - visible: '.collab-add-items-dialog[open]'
+      - eval: 'document.querySelector(".collab-add-items-dialog").contains(document.activeElement)'
+      - eval: 'document.querySelector(".collab-add-items-dialog").getBoundingClientRect().width > 600'
+      - eval: '[...document.querySelector(".collab-add-items-dialog select").options].filter((option) => !option.disabled).length === 1'
+      - text: { sel: '.collab-add-items-dialog', contains: 浏览器追加工程 }
+
+  - name: invalid added engineering shows an error and retains its draft
+    steps:
+      - fill: { sel: '.collab-add-items-dialog input', text: '   ' }
+      - click: '.collab-add-items-dialog button[type="submit"]'
+      - wait: '.collab-add-items-dialog [role="alert"]'
+    assert:
+      - text:
+          {
+            sel: '.collab-add-items-dialog [role="alert"]',
+            contains: 提交内容不完整,
+          }
+      - visible: '.collab-add-items-dialog select'
+      - eval: '!document.querySelector(".collab-add-items-dialog button[type=submit]").disabled'
+
+  - name: add engineering remains reachable in night theme and closes with Escape
+    steps:
+      - press: Escape
+      - click: 'button[aria-label="切换暗夜主题"]'
+      - click: '.collab-submission-header > button'
+      - wait: '.collab-add-items-dialog select'
+    assert:
+      - visible: '.collab-shell[data-theme="night"] .collab-add-items-dialog[open]'
+      - eval: 'getComputedStyle(document.querySelector(".collab-add-items-dialog form")).overflowY === "auto"'
+      - eval: 'document.querySelector(".collab-add-items-dialog button[type=submit]").getBoundingClientRect().bottom <= innerHeight'
+
+  - name: adding engineering preserves existing rows and bugs
+    steps:
+      - eval: 'window.addItemsBugCount = document.querySelectorAll("article.collab-bug-card").length; true'
+      - fill: { sel: '.collab-add-items-dialog input', text: feature/extra }
+      - click: '.collab-add-items-dialog button[type="submit"]'
+      - wait: 1500
+    assert:
+      - hidden: '.collab-add-items-dialog'
+      - count: { sel: 'table[aria-label="提测工程配置"] tbody tr', eq: 3 }
+      - text:
+          { sel: 'table[aria-label="提测工程配置"]', contains: 浏览器追加工程 }
+      - text:
+          { sel: 'table[aria-label="提测工程配置"]', contains: feature/extra }
+      - eval: 'document.querySelectorAll("article.collab-bug-card").length === window.addItemsBugCount'
+
+  - name: no remaining engineering shows an empty state and disables submission
+    steps:
+      - click: '.collab-submission-header > button'
+      - wait: 1000
+    assert:
+      - text: { sel: '.collab-add-items-dialog', contains: 没有可追加的工程 }
+      - eval: 'document.querySelector(".collab-add-items-dialog button[type=submit]").disabled'

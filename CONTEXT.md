@@ -13,11 +13,11 @@ _Avoid_: Workspace、团队空间
 _Avoid_: Repository、代码库
 
 **Test Submission**:
-一次已经确定参与者、工程、目标分支、环境和部署配置的测试交付周期。
+一次已经确定参与者、工程、目标分支和环境的测试交付周期；活动期间可以追加工程。
 _Avoid_: Test Run、测试任务
 
 **Submission Item**:
-Test Submission 中某个 Engineering 的执行快照，固定该工程本次交付使用的负责人、Binding、目标分支、环境和部署方式。
+Test Submission 中某个 Engineering 的交付配置，确定负责人、Binding、目标分支和环境；活动提测中的部署方式读取环境当前配置，Bug 首次开始修复时固定其后续交付使用的部署方式。
 _Avoid_: Engineering、子任务
 
 ## 本机执行
@@ -93,7 +93,7 @@ _Avoid_: Issue、Ticket
 _Avoid_: Execution、Repair Task
 
 **Update Batch**:
-同一 Submission Item 中一组待更新 Bug 在一个冻结时刻形成的原子集成、Push 和部署单位。
+同一 Submission Item 中使用相同部署配置的一组待更新 Bug 在一个冻结时刻形成的原子集成、Push 和部署单位。
 _Avoid_: Deployment、Release
 
 **Verification**:

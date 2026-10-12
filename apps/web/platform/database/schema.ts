@@ -2,10 +2,11 @@ import type { Database } from 'bun:sqlite';
 import { PlatformError } from '@/platform/errors';
 import { PLATFORM_SCHEMA } from './platform-schema';
 import { COOKING_SCHEMA } from './cooking-schema';
+import { BUG_DEPLOYMENT_SCHEMA } from './bug-deployment-schema';
 
-export const SERVER_SCHEMA_VERSION = 26;
+export const SERVER_SCHEMA_VERSION = 27;
 
-const SCHEMA = PLATFORM_SCHEMA + COOKING_SCHEMA;
+const SCHEMA = PLATFORM_SCHEMA + COOKING_SCHEMA + BUG_DEPLOYMENT_SCHEMA;
 
 export function initializeSchema(database: Database): void {
   database.exec('PRAGMA foreign_keys = ON');
@@ -17,6 +18,20 @@ export function initializeSchema(database: Database): void {
     .get();
   const currentVersion = Number(versionRow?.user_version ?? 0);
   if (currentVersion === SERVER_SCHEMA_VERSION) return;
+
+  if (currentVersion === 26) {
+    database.transaction(() => {
+      database.exec(BUG_DEPLOYMENT_SCHEMA);
+      database.exec(`INSERT INTO cooking_bug_deployment(bug_id, deployment_json)
+        SELECT bug.id, item.deployment_json
+        FROM cooking_bug bug
+        JOIN cooking_submission_item item ON item.id = bug.submission_item_id
+        WHERE bug.report_locked_at IS NOT NULL
+           OR EXISTS (SELECT 1 FROM cooking_bug_repair_context context WHERE context.bug_id = bug.id)`);
+      database.exec(`PRAGMA user_version = ${SERVER_SCHEMA_VERSION}`);
+    })();
+    return;
+  }
 
   if (currentVersion !== 0) throw schemaMismatch(currentVersion, SERVER_SCHEMA_VERSION);
 
@@ -39,6 +54,6 @@ export function initializeSchema(database: Database): void {
 function schemaMismatch(current: number, expected: number): PlatformError {
   return new PlatformError(
     'SCHEMA_VERSION_MISMATCH',
-    `Server 数据库版本不匹配（当前 ${current}，需要 ${expected}）。当前处于开发阶段，请停止服务并清空 Server 数据目录后重试。`,
+    `Server 数据库版本不匹配（当前 ${current}，需要 ${expected}）。数据已保留，请先备份并提供对应版本的迁移方案。`,
   );
 }

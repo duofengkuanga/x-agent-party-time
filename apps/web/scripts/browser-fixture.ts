@@ -1,5 +1,6 @@
 import { createCooking } from '@/cooking/runtime/create-cooking';
 import { deliveryProject } from '@/cooking/testing/project';
+import { engineeringScenario } from '@/cooking/testing/scenario';
 import { openDatabase } from '@/platform/database';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
@@ -56,6 +57,15 @@ export async function seedBrowserFixture(home: string): Promise<BrowserFixture> 
       description: '覆盖路由、Action、附件和缺陷生命周期交互',
     });
     const { tester, developer } = users;
+    engineeringScenario(db, users.owner.id, project.id, {
+      name: '浏览器追加工程',
+      type: 'FRONTEND',
+      identifier: 'browser-extra',
+      environment: '追加测试环境',
+      deployment: { kind: 'LOCAL_SCRIPT', command: 'pnpm run deploy:84' },
+      repository: 'https://example.com/browser-extra.git',
+      developers: { developer: { userId: developer.id, runnerId: paired.runner.id } },
+    });
     const item = items[0]!;
 
     const { executions, bugs, lifecycle } = createCooking(db);

@@ -134,7 +134,7 @@ describe('Server SQLite schema', () => {
     } catch (error) {
       expect(error).toBeInstanceOf(PlatformError);
       expect((error as PlatformError).code).toBe('SCHEMA_VERSION_MISMATCH');
-      expect((error as Error).message).toContain('清空 Server 数据目录');
+      expect((error as Error).message).toContain('数据已保留');
     }
   });
 

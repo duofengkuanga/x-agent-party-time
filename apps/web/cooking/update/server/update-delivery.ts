@@ -182,7 +182,6 @@ export class UpdateDelivery {
       !environmentOwned(this.db, submissionItemId)
     )
       return undefined;
-    const deployment = DeploymentMethodSchema.parse(JSON.parse(source.deployment_json));
     const pending = this.db.get(
       `SELECT last_candidate_at, eligible_at
          FROM cooking_pending_delivery WHERE submission_item_id = ?`,
@@ -190,13 +189,23 @@ export class UpdateDelivery {
     ) as { last_candidate_at: string; eligible_at: string } | undefined;
     if (!pending || (requireDue && pending.eligible_at > now)) return undefined;
     if (this.queries.activeBatch(submissionItemId)) return undefined;
-    const candidates = this.queries.candidates(submissionItemId);
-    if (!candidates.length) {
+    const available = this.queries.candidates(submissionItemId);
+    if (!available.length) {
       this.db.run('DELETE FROM cooking_pending_delivery WHERE submission_item_id = ?', [
         submissionItemId,
       ]);
       return undefined;
     }
+    const deployment = DeploymentMethodSchema.parse(
+      JSON.parse(available[0]!.deployment_json),
+    );
+    const deploymentJson = JSON.stringify(deployment);
+    const candidates = available.filter(
+      (candidate) =>
+        JSON.stringify(
+          DeploymentMethodSchema.parse(JSON.parse(candidate.deployment_json)),
+        ) === deploymentJson,
+    );
     const batchId = this.createId();
     const attemptId = this.createId();
     const executionId = this.createId();
@@ -219,15 +228,7 @@ export class UpdateDelivery {
            active_execution_id, session_id, deployment_json, frozen_at,
            created_at, updated_at
          ) VALUES (?, ?, ?, 'READY', 1, NULL, NULL, ?, ?, ?, ?)`,
-      [
-        batchId,
-        source.submission_id,
-        submissionItemId,
-        source.deployment_json,
-        now,
-        now,
-        now,
-      ],
+      [batchId, source.submission_id, submissionItemId, deploymentJson, now, now, now],
     );
     const insertEntry = this.db.prepare(
       `INSERT INTO cooking_update_batch_entry(
@@ -289,9 +290,7 @@ export class UpdateDelivery {
     );
     if (bugUpdate.changes !== candidates.length)
       throw new PlatformError('STALE_STATE', '待更新缺陷集合已变化');
-    this.db.run('DELETE FROM cooking_pending_delivery WHERE submission_item_id = ?', [
-      submissionItemId,
-    ]);
+    this.recalculatePendingDelivery(submissionItemId);
     const revision = this.writes.bumpRevision(source.submission_id, now);
     return { batchId, executionId: execution.id, revision };
   }

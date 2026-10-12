@@ -1,8 +1,6 @@
-import { rmSync } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { serverPaths } from '@/platform/config';
 import { openDatabase } from '@/platform/database';
-import { PlatformError } from '@/platform/errors';
 
 type PreparationResult = {
   database: string;
@@ -17,17 +15,8 @@ export function prepareDevelopmentDatabase(
   const paths = serverPaths(env);
   assertDisposableDevelopmentHome(paths.root);
 
-  try {
-    openDatabase(paths.database).close();
-    return { database: paths.database, reset: false };
-  } catch (error) {
-    if (!(error instanceof PlatformError) || error.code !== 'SCHEMA_VERSION_MISMATCH')
-      throw error;
-  }
-
-  rmSync(paths.server, { force: true, recursive: true });
   openDatabase(paths.database).close();
-  return { database: paths.database, reset: true };
+  return { database: paths.database, reset: false };
 }
 
 function assertDisposableDevelopmentHome(home: string): void {

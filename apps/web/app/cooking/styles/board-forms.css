@@ -31,6 +31,27 @@
   padding: 17px 20px;
 }
 
+.collab-add-items-dialog {
+  padding: 0;
+  max-width: calc(100vw - 48px);
+}
+
+.collab-add-items-dialog::backdrop {
+  background: rgba(12, 13, 13, 0.72);
+}
+
+.collab-add-items-dialog h2:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.collab-add-items-dialog fieldset {
+  border: 0;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
 .collab-dialog > header h2 {
   font-family: Georgia, 'Times New Roman', serif;
   font-size: 29px;

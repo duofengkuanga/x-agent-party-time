@@ -85,6 +85,7 @@ export type SubmissionItemRow = {
 type WorkspaceSubmissionItemRow = SubmissionItemRow & {
   bug_count: number;
   current_engineering_name: string;
+  current_deployment_json: string;
 };
 
 export class SubmissionQueries {
@@ -134,18 +135,26 @@ export class SubmissionQueries {
     const items = this.db
       .all<WorkspaceSubmissionItemRow>(
         `SELECT item.*, engineering.name current_engineering_name,
+                CASE WHEN submission.status = 'ACTIVE' THEN environment.deployment_json
+                  ELSE item.deployment_json END current_deployment_json,
                 (
                   SELECT COUNT(*) FROM cooking_bug bug
                   WHERE bug.submission_item_id = item.id
                 ) bug_count
          FROM cooking_submission_item item
          JOIN cooking_engineering engineering ON engineering.id = item.engineering_id
+         JOIN cooking_test_submission submission ON submission.id = item.submission_id
+         LEFT JOIN cooking_environment environment ON environment.id = item.environment_id
          WHERE item.submission_id = ?
          ORDER BY item.position, item.id`,
         submissionId,
       )
       .map((row) => ({
-        item: mapItem({ ...row, engineering_name: row.current_engineering_name }),
+        item: mapItem({
+          ...row,
+          engineering_name: row.current_engineering_name,
+          deployment_json: row.current_deployment_json,
+        }),
         hasBug: row.bug_count > 0,
       }));
     const canEdit =
@@ -216,6 +225,12 @@ export class SubmissionQueries {
           createdAt: item.createdAt,
         })),
         availableActions: [
+          ...(row.status === 'ACTIVE' &&
+          (canEdit ||
+            row.tester_user_id === userId ||
+            items.some(({ item }) => item.responsibleUser.id === userId))
+            ? (['ADD_ITEMS'] as const)
+            : []),
           ...(canEdit ? (['EDIT_DETAILS'] as const) : []),
           ...(canClose ? (['CLOSE'] as const) : []),
         ],

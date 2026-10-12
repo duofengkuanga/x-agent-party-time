@@ -9,6 +9,7 @@ import {
 import { submissionCreationCatalog, submissionService } from '@/cooking/runtime/services';
 import type {
   CreateSubmissionInput,
+  AddSubmissionItemsInput,
   SubmissionCreationCatalog,
   TestSubmission,
   UpdateSubmissionInput,
@@ -77,6 +78,31 @@ export async function changeSubmissionEnvironmentAction(
       return { result, refreshPaths: ['/cooking', `/cooking/${result.id}`] };
     },
   });
+}
+
+export async function addSubmissionItemsAction(
+  submissionId: string,
+  input: AddSubmissionItemsInput,
+): Promise<SubmissionActionResult & { conflicts?: EnvironmentConflict[] }> {
+  const result = await runInteractiveMutation({
+    validationEvent: 'cooking_submission_action_validation_failed',
+    command: ({ userId }) => {
+      const result = submissionService().addItems(userId, submissionId, input);
+      return { result, refreshPaths: ['/cooking', `/cooking/${result.id}`] };
+    },
+  });
+  if (!result.ok && ['RESOURCE_CONFLICT', 'STALE_STATE'].includes(result.error.code)) {
+    const user = await requireCurrentUser();
+    try {
+      return {
+        ...result,
+        conflicts: submissionService().addedItemConflicts(user.id, submissionId, input),
+      };
+    } catch (error) {
+      return actionError(error);
+    }
+  }
+  return result;
 }
 
 export async function updateSubmissionAction(

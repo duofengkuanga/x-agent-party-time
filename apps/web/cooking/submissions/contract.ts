@@ -139,7 +139,7 @@ export const SubmissionViewSchema = z.object({
   tester: UserSchema,
   createdBy: UserSchema,
   items: z.array(SubmissionItemViewSchema),
-  availableActions: z.array(z.enum(['EDIT_DETAILS', 'CLOSE'])),
+  availableActions: z.array(z.enum(['EDIT_DETAILS', 'CLOSE', 'ADD_ITEMS'])),
 });
 
 export const CookingWorkspaceSnapshotSchema = z.object({
@@ -197,6 +197,12 @@ export const UpdateSubmissionInputSchema = VersionedCookingMutationSchema.extend
     .max(20)
     .optional(),
 });
+
+export const AddSubmissionItemsInputSchema = VersionedCookingMutationSchema.extend({
+  items: z.array(CreateSubmissionItemInputSchema).min(1).max(20),
+  environmentTakeovers: z.array(EnvironmentTakeoverSchema).max(20).optional(),
+});
+export type AddSubmissionItemsInput = z.infer<typeof AddSubmissionItemsInputSchema>;
 
 export type TestSubmission = z.infer<typeof TestSubmissionSchema>;
 export type SubmissionItem = z.infer<typeof SubmissionItemSchema>;

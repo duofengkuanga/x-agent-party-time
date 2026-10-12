@@ -25,7 +25,8 @@ Agent Party Time 将产品测试人员、工程负责人和开发者本机 Agent
 关键规则：
 
 - 项目是私密协作边界，只有项目成员可以访问。
-- 一张提测单可以包含多个工程，每个工程提测项冻结负责人、Binding、目标分支、环境和部署方式。
+- 一张提测单可以包含多个工程，活动期间创建人、测试负责人、已有工程负责人或项目所有者可追加工程，原工程和缺陷保留；环境冲突沿用确认切换规则。
+- 提测项固定负责人、Binding 和环境，活动提测的部署配置读取工程环境当前设置。缺陷首次进入修复队列时固定部署配置，后续修复、更新和返修沿用；同工程不同部署配置的缺陷分批串行更新。被活动提测引用的环境仍不能在页面修改部署配置。
 - Server 不保存开发者本机仓库绝对路径；路径只保存在对应 Agent 本机。
 - Agent 只负责通用 Execution、Lease、附件、Interaction、Outcome 与 Outbox，不包含 Cooking 领域逻辑。
 - Git、测试、构建、Commit、Push、部署和 Cleanup 都由 Codex 根据版本化 Prompt 在仓库规则约束下执行。
@@ -76,7 +77,7 @@ bun install --frozen-lockfile
 bun run dev
 ```
 
-`bun run dev` 会在仓库 `.scratch/development/` 中准备数据库并自动创建上述本地开发用户。开发数据库的 Schema 过期时会自动重建，不读取或删除仓库外的数据。
+`bun run dev` 会在仓库 `.scratch/development/` 中准备数据库并自动创建上述本地开发用户。数据库支持从 Schema 26 保留数据升级到 27；不支持的版本明确报错，不自动清空数据。
 
 `bun run dev` 前台管理两个进程：
 
@@ -126,9 +127,9 @@ bun run dev:xapt
 │   └── files/
 ```
 
-`bun run dev`、`bun run dev:app` 和 `bun run seed:app` 只处理这个可丢弃目录。Schema 版本不匹配时，开发启动流程会自动重建 `server/`；如果 `AGENT_PARTY_TIME_HOME` 指向仓库 `.scratch/` 之外，开发准备脚本会拒绝删除。
+`bun run dev`、`bun run dev:app` 和 `bun run seed:app` 使用这个目录。开发启动流程保留数据库和附件，不支持的 Schema 版本会阻止启动；如果 `AGENT_PARTY_TIME_HOME` 指向仓库 `.scratch/` 之外，开发准备脚本会拒绝处理。
 
-正式 Server 数据默认位于 `~/.agent-party-time/`，也可以通过 `AGENT_PARTY_TIME_HOME` 指定。正式启动不会自动重建数据库；上线前需要提供对应的迁移策略。
+正式 Server 数据默认位于 `~/.agent-party-time/`，也可以通过 `AGENT_PARTY_TIME_HOME` 指定。启动支持 Schema 26 到 27 的事务迁移，为已开始修复的缺陷保留原提测配置，已有执行和批次不变；其他旧版本需要先备份并提供对应迁移策略。
 
 xapt 本机状态：
 
