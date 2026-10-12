@@ -207,8 +207,27 @@ cases:
       - text: { sel: '[role="dialog"]', contains: 确认三条地块的边界为空 }
       - text: { sel: '[role="dialog"]', contains: 核查边界数据并验证标签渲染 }
       - hidden: '[role="dialog"] .collab-session-overview code'
-      - eval: 'parseFloat(getComputedStyle(document.querySelector(".collab-routing-actions")).columnGap) >= 8'
+      - hidden: '[aria-label="人工工程流转"]'
       - hidden: '.collab-repair-timeline .collab-session-overview'
+
+  - name: responsible developer still sees manual routing
+    steps:
+      - click: 'button[aria-label="关闭详情抽屉"]'
+      - eval: "[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('退出登录'))?.click(); true"
+      - wait: 'input[name="username"]'
+      - fill: { sel: 'input[name="username"]', text: __DEVELOPER_USERNAME__ }
+      - fill: { sel: 'input[name="password"]', text: __PASSWORD__ }
+      - click: '.auth-submit'
+      - wait: { load: networkidle }
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: 'button[aria-label^="定位数据缺失缺陷，"]'
+      - click: 'button[aria-label^="定位数据缺失缺陷，"]'
+      - wait: '[aria-label="人工工程流转"]'
+    assert:
+      - visible: '[aria-label="人工工程流转"]'
+      - text: { sel: '[aria-label="人工工程流转"]', contains: 转交后端 }
+      - text: { sel: '[aria-label="人工工程流转"]', contains: 增加后端协作 }
+      - eval: 'parseFloat(getComputedStyle(document.querySelector(".collab-routing-actions")).columnGap) >= 8'
 
   - name: manual transfer closes the source and queues a related backend bug
     steps:
@@ -261,6 +280,13 @@ cases:
 
   - name: joint registration remains reachable with keyboard focus in night theme
     steps:
+      - click: 'button[aria-label="关闭详情抽屉"]'
+      - eval: "[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('退出登录'))?.click(); true"
+      - wait: 'input[name="username"]'
+      - fill: { sel: 'input[name="username"]', text: __USERNAME__ }
+      - fill: { sel: 'input[name="password"]', text: __PASSWORD__ }
+      - click: '.auth-submit'
+      - wait: { load: networkidle }
       - open: __BASE_URL__/cooking/__SUBMISSION_ID__
       - wait: { load: networkidle }
       - click: 'button[aria-label="切换暗夜主题"]'

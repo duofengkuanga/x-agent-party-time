@@ -234,7 +234,7 @@ export function BugDetail({
             </section>
           )}
         </div>
-        <BugRouting bug={bug} onChanged={onChanged} />
+        {!summaryOnly ? <BugRouting bug={bug} onChanged={onChanged} /> : null}
         <div data-progress-kind="update">
           {updateBatch ? (
             <UpdateBatchDetails
