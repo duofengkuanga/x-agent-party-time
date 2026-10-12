@@ -91,8 +91,8 @@ export function BugDetail({
     window.requestAnimationFrame(() => {
       if (!detailBodyRef.current) return;
       detailBodyRef.current
-        .querySelector<HTMLElement>(`[data-progress-kind="${view}"]`)
-        ?.scrollIntoView({ block: 'start' });
+        .querySelector<HTMLElement>('.collab-bug-detail-activity')
+        ?.scrollTo({ top: 0, behavior: 'auto' });
     });
   }
 

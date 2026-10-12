@@ -1,6 +1,7 @@
 import { createCooking } from '@/cooking/runtime/create-cooking';
 import { deliveryProject } from '@/cooking/testing/project';
 import { engineeringScenario } from '@/cooking/testing/scenario';
+import { completeRepairExecution } from '@/cooking/testing/execution';
 import { openDatabase } from '@/platform/database';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
@@ -68,7 +69,7 @@ export async function seedBrowserFixture(home: string): Promise<BrowserFixture> 
     });
     const item = items[0]!;
 
-    const { executions, bugs, lifecycle } = createCooking(db);
+    const { executions, bugs, lifecycle, repairs, updates } = createCooking(db);
 
     const createBug = (title: string) =>
       bugs.createBug(tester.id, submission.id, {
@@ -174,6 +175,92 @@ export async function seedBrowserFixture(home: string): Promise<BrowserFixture> 
 
     await completeRepair('待归档与重开缺陷', 'DONE');
     await completeRepair('待验证返修缺陷', 'WAITING_FOR_VERIFICATION');
+
+    // 完成后的返修入口和长时间线一起覆盖页签切换带动遮罩滚动的场景。
+    const scrollBug = createBug('修复更新页签滚动回归');
+    bugs.requestRepair(tester.id, scrollBug.id, {
+      mutationId: randomUUID(),
+      expectedVersion: scrollBug.version,
+    });
+    const scrollRepair = (await executions.claim(paired.runner.id, 1, 0))[0]!;
+    executions.start(paired.runner.id, scrollRepair.id, {
+      kind: 'STARTED',
+      leaseToken: scrollRepair.lease.token,
+      sessionId: `browser-scroll-repair-${scrollBug.id}`,
+      taskSkillBinding: fixtureSkillBinding('agent-party-time-repair-bug'),
+    });
+    executions.complete(paired.runner.id, scrollRepair.id, {
+      leaseToken: scrollRepair.lease.token,
+      sessionId: `browser-scroll-repair-${scrollBug.id}`,
+      outcome: {
+        kind: 'SUCCEEDED',
+        result: {
+          result: {
+            outcome: 'FAILED',
+            failedStep: '验证',
+            reason: '修复已完成，完整检查尚未通过。',
+            completedActions: [
+              '确认目标分支和工作区状态，核对工程配置及复现步骤。'.repeat(8),
+              '完成界面修改，检查按钮尺寸、字段排版和不同主题下的交互状态。'.repeat(8),
+            ],
+            pendingActions: ['修复剩余检查项后再次执行验证。'],
+          },
+        },
+      },
+    });
+    repairs.continueRepair(developer.id, scrollBug.id, {
+      mutationId: randomUUID(),
+      expectedVersion: bugs
+        .workspace(tester.id, submission.id)
+        .bugs.find((bug) => bug.id === scrollBug.id)!.version,
+    });
+    const nextScrollRepair = (await executions.claim(paired.runner.id, 1, 0))[0]!;
+    completeRepairExecution(
+      { executions, runner: paired.runner },
+      nextScrollRepair.id,
+      nextScrollRepair.lease.token,
+      `browser-scroll-repair-${scrollBug.id}`,
+      ['a'.repeat(40)],
+    );
+    const scrollBatch = updates.freezeNow(developer.id, item.id, {
+      mutationId: randomUUID(),
+    });
+    const scrollUpdate = (await executions.claim(paired.runner.id, 1, 0))[0]!;
+    executions.start(paired.runner.id, scrollUpdate.id, {
+      kind: 'STARTED',
+      leaseToken: scrollUpdate.lease.token,
+      sessionId: `browser-scroll-update-${scrollBug.id}`,
+      taskSkillBinding: fixtureSkillBinding('agent-party-time-integrate-update-batch'),
+    });
+    executions.complete(paired.runner.id, scrollUpdate.id, {
+      leaseToken: scrollUpdate.lease.token,
+      sessionId: `browser-scroll-update-${scrollBug.id}`,
+      outcome: {
+        kind: 'SUCCEEDED',
+        result: {
+          result: {
+            outcome: 'PUSHED',
+            completedActions: ['集成修复提交并完成推送'],
+            validations: [{ name: '构建检查', status: 'PASSED', detail: '' }],
+            warnings: [],
+          },
+        },
+      },
+    });
+    updates.reportExternalDeployment(developer.id, scrollBatch.batchId, {
+      mutationId: randomUUID(),
+      expectedVersion: updates.batchView(developer.id, scrollBatch.batchId).version,
+      outcome: 'SUCCEEDED',
+      attachmentIds: [],
+    });
+    lifecycle.verifyBug(tester.id, scrollBug.id, {
+      mutationId: randomUUID(),
+      expectedVersion: bugs
+        .workspace(tester.id, submission.id)
+        .bugs.find((bug) => bug.id === scrollBug.id)!.version,
+      result: 'PASSED',
+      attachmentIds: [],
+    });
 
     const interactionBug = createBug('等待审批缺陷');
     bugs.requestRepair(tester.id, interactionBug.id, {

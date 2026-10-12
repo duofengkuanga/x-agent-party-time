@@ -23,20 +23,40 @@ cases:
 
   - name: switching process tabs preserves the defect fields on the left
     steps:
+      - eval: 'window.bugModalPosition = {top:document.querySelector(".collab-bug-drawer").getBoundingClientRect().top, backdrop:document.querySelector(".collab-dialog-backdrop").scrollTop, page:window.scrollY, context:document.querySelector(".collab-bug-detail-context").scrollTop}; true'
       - click: '.collab-bug-detail-tabs button:last-child'
+      - wait: 500
     assert:
       - visible: '.collab-bug-detail-activity > [data-progress-kind="update"]'
       - hidden: '.collab-bug-detail-activity > [data-progress-kind="repair"]'
       - visible: '.collab-bug-detail-context'
       - text:
           { sel: '.collab-bug-detail-context', contains: 待取消缺陷 的预期结果 }
+      - eval: 'Math.abs(document.querySelector(".collab-bug-drawer").getBoundingClientRect().top - window.bugModalPosition.top) <= 1'
 
   - name: repair process and report editing remain reachable
     steps:
       - click: '.collab-bug-detail-tabs button:first-child'
+      - wait: 500
     assert:
       - visible: '.collab-bug-detail-activity > [data-progress-kind="repair"]'
       - visible: '.collab-bug-detail-context__actions button'
+      - eval: 'Math.abs(document.querySelector(".collab-bug-drawer").getBoundingClientRect().top - window.bugModalPosition.top) <= 1'
+      - eval: 'document.querySelector(".collab-dialog-backdrop").scrollTop === window.bugModalPosition.backdrop && window.scrollY === window.bugModalPosition.page && document.querySelector(".collab-bug-detail-context").scrollTop === window.bugModalPosition.context'
+
+  - name: returning to completed repair progress keeps the modal fixed
+    steps:
+      - click: 'button[aria-label="关闭详情抽屉"]'
+      - click: 'button[aria-label^="修复更新页签滚动回归，"]'
+      - wait: '.collab-bug-drawer--split'
+      - eval: 'window.bugModalTop = document.querySelector(".collab-bug-drawer").getBoundingClientRect().top; true'
+      - click: '.collab-bug-detail-tabs button:last-child'
+      - wait: 500
+      - click: '.collab-bug-detail-tabs button:first-child'
+      - wait: 500
+    assert:
+      - eval: 'Math.abs(document.querySelector(".collab-bug-drawer").getBoundingClientRect().top - window.bugModalTop) <= 1'
+      - eval: 'document.querySelector(".collab-dialog-backdrop").scrollTop === 0'
 
   - name: bug registration accepts a 4.1 MB screenshot
     steps:
