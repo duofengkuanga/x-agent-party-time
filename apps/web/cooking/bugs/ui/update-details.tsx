@@ -1,4 +1,5 @@
 'use client';
+import { ManualHandoff } from './manual-handoff';
 import { useWorkspaceMutation } from './use-workspace-mutation';
 import {
   ProgressTimeline,
@@ -156,7 +157,12 @@ export function UpdateBatchDetails({
             ...heading,
             content: (
               <>
-                {node.result ? (
+                {node.result?.outcome === 'HANDED_OFF' ? (
+                  <ManualHandoff
+                    questions={node.result.questions}
+                    sessionId={node.sessionId}
+                  />
+                ) : node.result ? (
                   <>
                     {node.result.outcome === 'FAILED' ? (
                       <div className="collab-structured-failure">

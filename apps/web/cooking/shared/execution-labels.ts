@@ -10,6 +10,7 @@ const REPAIR_STATE_LABELS: Record<ExecutionState, string> = {
   SUCCEEDED: '修复已完成',
   FAILED: '修复未完成',
   CANCELLED: '修复已停止',
+  HANDED_OFF: '等待人工确认',
 };
 
 export function repairStateLabel(state: ExecutionState): string {

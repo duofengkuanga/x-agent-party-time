@@ -15,7 +15,7 @@ import {
   type RepairWorkspaceProjection,
 } from '../contract';
 import type { AttemptRow, ContextRow, RepairSourceRow } from './records';
-import { isFailedAttemptOutcome, projectAttemptResult, repairVisual } from './results';
+import { isSynchronizableAttempt, projectAttemptResult, repairVisual } from './results';
 
 const REPAIR_ATTEMPT_SELECT = `SELECT attempt.id, attempt.bug_id, attempt.execution_id,
        attempt.attempt, attempt.outcome_json, attempt.created_at,
@@ -100,7 +100,7 @@ export class RepairQueries {
         source.stage === 'REPAIRING' &&
         latest &&
         latest.outcome_json &&
-        isFailedAttemptOutcome(latest.outcome_json)
+        isSynchronizableAttempt(latest.outcome_json)
           ? context?.session_id && !this.hasActiveSessionSync(bugId)
             ? ['SYNC_SESSION']
             : []

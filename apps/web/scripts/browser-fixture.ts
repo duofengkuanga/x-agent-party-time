@@ -262,6 +262,32 @@ export async function seedBrowserFixture(home: string): Promise<BrowserFixture> 
       attachmentIds: [],
     });
 
+    const manualBug = createBug('等待人工确认缺陷');
+    bugs.requestRepair(tester.id, manualBug.id, {
+      mutationId: randomUUID(),
+      expectedVersion: manualBug.version,
+    });
+    const manualExecution = (await executions.claim(paired.runner.id, 1, 0))[0]!;
+    const manualSession = `browser-manual-${manualBug.id}`;
+    executions.start(paired.runner.id, manualExecution.id, {
+      kind: 'STARTED',
+      leaseToken: manualExecution.lease.token,
+      sessionId: manualSession,
+      taskSkillBinding: fixtureSkillBinding('agent-party-time-repair-bug'),
+    });
+    const questions = ['是否确认移除区县大屏访问权限，并保留正常业务登录？'];
+    executions.openInteraction(paired.runner.id, manualExecution.id, {
+      leaseToken: manualExecution.lease.token,
+      kind: 'USER_INPUT',
+      method: 'xapt/manualHandoff',
+      payload: { questions },
+    });
+    executions.complete(paired.runner.id, manualExecution.id, {
+      leaseToken: manualExecution.lease.token,
+      sessionId: manualSession,
+      outcome: { kind: 'HANDED_OFF', questions },
+    });
+
     const interactionBug = createBug('等待审批缺陷');
     bugs.requestRepair(tester.id, interactionBug.id, {
       mutationId: randomUUID(),

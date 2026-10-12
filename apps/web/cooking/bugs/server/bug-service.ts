@@ -255,6 +255,11 @@ export class BugService {
           bug.id,
         ) as { outcome_json: string };
         const result = projectAttemptResult(latest.outcome_json, false);
+        if (result.outcome === 'HANDED_OFF')
+          throw new PlatformError(
+            'INVALID_TRANSITION',
+            '请先完成原会话并同步结果，再调整工程归属',
+          );
         const handoffText =
           result.outcome === 'FAILED'
             ? [

@@ -20,6 +20,15 @@ export class ExecutionOutbox {
     executionId: string,
     request: ExecutionStartRequest | CompleteExecutionRequest,
   ): Promise<boolean> {
+    const entry = await this.prepare(kind, executionId, request);
+    return this.deliverPrepared(session, entry);
+  }
+
+  async prepare(
+    kind: 'START' | 'OUTCOME',
+    executionId: string,
+    request: ExecutionStartRequest | CompleteExecutionRequest,
+  ): Promise<OutboxEntry> {
     const entry = {
       schemaVersion: OUTBOX_STATE_SCHEMA_VERSION,
       id: this.createId(),
@@ -29,12 +38,32 @@ export class ExecutionOutbox {
       createdAt: this.now().toISOString(),
     } as OutboxEntry;
     await this.state.saveOutbox(entry);
+    return entry;
+  }
+
+  deliverPrepared(
+    session: AuthenticatedRunnerSession,
+    entry: OutboxEntry,
+  ): Promise<boolean> {
     return this.deliver(session, entry, 'LIVE');
   }
 
-  async replayOutbox(session: AuthenticatedRunnerSession): Promise<boolean> {
-    for (const entry of await this.state.loadOutbox())
+  async confirmSessionReleased(entry: OutboxEntry): Promise<OutboxEntry> {
+    if (entry.kind !== 'OUTCOME' || entry.request.outcome.kind !== 'HANDED_OFF')
+      throw new Error('只有人工接管回执可以记录会话释放');
+    const released = { ...entry, sessionReleased: true as const };
+    await this.state.saveOutbox(released);
+    return released;
+  }
+
+  async replayOutbox(
+    session: AuthenticatedRunnerSession,
+    beforeReplay?: (entry: OutboxEntry) => Promise<boolean>,
+  ): Promise<boolean> {
+    for (const entry of await this.state.loadOutbox()) {
+      if (beforeReplay && !(await beforeReplay(entry))) return false;
       if (!(await this.deliver(session, entry, 'RECOVERY'))) return false;
+    }
     return true;
   }
 

@@ -21,6 +21,7 @@ export type CodexExecutionInput = {
   artifactsDirectory: string;
   taskId: string | null;
   onInteraction: (interaction: CodexInteraction) => Promise<JsonValue>;
+  onManualHandoff?: (questions: string[]) => Promise<void>;
 };
 
 export type StartedCodexExecution = {
@@ -36,4 +37,5 @@ export type CompletedCodexTurn = {
 export interface CodexExecutor {
   begin(input: CodexExecutionInput, signal: AbortSignal): Promise<StartedCodexExecution>;
   readLastCompletedTurn(sessionId: string): Promise<CompletedCodexTurn>;
+  releaseSession?(sessionId: string): Promise<void>;
 }

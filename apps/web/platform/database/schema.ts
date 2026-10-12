@@ -3,8 +3,9 @@ import { PlatformError } from '@/platform/errors';
 import { PLATFORM_SCHEMA } from './platform-schema';
 import { COOKING_SCHEMA } from './cooking-schema';
 import { BUG_DEPLOYMENT_SCHEMA } from './bug-deployment-schema';
+import { migrateManualHandoff } from './manual-handoff-migration';
 
-export const SERVER_SCHEMA_VERSION = 27;
+export const SERVER_SCHEMA_VERSION = 28;
 
 const SCHEMA = PLATFORM_SCHEMA + COOKING_SCHEMA + BUG_DEPLOYMENT_SCHEMA;
 
@@ -28,8 +29,14 @@ export function initializeSchema(database: Database): void {
         JOIN cooking_submission_item item ON item.id = bug.submission_item_id
         WHERE bug.report_locked_at IS NOT NULL
            OR EXISTS (SELECT 1 FROM cooking_bug_repair_context context WHERE context.bug_id = bug.id)`);
-      database.exec(`PRAGMA user_version = ${SERVER_SCHEMA_VERSION}`);
+      database.exec('PRAGMA user_version = 27');
     })();
+    migrateManualHandoff(database);
+    return;
+  }
+
+  if (currentVersion === 27) {
+    migrateManualHandoff(database);
     return;
   }
 

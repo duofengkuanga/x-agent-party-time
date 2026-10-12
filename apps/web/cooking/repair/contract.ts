@@ -1,6 +1,7 @@
 import { BugIdSchema } from '@/cooking/bugs/contract';
 import {
   CookingInteractionViewSchema,
+  ManualHandoffResultViewSchema,
   VersionedCookingMutationSchema,
   CookingValidationSchema,
   CookingVisualPresentationSchema,
@@ -102,6 +103,7 @@ export const RepairExecutionResultSchema = z.strictObject({
 export const RepairOutputJsonSchema = outputJsonSchema(RepairExecutionResultSchema);
 
 const RepairAttemptResultViewSchema = z.discriminatedUnion('outcome', [
+  ManualHandoffResultViewSchema,
   z.object({
     outcome: z.literal('COMPLETED'),
     changes: z.array(z.string()),

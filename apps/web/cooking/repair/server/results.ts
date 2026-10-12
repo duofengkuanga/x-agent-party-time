@@ -23,6 +23,11 @@ export function formatRepairContractIssues(
 
 export function projectAttemptResult(outcomeJson: string, technical: boolean) {
   const raw = JSON.parse(outcomeJson) as Record<string, unknown>;
+  if (raw.outcome === 'HANDED_OFF')
+    return {
+      outcome: 'HANDED_OFF' as const,
+      questions: technical ? raw.questions : null,
+    };
   const { technicalFailure: _technicalFailure, ...contractResult } = raw;
   const parsed = RepairExecutionResultSchema.safeParse({
     result: contractResult,
@@ -64,6 +69,8 @@ export function repairVisual(
 ): CookingVisualPresentation {
   const interaction = interactionVisual(interactions, latest?.state, responsible, '修复');
   if (interaction) return interaction;
+  if (latest?.state === 'HANDED_OFF')
+    return { state: 'NEEDS_INPUT', label: '等待人工确认', symbol: '?' };
   if (
     latest?.state === 'FAILED' ||
     (latest?.outcome_json && isFailedAttemptOutcome(latest.outcome_json))
@@ -86,6 +93,12 @@ export function repairVisual(
 export function isFailedAttemptOutcome(outcomeJson: string): boolean {
   const raw = JSON.parse(outcomeJson) as Record<string, unknown>;
   return raw.outcome === 'FAILED';
+}
+
+export function isSynchronizableAttempt(outcomeJson: string | null): boolean {
+  if (!outcomeJson) return false;
+  const outcome = (JSON.parse(outcomeJson) as { outcome?: string }).outcome;
+  return outcome === 'FAILED' || outcome === 'HANDED_OFF';
 }
 
 export function parseManualOperations(value: string): Array<{

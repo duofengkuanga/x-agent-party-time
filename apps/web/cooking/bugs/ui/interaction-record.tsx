@@ -47,6 +47,16 @@ export function CookingInteractionRecord({
     Record<string, { selected: string; custom: string }>
   >({});
   const resolved = interaction.state === 'RESOLVED';
+  if (interaction.kind === 'MANUAL_HANDOFF')
+    return (
+      <article className="collab-interaction-record">
+        <strong>正在释放会话，准备人工确认</strong>
+        {interaction.questions?.map((question, index) => (
+          <p key={index}>{question}</p>
+        ))}
+        <p>请等待会话入口出现后，在 Codex 中继续处理。</p>
+      </article>
+    );
   if (!interaction.request)
     return (
       <article

@@ -20,6 +20,7 @@ export const ExecutionStateSchema = z.enum([
   'SUCCEEDED',
   'FAILED',
   'CANCELLED',
+  'HANDED_OFF',
 ]);
 
 export const ExecutionApprovalPolicySchema = z.enum(['never', 'on-request']);
@@ -82,6 +83,7 @@ export const ExecutionResultAssertionSchema = z.strictObject({
 export const CodexTurnSchema = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('INITIAL'),
+    manualHandoff: z.literal('EXTERNAL_SESSION').optional(),
     requiredSkillName: z.string().trim().min(1).max(120),
     executionBrief: JsonObjectSchema,
     executionBriefHash: z.string().regex(/^[a-f0-9]{64}$/u),
@@ -91,6 +93,7 @@ export const CodexTurnSchema = z.discriminatedUnion('kind', [
   }),
   z.strictObject({
     kind: z.literal('CONTINUATION'),
+    manualHandoff: z.literal('EXTERNAL_SESSION').optional(),
     taskId: SessionIdSchema,
     taskSkillBinding: TaskSkillBindingSchema,
     input: z.string().trim().min(1).max(200_000),
@@ -121,6 +124,10 @@ export const ExecutionFailureSchema = z.object({
 });
 
 export const ExecutionOutcomeSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('HANDED_OFF'),
+    questions: z.array(z.string().trim().min(1).max(8_000)).min(1).max(3),
+  }),
   z.object({
     kind: z.literal('SUCCEEDED'),
     result: JsonValueSchema,
@@ -320,6 +327,7 @@ const UserInputResolutionSchema = z.strictObject({
 });
 
 const INTERACTION_PAYLOAD_KEYS: Record<string, readonly string[]> = {
+  'xapt/manualHandoff': ['questions'],
   'item/commandExecution/requestApproval': ['command', 'reason'],
   'item/fileChange/requestApproval': ['reason'],
   'item/permissions/requestApproval': ['permissions', 'reason'],

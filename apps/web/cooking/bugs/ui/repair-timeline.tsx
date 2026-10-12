@@ -1,4 +1,5 @@
 'use client';
+import { ManualHandoff } from './manual-handoff';
 import {
   ProgressTimeline,
   ProgressAttachments,
@@ -217,7 +218,7 @@ function describeBugProgress(
         />
       );
       return {
-        title: `第 ${node.attempt} 轮修复${node.result?.outcome === 'COMPLETED' ? '已完成' : node.result?.outcome === 'FAILED' ? '未完成' : '进行中'}`,
+        title: `第 ${node.attempt} 轮修复${node.result?.outcome === 'COMPLETED' ? '已完成' : node.result?.outcome === 'FAILED' ? '未完成' : node.result?.outcome === 'HANDED_OFF' ? '等待人工确认' : '进行中'}`,
         occurredAt: node.finishedAt ?? node.startedAt ?? node.queuedAt,
         content,
         summaryContent: node.result ? content : null,
@@ -267,6 +268,11 @@ function RepairAttemptTimelineArticle({
               : '等待 Agent 开始'}
           </Detail>
         </dl>
+      ) : node.result.outcome === 'HANDED_OFF' ? (
+        <ManualHandoff
+          questions={node.result.questions}
+          sessionId={node.sessionId}
+        />
       ) : node.result.outcome === 'COMPLETED' ? (
         <>
           <TimelineList
@@ -323,37 +329,37 @@ function RepairAttemptTimelineArticle({
               <code>{node.result.failureCode}</code>
             </details>
           ) : null}
-          {isLatestRepairAttempt &&
-          repair?.availableActions.includes('SYNC_SESSION') ? (
-            <>
-              {repair.synchronizationError ? (
-                <p>{repair.synchronizationError}</p>
-              ) : null}
-              {repair.synchronizationCorrection ? (
-                <SynchronizationCorrection
-                  correction={repair.synchronizationCorrection}
-                />
-              ) : null}
-              <button
-                disabled={pending}
-                onClick={() =>
-                  run(
-                    () =>
-                      synchronizeRepairSessionAction(bug.id, {
-                        mutationId: createClientId(),
-                        expectedVersion: bug.version,
-                      }),
-                    '正在同步原修复会话状态。',
-                  )
-                }
-                type="button"
-              >
-                同步状态
-              </button>
-            </>
-          ) : null}
         </>
       )}
+      {isLatestRepairAttempt &&
+      repair?.availableActions.includes('SYNC_SESSION') ? (
+        <>
+          {repair.synchronizationError ? (
+            <p>{repair.synchronizationError}</p>
+          ) : null}
+          {repair.synchronizationCorrection ? (
+            <SynchronizationCorrection
+              correction={repair.synchronizationCorrection}
+            />
+          ) : null}
+          <button
+            disabled={pending}
+            onClick={() =>
+              run(
+                () =>
+                  synchronizeRepairSessionAction(bug.id, {
+                    mutationId: createClientId(),
+                    expectedVersion: bug.version,
+                  }),
+                '正在同步原修复会话状态。',
+              )
+            }
+            type="button"
+          >
+            同步状态
+          </button>
+        </>
+      ) : null}
     </>
   );
 }

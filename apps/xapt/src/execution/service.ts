@@ -6,6 +6,8 @@ import type {
   JsonValue,
 } from '@agent-party-time/execution-contract';
 import { serializeDeterministicJson } from '@agent-party-time/execution-contract';
+import { sanitizeExecutionInteractionPayload } from '@agent-party-time/execution-contract';
+import type { OutboxEntry } from '../state/schemas';
 import { randomUUID } from 'node:crypto';
 import type { AuthenticatedRunnerSession } from '../agent/connection';
 import type { RunnerExecutionHttp } from '../agent/server-http';
@@ -79,7 +81,51 @@ export class ExecutionService {
 
   async cycle(session: AuthenticatedRunnerSession): Promise<boolean> {
     if (this.tasks.size === 0) {
-      if (!(await this.outbox.replayOutbox(session))) return false;
+      if (
+        !(await this.outbox.replayOutbox(session, async (entry) => {
+          if (entry.kind !== 'OUTCOME' || entry.request.outcome.kind !== 'HANDED_OFF')
+            return true;
+          if (!entry.sessionReleased) {
+            if (!this.executor.releaseSession) return false;
+            try {
+              await this.executor.releaseSession(entry.request.sessionId);
+              await this.outbox.confirmSessionReleased(entry);
+            } catch {
+              return false;
+            }
+          }
+          try {
+            await this.http.completeExecution(
+              session.serverOrigin,
+              session.credential,
+              entry.executionId,
+              entry.request,
+            );
+            return true;
+          } catch (error) {
+            if (!(error instanceof RunnerHttpError)) return false;
+            if (error.code === 'OUTCOME_CONFLICT') return true;
+            if (error.code !== 'INVALID_TRANSITION') return false;
+          }
+          try {
+            await this.http.openInteraction(
+              session.serverOrigin,
+              session.credential,
+              entry.executionId,
+              {
+                leaseToken: entry.request.leaseToken,
+                kind: 'USER_INPUT',
+                method: 'xapt/manualHandoff',
+                payload: { questions: entry.request.outcome.questions },
+              },
+            );
+            return true;
+          } catch {
+            return false;
+          }
+        }))
+      )
+        return false;
       if (await this.recovery.recoverInterrupted()) {
         this.recoveryRequired = true;
         return true;
@@ -215,6 +261,8 @@ export class ExecutionService {
     });
     let startAccepted = false;
     let started: StartedCodexExecution;
+    let handoffEntry: OutboxEntry | undefined;
+    let handoffPrepared = false;
     try {
       started = await this.executor.begin(
         {
@@ -233,6 +281,37 @@ export class ExecutionService {
           attachments: materialized,
           artifactsDirectory: this.attachments.artifactsDirectory(execution.id),
           taskId: turn.kind === 'CONTINUATION' ? turn.taskId : null,
+          onManualHandoff:
+            turn.manualHandoff === 'EXTERNAL_SESSION'
+              ? async (questions) => {
+                  await startGate;
+                  if (!startAccepted) throw new Error('任务启动状态尚未被服务接受');
+                  const payload = sanitizeExecutionInteractionPayload(
+                    'xapt/manualHandoff',
+                    { questions },
+                  );
+                  handoffEntry = await this.outbox.prepare('OUTCOME', execution.id, {
+                    leaseToken: execution.lease.token,
+                    sessionId: started.sessionId,
+                    outcome: {
+                      kind: 'HANDED_OFF',
+                      questions: (payload as { questions: string[] }).questions,
+                    },
+                  });
+                  await this.http.openInteraction(
+                    session.serverOrigin,
+                    session.credential,
+                    execution.id,
+                    {
+                      leaseToken: execution.lease.token,
+                      kind: 'USER_INPUT',
+                      method: 'xapt/manualHandoff',
+                      payload,
+                    },
+                  );
+                  handoffPrepared = true;
+                }
+              : undefined,
           onInteraction: async (interaction) => {
             await startGate;
             if (!startAccepted) throw new Error('任务启动状态尚未被服务接受');
@@ -309,6 +388,17 @@ export class ExecutionService {
         },
       };
     } catch (error) {
+      if (handoffEntry) {
+        // completion settles only after the owning app-server has exited.
+        await started.completion.catch(() => undefined);
+        handoffEntry = await this.outbox.confirmSessionReleased(handoffEntry);
+        lease.stop();
+        await this.recovery.recordPhase(execution, 'OUTCOME_PENDING', started.sessionId);
+        if (handoffPrepared && (await this.outbox.deliverPrepared(session, handoffEntry)))
+          await this.state.removeExecution(execution.id);
+        this.controllers.delete(execution.id);
+        return;
+      }
       request = {
         leaseToken: execution.lease.token,
         sessionId: started.sessionId,

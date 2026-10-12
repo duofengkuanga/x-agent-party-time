@@ -440,3 +440,64 @@ describe('Execution lifecycle', () => {
     });
   });
 });
+
+test('人工接管跨租约保留；相同工作区阻塞，同步和独立工作区仍可领取', async () => {
+  const f = await setup();
+  const workspace = {
+    key: 'repair-one',
+    isolation: 'DETACHED_WORKTREE' as const,
+    baseRef: 'main',
+  };
+  const source = f.executions.enqueue({
+    ...input(f.runnerId, bindingId(90), 'manual'),
+    workspace,
+  });
+  const claimed = (await f.executions.claim(f.runnerId, 1, 0))[0]!;
+  f.startClaimed(claimed, 'manual-session');
+  const questions = ['确认权限变更？'];
+  f.executions.openInteraction(f.runnerId, source.id, {
+    leaseToken: claimed.lease.token,
+    kind: 'USER_INPUT',
+    method: 'xapt/manualHandoff',
+    payload: { questions },
+  });
+  const same = f.executions.enqueue({
+    ...input(f.runnerId, bindingId(90), 'same'),
+    workspace,
+  });
+  const independent = f.executions.enqueue({
+    ...input(f.runnerId, bindingId(90), 'independent'),
+    workspace: { ...workspace, key: 'repair-two' },
+  });
+  f.setNow('2026-07-27T09:00:00.000Z');
+  expect((await f.executions.claim(f.runnerId, 3, 0)).map((x) => x.id)).toEqual([
+    independent.id,
+  ]);
+  expect(f.executions.get(source.id).state).toBe('WAITING_FOR_INTERACTION');
+  f.executions.complete(f.runnerId, source.id, {
+    leaseToken: claimed.lease.token,
+    sessionId: 'manual-session',
+    outcome: { kind: 'HANDED_OFF', questions },
+  });
+  expect(f.executions.get(source.id).state).toBe('HANDED_OFF');
+  expect(f.executions.get(same.id).state).toBe('QUEUED');
+  f.executions.requestCancellation(independent.id);
+  f.setNow('2026-07-27T10:00:00.000Z');
+  const sync = f.executions.enqueue({
+    ...input(f.runnerId, bindingId(90), 'sync'),
+    previousExecutionId: source.id,
+    workspace,
+    codexTurn: { kind: 'READ_SESSION', taskId: 'manual-session', outputJsonSchema: {} },
+  });
+  const read = (await f.executions.claim(f.runnerId, 3, 0))[0]!;
+  expect(read.id).toBe(sync.id);
+  f.startClaimed(read, 'manual-session');
+  f.executions.complete(f.runnerId, read.id, {
+    leaseToken: read.lease.token,
+    sessionId: 'manual-session',
+    outcome: { kind: 'SUCCEEDED', result: { turnId: 'finished', result: {} } },
+  });
+  expect((await f.executions.claim(f.runnerId, 3, 0)).map((x) => x.id)).toEqual([
+    same.id,
+  ]);
+});

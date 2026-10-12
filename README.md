@@ -78,7 +78,7 @@ bun install --frozen-lockfile
 bun run dev
 ```
 
-`bun run dev` 会在仓库 `.scratch/development/` 中准备数据库并自动创建上述本地开发用户。数据库支持从 Schema 26 保留数据升级到 27；不支持的版本明确报错，不自动清空数据。
+`bun run dev` 会在仓库 `.scratch/development/` 中准备数据库并自动创建上述本地开发用户。数据库支持从 Schema 26、27 保留数据升级到 28；不支持的版本明确报错，不自动清空数据。
 
 `bun run dev` 前台管理两个进程：
 
@@ -130,7 +130,7 @@ bun run dev:xapt
 
 `bun run dev`、`bun run dev:app` 和 `bun run seed:app` 使用这个目录。开发启动流程保留数据库和附件，不支持的 Schema 版本会阻止启动；如果 `AGENT_PARTY_TIME_HOME` 指向仓库 `.scratch/` 之外，开发准备脚本会拒绝处理。
 
-正式 Server 数据默认位于 `~/.agent-party-time/`，也可以通过 `AGENT_PARTY_TIME_HOME` 指定。启动支持 Schema 26 到 27 的事务迁移，为已开始修复的缺陷保留原提测配置，已有执行和批次不变；其他旧版本需要先备份并提供对应迁移策略。
+正式 Server 数据默认位于 `~/.agent-party-time/`，也可以通过 `AGENT_PARTY_TIME_HOME` 指定。启动支持 Schema 26、27 到 28 的迁移，为已开始修复的缺陷保留原提测配置，已有执行和批次不变；其他旧版本需要先备份并提供对应迁移策略。
 
 xapt 本机状态：
 
@@ -167,6 +167,10 @@ bun run typecheck:xapt
 ```
 
 ## 故障排查
+
+修复或更新遇到异步人工确认时，网页先显示正在释放会话，随后显示“等待人工确认”。工程负责人点击“打开原 Codex 会话”，回答问题并完成任务后，再返回网页点击“同步状态”。无需手动退出 xapt 或删除锁文件。尚未完成或结果无效的同步不会改变等待状态，也不会自动重启任务。
+
+Server Schema 28 为人工接管增加执行状态，支持从 26、27 保留数据升级；部署前备份数据库，并配套更新 Server 与 xapt。升级代码仅在 Server 启动时运行。
 
 操作失败时，先按提示区分处理方式：繁忙错误可以稍后重试；数据一致性或存储错误需要维护者检查；未知异常应先刷新确认当前状态，避免重复提交。
 

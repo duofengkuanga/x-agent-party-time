@@ -14,6 +14,11 @@ export function parseManualOperations(value: string) {
 
 export function projectUpdateAttemptResult(outcomeJson: string, technical: boolean) {
   const outcome = JSON.parse(outcomeJson) as Record<string, unknown>;
+  if (outcome.outcome === 'HANDED_OFF')
+    return {
+      outcome: 'HANDED_OFF' as const,
+      questions: technical ? outcome.questions : null,
+    };
   if (outcome.outcome === 'COMPLETED' || outcome.outcome === 'PUSHED')
     return {
       outcome: outcome.outcome,
@@ -76,6 +81,8 @@ export function updateVisual(
 ): CookingVisualPresentation {
   const interaction = interactionVisual(interactions, latest?.state, responsible, '更新');
   if (interaction) return interaction;
+  if (latest?.state === 'HANDED_OFF')
+    return { state: 'NEEDS_INPUT', label: '等待人工确认', symbol: '?' };
   if (batch.state === 'FAILED' || latest?.state === 'FAILED')
     return { state: 'FAILED', label: '统一更新未完成', symbol: '×' };
   if (batch.state === 'READY' || latest?.state === 'QUEUED')

@@ -277,15 +277,28 @@ export class ExecutionService {
           return this.records.mapExecution(row);
         throw new PlatformError('OUTCOME_CONFLICT', '任务结果与已保存结果冲突');
       }
-      requireLeasedRow(this.now, row, request.leaseToken, [
-        'RUNNING',
-        'WAITING_FOR_INTERACTION',
-        'WAITING_TO_RESUME',
-        'CANCEL_REQUESTED',
-      ]);
+      const handoff = this.records.findPendingInteraction(executionId);
+      const isPreparedHandoff =
+        request.outcome.kind === 'HANDED_OFF' &&
+        row.state === 'WAITING_FOR_INTERACTION' &&
+        !row.cancellation_requested &&
+        row.lease_token_hash === tokenHash &&
+        handoff?.method === 'xapt/manualHandoff' &&
+        JSON.stringify(JSON.parse(handoff.payload_json).questions) ===
+          JSON.stringify(request.outcome.questions);
+      if (request.outcome.kind === 'HANDED_OFF' && !isPreparedHandoff)
+        throw new PlatformError('INVALID_TRANSITION', '人工接管尚未准备或问题不匹配');
+      if (!isPreparedHandoff)
+        requireLeasedRow(this.now, row, request.leaseToken, [
+          'RUNNING',
+          'WAITING_FOR_INTERACTION',
+          'WAITING_TO_RESUME',
+          'CANCEL_REQUESTED',
+        ]);
       if (
         (row.state === 'WAITING_FOR_INTERACTION' || row.state === 'WAITING_TO_RESUME') &&
-        request.outcome.kind !== 'CANCELLED'
+        request.outcome.kind !== 'CANCELLED' &&
+        request.outcome.kind !== 'HANDED_OFF'
       )
         throw new PlatformError('INVALID_TRANSITION', '等待中的任务只能以取消结束');
       if (row.session_id !== request.sessionId)
@@ -415,7 +428,12 @@ function validateStartedSkillBinding(
 }
 
 function isTerminal(state: Execution['state']): boolean {
-  return state === 'SUCCEEDED' || state === 'FAILED' || state === 'CANCELLED';
+  return (
+    state === 'SUCCEEDED' ||
+    state === 'FAILED' ||
+    state === 'CANCELLED' ||
+    state === 'HANDED_OFF'
+  );
 }
 
 function isBindingReservationConstraint(error: unknown): boolean {

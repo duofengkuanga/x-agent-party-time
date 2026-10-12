@@ -9,6 +9,7 @@ import {
 
 export function createInitialCodexTurn(input: {
   requiredSkillName: string;
+  manualHandoff?: 'EXTERNAL_SESSION';
   executionBrief: JsonObject;
   outputJsonSchema: JsonObject;
   resultAssertions?: ExecutionResultAssertion[];
@@ -16,6 +17,7 @@ export function createInitialCodexTurn(input: {
   const serialized = serializeDeterministicJson(input.executionBrief);
   return {
     kind: 'INITIAL',
+    manualHandoff: input.manualHandoff,
     requiredSkillName: input.requiredSkillName,
     executionBrief: input.executionBrief,
     executionBriefHash: createHash('sha256').update(serialized).digest('hex'),
@@ -27,6 +29,7 @@ export function createInitialCodexTurn(input: {
 
 export function createContinuationCodexTurn(input: {
   taskId: string;
+  manualHandoff?: 'EXTERNAL_SESSION';
   taskSkillBinding: TaskSkillBinding;
   text: string;
   outputJsonSchema: JsonObject;
@@ -34,6 +37,7 @@ export function createContinuationCodexTurn(input: {
 }): CodexTurn {
   return {
     kind: 'CONTINUATION',
+    manualHandoff: input.manualHandoff,
     taskId: input.taskId,
     taskSkillBinding: input.taskSkillBinding,
     input: input.text,

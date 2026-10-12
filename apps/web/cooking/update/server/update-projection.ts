@@ -86,6 +86,7 @@ export class UpdateProjection {
       COMPLETED: 'COMPLETED',
       PUSHED: 'WAITING_EXTERNAL',
       FAILED: 'FAILED',
+      HANDED_OFF: 'RUNNING',
     }[interpreted.kind];
     const batchUpdate = this.db.run(
       `UPDATE cooking_update_batch
@@ -95,7 +96,9 @@ export class UpdateProjection {
        WHERE id = ? AND state IN ('READY', 'RUNNING', 'FAILED')`,
       [
         nextState,
-        interpreted.kind === 'FAILED' ? batch.active_execution_id : null,
+        ['FAILED', 'HANDED_OFF'].includes(interpreted.kind)
+          ? batch.active_execution_id
+          : null,
         execution.sessionId,
         now,
         batch.id,
@@ -148,7 +151,14 @@ export class UpdateProjection {
       return;
     }
     const latest = this.queries.latestAttempt(batch.id);
-    if (!latest || !isTerminal(latest.state) || batch.state !== 'FAILED') return;
+    if (
+      !latest ||
+      !(
+        (isTerminal(latest.state) && batch.state === 'FAILED') ||
+        (latest.state === 'HANDED_OFF' && batch.state === 'RUNNING')
+      )
+    )
+      return;
     const duplicate = this.db.get(
       `SELECT 1 FROM cooking_update_session_sync
        WHERE session_id = ? AND turn_id = ? AND execution_id <> ? LIMIT 1`,
@@ -218,7 +228,12 @@ export class UpdateProjection {
   ):
     | { kind: 'COMPLETED'; attemptOutcome: unknown }
     | { kind: 'PUSHED'; attemptOutcome: unknown }
-    | { kind: 'FAILED'; attemptOutcome: unknown } {
+    | { kind: 'FAILED' | 'HANDED_OFF'; attemptOutcome: unknown } {
+    if (execution.outcome?.kind === 'HANDED_OFF')
+      return {
+        kind: 'HANDED_OFF',
+        attemptOutcome: { outcome: 'HANDED_OFF', questions: execution.outcome.questions },
+      };
     if (execution.outcome?.kind === 'SUCCEEDED') {
       const deployment = DeploymentMethodSchema.parse(JSON.parse(batch.deployment_json));
       const parsed =

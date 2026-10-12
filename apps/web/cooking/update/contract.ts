@@ -3,6 +3,7 @@ import { CommitShaSchema } from '@/cooking/repair/contract';
 import {
   CookingAttachmentViewSchema,
   CookingInteractionViewSchema,
+  ManualHandoffResultViewSchema,
   CookingMutationIdSchema,
   VersionedCookingMutationSchema,
   CookingValidationSchema,
@@ -89,6 +90,7 @@ export const UpdateBatchEntryViewSchema = z.object({
 });
 
 const UpdateAttemptResultViewSchema = z.discriminatedUnion('outcome', [
+  ManualHandoffResultViewSchema,
   z.object({
     outcome: z.enum(['COMPLETED', 'PUSHED']),
     completedActions: z.array(z.string()),

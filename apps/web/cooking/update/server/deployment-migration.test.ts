@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { updateFixture } from '@/cooking/update/server/update-fixture';
 import { testDatabases } from '@/testing/database';
-import { initializeSchema } from '@/platform/database/schema';
+import { initializeSchema, SERVER_SCHEMA_VERSION } from '@/platform/database/schema';
 
 const setup = updateFixture(testDatabases());
 
@@ -32,7 +32,9 @@ test('26 升级保留全部旧表记录，为已开始缺陷回填原配置，�
   expect(
     tables.map(({ name }) => f.database.all(`SELECT * FROM "${name}" ORDER BY rowid`)),
   ).toEqual(before);
-  expect(f.database.get('PRAGMA user_version')).toEqual({ user_version: 27 });
+  expect(f.database.get('PRAGMA user_version')).toEqual({
+    user_version: SERVER_SCHEMA_VERSION,
+  });
   expect(
     f.database.get<{ deployment_json: string }>(
       'SELECT deployment_json FROM cooking_bug_deployment WHERE bug_id = ?',

@@ -520,6 +520,32 @@ cases:
     assert:
       - text: { sel: '[role="dialog"]', contains: 实际决定：仅允许这一次 }
 
+  - name: manual confirmation offers original session and sync to responsible developer
+    steps:
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: 'button[aria-label^="等待人工确认缺陷，"]'
+      - click: 'button[aria-label^="等待人工确认缺陷，"]'
+      - wait: '[role="dialog"] a[href^="codex://threads/browser-manual-"]'
+      - eval: 'document.querySelector(''[role="dialog"] a[href^="codex://threads/browser-manual-"]'').focus(); true'
+    assert:
+      - text: { sel: '[role="dialog"]', contains: 等待人工确认 }
+      - text: { sel: '[role="dialog"]', contains: 是否确认移除区县大屏访问权限 }
+      - text: { sel: '[role="dialog"]', contains: 同步状态 }
+      - eval: 'document.activeElement.getAttribute("href").startsWith("codex://threads/browser-manual-")'
+
+  - name: manual handoff remains readable in dark theme and can request synchronization
+    steps:
+      - click: 'button[aria-label="关闭详情抽屉"]'
+      - click: 'button[aria-label="切换暗夜主题"]'
+      - click: 'button[aria-label^="等待人工确认缺陷，"]'
+      - wait: '[role="dialog"] a[href^="codex://threads/browser-manual-"]'
+      - eval: "[...document.querySelectorAll('[role=dialog] button')].find(b => b.textContent.trim() === '同步状态').click(); true"
+      - wait: 500
+    assert:
+      - visible: '.collab-shell[data-theme="night"]'
+      - text: { sel: '[role="dialog"]', contains: 等待人工确认 }
+      - eval: "![...document.querySelectorAll('[role=dialog] button')].some(b => b.textContent.trim() === '同步状态' && !b.disabled)"
+
   - name: responsible developer can assign an existing defect to frontend and backend
     steps:
       - open: __BASE_URL__/cooking/__SUBMISSION_ID__

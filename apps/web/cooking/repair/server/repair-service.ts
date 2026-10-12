@@ -30,7 +30,7 @@ import type { RepairSourceRow } from './records';
 import { RepairProjection } from './repair-projection';
 import { RepairQueries } from './repair-queries';
 import { parseCommits } from '@/cooking/shared/server/result-data';
-import { isFailedAttemptOutcome, staleRepair } from './results';
+import { isFailedAttemptOutcome, isSynchronizableAttempt, staleRepair } from './results';
 
 const REPAIR_RESULT_ASSERTIONS: ExecutionResultAssertion[] = [
   {
@@ -155,6 +155,7 @@ export class RepairService {
       priority: 0,
       approvalPolicy: 'never',
       codexTurn: createInitialCodexTurn({
+        manualHandoff: 'EXTERNAL_SESSION',
         requiredSkillName: 'agent-party-time-repair-bug',
         executionBrief,
         outputJsonSchema: RepairOutputJsonSchema,
@@ -197,6 +198,7 @@ export class RepairService {
       throw new PlatformError('INVALID_TRANSITION', '原修复任务不存在，不能自动重建');
     const previousExecution = this.executions.get(latest.execution_id);
     const codexTurn = createContinuationCodexTurn({
+      manualHandoff: 'EXTERNAL_SESSION',
       taskId: context.session_id,
       taskSkillBinding: requireTaskSkillBinding(previousExecution, '修复'),
       text: buildRepairContinuationInput({
@@ -311,10 +313,10 @@ export class RepairService {
           source.stage !== 'REPAIRING' ||
           !latest ||
           !latest.outcome_json ||
-          !isFailedAttemptOutcome(latest.outcome_json) ||
+          !isSynchronizableAttempt(latest.outcome_json) ||
           !context.session_id
         )
-          throw new PlatformError('INVALID_TRANSITION', '当前没有可同步的失败修复会话');
+          throw new PlatformError('INVALID_TRANSITION', '当前没有可同步的人工处理会话');
         if (this.queries.hasActiveSessionSync(bugId))
           throw new PlatformError('RESOURCE_CONFLICT', '修复会话正在同步');
         const previousExecution = this.executions.get(latest.execution_id);

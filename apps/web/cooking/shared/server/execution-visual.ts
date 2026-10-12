@@ -16,6 +16,8 @@ export function interactionVisual(
     throw new PlatformError('INTERNAL_ERROR', `同一${subject}记录存在多个待处理操作请求`);
   const interaction = pending[0];
   if (interaction) {
+    if (interaction.kind === 'MANUAL_HANDOFF')
+      return { state: 'NEEDS_INPUT', label: '正在释放会话，准备人工确认', symbol: '?' };
     if (state !== 'WAITING_FOR_INTERACTION')
       throw new PlatformError('INTERNAL_ERROR', `${subject}操作请求与任务状态不一致`);
     return interaction.kind === 'APPROVAL'

@@ -164,12 +164,14 @@ export class UpdateService {
         this.requireBatchVersion(batch, input.expectedVersion);
         const latest = this.queries.latestAttempt(batchId);
         if (
-          batch.state !== 'FAILED' ||
           !latest ||
-          !isTerminal(latest.state) ||
+          !(
+            (batch.state === 'FAILED' && isTerminal(latest.state)) ||
+            (batch.state === 'RUNNING' && latest.state === 'HANDED_OFF')
+          ) ||
           !batch.session_id
         )
-          throw new PlatformError('INVALID_TRANSITION', '当前没有可同步的失败更新会话');
+          throw new PlatformError('INVALID_TRANSITION', '当前没有可同步的人工处理会话');
         if (this.queries.hasActiveSessionSync(batchId))
           throw new PlatformError('RESOURCE_CONFLICT', '更新会话正在同步');
         const source = batch.source;

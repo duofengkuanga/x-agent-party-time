@@ -80,6 +80,7 @@ export class UpdateDelivery {
       priority: 0,
       approvalPolicy: 'never',
       codexTurn: createContinuationCodexTurn({
+        manualHandoff: 'EXTERNAL_SESSION',
         taskId: batch.session_id,
         taskSkillBinding: requireTaskSkillBinding(previousExecution, '更新'),
         text: continuationInput,
@@ -254,6 +255,7 @@ export class UpdateDelivery {
       priority: 0,
       approvalPolicy: 'never',
       codexTurn: createInitialCodexTurn({
+        manualHandoff: 'EXTERNAL_SESSION',
         requiredSkillName: 'agent-party-time-integrate-update-batch',
         executionBrief,
         outputJsonSchema:

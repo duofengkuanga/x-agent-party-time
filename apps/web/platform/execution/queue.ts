@@ -114,6 +114,7 @@ export class ExecutionQueue {
              AND candidate.state = 'WAITING_TO_RESUME'
              AND candidate.lease_token_hash IS NOT NULL
              AND candidate.lease_expires_at > ?
+             AND ${manualWorkspaceAvailable('candidate')}
              AND NOT EXISTS (
                SELECT 1 FROM platform_execution active
                WHERE active.binding_id = candidate.binding_id
@@ -149,9 +150,10 @@ export class ExecutionQueue {
                  ORDER BY state = 'QUEUED',
                    COALESCE(resume_requested_at, created_at), rowid
                ) queue_rank
-             FROM platform_execution
+             FROM platform_execution candidate
              WHERE cancellation_requested = 0
                AND state IN ('QUEUED', 'WAITING_TO_RESUME')
+               AND ${manualWorkspaceAvailable('candidate')}
            )
            SELECT candidate.* FROM ranked candidate
            WHERE candidate.runner_id = ? AND candidate.queue_rank = 1
@@ -256,10 +258,49 @@ export class ExecutionQueue {
           emit({ kind: 'TERMINAL', execution });
           continue;
         }
+        if (
+          this.records.findPendingInteraction(row.id)?.method === 'xapt/manualHandoff'
+        ) {
+          // Keep the original token solely for the durable release receipt;
+          // this state is never automatically claimed or resumed.
+          this.db.run(
+            'UPDATE platform_execution SET lease_expires_at = NULL WHERE id = ?',
+            [row.id],
+          );
+          continue;
+        }
         release.run(row.id);
       }
     });
   }
+}
+function manualWorkspaceAvailable(candidate: string): string {
+  return `NOT EXISTS (
+    SELECT 1 FROM platform_execution manual
+    WHERE manual.id <> ${candidate}.id
+      AND (manual.state = 'HANDED_OFF' OR (
+        manual.state = 'WAITING_FOR_INTERACTION' AND EXISTS (
+          SELECT 1 FROM platform_execution_interaction interaction
+          WHERE interaction.execution_id = manual.id AND interaction.state = 'PENDING'
+            AND interaction.method = 'xapt/manualHandoff'
+        )
+      ))
+      AND manual.runner_id = ${candidate}.runner_id
+      AND (manual.session_id = json_extract(${candidate}.codex_turn_json, '$.taskId')
+        OR (manual.binding_id = ${candidate}.binding_id AND (
+          manual.workspace_json IS NULL OR ${candidate}.workspace_json IS NULL
+          OR json_extract(manual.workspace_json, '$.key') = json_extract(${candidate}.workspace_json, '$.key')
+          OR EXISTS (SELECT 1 FROM json_each(${candidate}.workspace_json, '$.workspaceKeys') cleanup
+            WHERE cleanup.value = json_extract(manual.workspace_json, '$.key'))
+        )))
+      AND NOT (COALESCE(json_extract(${candidate}.codex_turn_json, '$.kind'), '') = 'READ_SESSION'
+        AND json_extract(${candidate}.codex_turn_json, '$.taskId') = manual.session_id)
+      AND NOT EXISTS (
+        SELECT 1 FROM platform_execution synced
+        WHERE synced.previous_execution_id = manual.id AND synced.state = 'SUCCEEDED'
+          AND json_extract(synced.codex_turn_json, '$.kind') = 'READ_SESSION'
+      )
+  )`;
 }
 function codexTurnForClaim(execution: Execution): CodexTurn | null {
   const turn = execution.codexTurn;
@@ -267,6 +308,7 @@ function codexTurnForClaim(execution: Execution): CodexTurn | null {
     return turn;
   return {
     kind: 'CONTINUATION',
+    manualHandoff: turn.manualHandoff,
     taskId: execution.sessionId,
     taskSkillBinding: turn.taskSkillBinding,
     input: '继续完成上次未完成的任务。',

@@ -101,7 +101,8 @@ export class UpdateQueries {
       interaction: projectCookingInteraction(row, technical),
     }));
     const interactions = projectedInteractions.map(({ interaction }) => interaction);
-    const statusLabel = batchStateLabel(batch.state);
+    const statusLabel =
+      latest?.state === 'HANDED_OFF' ? '等待人工确认' : batchStateLabel(batch.state);
     const timeline = [
       {
         id: `formed:${batch.id}`,
@@ -173,9 +174,9 @@ export class UpdateQueries {
       availableActions:
         technical && environmentOwned(this.db, batch.submission_item_id)
           ? [
-              ...(batch.state === 'FAILED' &&
-              latest &&
-              isTerminal(latest.state) &&
+              ...(latest &&
+              ((batch.state === 'FAILED' && isTerminal(latest.state)) ||
+                (batch.state === 'RUNNING' && latest.state === 'HANDED_OFF')) &&
               batch.session_id &&
               !this.hasActiveSessionSync(batch.id)
                 ? (['SYNC_SESSION'] as const)

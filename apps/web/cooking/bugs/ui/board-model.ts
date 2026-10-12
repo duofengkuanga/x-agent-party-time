@@ -140,6 +140,8 @@ export function updateAttemptLabel(
     return `第 ${attempt.attempt} 轮已 Push，等待外部结果`;
   if (attempt.result?.outcome === 'FAILED')
     return `第 ${attempt.attempt} 轮统一更新未完成`;
+  if (attempt.result?.outcome === 'HANDED_OFF')
+    return `第 ${attempt.attempt} 轮统一更新等待人工确认`;
   return `第 ${attempt.attempt} 轮统一更新进行中`;
 }
 

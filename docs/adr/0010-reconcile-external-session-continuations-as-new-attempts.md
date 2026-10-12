@@ -15,7 +15,7 @@ status: accepted
 ## Consequences
 
 - 移除“重新执行修复”和“重新执行统一更新”入口。
-- “同步状态”仅在最新 Repair 或 Update 已失败且存在 Session ID 时向对应工程负责人显示。
+- “同步状态”在最新 Repair 或 Update 已失败，或已完成人工接管交接且存在 Session ID 时，向对应工程负责人显示。人工接管见 ADR-0013。
 - xapt 必须按工程负责人的同步请求读取指定 Session 的最后一个 Turn。只有该 Turn 已完成且最终回复符合 Schema 时才校验并幂等上报；最新 Turn 未完成、失败、无法确认或无有效结果时不得扫描或挑选更早的 JSON。
 - 无有效结果的同步不改变平台状态，平台不从自然语言过程消息或 Git 改动推断成功。
 - 有效的失败结果也必须追加一轮 External Session Attempt，并保持失败，以保留每次平台外恢复的历史。

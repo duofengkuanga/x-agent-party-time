@@ -12,7 +12,7 @@ import { RepairQueries } from './repair-queries';
 import type { RepairDeliveryHooks } from './repair-service';
 import {
   formatRepairContractIssues,
-  isFailedAttemptOutcome,
+  isSynchronizableAttempt,
   isRepairExecution,
   parseManualOperations,
 } from './results';
@@ -109,7 +109,9 @@ export class RepairProjection {
       attempt.bug_id,
       interpreted.kind === 'COMPLETED'
         ? 'REPAIR_ATTEMPT_COMPLETED'
-        : 'REPAIR_ATTEMPT_FAILED',
+        : interpreted.kind === 'HANDED_OFF'
+          ? 'REPAIR_ATTEMPT_HANDED_OFF'
+          : 'REPAIR_ATTEMPT_FAILED',
       {
         executionId: execution.id,
         attempt: attempt.attempt,
@@ -211,8 +213,7 @@ export class RepairProjection {
       [turnId, execution.id],
     );
     const latest = this.queries.latestAttempt(sync.bug_id);
-    if (!latest || !latest.outcome_json || !isFailedAttemptOutcome(latest.outcome_json))
-      return;
+    if (!latest || !isSynchronizableAttempt(latest.outcome_json)) return;
     const attemptId = this.createId();
     const now = this.now().toISOString();
     this.db.run(
@@ -253,9 +254,14 @@ export class RepairProjection {
         attemptOutcome: unknown;
       }
     | {
-        kind: 'FAILED';
+        kind: 'FAILED' | 'HANDED_OFF';
         attemptOutcome: unknown;
       } {
+    if (execution.outcome?.kind === 'HANDED_OFF')
+      return {
+        kind: 'HANDED_OFF',
+        attemptOutcome: { outcome: 'HANDED_OFF', questions: execution.outcome.questions },
+      };
     if (execution.outcome?.kind === 'SUCCEEDED') {
       const parsed = RepairExecutionResultSchema.safeParse(execution.outcome.result);
       const result = parsed.success ? parsed.data.result : null;

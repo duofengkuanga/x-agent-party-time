@@ -110,7 +110,8 @@ CREATE TABLE platform_execution (
     'CANCEL_REQUESTED',
     'SUCCEEDED',
     'FAILED',
-    'CANCELLED'
+    'CANCELLED',
+    'HANDED_OFF'
   )),
   codex_turn_json TEXT CHECK (
     codex_turn_json IS NULL OR json_valid(codex_turn_json)

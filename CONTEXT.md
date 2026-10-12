@@ -71,8 +71,12 @@ Execution 过程中 Codex 明确请求用户输入或权限决定的等待点；
 _Avoid_: Feedback、Chat Message
 
 **External Session Continuation**:
-开发者在平台外继续一个失败的 Repair 或 Update Codex Session 的行为，与平台托管的业务返修相区分。
+开发者在平台外继续一个失败或已交给人工确认的 Repair 或 Update Codex Session 的行为，与平台托管的业务返修相区分。
 _Avoid_: Platform Retry、Manual Repair Node
+
+**Manual Session Handoff**:
+自动执行请求人工确认后，将原会话交给工程负责人处理的交接；等待人工处理不表示修复或更新失败，完成后由负责人同步结果。
+_Avoid_: Failure、Automatic Retry
 
 **External Session Attempt**:
 一次 Session Synchronization 确认的外部会话结果所对应的 Repair 或 Update 尝试记录，与此前的失败尝试各自独立。

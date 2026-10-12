@@ -35,7 +35,9 @@ export class ExecutionInteractions {
         runnerId,
         executionId,
         request.leaseToken,
-        ['RUNNING', 'CANCEL_REQUESTED'],
+        request.method === 'xapt/manualHandoff'
+          ? ['RUNNING', 'CANCEL_REQUESTED', 'WAITING_FOR_INTERACTION']
+          : ['RUNNING', 'CANCEL_REQUESTED'],
       );
       const existing = this.records.findPendingInteraction(executionId);
       if (existing) {

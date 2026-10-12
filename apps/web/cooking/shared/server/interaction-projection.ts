@@ -36,6 +36,15 @@ export function projectCookingInteraction(
     createdAt: row.created_at,
     resolvedAt: row.resolved_at,
   };
+  if (row.method === 'xapt/manualHandoff')
+    return CookingInteractionViewSchema.parse({
+      ...base,
+      kind: 'MANUAL_HANDOFF',
+      canResolve: false,
+      questions: responsible ? asRecord(payload).questions : null,
+      request: null,
+      resolution: null,
+    });
   if (row.kind === 'APPROVAL')
     return CookingInteractionViewSchema.parse({
       ...base,

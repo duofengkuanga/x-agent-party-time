@@ -1,5 +1,10 @@
 import { z } from 'zod';
 
+export const ManualHandoffResultViewSchema = z.object({
+  outcome: z.literal('HANDED_OFF'),
+  questions: z.array(z.string()).nullable(),
+});
+
 export const CookingMutationIdSchema = z.uuid();
 
 export const VersionedCookingMutationSchema = z.object({
@@ -86,6 +91,12 @@ const CookingInteractionBaseSchema = z.object({
 });
 
 export const CookingInteractionViewSchema = z.discriminatedUnion('kind', [
+  CookingInteractionBaseSchema.extend({
+    kind: z.literal('MANUAL_HANDOFF'),
+    questions: z.array(z.string()).nullable(),
+    request: z.null(),
+    resolution: z.null(),
+  }),
   CookingInteractionBaseSchema.extend({
     kind: z.literal('APPROVAL'),
     request: z

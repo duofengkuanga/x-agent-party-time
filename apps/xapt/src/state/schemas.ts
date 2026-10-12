@@ -66,6 +66,7 @@ export const OutboxEntrySchema = z.discriminatedUnion('kind', [
     schemaVersion: z.literal(OUTBOX_STATE_SCHEMA_VERSION),
     id: z.uuid(),
     kind: z.literal('OUTCOME'),
+    sessionReleased: z.literal(true).optional(),
     executionId: z.uuid(),
     request: CompleteExecutionRequestSchema,
     createdAt: z.iso.datetime(),

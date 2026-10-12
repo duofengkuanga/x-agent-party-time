@@ -23,6 +23,7 @@ import {
 } from './wire-values';
 
 import { codexUserInput } from './turn-input';
+import { asyncQuestions, CodexManualHandoff } from './manual-handoff';
 
 import {
   isInteractionMethod,
@@ -70,6 +71,8 @@ export class CodexAppServerExecutor implements CodexExecutor {
   private readonly turns = new Map<string, ActiveTurn>();
   private readonly completedTurns = new Map<string, Record<string, unknown>>();
   private readonly agentMessages = new Map<string, string>();
+  private readonly handoffs = new Map<string, string[]>();
+  private readonly handingOff = new Set<string>();
 
   constructor(
     private readonly executable = 'codex',
@@ -162,6 +165,18 @@ export class CodexAppServerExecutor implements CodexExecutor {
     } finally {
       await operation.close();
       this.operations.delete(operation);
+    }
+  }
+
+  async releaseSession(sessionId: string): Promise<void> {
+    const operation = new CodexAppServerExecutor(this.executable, this.spawnProcess);
+    try {
+      await operation.ensureStarted();
+      // Loading without turn/start proves no other writer owns the session.
+      // Closing the temporary owner releases it before replaying the handoff.
+      await operation.request('thread/resume', { threadId: sessionId });
+    } finally {
+      await operation.close();
     }
   }
 
@@ -261,6 +276,12 @@ export class CodexAppServerExecutor implements CodexExecutor {
       };
       signal.addEventListener('abort', abort, { once: true });
       this.turns.set(key, active);
+      const handoff = this.handoffs.get(key);
+      if (handoff && input.onManualHandoff) {
+        this.handoffs.delete(key);
+        void this.handoff(active, handoff);
+        return;
+      }
       const completed = this.completedTurns.get(key);
       if (completed) {
         this.completedTurns.delete(key);
@@ -310,6 +331,14 @@ export class CodexAppServerExecutor implements CodexExecutor {
     const active = threadId && turnId ? this.turns.get(turnKey(threadId, turnId)) : null;
     if (active) active.log.write(`${raw}\n`);
 
+    if (method === 'item/completed' && threadId && turnId) {
+      const questions = asyncQuestions(params.item);
+      if (questions) {
+        if (active?.input.onManualHandoff) void this.handoff(active, questions);
+        else if (!active) this.handoffs.set(turnKey(threadId, turnId), questions);
+      }
+    }
+
     if (id !== undefined && method) {
       void this.handleServerRequest(
         { id: id as string | number, method, params },
@@ -330,6 +359,7 @@ export class CodexAppServerExecutor implements CodexExecutor {
   }
 
   private completeTurn(active: ActiveTurn, params: Record<string, unknown>): void {
+    if (this.handingOff.has(turnKey(active.threadId, active.turnId))) return;
     const turn = asRecord(params.turn);
     const status = optionalString(turn.status);
     if (status !== 'completed') {
@@ -353,6 +383,24 @@ export class CodexAppServerExecutor implements CodexExecutor {
       return;
     }
     active.resolve(result);
+  }
+
+  private async handoff(active: ActiveTurn, questions: string[]): Promise<void> {
+    const key = turnKey(active.threadId, active.turnId);
+    if (this.handingOff.has(key)) return;
+    this.handingOff.add(key);
+    try {
+      await active.input.onManualHandoff!(questions);
+      // begin().completion only settles after its finally(release) has closed
+      // this operation's child; consumers must not advertise a free session sooner.
+      void this.request('turn/interrupt', {
+        threadId: active.threadId,
+        turnId: active.turnId,
+      }).catch(() => undefined);
+      active.reject(new CodexManualHandoff(questions));
+    } catch (error) {
+      active.reject(error instanceof Error ? error : new Error('保存人工接管请求失败'));
+    }
   }
 
   private async handleServerRequest(
