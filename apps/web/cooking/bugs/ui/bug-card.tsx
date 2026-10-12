@@ -20,6 +20,8 @@ export function BugCard({
   onOpen,
   onReopen,
   onRequestRework,
+  onVerifyPass,
+  pending,
   visual,
 }: {
   bug: BugView;
@@ -31,6 +33,8 @@ export function BugCard({
   onOpen: () => void;
   onReopen: () => void;
   onRequestRework: () => void;
+  onVerifyPass: () => void;
+  pending: boolean;
   visual: CookingVisualPresentation;
 }) {
   return (
@@ -69,16 +73,36 @@ export function BugCard({
             </strong>
           ) : null}
           {bug.availableActions.some((action) =>
-            ['VERIFY_FAIL', 'REOPEN'].includes(action),
+            ['VERIFY_PASS', 'VERIFY_FAIL', 'REOPEN'].includes(action),
           ) ? (
-            <div className="collab-bug-card__actions">
+            <div
+              aria-busy={pending}
+              className={`collab-bug-card__actions${bug.availableActions.includes('VERIFY_PASS') ? ' collab-bug-card__verification' : ''}`}
+            >
+              {bug.availableActions.includes('VERIFY_PASS') ? (
+                <button
+                  disabled={pending}
+                  onClick={stopCardAction(onVerifyPass)}
+                  type="button"
+                >
+                  通过
+                </button>
+              ) : null}
               {bug.availableActions.includes('VERIFY_FAIL') ? (
-                <button onClick={stopCardAction(onRequestRework)} type="button">
+                <button
+                  disabled={pending}
+                  onClick={stopCardAction(onRequestRework)}
+                  type="button"
+                >
                   不通过并返修
                 </button>
               ) : null}
               {bug.availableActions.includes('REOPEN') ? (
-                <button onClick={stopCardAction(onReopen)} type="button">
+                <button
+                  disabled={pending}
+                  onClick={stopCardAction(onReopen)}
+                  type="button"
+                >
                   重新打开
                 </button>
               ) : null}

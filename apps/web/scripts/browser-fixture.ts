@@ -175,6 +175,7 @@ export async function seedBrowserFixture(home: string): Promise<BrowserFixture> 
 
     await completeRepair('待归档与重开缺陷', 'DONE');
     await completeRepair('待验证返修缺陷', 'WAITING_FOR_VERIFICATION');
+    await completeRepair('待验证通过缺陷', 'WAITING_FOR_VERIFICATION');
 
     // 完成后的返修入口和长时间线一起覆盖页签切换带动遮罩滚动的场景。
     const scrollBug = createBug('修复更新页签滚动回归');

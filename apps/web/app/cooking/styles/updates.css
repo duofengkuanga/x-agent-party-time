@@ -206,3 +206,13 @@
   min-height: 28px;
   padding: 5px 8px;
 }
+
+.collab-bug-card__footer:has(.collab-bug-card__verification) {
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+}
+
+.collab-bug-card__verification button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}

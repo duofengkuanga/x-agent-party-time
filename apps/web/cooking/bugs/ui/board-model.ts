@@ -58,8 +58,12 @@ export function dragTransition(bug: BugView, target: MainStage) {
         }),
       message: `${bugLabel(bug)} 已提交自动修复。`,
     };
+  if (target === 'DONE') return verificationPassTransition(bug);
+  return null;
+}
+
+export function verificationPassTransition(bug: BugView) {
   if (
-    target === 'DONE' &&
     bug.stage === 'WAITING_FOR_VERIFICATION' &&
     bug.availableActions.includes('VERIFY_PASS')
   )

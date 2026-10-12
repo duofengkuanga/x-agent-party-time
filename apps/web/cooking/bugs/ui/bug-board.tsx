@@ -37,6 +37,7 @@ import {
   bugVersionOf,
   dragTransition,
   pendingDeliveryFor,
+  verificationPassTransition,
 } from './board-model';
 
 import { BugCard, UpdateBatchCard } from './bug-card';
@@ -302,6 +303,12 @@ export function BugBoard({
                           dragging={draggingBugId === bug.id}
                           eligibleAt={pendingDelivery?.eligibleAt}
                           key={bug.id}
+                          pending={pending}
+                          onVerifyPass={() => {
+                            const transition = verificationPassTransition(bug);
+                            if (transition)
+                              run(transition.command, transition.message);
+                          }}
                           onDragEnd={() => {
                             clearDraggingBug();
                           }}
