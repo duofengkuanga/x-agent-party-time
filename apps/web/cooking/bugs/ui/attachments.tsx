@@ -10,6 +10,7 @@ import {
 import { createPortal } from 'react-dom';
 import type { BugView } from '../contract';
 import { formatBytes } from './board-model';
+import { MAX_FILE_BYTES } from '@/platform/files/limits';
 
 const ATTACHMENT_ACCEPT =
   'image/png,image/jpeg,image/webp,text/plain,application/json';
@@ -61,6 +62,13 @@ export function AttachmentPicker({
   );
 
   function addFiles(incoming: File[]) {
+    const oversized = incoming.filter((file) => file.size > MAX_FILE_BYTES);
+    if (oversized.length) {
+      setNotice(
+        `${oversized.map((file) => `「${file.name}」（${formatBytes(file.size)}）`).join('、')}超过单个附件 10 MB 的限制，本次选择未加入。请压缩或更换后重新选择。`,
+      );
+      return;
+    }
     const supported = incoming.filter((file) =>
       ATTACHMENT_MEDIA_TYPES.has(file.type),
     );

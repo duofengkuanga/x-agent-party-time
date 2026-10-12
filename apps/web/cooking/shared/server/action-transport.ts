@@ -1,3 +1,4 @@
+import { MAX_FILE_BYTES } from '@/platform/files/limits';
 import { revalidatePath } from 'next/cache';
 import { redirect, RedirectType } from 'next/navigation';
 import { ZodError } from 'zod';
@@ -5,7 +6,6 @@ import { requireCurrentUser } from '@/platform/auth/server';
 import { PlatformError, publicError, type PlatformErrorCode } from '@/platform/errors';
 import {
   AllowedMediaTypeSchema,
-  MAX_FILE_BYTES,
   type AllowedMediaType,
 } from '@/platform/files/local-file-store';
 import { logger } from '@/platform/logging';

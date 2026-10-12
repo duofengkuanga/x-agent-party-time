@@ -20,7 +20,7 @@ import {
   engineeringIsReady,
   type ItemDraft,
 } from './item-editor';
-import { messageOf } from './workspace-feedback';
+import { messageOf } from '@/cooking/shared/ui/action-error';
 
 export function SubmissionComposer({
   catalog,

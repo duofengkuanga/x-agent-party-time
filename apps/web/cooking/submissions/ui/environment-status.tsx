@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { SubmissionItemView } from '../contract';
 import { changeSubmissionEnvironmentAction } from '../server/actions';
 import { createClientId } from '@/cooking/shared/ui/client-id';
+import { messageOf } from '@/cooking/shared/ui/action-error';
 import {
   EnvironmentConfirmation,
   EnvironmentConflicts,
@@ -44,7 +45,7 @@ export function EnvironmentStatus({
       }
       onChanged(result.result.workspaceRevision);
     } catch (error) {
-      setError(error instanceof Error ? error.message : '操作失败，请稍后重试');
+      setError(messageOf(error, '无法更新环境状态。'));
     } finally {
       setPending(false);
       setConfirm(false);

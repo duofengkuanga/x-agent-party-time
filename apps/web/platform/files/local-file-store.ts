@@ -1,3 +1,4 @@
+import { MAX_FILE_BYTES } from './limits';
 import { type DatabaseRow } from '@/platform/database/row-mapper';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
@@ -31,8 +32,6 @@ export type AllowedMediaType = z.infer<typeof AllowedMediaTypeSchema>;
 type StoredFileRow = Omit<DatabaseRow<StoredFile>, 'media_type'> & {
   media_type: string;
 };
-
-export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
 export class LocalFileStore {
   private readonly root: string;

@@ -11,7 +11,7 @@ import {
 } from '../server/actions';
 import type { BugFeedbackIntent } from './board-model';
 import { AttachmentPicker } from './attachments';
-import { messageOf } from './board-model';
+import { messageOf } from '@/cooking/shared/ui/action-error';
 
 export function BugReworkDialog({
   bug,
