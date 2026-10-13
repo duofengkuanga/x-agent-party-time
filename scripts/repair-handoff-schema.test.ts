@@ -33,6 +33,11 @@ test('Codex 使用支持的格式 Schema，本机结果断言在上传前拒绝�
   expect(validate({ result })).toBe(true);
   for (const text of [
     '本机目录 /Users/example/private',
+    '目录：/Users/example/private',
+    '目录(/Users/example/private)',
+    '参考 `/Users/example/private`',
+    '目录C:/Users/example/private',
+    '目录/Users/example/private',
     'TOKEN=fixture-only',
     'pAsSwOrD=fixture-only',
     '目录 C:\\private',

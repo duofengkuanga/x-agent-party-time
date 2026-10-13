@@ -9,8 +9,9 @@ const credentialName =
     /[a-z]/gu,
     (letter) => `[${letter}${letter.toUpperCase()}]`,
   );
+const absolutePath = String.raw`(?:(?:^|[\s"'=\x60([{<：:，,;；（【《“‘])(?:/(?!/)|~/)|\b[A-Za-z]:(?:\\|/(?!/))|(?<![A-Za-z0-9_./-])/(?:Users|home|private|var|tmp|Volumes|Applications|Library|opt|usr|root|workspace|data)(?:/|$))`;
 const portableContext = new RegExp(
-  String.raw`^(?![\s\S]*(?:^|[\s"'=])(?:/(?!/)|~/|[A-Za-z]:\\))(?![\s\S]*(?:${credentialName})["']?\s*[:=]\s*\S+)[\s\S]*$`,
+  String.raw`^(?![\s\S]*${absolutePath})(?![\s\S]*(?:${credentialName})["']?\s*[:=：]\s*\S+)[\s\S]*$`,
 );
 export const REPAIR_HANDOFF_TEXT_ASSERTION: ExecutionResultAssertion = {
   kind: 'JSON_STRING_PATTERN',

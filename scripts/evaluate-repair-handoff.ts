@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rename, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -26,6 +26,7 @@ const { values } = parseArgs({
     case: { type: 'string', default: 'all' },
     variant: { type: 'string', default: 'all' },
     codex: { type: 'string', default: 'codex' },
+    scenario: { type: 'string', default: 'single' },
   },
 });
 if (!values['skills-root'] || !values['baseline-app'] || !values['baseline-skills'])
@@ -44,6 +45,14 @@ if (
   cases.some((value) => !['node', 'python'].includes(value))
 )
   throw new Error('case 只允许 all/node/python；variant 只允许 all/baseline/current');
+if (
+  !['single', 'independent', 'stale', 'multi', 'resume'].includes(values.scenario!) ||
+  (values.scenario !== 'single' &&
+    (values.case !== 'node' || values.variant !== 'current'))
+)
+  throw new Error(
+    '扩展 scenario 需要 --case node --variant current，可选 independent/stale/multi/resume',
+  );
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', args, {
@@ -59,6 +68,7 @@ type PhaseReport = {
   exitCode: number;
   outcome: unknown;
   eventsFile: string;
+  threadId: string | null;
 };
 const reports: Array<Record<string, unknown>> = [];
 console.log(`验收证据目录：${evaluationRoot}`);
@@ -168,6 +178,40 @@ if stage=='package':
 `,
     );
   }
+  if (values.scenario === 'multi') {
+    await writeFile(
+      join(source, 'src/subtract.js'),
+      'export function subtract(a,b) { return a - b + 1; }\n',
+    );
+    await writeFile(
+      join(source, 'tests/subtract.test.mjs'),
+      "import { test } from 'node:test'; import assert from 'node:assert/strict'; import { subtract } from '../src/subtract.js'; test('integer subtraction', () => { assert.equal(subtract(7,3),4); assert.equal(subtract(-1,1),-2); });\n",
+    );
+    const tool = join(source, 'tools/check.mjs');
+    let script = await readFile(tool, 'utf8');
+    script = script.replace(
+      'const stage = process.argv[2];',
+      "const stage = process.argv[2]; const focusAt = process.argv.indexOf('--focus'); const names = focusAt < 0 ? ['add','subtract'] : [process.argv[focusAt+1]]; if (stage === 'package' && focusAt >= 0) throw new Error('Package must validate all features');",
+    );
+    script = script.replace(
+      "['--test','tests/add.test.mjs']",
+      "['--test',...names.map(name => 'tests/'+name+'.test.mjs')]",
+    );
+    script = script.replace(
+      "log('compile');",
+      "execFileSync(process.execPath, ['--check','src/subtract.js'], { stdio: 'inherit' }); log('compile');",
+    );
+    script = script.replace(
+      "writeFileSync('dist/add.js',readFileSync('src/add.js'));",
+      "writeFileSync('dist/add.js',readFileSync('src/add.js')); writeFileSync('dist/subtract.js',readFileSync('src/subtract.js'));",
+    );
+    await writeFile(tool, script);
+    await writeFile(
+      join(source, 'README.md'),
+      (await readFile(join(source, 'README.md'), 'utf8')) +
+        '\nThis repository currently has independent addition and subtraction defects. A Repair validates its own feature using the test entry with --focus add or --focus subtract. Delivery must validate both features without a focus selector.\n',
+    );
+  }
   git(source, 'init', '-b', 'main');
   git(source, 'config', 'user.name', 'Handoff evaluation');
   git(source, 'config', 'user.email', 'handoff-eval@example.invalid');
@@ -186,14 +230,17 @@ async function runAgent(
   variant: string,
   phase: 'repair' | 'update',
   brief: unknown,
+  options: { label?: string; persist?: boolean; resumeTaskId?: string } = {},
 ): Promise<PhaseReport> {
+  const label = options.label ?? phase;
   const skillName = phase === 'repair' ? repairSkill : updateSkill;
   const skillRoot = join(worktree, '.agents/skills', skillName);
   await mkdir(join(skillRoot, 'agents'), { recursive: true });
   const files = await Promise.all(
     ['SKILL.md', 'agents/openai.yaml'].map(async (path) => {
-      const bytes =
-        variant === 'baseline'
+      const bytes = options.resumeTaskId
+        ? await readFile(join(skillRoot, path))
+        : variant === 'baseline'
           ? Buffer.from(
               git(
                 skillsRoot,
@@ -202,7 +249,7 @@ async function runAgent(
               ) + '\n',
             )
           : await readFile(join(skillsRoot, 'skills', skillName, path));
-      await writeFile(join(skillRoot, path), bytes);
+      if (!options.resumeTaskId) await writeFile(join(skillRoot, path), bytes);
       return { path, bytes };
     }),
   );
@@ -212,12 +259,12 @@ async function runAgent(
       : phase === 'repair'
         ? RepairOutputJsonSchema
         : CiCdUpdateOutputJsonSchema;
-  const schemaFile = join(directory, `${phase}-schema.json`);
-  const resultFile = join(directory, `${phase}-outcome.json`);
-  const eventsFile = join(directory, `${phase}-events.jsonl`);
+  const schemaFile = join(directory, `${label}-schema.json`);
+  const resultFile = join(directory, `${label}-outcome.json`);
+  const eventsFile = join(directory, `${label}-events.jsonl`);
   await writeFile(schemaFile, JSON.stringify(schema));
   await writeFile(
-    join(directory, `${phase}-identity.json`),
+    join(directory, `${label}-identity.json`),
     JSON.stringify(
       {
         skillName,
@@ -233,15 +280,17 @@ async function runAgent(
       2,
     ),
   );
-  const prompt = `Use $${skillName} at ${join(skillRoot, 'SKILL.md')} to complete this Execution. Your worktree has already been prepared at ${worktree}. This is an authorized isolated evaluation: modify only this worktree, and use only its local origin for any permitted push. Follow the supplied output Schema. Do not change AGENTS.md, tests, validation scripts, or the Skill.\nExecution Brief:\n${JSON.stringify(brief)}\n`;
-  await writeFile(join(directory, `${phase}-prompt.txt`), prompt);
+  const prompt = options.resumeTaskId
+    ? '前次终态传输中断，平台尚未确认结果。继续完成同一个冻结更新批次；候选、目标分支、环境和验收要求均未改变。按原 Skill 核对当前事实后返回终态。'
+    : `Use $${skillName} at ${join(skillRoot, 'SKILL.md')} to complete this Execution. Your worktree has already been prepared at ${worktree}. This is an authorized isolated evaluation: modify only this worktree, and use only its local origin for any permitted push. Follow the supplied output Schema. Do not change AGENTS.md, tests, validation scripts, or the Skill.\nExecution Brief:\n${JSON.stringify(brief)}\n`;
+  await writeFile(join(directory, `${label}-prompt.txt`), prompt);
   const started = Date.now();
   console.log(`${variant}/${directory.split('/').at(-1)}/${phase}: real Codex started`);
   const child = Bun.spawn(
     [
       values.codex!,
       'exec',
-      '--ephemeral',
+      ...(!options.persist && !options.resumeTaskId ? ['--ephemeral'] : []),
       '--json',
       '-c',
       'approval_policy="never"',
@@ -255,6 +304,7 @@ async function runAgent(
       schemaFile,
       '--output-last-message',
       resultFile,
+      ...(options.resumeTaskId ? ['resume', options.resumeTaskId] : []),
       '-',
     ],
     {
@@ -265,7 +315,7 @@ async function runAgent(
       },
       stdin: new TextEncoder().encode(prompt),
       stdout: Bun.file(eventsFile),
-      stderr: Bun.file(join(directory, `${phase}-stderr.log`)),
+      stderr: Bun.file(join(directory, `${label}-stderr.log`)),
     },
   );
   const timeout = setTimeout(() => child.kill(), 8 * 60_000);
@@ -280,9 +330,15 @@ async function runAgent(
     exitCode,
     outcome,
     eventsFile,
+    threadId:
+      (await readFile(eventsFile, 'utf8'))
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => JSON.parse(line))
+        .find((event) => event.type === 'thread.started')?.thread_id ?? null,
   };
   await writeFile(
-    join(directory, `${phase}-report.json`),
+    join(directory, `${label}-report.json`),
     JSON.stringify(report, null, 2),
   );
   console.log(
@@ -300,6 +356,58 @@ async function runAgent(
       outcome,
     );
   return report;
+}
+
+function assertPublicSummary(
+  result: ReturnType<typeof RepairExecutionResultSchema.parse>['result'],
+) {
+  if (result.outcome !== 'COMPLETED') return;
+  const text = [
+    ...result.changes,
+    ...result.warnings,
+    ...result.validations.flatMap((entry) => [entry.name, entry.detail]),
+  ].join('\n');
+  if (
+    /\b(?:git\s+(?:diff|status|log|show|rev-parse)|(?:node|python3?|bun|npm|pnpm|mvn)\s+(?:run|test|--|tools\/|-m)|src\/\S+)/u.test(
+      text,
+    )
+  )
+    throw new Error('真实 Repair 公共摘要包含命令或文件位置，不能通过角色边界验收');
+}
+
+async function changeDeliveryInputs(source: string): Promise<string> {
+  if (values.scenario === 'stale') {
+    await rename(join(source, 'tools/check.mjs'), join(source, 'tools/verify.mjs'));
+    for (const file of ['README.md', 'package.json'])
+      await writeFile(
+        join(source, file),
+        (await readFile(join(source, file), 'utf8')).replaceAll(
+          'tools/check.mjs',
+          'tools/verify.mjs',
+        ),
+      );
+  } else if (values.scenario === 'independent') {
+    await writeFile(
+      join(source, 'delivery-policy.json'),
+      JSON.stringify({ phase: 'update' }),
+    );
+    await writeFile(
+      join(source, 'tools/audit.mjs'),
+      `import { readFileSync, appendFileSync, mkdirSync } from 'node:fs';
+if (JSON.parse(readFileSync('delivery-policy.json','utf8')).phase !== 'update') throw new Error('Delivery policy invalid');
+mkdirSync('.eval',{recursive:true}); appendFileSync('.eval/trace.jsonl',JSON.stringify({step:'independent',at:Date.now()})+'\\n');
+`,
+    );
+    await writeFile(
+      join(source, 'README.md'),
+      (await readFile(join(source, 'README.md'), 'utf8')) +
+        '\nEvery Update must also run node tools/audit.mjs against current delivery policy, even if a Repair check passed. The package lifecycle does not include this check.\n',
+    );
+  } else return git(source, 'rev-parse', 'HEAD');
+  git(source, 'add', '.');
+  git(source, 'commit', '-m', 'test: change delivery inputs after repair');
+  git(source, 'push', 'origin', 'main');
+  return git(source, 'rev-parse', 'HEAD');
 }
 
 try {
@@ -326,7 +434,8 @@ try {
       const repairResult = (
         repair.outcome as { result: { commits: string[]; outcome: string } }
       ).result;
-      if (variant === 'current') RepairExecutionResultSchema.parse(repair.outcome);
+      if (variant === 'current')
+        assertPublicSummary(RepairExecutionResultSchema.parse(repair.outcome).result);
       if (repairResult.outcome !== 'COMPLETED')
         throw new Error('Repair 没有成功，不能进入 Update');
       const actualCommits = git(
@@ -353,8 +462,9 @@ try {
         )
       )
         throw new Error('Agent 修改了验收输入');
+      if (git(repairWorktree, 'status', '--porcelain'))
+        throw new Error('Repair 留下未提交改动');
       const updateWorktree = join(directory, 'update');
-      git(fixture.source, 'worktree', 'add', '--detach', updateWorktree, fixture.base);
       const context = repairResult as unknown as {
         commits: string[];
         changes: string[];
@@ -362,40 +472,124 @@ try {
         warnings: string[];
         handoff: unknown;
       };
-      const update = await runAgent(updateWorktree, directory, variant, 'update', {
-        targetBranch: 'main',
-        environment: 'isolated',
-        deployment: { mode: 'CI_CD' },
-        frozenCandidates: [
+      const candidates = [
+        {
+          position: 0,
+          bugTitle: '整数加法结果总是偏大',
+          commits: [...actualCommits],
+          ...(variant === 'current'
+            ? {
+                repairHandoffs: [
+                  {
+                    commits: context.commits,
+                    changes: context.changes,
+                    validations: context.validations,
+                    warnings: context.warnings,
+                    handoff: context.handoff,
+                  },
+                ],
+              }
+            : {}),
+        },
+      ];
+      const otherRepairs: PhaseReport[] = [];
+      if (values.scenario === 'multi') {
+        const secondDirectory = join(directory, 'second-repair');
+        const secondWorktree = join(directory, 'repair-subtract');
+        await mkdir(secondDirectory);
+        git(
+          fixture.source,
+          'worktree',
+          'add',
+          '-b',
+          'repair-subtract',
+          secondWorktree,
+          fixture.base,
+        );
+        const second = await runAgent(
+          secondWorktree,
+          secondDirectory,
+          variant,
+          'repair',
           {
-            position: 0,
-            bugTitle: '整数加法结果总是偏大',
-            commits: actualCommits,
-            ...(variant === 'current'
-              ? {
-                  repairHandoffs: [
-                    {
-                      commits: context.commits,
-                      changes: context.changes,
-                      validations: context.validations,
-                      warnings: context.warnings,
-                      handoff: context.handoff,
-                    },
-                  ],
-                }
-              : {}),
+            bugTitle: '整数减法结果偏大',
+            actualResult: 'subtract(7,3) 返回 5',
+            expectedResult: '返回 4，且负数减法正确',
+            targetBranch: 'main',
           },
-        ],
-      });
+        );
+        const secondResult = RepairExecutionResultSchema.parse(second.outcome).result;
+        assertPublicSummary(secondResult);
+        if (
+          secondResult.outcome !== 'COMPLETED' ||
+          secondResult.completionKind !== 'CHANGES_COMMITTED'
+        )
+          throw new Error('第二次修复未产出候选');
+        const produced = git(
+          secondWorktree,
+          'rev-list',
+          '--reverse',
+          `${fixture.base}..HEAD`,
+        ).split('\n');
+        if (
+          JSON.stringify(produced) !== JSON.stringify(secondResult.commits) ||
+          git(secondWorktree, 'status', '--porcelain') ||
+          git(
+            secondWorktree,
+            'diff',
+            fixture.base,
+            'HEAD',
+            '--',
+            'AGENTS.md',
+            'tests',
+            'tools',
+          )
+        )
+          throw new Error('第二次 Repair 的提交或验收边界不成立');
+        candidates.push({
+          position: 1,
+          bugTitle: '整数减法结果偏大',
+          commits: produced,
+          repairHandoffs: [
+            {
+              commits: secondResult.commits,
+              changes: secondResult.changes,
+              validations: secondResult.validations,
+              warnings: secondResult.warnings,
+              handoff: secondResult.handoff,
+            },
+          ],
+        });
+        actualCommits.push(...produced);
+        otherRepairs.push(second);
+      }
+      const updateBase = await changeDeliveryInputs(fixture.source);
+      git(fixture.source, 'worktree', 'add', '--detach', updateWorktree, updateBase);
+      const update = await runAgent(
+        updateWorktree,
+        directory,
+        variant,
+        'update',
+        {
+          targetBranch: 'main',
+          environment: 'isolated',
+          deployment: { mode: 'CI_CD' },
+          frozenCandidates: candidates,
+        },
+        { persist: values.scenario === 'resume' },
+      );
       if (variant === 'current') CiCdUpdateExecutionResultSchema.parse(update.outcome);
       if ((update.outcome as { result: { outcome: string } }).result.outcome !== 'PUSHED')
         throw new Error('Update 没有确认 Push');
-      git(fixture.remote, 'merge-base', '--is-ancestor', actualCommits.at(-1)!, 'main');
+      for (const commit of actualCommits)
+        git(fixture.remote, 'merge-base', '--is-ancestor', commit, 'main');
+      if (git(updateWorktree, 'status', '--porcelain'))
+        throw new Error('Update 留下未提交改动');
       if (
         git(
           updateWorktree,
           'diff',
-          fixture.base,
+          updateBase,
           'HEAD',
           '--',
           'AGENTS.md',
@@ -420,14 +614,68 @@ try {
         !updateTrace.some((entry) => entry.step === 'test')
       )
         throw new Error('真实命令记录缺少交付验收');
+      if (
+        values.scenario === 'independent' &&
+        !updateTrace.some((entry) => entry.step === 'independent')
+      )
+        throw new Error('不可合并的本阶段强制检查没有执行');
+      if (values.scenario === 'stale') {
+        const parsed = CiCdUpdateExecutionResultSchema.parse(update.outcome).result;
+        if (!parsed.handoffUse.rechecked.length)
+          throw new Error('失效入口没有重新查证说明');
+      }
+      if (
+        values.scenario === 'multi' &&
+        updateTrace.filter((entry) => entry.step === 'package').length !== 1
+      )
+        throw new Error('多候选更新重复完整打包');
+      let resumed: PhaseReport | null = null;
+      if (values.scenario === 'resume') {
+        if (!update.threadId) throw new Error('缺少可恢复的真实 Task');
+        const remoteBefore = git(fixture.remote, 'rev-parse', 'main');
+        resumed = await runAgent(updateWorktree, directory, variant, 'update', null, {
+          resumeTaskId: update.threadId,
+          label: 'resumed-update',
+        });
+        const parsed = CiCdUpdateExecutionResultSchema.parse(resumed.outcome).result;
+        if (
+          parsed.outcome !== 'PUSHED' ||
+          resumed.threadId !== update.threadId ||
+          git(fixture.remote, 'rev-parse', 'main') !== remoteBefore
+        )
+          throw new Error('原 Task 的恢复结果或远端状态不一致');
+        if (JSON.stringify(await trace(updateWorktree)) !== JSON.stringify(updateTrace))
+          throw new Error('输入未变的恢复重复了已完成验收');
+        const events = (await readFile(resumed.eventsFile, 'utf8'))
+          .split('\n')
+          .filter(Boolean)
+          .map((line) => JSON.parse(line));
+        if (
+          events.some(
+            (event) =>
+              event.type === 'item.completed' &&
+              event.item?.type === 'command_execution' &&
+              /\bgit\s+(?:-C\s+\S+\s+)?push\b/u.test(event.item.command) &&
+              !event.item.command.includes('--dry-run'),
+          )
+        )
+          throw new Error('结果未知恢复盲目重复 Push');
+      }
       const currentReport = {
         variant,
         language,
         repair,
         update,
+        scenario: values.scenario,
+        otherRepairs,
+        resumed,
         repairTrace,
         updateTrace,
-        totalMs: repair.elapsedMs + update.elapsedMs,
+        totalMs:
+          repair.elapsedMs +
+          update.elapsedMs +
+          otherRepairs.reduce((sum, item) => sum + item.elapsedMs, 0) +
+          (resumed?.elapsedMs ?? 0),
         manualWaitMs: 0,
       };
       reports.push(currentReport);

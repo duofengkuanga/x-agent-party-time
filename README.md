@@ -176,6 +176,8 @@ bun run eval:handoff --skills-root /path/to/x-skills --baseline-app <旧版本�
 
 使用 `--case node|python` 或 `--variant baseline|current` 运行单个范围。需要本机 Codex 已登录，以及 Node 和 Python；沿用本机模型配置，每阶段最长八分钟。证据目录在启动时输出，失败保留阶段结果及错误日志，不把部分运行记为通过。原始文件只保存在本机，分享前检查内容。
 
+使用 `--case node --variant current --scenario independent|stale|multi|resume` 验证独立强制检查、失效入口、多候选与真实会话恢复。恢复场景保留原 Codex Task 并续接同一会话，模拟终态传输丢失，核对远端和已完成验收没有被盲目重复；其他场景使用临时会话。
+
 对照看完整 Repair + Update 耗时及实际重复命令，人工等待单列；小样本和模型服务波动不能证明固定提速比例。现有 Skill 文案检查和预写 Git 沙盒验证不等于真实 Agent 行为验收。
 
 ## 故障排查
