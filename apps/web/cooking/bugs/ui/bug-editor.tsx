@@ -31,7 +31,7 @@ export function BugReworkDialog({
   const [feedback, setFeedback] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const reopening = kind === 'REOPEN';
-  const title = reopening ? '重新打开' : '不通过并返修';
+  const title = reopening ? '重新打开' : '还有问题';
   return (
     <div
       className="collab-dialog-backdrop collab-drawer-scrim"

@@ -3,8 +3,50 @@
 }
 
 .collab-bug-drawer--split {
-  height: min(820px, calc(100dvh - 48px));
-  width: min(1180px, 100%);
+  height: min(738px, calc(90dvh - 43.2px));
+  width: min(1062px, 90%);
+}
+
+.collab-bug-drawer__verification {
+  align-items: center;
+  border-top: 1px solid var(--strong-line);
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  justify-content: space-between;
+  max-height: 35%;
+  overflow-y: auto;
+  padding: 14px 24px;
+}
+
+.collab-bug-drawer__verification-note {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.collab-bug-drawer__verification-note strong {
+  font-size: 12px;
+}
+
+.collab-bug-drawer__verification-note p {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.collab-bug-drawer__verification-buttons {
+  display: flex;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.collab-bug-drawer__verification-buttons button {
+  font-size: 12px;
+  min-height: 38px;
+  min-width: 86px;
 }
 
 .collab-dialog.collab-bug-drawer--split > .collab-bug-drawer__chrome {

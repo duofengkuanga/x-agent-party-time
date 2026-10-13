@@ -11,17 +11,25 @@ import { BugIdentity } from './bug-identity';
 
 export function BugDrawer({
   drawer,
+  error,
   onChanged,
   onClose,
   onEdit,
   onOpen,
+  onRequestRework,
+  onVerifyPass,
+  pending,
   snapshot,
 }: {
   drawer: Drawer;
+  error: string | null;
   onChanged: (revision: number, message: string) => void;
   onClose: () => void;
   onEdit: (bugId: string) => void;
   onOpen: (bugId: string) => void;
+  onRequestRework: (bugId: string) => void;
+  onVerifyPass: (bugId: string) => void;
+  pending: boolean;
   snapshot: CookingWorkspaceSnapshot;
 }) {
   const bug =
@@ -103,6 +111,47 @@ export function BugDrawer({
             snapshot={snapshot}
           />
         )}
+        {drawer.mode === 'view' &&
+        bug?.availableActions.some((action) =>
+          ['VERIFY_PASS', 'VERIFY_FAIL'].includes(action),
+        ) ? (
+          <footer
+            aria-busy={pending}
+            aria-label="缺陷验收"
+            className="collab-bug-drawer__verification"
+          >
+            <div className="collab-bug-drawer__verification-note">
+              <strong>{pending ? '正在提交验收结果…' : '确认修复结果'}</strong>
+              {error ? (
+                <p className="collab-form__error" role="alert">
+                  {error}
+                </p>
+              ) : (
+                <p>仍有问题时，补充反馈后继续修复。</p>
+              )}
+            </div>
+            <div className="collab-bug-drawer__verification-buttons">
+              {bug.availableActions.includes('VERIFY_PASS') ? (
+                <button
+                  disabled={pending}
+                  onClick={() => onVerifyPass(bug.id)}
+                  type="button"
+                >
+                  通过
+                </button>
+              ) : null}
+              {bug.availableActions.includes('VERIFY_FAIL') ? (
+                <button
+                  disabled={pending}
+                  onClick={() => onRequestRework(bug.id)}
+                  type="button"
+                >
+                  还有问题
+                </button>
+              ) : null}
+            </div>
+          </footer>
+        ) : null}
       </section>
     </div>
   );

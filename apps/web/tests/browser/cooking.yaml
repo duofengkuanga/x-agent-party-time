@@ -468,7 +468,7 @@ cases:
           window.verificationCard = () => [...document.querySelectorAll('article.collab-bug-card')].find(card => card.textContent.includes('待验证通过缺陷'));
           window.verificationLayoutFits = () => { const card=window.verificationCard(), buttons=[...card.querySelectorAll('.collab-bug-card__verification button')];
           const [pass,fail]=buttons.map(button=>button.getBoundingClientRect()), bounds=card.getBoundingClientRect();
-          return buttons.map(button=>button.textContent.trim()).join('|') === '通过|不通过并返修' && pass.right <= fail.left && Math.abs(pass.top-fail.top)<1 && pass.left>=bounds.left && fail.right<=bounds.right && card.scrollWidth<=card.clientWidth; };
+          return buttons.map(button=>button.textContent.trim()).join('|') === '通过|还有问题' && pass.right <= fail.left && Math.abs(pass.top-fail.top)<1 && pass.left>=bounds.left && fail.right<=bounds.right && card.scrollWidth<=card.clientWidth; };
           window.verificationPaperFits = window.verificationLayoutFits(); true
       - click: 'button[aria-label="切换暗夜主题"]'
       - eval: 'window.verificationCard().querySelector(".collab-bug-card__verification button").focus(); true'
@@ -501,13 +501,55 @@ cases:
       - eval: 'window.verificationCard().dataset.stage === "WAITING_FOR_VERIFICATION"'
       - eval: '[...window.verificationCard().querySelectorAll(".collab-bug-card__verification button")].every(button=>!button.disabled)'
 
-  - name: verification pass moves the defect to done without opening its drawer
+  - name: detail verification stays visible in both themes at the reduced size
     steps:
-      - click: 'article:has(> button[aria-label^="待验证通过缺陷，"]) .collab-bug-card__verification button:first-child'
+      - click: 'button[aria-label^="待验证通过缺陷，"]'
+      - wait: '.collab-bug-drawer__verification'
+      - eval: >-
+          window.detailVerificationFits = () => { const modal=document.querySelector('.collab-bug-drawer--split'), rect=modal.getBoundingClientRect(),
+          buttons=[...modal.querySelectorAll('.collab-bug-drawer__verification-buttons button')], [pass,fail]=buttons.map(button=>button.getBoundingClientRect());
+          return rect.width<=1063 && rect.height<=739 && Math.abs(rect.height-Math.min(738,(innerHeight-48)*.9))<2 &&
+          buttons.map(button=>button.textContent.trim()).join('|')==='通过|还有问题' && pass.right<=fail.left && Math.abs(pass.top-fail.top)<1 &&
+          buttons.every(button=>{const r=button.getBoundingClientRect(); return r.bottom<=rect.bottom && document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===button;}); };
+          window.detailNightFits=window.detailVerificationFits(); document.querySelector('.collab-shell').dataset.theme='paper'; true
+      - eval: 'document.querySelector(".collab-bug-detail-tabs button:last-child").click(); document.querySelector(".collab-bug-detail-activity").scrollTop=9999; document.querySelector(".collab-bug-drawer__verification-buttons button").focus(); true'
+    assert:
+      - eval: 'window.detailNightFits && window.detailVerificationFits()'
+      - eval: 'document.activeElement.textContent.trim()==="通过" && getComputedStyle(document.activeElement).outlineStyle!=="none"'
+      - visible: '.collab-bug-detail-tabs button[aria-current="page"]'
+
+  - name: detail verification pass disables actions while pending
+    steps:
+      - eval: >-
+          window.fetch=async (...args) => { const headers=new Headers(args[1]?.headers);
+          if(headers.has('next-action')) return await new Promise((resolve,reject)=>{window.rejectVerification=reject;});
+          return window.verificationOriginalFetch(...args); }; true
+      - press: Enter
+      - wait: '.collab-bug-drawer__verification button:disabled'
+    assert:
+      - eval: '[...document.querySelectorAll(".collab-bug-drawer__verification button")].every(button=>button.disabled)'
+      - text:
+          {
+            sel: '.collab-bug-drawer__verification',
+            contains: 正在提交验收结果,
+          }
+
+  - name: detail verification error stays inside the dialog and supports retry
+    steps:
+      - eval: 'window.fetch=window.verificationOriginalFetch; window.rejectVerification(new TypeError("Failed to fetch")); true'
+      - wait: '.collab-bug-drawer__verification [role="alert"]'
+    assert:
+      - eval: '[...document.querySelectorAll(".collab-bug-drawer__verification button")].every(button=>!button.disabled)'
+      - eval: 'window.verificationCard().dataset.stage === "WAITING_FOR_VERIFICATION"'
+
+  - name: detail verification pass moves the defect to done
+    steps:
+      - click: '.collab-bug-drawer__verification-buttons button:first-child'
       - wait: 'article[data-stage="DONE"] button[aria-label^="待验证通过缺陷，"]'
     assert:
       - text: { sel: '[role="status"]', contains: 已验证完成 }
-      - hidden: '[role="dialog"]'
+      - visible: '.collab-bug-drawer--split'
+      - hidden: '.collab-bug-drawer__verification'
       - hidden: '.collab-banner--error'
       - eval: '!window.verificationCard().querySelector(".collab-bug-card__verification")'
 
@@ -515,17 +557,21 @@ cases:
     steps:
       - open: __BASE_URL__/cooking/__SUBMISSION_ID__
       - wait: { load: networkidle }
-      - eval: "[...[...document.querySelectorAll('article.collab-bug-card')].find((card) => card.textContent?.includes('待验证返修缺陷')).querySelectorAll('button')].find(button => button.textContent.trim() === '不通过并返修').click(); true"
-      - wait: 'form[aria-label="不通过并返修"]'
+      - click: 'button[aria-label^="待验证返修缺陷，"]'
+      - wait: '.collab-bug-drawer__verification'
+      - click: '.collab-bug-drawer__verification-buttons button:last-child'
+      - wait: 'form[aria-label="还有问题"]'
       - fill:
           {
-            sel: 'form[aria-label="不通过并返修"] textarea',
+            sel: 'form[aria-label="还有问题"] textarea',
             text: 浏览器复测仍可复现,
           }
-      - eval: '[...document.querySelectorAll(''form[aria-label="不通过并返修"] button'')].find((button) => button.textContent?.includes(''确认返修''))?.click(); true'
+      - eval: '[...document.querySelectorAll(''form[aria-label="还有问题"] button'')].find((button) => button.textContent?.includes(''确认返修''))?.click(); true'
       - wait: 1200
     assert:
       - visible: 'article[data-stage="REPAIRING"] button[aria-label^="待验证返修缺陷，"]'
+      - hidden: '.collab-bug-drawer__verification'
+      - hidden: 'form[aria-label="还有问题"]'
 
   - name: rework dialog starts focused with submit disabled
     steps:

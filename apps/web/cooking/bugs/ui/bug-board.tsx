@@ -377,6 +377,17 @@ export function BugBoard({
       {drawer ? (
         <BugDrawer
           drawer={drawer}
+          error={error}
+          pending={pending}
+          onVerifyPass={(bugId) => {
+            const bug = snapshot.bugs.find(({ id }) => id === bugId);
+            const transition = bug && verificationPassTransition(bug);
+            if (transition) run(transition.command, transition.message);
+          }}
+          onRequestRework={(bugId) => {
+            setError(null);
+            setFeedbackIntent({ bugId, kind: 'VERIFY_FAIL' });
+          }}
           onChanged={(revision, message) => {
             setDrawer(
               drawer.mode === 'create'

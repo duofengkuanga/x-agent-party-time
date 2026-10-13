@@ -94,7 +94,7 @@ export function BugCard({
                   onClick={stopCardAction(onRequestRework)}
                   type="button"
                 >
-                  不通过并返修
+                  还有问题
                 </button>
               ) : null}
               {bug.availableActions.includes('REOPEN') ? (
