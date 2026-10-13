@@ -1,0 +1,213 @@
+.collab-bug-drawer--tester {
+  max-height: min(738px, calc(90dvh - 43.2px));
+  width: min(900px, 90%);
+}
+
+.collab-dialog.collab-bug-drawer--tester > .collab-bug-drawer__chrome {
+  align-items: start;
+  border-bottom: 0;
+  flex: 0 0 auto;
+  gap: 20px;
+  max-height: 30%;
+  overflow-y: auto;
+  padding: 24px 28px 18px;
+}
+
+.collab-bug-drawer--tester > .collab-bug-drawer__chrome h2 {
+  font-family: inherit;
+  font-size: 21px;
+  font-style: normal;
+  line-height: 1.5;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.collab-tester-detail__meta {
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 11px;
+  gap: 6px 18px;
+  margin-top: 10px;
+}
+
+.collab-tester-detail {
+  max-height: none;
+  padding: 0 28px;
+}
+
+.collab-tester-detail__status {
+  align-items: baseline;
+  border-block: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  padding: 15px 0;
+}
+
+.collab-tester-detail__status > span {
+  color: var(--muted);
+  flex: 0 0 auto;
+  font-size: 11px;
+}
+
+.collab-tester-detail__status > p {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.collab-tester-detail__report {
+  display: grid;
+  gap: 24px;
+  padding: 24px 0;
+}
+
+.collab-tester-detail__comparison {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.collab-tester-detail__comparison:empty {
+  display: none;
+}
+
+.collab-tester-detail__comparison > div:only-child {
+  grid-column: 1 / -1;
+}
+
+.collab-tester-detail__comparison > div + div {
+  border-left: 1px solid var(--line);
+  padding-left: 24px;
+}
+
+.collab-tester-detail dt,
+.collab-tester-detail h3 {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  margin: 0 0 9px;
+}
+
+.collab-tester-detail dd,
+.collab-tester-detail__path p {
+  font-size: 13px;
+  line-height: 1.8;
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.collab-tester-detail .collab-bug-detail-fact {
+  display: block;
+  font-size: 13px;
+  line-height: 1.8;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.collab-tester-detail__feedback {
+  border-left: 2px solid var(--line);
+  padding-left: 12px;
+}
+
+.collab-tester-detail__feedback time {
+  color: var(--muted);
+  display: block;
+  font-size: 11px;
+  margin-top: 6px;
+}
+
+.collab-tester-detail__related > div + div {
+  margin-top: 12px;
+}
+
+.collab-tester-detail__related button {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.collab-tester-detail__related small {
+  color: var(--muted);
+  display: block;
+  font-size: 11px;
+  margin-top: 5px;
+}
+
+.collab-tester-detail__form {
+  border-top: 1px solid var(--line);
+  padding: 18px 0 24px;
+}
+
+.collab-tester-detail__form label > span {
+  font-size: 12px;
+}
+
+.collab-tester-detail__form textarea {
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.collab-tester-detail__form fieldset {
+  border: 0;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.collab-tester-detail__actions {
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  max-height: 35%;
+  overflow-y: auto;
+  padding: 16px 28px;
+}
+
+.collab-tester-detail__actions > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.collab-tester-detail__actions > span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.collab-tester-detail__actions > .collab-form__error {
+  flex-basis: 100%;
+}
+
+.collab-tester-detail__actions button {
+  font-size: 12px;
+  min-height: 38px;
+  padding-inline: 16px;
+}
+
+@media (max-width: 640px) {
+  .collab-tester-detail__comparison {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .collab-tester-detail__comparison > div + div {
+    border: 0;
+    padding-left: 0;
+  }
+
+  .collab-dialog.collab-bug-drawer--tester > .collab-bug-drawer__chrome,
+  .collab-tester-detail,
+  .collab-tester-detail__actions {
+    padding-inline: 18px;
+  }
+}

@@ -1,7 +1,10 @@
 import { createCooking } from '@/cooking/runtime/create-cooking';
 import { deliveryProject } from '@/cooking/testing/project';
 import { engineeringScenario } from '@/cooking/testing/scenario';
-import { completeRepairExecution } from '@/cooking/testing/execution';
+import {
+  completeRepairExecution,
+  completeSuccessfulExecution,
+} from '@/cooking/testing/execution';
 import { openDatabase } from '@/platform/database';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
@@ -174,7 +177,43 @@ export async function seedBrowserFixture(home: string): Promise<BrowserFixture> 
     };
 
     await completeRepair('待归档与重开缺陷', 'DONE');
-    await completeRepair('待验证返修缺陷', 'WAITING_FOR_VERIFICATION');
+    const reworkBug = await completeRepair('待验证返修缺陷', 'WAITING_FOR_VERIFICATION');
+    lifecycle.verifyBug(tester.id, reworkBug.id, {
+      mutationId: randomUUID(),
+      expectedVersion: bugs
+        .workspace(tester.id, submission.id)
+        .bugs.find(({ id }) => id === reworkBug.id)!.version,
+      result: 'FAILED',
+      feedback: '上次反馈：刷新后内容仍然丢失',
+      attachmentIds: [],
+    });
+    const rework = (await executions.claim(paired.runner.id, 1, 0))[0]!;
+    const reworkSession = `browser-session-${reworkBug.id}`;
+    executions.start(paired.runner.id, rework.id, {
+      kind: 'STARTED',
+      leaseToken: rework.lease.token,
+      sessionId: reworkSession,
+      taskSkillBinding: fixtureSkillBinding('agent-party-time-repair-bug'),
+    });
+    completeSuccessfulExecution(
+      { executions, runner: paired.runner },
+      {
+        executionId: rework.id,
+        leaseToken: rework.lease.token,
+        sessionId: reworkSession,
+      },
+      {
+        result: {
+          outcome: 'COMPLETED',
+          completionKind: 'TARGET_ALREADY_FIXED',
+          changes: [],
+          validations: [{ name: '夹具验证', status: 'PASSED', detail: '' }],
+          warnings: [],
+          commits: [],
+          manualOperations: [],
+        },
+      },
+    );
     await completeRepair('待验证通过缺陷', 'WAITING_FOR_VERIFICATION');
 
     // 完成后的返修入口和长时间线一起覆盖页签切换带动遮罩滚动的场景。

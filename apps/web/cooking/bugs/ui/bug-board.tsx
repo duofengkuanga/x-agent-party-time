@@ -80,6 +80,8 @@ export function BugBoard({
   const [archiveDropActive, setArchiveDropActive] = useState(false);
   const [undoAction, setUndoAction] = useState<UndoAction | null>(null);
   const { error, setError, pending, run } = useWorkspaceMutation(onChanged);
+  const testerView =
+    snapshot.currentUser.id === snapshot.submission.submission.testerUserId;
   const activeBugs = snapshot.bugs.filter(
     ({ stage, archivedAt }) => stage !== 'CANCELLED' && !archivedAt,
   );
@@ -221,18 +223,18 @@ export function BugBoard({
           const bugs = activeBugs.filter(
             ({ stage }) => stage === column.status,
           );
-          const batches =
-            column.status === 'UPDATING'
-              ? snapshot.updateBatches.filter(
-                  (batch) =>
-                    ['READY', 'RUNNING', 'WAITING_EXTERNAL', 'FAILED'].includes(
-                      batch.state,
-                    ) &&
-                    batch.entries.some((entry) =>
-                      bugs.some((bug) => bug.id === entry.bugId),
-                    ),
-                )
-              : [];
+          const showBatches = column.status === 'UPDATING' && !testerView;
+          const batches = showBatches
+            ? snapshot.updateBatches.filter(
+                (batch) =>
+                  ['READY', 'RUNNING', 'WAITING_EXTERNAL', 'FAILED'].includes(
+                    batch.state,
+                  ) &&
+                  batch.entries.some((entry) =>
+                    bugs.some((bug) => bug.id === entry.bugId),
+                  ),
+              )
+            : [];
           const acceptsDrop = Boolean(
             draggingBug && dragTransition(draggingBug, column.status),
           );
@@ -265,13 +267,13 @@ export function BugBoard({
                 <span>{column.note}</span>
                 <h2>{column.label}</h2>
                 <b>
-                  {column.status === 'UPDATING'
+                  {showBatches
                     ? batches.length.toString().padStart(2, '0')
                     : bugs.length.toString().padStart(2, '0')}
                 </b>
               </header>
               <div className="collab-column__cards">
-                {column.status === 'UPDATING'
+                {showBatches
                   ? batches.map((batch) => {
                       const engineeringType = snapshot.bugs.find(
                         ({ id }) => id === batch.entries[0]?.bugId,
@@ -334,9 +336,10 @@ export function BugBoard({
                               bug.id,
                             );
                           }}
-                          onOpen={() =>
-                            setDrawer({ mode: 'view', bugId: bug.id })
-                          }
+                          onOpen={() => {
+                            setError(null);
+                            setDrawer({ mode: 'view', bugId: bug.id });
+                          }}
                           onReopen={() => {
                             setError(null);
                             setFeedbackIntent({
@@ -355,9 +358,7 @@ export function BugBoard({
                         />
                       );
                     })}
-                {(column.status === 'UPDATING'
-                  ? batches.length
-                  : bugs.length) === 0 ? (
+                {(showBatches ? batches.length : bugs.length) === 0 ? (
                   <p className="collab-column__empty">暂无卡片</p>
                 ) : null}
               </div>
@@ -379,15 +380,8 @@ export function BugBoard({
           drawer={drawer}
           error={error}
           pending={pending}
-          onVerifyPass={(bugId) => {
-            const bug = snapshot.bugs.find(({ id }) => id === bugId);
-            const transition = bug && verificationPassTransition(bug);
-            if (transition) run(transition.command, transition.message);
-          }}
-          onRequestRework={(bugId) => {
-            setError(null);
-            setFeedbackIntent({ bugId, kind: 'VERIFY_FAIL' });
-          }}
+          run={run}
+          onClearError={() => setError(null)}
           onChanged={(revision, message) => {
             setDrawer(
               drawer.mode === 'create'
@@ -400,7 +394,10 @@ export function BugBoard({
           }}
           onClose={() => setDrawer(null)}
           onEdit={(bugId) => setDrawer({ mode: 'edit', bugId })}
-          onOpen={(bugId) => setDrawer({ mode: 'view', bugId })}
+          onOpen={(bugId) => {
+            setError(null);
+            setDrawer({ mode: 'view', bugId });
+          }}
           snapshot={snapshot}
         />
       ) : null}

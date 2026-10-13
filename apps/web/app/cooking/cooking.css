@@ -15,6 +15,7 @@
 @import './styles/project-directory.css';
 @import './styles/bug-storage.css';
 @import './styles/bug-details.css';
+@import './styles/tester-bug-detail.css';
 @import './styles/project-controls.css';
 @import './styles/agents.css';
 @import './styles/agent-connect.css';

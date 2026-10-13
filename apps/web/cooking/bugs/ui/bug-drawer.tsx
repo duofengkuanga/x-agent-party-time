@@ -8,6 +8,7 @@ import { UpdateBatchDetails } from './update-details';
 import { BugDetail } from './bug-detail';
 import { BugForm } from './bug-editor';
 import { BugIdentity } from './bug-identity';
+import { TesterBugDetail, type RunTesterAction } from './tester-bug-detail';
 
 export function BugDrawer({
   drawer,
@@ -16,8 +17,8 @@ export function BugDrawer({
   onClose,
   onEdit,
   onOpen,
-  onRequestRework,
-  onVerifyPass,
+  onClearError,
+  run,
   pending,
   snapshot,
 }: {
@@ -27,8 +28,8 @@ export function BugDrawer({
   onClose: () => void;
   onEdit: (bugId: string) => void;
   onOpen: (bugId: string) => void;
-  onRequestRework: (bugId: string) => void;
-  onVerifyPass: (bugId: string) => void;
+  onClearError: () => void;
+  run: RunTesterAction;
   pending: boolean;
   snapshot: CookingWorkspaceSnapshot;
 }) {
@@ -57,14 +58,33 @@ export function BugDrawer({
             : drawerTitle(drawer.mode, bug)
         }
         aria-modal="true"
-        className={`collab-dialog collab-bug-drawer${drawer.mode === 'view' ? ' collab-bug-drawer--split' : ''}`}
+        className={`collab-dialog collab-bug-drawer${drawer.mode === 'view' ? (summaryOnly ? ' collab-bug-drawer--tester' : ' collab-bug-drawer--split') : ''}`}
         role="dialog"
       >
         <header className={viewing ? 'collab-bug-drawer__chrome' : undefined}>
           {drawer.mode === 'view' && bug ? (
             <div className="collab-bug-drawer__heading">
               <h2>{bug.report.title}</h2>
-              <BugIdentity key={bug.id} bugId={bug.id} />
+              {summaryOnly ? (
+                <div className="collab-tester-detail__meta">
+                  <span>{bugLabel(bug)}</span>
+                  {bug.assignment ? (
+                    <>
+                      <span>
+                        {bug.assignment.engineeringType === 'FRONTEND'
+                          ? '前端'
+                          : '后端'}{' '}
+                        · {bug.assignment.engineeringName}
+                      </span>
+                      <span>
+                        负责人：{bug.assignment.responsibleUser.displayName}
+                      </span>
+                    </>
+                  ) : null}
+                </div>
+              ) : (
+                <BugIdentity key={bug.id} bugId={bug.id} />
+              )}
             </div>
           ) : viewing ? (
             <small>
@@ -77,7 +97,12 @@ export function BugDrawer({
             </div>
           )}
           <div className="collab-bug-drawer__chrome-actions">
-            <button aria-label="关闭详情抽屉" onClick={onClose} type="button">
+            <button
+              aria-label="关闭详情抽屉"
+              disabled={pending}
+              onClick={onClose}
+              type="button"
+            >
               ×
             </button>
           </div>
@@ -87,6 +112,18 @@ export function BugDrawer({
             batch={batch!}
             onChanged={onChanged}
             summaryOnly={summaryOnly}
+          />
+        ) : drawer.mode === 'view' && summaryOnly ? (
+          <TesterBugDetail
+            key={bug!.id}
+            bug={bug!}
+            error={error}
+            onClearError={onClearError}
+            onEdit={() => onEdit(bug!.id)}
+            onOpen={onOpen}
+            pending={pending}
+            run={run}
+            snapshot={snapshot}
           />
         ) : drawer.mode === 'view' ? (
           <BugDetail
@@ -111,47 +148,6 @@ export function BugDrawer({
             snapshot={snapshot}
           />
         )}
-        {drawer.mode === 'view' &&
-        bug?.availableActions.some((action) =>
-          ['VERIFY_PASS', 'VERIFY_FAIL'].includes(action),
-        ) ? (
-          <footer
-            aria-busy={pending}
-            aria-label="缺陷验收"
-            className="collab-bug-drawer__verification"
-          >
-            <div className="collab-bug-drawer__verification-note">
-              <strong>{pending ? '正在提交验收结果…' : '确认修复结果'}</strong>
-              {error ? (
-                <p className="collab-form__error" role="alert">
-                  {error}
-                </p>
-              ) : (
-                <p>仍有问题时，补充反馈后继续修复。</p>
-              )}
-            </div>
-            <div className="collab-bug-drawer__verification-buttons">
-              {bug.availableActions.includes('VERIFY_PASS') ? (
-                <button
-                  disabled={pending}
-                  onClick={() => onVerifyPass(bug.id)}
-                  type="button"
-                >
-                  通过
-                </button>
-              ) : null}
-              {bug.availableActions.includes('VERIFY_FAIL') ? (
-                <button
-                  disabled={pending}
-                  onClick={() => onRequestRework(bug.id)}
-                  type="button"
-                >
-                  还有问题
-                </button>
-              ) : null}
-            </div>
-          </footer>
-        ) : null}
       </section>
     </div>
   );

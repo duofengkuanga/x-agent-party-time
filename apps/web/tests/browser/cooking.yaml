@@ -6,57 +6,53 @@ setup:
   - click: '.auth-submit'
   - wait: { load: networkidle }
 cases:
-  - name: bug details keep title and id above two independently scrolling columns
+  - name: tester details show a compact report without technical chrome
     steps:
       - open: __BASE_URL__/cooking/__SUBMISSION_ID__
       - wait: 'button[aria-label^="待取消缺陷，"]'
       - click: 'button[aria-label^="待取消缺陷，"]'
-      - wait: '.collab-bug-drawer--split'
+      - wait: '.collab-bug-drawer--tester'
     assert:
       - text: { sel: '.collab-bug-drawer__heading h2', equals: 待取消缺陷 }
-      - visible: '.collab-bug-drawer__heading .collab-bug-identity code'
-      - hidden: '.collab-bug-drawer__heading dl'
-      - text: { sel: '.collab-bug-detail-context', contains: 预期结果 }
-      - text: { sel: '.collab-bug-detail-context', contains: 实际结果 }
-      - eval: 'document.querySelector(".collab-bug-detail-context").getBoundingClientRect().right <= document.querySelector(".collab-bug-detail-activity").getBoundingClientRect().left + 1'
-      - eval: '[".collab-bug-detail-context", ".collab-bug-detail-activity"].every((selector) => getComputedStyle(document.querySelector(selector)).overflowY === "auto")'
-
-  - name: switching process tabs preserves the defect fields on the left
-    steps:
-      - eval: 'window.bugModalPosition = {top:document.querySelector(".collab-bug-drawer").getBoundingClientRect().top, backdrop:document.querySelector(".collab-dialog-backdrop").scrollTop, page:window.scrollY, context:document.querySelector(".collab-bug-detail-context").scrollTop}; true'
-      - click: '.collab-bug-detail-tabs button:last-child'
-      - wait: 500
-    assert:
-      - visible: '.collab-bug-detail-activity > [data-progress-kind="update"]'
-      - hidden: '.collab-bug-detail-activity > [data-progress-kind="repair"]'
-      - visible: '.collab-bug-detail-context'
+      - text: { sel: '.collab-tester-detail__meta', contains: 缺陷- }
       - text:
-          { sel: '.collab-bug-detail-context', contains: 待取消缺陷 的预期结果 }
-      - eval: 'Math.abs(document.querySelector(".collab-bug-drawer").getBoundingClientRect().top - window.bugModalPosition.top) <= 1'
+          { sel: '.collab-tester-detail__status', contains: 确认后可以开始修复 }
+      - hidden: '.collab-bug-identity'
+      - hidden: '.collab-bug-detail-tabs'
+      - hidden: '.collab-repair-timeline'
+      - text: { sel: '.collab-tester-detail__comparison', contains: 预期结果 }
+      - text:
+          { sel: '.collab-tester-detail__comparison', contains: 原始实际结果 }
+      - eval: '(() => { const [expected,actual]=document.querySelectorAll(".collab-tester-detail__comparison > div"); return expected.getBoundingClientRect().right <= actual.getBoundingClientRect().left; })()'
+      - eval: 'getComputedStyle(document.querySelector(".collab-tester-detail")).overflowY === "auto"'
+      - eval: '[...document.querySelectorAll(".collab-tester-detail__actions button")].map(b=>b.textContent.trim()).join("|") === "编辑资料|开始修复"'
 
-  - name: repair process and report editing remain reachable
+  - name: tester waiting states explain ownership without exposing technical reports
     steps:
-      - click: '.collab-bug-detail-tabs button:first-child'
-      - wait: 500
+      - click: 'button[aria-label="关闭详情抽屉"]'
+      - click: 'button[aria-label^="等待人工确认缺陷，"]'
+      - wait: '.collab-bug-drawer--tester'
     assert:
-      - visible: '.collab-bug-detail-activity > [data-progress-kind="repair"]'
-      - visible: '.collab-bug-detail-context__actions button'
-      - eval: 'Math.abs(document.querySelector(".collab-bug-drawer").getBoundingClientRect().top - window.bugModalPosition.top) <= 1'
-      - eval: 'document.querySelector(".collab-dialog-backdrop").scrollTop === window.bugModalPosition.backdrop && window.scrollY === window.bugModalPosition.page && document.querySelector(".collab-bug-detail-context").scrollTop === window.bugModalPosition.context'
+      - text:
+          {
+            sel: '.collab-tester-detail__status',
+            contains: 等待浏览器测试开发者处理,
+          }
+      - hidden: '.collab-tester-detail__actions'
+      - hidden: '.collab-session-overview'
+      - eval: '!document.querySelector(".collab-bug-drawer").textContent.match(/Codex|Session|会话|候选提交|释放|bun test/)'
 
-  - name: returning to completed repair progress keeps the modal fixed
+  - name: completed tester details keep the report and offer reopening without process tabs
     steps:
       - click: 'button[aria-label="关闭详情抽屉"]'
       - click: 'button[aria-label^="修复更新页签滚动回归，"]'
-      - wait: '.collab-bug-drawer--split'
-      - eval: 'window.bugModalTop = document.querySelector(".collab-bug-drawer").getBoundingClientRect().top; true'
-      - click: '.collab-bug-detail-tabs button:last-child'
-      - wait: 500
-      - click: '.collab-bug-detail-tabs button:first-child'
-      - wait: 500
+      - wait: '.collab-bug-drawer--tester'
     assert:
-      - eval: 'Math.abs(document.querySelector(".collab-bug-drawer").getBoundingClientRect().top - window.bugModalTop) <= 1'
-      - eval: 'document.querySelector(".collab-dialog-backdrop").scrollTop === 0'
+      - text: { sel: '.collab-tester-detail__status', contains: 已验收通过 }
+      - text: { sel: '.collab-tester-detail__actions', contains: 重新打开 }
+      - hidden: '.collab-tester-detail__feedback'
+      - hidden: '.collab-bug-detail-tabs'
+      - eval: 'document.querySelector(".collab-bug-drawer").getBoundingClientRect().height < 738'
 
   - name: bug registration accepts a 4.1 MB screenshot
     steps:
@@ -119,7 +115,7 @@ cases:
   - name: tester can save an existing report as two linked engineering defects
     steps:
       - click: 'button[aria-label^="网络中断保留草稿，"]'
-      - click: '.collab-bug-detail-context__actions button'
+      - click: '.collab-tester-detail__actions button:first-child'
       - wait: '#collab-bug-form'
       - click: '.collab-joint-choice input'
       - click: 'button[form="collab-bug-form"]:not([value="repair"])'
@@ -215,20 +211,22 @@ cases:
       - text: { sel: '[aria-label="关联缺陷"]', contains: 浏览器前端工程 }
       - hidden: '[aria-label="人工工程流转"]'
 
-  - name: tester reads the actual unfinished repair result
+  - name: tester failure describes the next owner without exposing the raw repair report
     steps:
       - open: __BASE_URL__/cooking/__SUBMISSION_ID__
       - wait: { load: networkidle }
       - click: 'button[aria-label^="定位数据缺失缺陷，"]'
       - wait: '[role="dialog"]'
     assert:
+      - text: { sel: '.collab-tester-detail__status', contains: 修复遇到问题 }
       - text:
-          { sel: '[role="dialog"]', contains: 地块缺少定位数据，问题尚未解决。 }
-      - text: { sel: '[role="dialog"]', contains: 确认三条地块的边界为空 }
-      - text: { sel: '[role="dialog"]', contains: 核查边界数据并验证标签渲染 }
-      - hidden: '[role="dialog"] .collab-session-overview code'
+          {
+            sel: '.collab-tester-detail__status',
+            contains: 等待浏览器测试开发者处理,
+          }
+      - hidden: '.collab-repair-timeline'
       - hidden: '[aria-label="人工工程流转"]'
-      - hidden: '.collab-repair-timeline .collab-session-overview'
+      - eval: '!document.querySelector(".collab-bug-drawer").textContent.includes("确认三条地块的边界为空")'
 
   - name: responsible developer still sees manual routing
     steps:
@@ -248,6 +246,29 @@ cases:
       - text: { sel: '[aria-label="人工工程流转"]', contains: 转交后端 }
       - text: { sel: '[aria-label="人工工程流转"]', contains: 增加后端协作 }
       - eval: 'parseFloat(getComputedStyle(document.querySelector(".collab-routing-actions")).columnGap) >= 8'
+
+  - name: developer process tabs still preserve the report and modal position
+    steps:
+      - click: 'button[aria-label="关闭详情抽屉"]'
+      - click: 'button[aria-label^="修复更新页签滚动回归，"]'
+      - wait: '.collab-bug-drawer--split'
+      - eval: 'window.developerModalTop=document.querySelector(".collab-bug-drawer").getBoundingClientRect().top; true'
+      - click: '.collab-bug-detail-tabs button:last-child'
+      - click: '.collab-bug-detail-tabs button:first-child'
+    assert:
+      - visible: '.collab-bug-identity'
+      - visible: '.collab-bug-detail-context'
+      - visible: '.collab-bug-detail-activity > [data-progress-kind="repair"]'
+      - hidden: '.collab-tester-detail'
+      - eval: 'Math.abs(document.querySelector(".collab-bug-drawer").getBoundingClientRect().top-window.developerModalTop)<=1'
+
+  - name: developer can return to the source defect for manual routing
+    steps:
+      - click: 'button[aria-label="关闭详情抽屉"]'
+      - click: 'button[aria-label^="定位数据缺失缺陷，"]'
+      - wait: '[aria-label="人工工程流转"]'
+    assert:
+      - visible: '.collab-bug-detail-tabs'
 
   - name: manual transfer closes the source and queues a related backend bug
     steps:
@@ -321,14 +342,19 @@ cases:
       - eval: "document.activeElement === document.querySelector('select[aria-label=前端工程]')"
       - visible: 'button[form="collab-bug-form"]:not([value="repair"])'
 
-  - name: existing completed repair validations remain visible to the tester
+  - name: tester sees verification readiness without engineering checks
     steps:
       - click: 'button[aria-label="关闭详情抽屉"]'
       - click: 'button[aria-label="切换纸张主题"]'
       - click: 'button[aria-label^="待验证返修缺陷，"]'
       - wait: '[role="dialog"]'
     assert:
-      - text: { sel: '[role="dialog"]', contains: 夹具验证 }
+      - text:
+          {
+            sel: '.collab-tester-detail__status',
+            contains: 可以在浏览器测试环境复测,
+          }
+      - eval: '!document.querySelector(".collab-bug-drawer").textContent.includes("夹具验证")'
       - text: { sel: '[role="dialog"]', contains: 通过 }
       - hidden: '[role="dialog"] .collab-repair-timeline code'
 
@@ -504,19 +530,19 @@ cases:
   - name: detail verification stays visible in both themes at the reduced size
     steps:
       - click: 'button[aria-label^="待验证通过缺陷，"]'
-      - wait: '.collab-bug-drawer__verification'
+      - wait: '.collab-tester-detail__actions'
       - eval: >-
-          window.detailVerificationFits = () => { const modal=document.querySelector('.collab-bug-drawer--split'), rect=modal.getBoundingClientRect(),
-          buttons=[...modal.querySelectorAll('.collab-bug-drawer__verification-buttons button')], [pass,fail]=buttons.map(button=>button.getBoundingClientRect());
-          return rect.width<=1063 && rect.height<=739 && Math.abs(rect.height-Math.min(738,(innerHeight-48)*.9))<2 &&
+          window.detailVerificationFits = () => { const modal=document.querySelector('.collab-bug-drawer--tester'), rect=modal.getBoundingClientRect(),
+          buttons=[...modal.querySelectorAll('.collab-tester-detail__actions > div button')], [pass,fail]=buttons.map(button=>button.getBoundingClientRect());
+          return rect.width<=901 && rect.height<=Math.min(739,(innerHeight-48)*.9+1) &&
           buttons.map(button=>button.textContent.trim()).join('|')==='通过|还有问题' && pass.right<=fail.left && Math.abs(pass.top-fail.top)<1 &&
           buttons.every(button=>{const r=button.getBoundingClientRect(); return r.bottom<=rect.bottom && document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===button;}); };
           window.detailNightFits=window.detailVerificationFits(); document.querySelector('.collab-shell').dataset.theme='paper'; true
-      - eval: 'document.querySelector(".collab-bug-detail-tabs button:last-child").click(); document.querySelector(".collab-bug-detail-activity").scrollTop=9999; document.querySelector(".collab-bug-drawer__verification-buttons button").focus(); true'
+      - eval: 'document.querySelector(".collab-tester-detail").scrollTop=9999; document.querySelector(".collab-tester-detail__actions > div button").focus(); true'
     assert:
       - eval: 'window.detailNightFits && window.detailVerificationFits()'
       - eval: 'document.activeElement.textContent.trim()==="通过" && getComputedStyle(document.activeElement).outlineStyle!=="none"'
-      - visible: '.collab-bug-detail-tabs button[aria-current="page"]'
+      - hidden: '.collab-bug-detail-tabs'
 
   - name: detail verification pass disables actions while pending
     steps:
@@ -525,53 +551,104 @@ cases:
           if(headers.has('next-action')) return await new Promise((resolve,reject)=>{window.rejectVerification=reject;});
           return window.verificationOriginalFetch(...args); }; true
       - press: Enter
-      - wait: '.collab-bug-drawer__verification button:disabled'
+      - wait: '.collab-tester-detail__actions button:disabled'
     assert:
-      - eval: '[...document.querySelectorAll(".collab-bug-drawer__verification button")].every(button=>button.disabled)'
-      - text:
-          {
-            sel: '.collab-bug-drawer__verification',
-            contains: 正在提交验收结果,
-          }
+      - eval: '[...document.querySelectorAll(".collab-tester-detail__actions button")].every(button=>button.disabled)'
+      - text: { sel: '.collab-tester-detail__actions', contains: 正在提交 }
 
   - name: detail verification error stays inside the dialog and supports retry
     steps:
       - eval: 'window.fetch=window.verificationOriginalFetch; window.rejectVerification(new TypeError("Failed to fetch")); true'
-      - wait: '.collab-bug-drawer__verification [role="alert"]'
+      - wait: '.collab-tester-detail__actions [role="alert"]'
     assert:
-      - eval: '[...document.querySelectorAll(".collab-bug-drawer__verification button")].every(button=>!button.disabled)'
+      - eval: '[...document.querySelectorAll(".collab-tester-detail__actions button")].every(button=>!button.disabled)'
       - eval: 'window.verificationCard().dataset.stage === "WAITING_FOR_VERIFICATION"'
 
   - name: detail verification pass moves the defect to done
     steps:
-      - click: '.collab-bug-drawer__verification-buttons button:first-child'
+      - click: '.collab-tester-detail__actions > div button:first-child'
       - wait: 'article[data-stage="DONE"] button[aria-label^="待验证通过缺陷，"]'
     assert:
       - text: { sel: '[role="status"]', contains: 已验证完成 }
-      - visible: '.collab-bug-drawer--split'
-      - hidden: '.collab-bug-drawer__verification'
+      - visible: '.collab-bug-drawer--tester'
+      - text: { sel: '.collab-tester-detail__actions', contains: 重新打开 }
       - hidden: '.collab-banner--error'
       - eval: '!window.verificationCard().querySelector(".collab-bug-card__verification")'
 
-  - name: verification failure creates a continuation repair
+  - name: inline rework keeps the original report and latest feedback visible
     steps:
       - open: __BASE_URL__/cooking/__SUBMISSION_ID__
       - wait: { load: networkidle }
       - click: 'button[aria-label^="待验证返修缺陷，"]'
-      - wait: '.collab-bug-drawer__verification'
-      - click: '.collab-bug-drawer__verification-buttons button:last-child'
+      - wait: '.collab-tester-detail__actions'
+      - click: '.collab-tester-detail__actions > div button:last-child'
       - wait: 'form[aria-label="还有问题"]'
-      - fill:
-          {
-            sel: 'form[aria-label="还有问题"] textarea',
-            text: 浏览器复测仍可复现,
-          }
-      - eval: '[...document.querySelectorAll(''form[aria-label="还有问题"] button'')].find((button) => button.textContent?.includes(''确认返修''))?.click(); true'
-      - wait: 1200
     assert:
-      - visible: 'article[data-stage="REPAIRING"] button[aria-label^="待验证返修缺陷，"]'
-      - hidden: '.collab-bug-drawer__verification'
+      - count: { sel: '[role="dialog"]', eq: 1 }
+      - text:
+          {
+            sel: '.collab-tester-detail__feedback',
+            contains: 上次反馈：刷新后内容仍然丢失,
+          }
+      - text:
+          {
+            sel: '.collab-tester-detail__comparison',
+            contains: 待验证返修缺陷 的实际结果,
+          }
+      - eval: 'document.activeElement === document.querySelector("#collab-tester-feedback textarea")'
+      - visible: 'button[form="collab-tester-feedback"]:disabled'
+
+  - name: cancelling inline rework preserves text and attachments in the same detail
+    steps:
+      - fill:
+          { sel: '#collab-tester-feedback textarea', text: 浏览器复测仍可复现 }
+      - eval: >-
+          (() => { const input=document.querySelector('#collab-tester-feedback input[type="file"]');
+          const transfer=new DataTransfer(); transfer.items.add(new File(['proof'], 'rework-proof.txt', {type:'text/plain'}));
+          Object.defineProperty(input,'files',{configurable:true,value:transfer.files}); input.dispatchEvent(new Event('change',{bubbles:true})); return true; })()
+      - click: '.collab-tester-detail__actions > div button:first-child'
+      - click: '.collab-tester-detail__actions > div button:last-child'
+    assert:
+      - eval: 'document.querySelector("#collab-tester-feedback textarea").value === "浏览器复测仍可复现"'
+      - text: { sel: '#collab-tester-feedback', contains: rework-proof.txt }
+
+  - name: inline rework submission disables controls and retains the draft on error
+    steps:
+      - eval: >-
+          window.feedbackFetch=window.fetch;
+          window.fetch=async (...args)=>{if(new Headers(args[1]?.headers).has('next-action')) throw new TypeError('Failed to fetch'); return window.feedbackFetch(...args);}; true
+      - click: 'button[form="collab-tester-feedback"][type="submit"]'
+      - wait: '.collab-tester-detail__actions [role="alert"]'
+      - eval: 'window.fetch=window.feedbackFetch; true'
+    assert:
+      - eval: 'document.querySelector("#collab-tester-feedback textarea").value === "浏览器复测仍可复现"'
+      - text: { sel: '#collab-tester-feedback', contains: rework-proof.txt }
+      - count: { sel: '[role="dialog"]', eq: 1 }
+
+  - name: verification failure creates a continuation repair with the preserved draft
+    steps:
+      - click: 'button[form="collab-tester-feedback"][type="submit"]'
+      - wait: 'article[data-stage="REPAIRING"] button[aria-label^="待验证返修缺陷，"]'
+    assert:
+      - visible: '.collab-bug-drawer--tester'
+      - hidden: '.collab-tester-detail__actions'
       - hidden: 'form[aria-label="还有问题"]'
+      - hidden: '.collab-tester-detail__feedback'
+      - text: { sel: '.collab-tester-detail__status', contains: 已提交修复 }
+
+  - name: completed detail can reopen inline while retaining one dialog
+    steps:
+      - click: 'button[aria-label="关闭详情抽屉"]'
+      - click: 'button[aria-label^="待验证通过缺陷，"]'
+      - wait: '.collab-tester-detail__actions'
+      - click: '.collab-tester-detail__actions button'
+      - wait: '#collab-tester-feedback'
+      - fill: { sel: '#collab-tester-feedback textarea', text: 再次出现的问题 }
+      - click: 'button[form="collab-tester-feedback"]'
+      - wait: 'article[data-stage="REPAIRING"] button[aria-label^="待验证通过缺陷，"]'
+    assert:
+      - count: { sel: '[role="dialog"]', eq: 1 }
+      - hidden: '#collab-tester-feedback'
 
   - name: rework dialog starts focused with submit disabled
     steps:
