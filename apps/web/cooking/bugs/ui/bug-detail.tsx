@@ -10,7 +10,6 @@ import { useWorkspaceMutation } from './use-workspace-mutation';
 import { Detail } from './detail-fields';
 import { BugResultDetail } from './repair-timeline';
 import { BugRouting } from './bug-routing';
-import { BugIdentity } from './bug-identity';
 import { DeveloperTimeline } from './developer-timeline';
 import { developerTimeline } from './developer-detail-model';
 import { ExecutionIdentity } from './execution-round';
@@ -204,7 +203,6 @@ export function BugDetail({
             ) : null}
           </dl>
         </aside>
-        <BugIdentity key={bug.id} bugId={bug.id} />
       </details>
     </div>
   );
