@@ -148,7 +148,7 @@ test('新修复轮次不会继承上一轮检查结果，也不会臆造当前�
   expect(executionRoundProgress(original)).toBe('本轮执行已完成。');
 });
 
-test('检查存在失败项时直接可见，其余检查明细按需展开', async () => {
+test('检查结果和代码明细完整展示，不再折叠', async () => {
   const fixture = await setup();
   const created = createAndRequestBug(
     fixture,
@@ -179,7 +179,9 @@ test('检查存在失败项时直接可见，其余检查明细按需展开', as
     />,
   );
   expect(html).toContain('1 项失败');
-  expect(html).toContain('失败项');
+  expect(html).toContain('data-validation-status="FAILED"');
   expect(html).toContain('保存后刷新仍然失败');
-  expect(html).toContain('查看检查明细');
+  expect(html).not.toContain('<details');
+  expect(html.match(/保存后刷新仍然失败/g)).toHaveLength(1);
+  expect(html).toContain('a'.repeat(40));
 });

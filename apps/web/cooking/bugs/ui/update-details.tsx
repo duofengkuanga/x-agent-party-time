@@ -16,6 +16,7 @@ import { ProgressAttachments } from './progress-timeline';
 import {
   ExecutionIdentity,
   ExecutionRound,
+  ExecutionRoundTabs,
   RoundChecks,
   RoundLines,
 } from './execution-round';
@@ -53,7 +54,7 @@ export function UpdateAttemptDetails({
   return (
     <ExecutionRound
       kind="update"
-      title={`第 ${round} 次更新`}
+      title={`第 ${round} 轮更新`}
       status={executionRoundStatus(node)}
       at={node.queuedAt}
       finishedAt={node.finishedAt}
@@ -104,13 +105,13 @@ export function UpdateAttemptDetails({
               <RoundLines
                 items={work.pendingActions}
                 empty="未提供待处理事项。"
-                label="查看待处理事项"
+                label="待处理事项"
               />
               {work.failureCode ? (
-                <details className="collab-round-disclosure">
-                  <summary>查看技术原因</summary>
+                <section className="collab-round-detail">
+                  <h4>技术原因</h4>
                   <code>{work.failureCode}</code>
-                </details>
+                </section>
               ) : null}
             </>
           ) : null}
@@ -143,8 +144,8 @@ export function UpdateAttemptDetails({
       changes={
         <>
           <p>本次更新包含 {batch.entries.length} 条缺陷的修复。</p>
-          <details className="collab-round-disclosure">
-            <summary>查看本批修复范围</summary>
+          <section className="collab-round-detail">
+            <h4>本批修复范围</h4>
             <ul>
               {batch.entries.map((entry) => (
                 <li key={entry.bugId}>
@@ -161,7 +162,7 @@ export function UpdateAttemptDetails({
                 </li>
               ))}
             </ul>
-          </details>
+          </section>
           {onOpenBatch ? (
             <button type="button" onClick={() => onOpenBatch(batch.id)}>
               查看批次详情
@@ -185,11 +186,11 @@ export function UpdateAttemptDetails({
             <RoundLines
               items={work.completedActions}
               empty="未提供已完成操作。"
-              label="查看交付明细"
+              label="已完成操作"
             />
           ) : null}
           {work?.warnings.length ? (
-            <RoundLines items={work.warnings} empty="" label="查看提醒" />
+            <RoundLines items={work.warnings} empty="" label="提醒" />
           ) : null}
           {latest && batch.availableActions.includes('REPORT_EXTERNAL') ? (
             <>
@@ -283,10 +284,13 @@ export function UpdateBatchDetails({
           {error}
         </p>
       ) : null}
-      <ol className="collab-developer-timeline" aria-label="批次更新记录">
-        {[...batch.timeline].reverse().map((node) =>
-          node.kind === 'UPDATE_ATTEMPT' ? (
-            <li key={node.id}>
+      <section aria-label="批次更新记录">
+        <ExecutionRoundTabs
+          label="批次更新轮次"
+          rounds={[...attempts].reverse().map((node) => ({
+            id: node.id,
+            label: `第 ${node.attempt} 轮更新`,
+            content: (
               <UpdateAttemptDetails
                 batch={batch}
                 node={node}
@@ -297,14 +301,19 @@ export function UpdateBatchDetails({
                 run={run}
                 currentSessionId={latest?.sessionId ?? null}
               />
-            </li>
-          ) : node.kind === 'EXTERNAL_REPORT' ? (
-            <li key={node.id}>
-              <ExternalUpdateReport node={node} />
-            </li>
-          ) : null,
-        )}
-      </ol>
+            ),
+          }))}
+        />
+        <ol className="collab-developer-timeline">
+          {[...batch.timeline].reverse().map((node) =>
+            node.kind === 'EXTERNAL_REPORT' ? (
+              <li key={node.id}>
+                <ExternalUpdateReport node={node} />
+              </li>
+            ) : null,
+          )}
+        </ol>
+      </section>
     </div>
   );
 }

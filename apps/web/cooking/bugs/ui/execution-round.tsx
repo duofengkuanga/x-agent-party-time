@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type { z } from 'zod';
 import type { CookingValidationSchema } from '@/cooking/shared/contract';
 import { formatDateTime } from './board-model';
@@ -81,20 +81,17 @@ export function ExecutionRound({
   delivery: ReactNode;
   kind: 'repair' | 'update';
 }) {
-  const [open, setOpen] = useState(current);
   return (
-    <details
+    <article
+      aria-label={title}
       className="collab-execution-round"
       data-round-kind={kind}
       data-current={current}
-      open={open}
-      onToggle={(event) => setOpen(event.currentTarget.open)}
     >
-      <summary>
-        <strong>{title}</strong>
-        <span>{status}</span>
+      <header>
+        <strong>{status}</strong>
         <time dateTime={at}>{formatDateTime(at)}</time>
-      </summary>
+      </header>
       <div className="collab-execution-round__body">
         {identity}
         <dl className="collab-execution-round__fields">
@@ -121,14 +118,83 @@ export function ExecutionRound({
           </p>
         ) : null}
       </div>
-    </details>
+    </article>
+  );
+}
+
+export function ExecutionRoundTabs({
+  label,
+  rounds,
+}: {
+  label: string;
+  rounds: Array<{ id: string; label: string; content: ReactNode }>;
+}) {
+  const scope = useId();
+  const [selected, setSelected] = useState(rounds[0]?.id);
+  const tabRefs = useRef(new Map<string, HTMLButtonElement>());
+  const active = rounds.some((round) => round.id === selected)
+    ? selected
+    : rounds[0]?.id;
+  if (!rounds.length) return null;
+  return (
+    <div className="collab-execution-round-tabs">
+      <div
+        className="collab-execution-round-tabs__list"
+        role="tablist"
+        aria-label={label}
+      >
+        {rounds.map((round, index) => (
+          <button
+            key={round.id}
+            type="button"
+            role="tab"
+            id={`${scope}-tab-${round.id}`}
+            aria-controls={`${scope}-panel-${round.id}`}
+            aria-selected={active === round.id}
+            tabIndex={active === round.id ? 0 : -1}
+            ref={(button) => {
+              if (button) tabRefs.current.set(round.id, button);
+              else tabRefs.current.delete(round.id);
+            }}
+            onClick={() => setSelected(round.id)}
+            onKeyDown={(event) => {
+              let next: number;
+              if (event.key === 'ArrowRight')
+                next = (index + 1) % rounds.length;
+              else if (event.key === 'ArrowLeft')
+                next = (index + rounds.length - 1) % rounds.length;
+              else if (event.key === 'Home') next = 0;
+              else if (event.key === 'End') next = rounds.length - 1;
+              else return;
+              event.preventDefault();
+              setSelected(rounds[next]!.id);
+              tabRefs.current.get(rounds[next]!.id)?.focus();
+            }}
+          >
+            {round.label}
+          </button>
+        ))}
+      </div>
+      {rounds.map((round) => (
+        <section
+          className="collab-execution-round-panel"
+          key={round.id}
+          role="tabpanel"
+          id={`${scope}-panel-${round.id}`}
+          aria-labelledby={`${scope}-tab-${round.id}`}
+          hidden={active !== round.id}
+        >
+          {round.content}
+        </section>
+      ))}
+    </div>
   );
 }
 
 export function RoundLines({
   items,
   empty,
-  label = '查看明细',
+  label,
 }: {
   items: string[];
   empty: string;
@@ -137,19 +203,16 @@ export function RoundLines({
   if (!items.length) return <p>{empty}</p>;
   return (
     <>
-      <p>{items[0]}</p>
-      {items.length > 1 ? (
-        <details className="collab-round-disclosure">
-          <summary>
-            {label}（{items.length} 项）
-          </summary>
-          <ul>
-            {items.slice(1).map((item, index) => (
-              <li key={index}>{item}</li>
-            ))}
-          </ul>
-        </details>
-      ) : null}
+      {label ? <h4>{label}</h4> : null}
+      {items.length === 1 ? (
+        <p>{items[0]}</p>
+      ) : (
+        <ul className="collab-round-list">
+          {items.map((item, index) => (
+            <li key={index}>{item}</li>
+          ))}
+        </ul>
+      )}
     </>
   );
 }
@@ -168,13 +231,7 @@ export function RoundChecks({
         {failed.length} 项失败，
         {items.filter(({ status }) => status === 'SKIPPED').length} 项跳过
       </p>
-      {failed.length ? (
-        <ValidationResults items={failed} title="失败项" emptyLabel="" />
-      ) : null}
-      <details className="collab-round-disclosure">
-        <summary>查看检查明细</summary>
-        <ValidationResults items={items} title="本轮检查" emptyLabel="" />
-      </details>
+      <ValidationResults items={items} title="本轮检查" emptyLabel="" />
     </>
   );
 }

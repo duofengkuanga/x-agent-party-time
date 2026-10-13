@@ -70,10 +70,10 @@ function SynchronizationCorrection({
     <aside className="collab-sync-correction" aria-label="同步补正指引">
       <p>{correction.instruction}</p>
       {correction.schema ? (
-        <details>
-          <summary>本次结果约束</summary>
+        <section className="collab-round-detail">
+          <h4>本次结果约束</h4>
           <pre>{correction.schema}</pre>
-        </details>
+        </section>
       ) : null}
       <button
         onClick={() => {
@@ -161,14 +161,14 @@ export function RepairAttemptDetails({
             <RoundLines
               items={failed.pendingActions}
               empty=""
-              label="查看待处理事项"
+              label="待处理事项"
             />
           ) : null}
           {failed?.failureCode ? (
-            <details className="collab-round-disclosure">
-              <summary>查看技术原因</summary>
+            <section className="collab-round-detail">
+              <h4>技术原因</h4>
               <code>{failed.failureCode}</code>
-            </details>
+            </section>
           ) : null}
           {latest && repair?.availableActions.includes('SYNC_SESSION') ? (
             <>
@@ -217,8 +217,8 @@ export function RepairAttemptDetails({
               : '本轮尚未确认完成交付。'}
           </p>
           {completed?.commits?.length ? (
-            <details className="collab-round-disclosure">
-              <summary>查看提交</summary>
+            <section className="collab-round-detail">
+              <h4>本轮提交</h4>
               <ul>
                 {completed.commits.map((commit) => (
                   <li key={commit}>
@@ -226,10 +226,10 @@ export function RepairAttemptDetails({
                   </li>
                 ))}
               </ul>
-            </details>
+            </section>
           ) : null}
           {completed?.warnings.length ? (
-            <RoundLines items={completed.warnings} empty="" label="查看提醒" />
+            <RoundLines items={completed.warnings} empty="" label="提醒" />
           ) : null}
         </>
       }

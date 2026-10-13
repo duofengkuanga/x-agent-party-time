@@ -258,7 +258,11 @@ cases:
       - visible: '.collab-execution-identities [aria-label="修复会话 ID"]'
       - visible: '.collab-execution-identities [aria-label="更新会话 ID"]'
       - count: { sel: '.collab-execution-round', eq: 3 }
-      - count: { sel: '.collab-execution-round[open]', eq: 1 }
+      - count: { sel: '[role="tab"]', eq: 3 }
+      - text: { sel: '[role="tab"][aria-selected="true"]', equals: 第 1 轮更新 }
+      - count: { sel: '[role="tabpanel"]:not([hidden])', eq: 1 }
+      - hidden: '.collab-execution-round details'
+      - eval: '[...document.querySelectorAll(".collab-execution-round__fields dt")].every(dt=>parseFloat(getComputedStyle(dt).fontSize)>=14 && Number(getComputedStyle(dt).fontWeight)>=700)'
       - eval: '[...document.querySelectorAll(".collab-execution-round__fields")].every(dl=>[...dl.querySelectorAll(":scope > div > dt")].map(dt=>dt.textContent).join("|")==="执行进展|代码变更|检查结果|交付状态")'
       - hidden: '.collab-developer-source[open]'
       - hidden: '.collab-bug-detail-tabs'
@@ -289,19 +293,33 @@ cases:
           }
       - text: { sel: 'button[aria-label="复制更新会话 ID"]', equals: 复制 }
 
-  - name: history expansion and source report stay stable during refresh
+  - name: round tabs support keyboard navigation and keep the selected history during refresh
     steps:
-      - click: '.collab-execution-round[data-round-kind="repair"] > summary'
-      - click: '.collab-developer-source > summary'
-      - eval: 'window.developerExpanded=[...document.querySelectorAll(".collab-execution-round[open] > summary strong")].map(n=>n.textContent).join("|"); true'
-      - wait: 1800
+      - eval: 'document.querySelector("[role=tab][aria-selected=true]").focus(); true'
+      - press: ArrowRight
+      - wait: 1500
     assert:
+      - text: { sel: '[role="tab"][aria-selected="true"]', equals: 第 2 轮修复 }
+      - eval: 'document.activeElement.getAttribute("role")==="tab" && document.activeElement.getAttribute("aria-selected")==="true"'
+      - text: { sel: '[role="tabpanel"]:not([hidden])', contains: 定向测试 }
+      - eval: 'document.querySelector("[role=tabpanel]:not([hidden])").textContent.includes("a".repeat(40))'
+      - hidden: '[role="tabpanel"]:not([hidden]) details'
+      - eval: 'Math.abs(document.querySelector(".collab-bug-drawer").getBoundingClientRect().top-window.developerModalTop)<=1'
+
+  - name: switching to an older repair directly reveals its full result and preserves source access
+    steps:
+      - press: End
+      - click: '.collab-developer-source > summary'
+    assert:
+      - text: { sel: '[role="tab"][aria-selected="true"]', equals: 第 1 轮修复 }
+      - text:
+          { sel: '[role="tabpanel"]:not([hidden])', contains: 完整检查尚未通过 }
       - text:
           {
             sel: '.collab-developer-source[open]',
             contains: 修复更新页签滚动回归 的预期结果,
           }
-      - eval: '[...document.querySelectorAll(".collab-execution-round[open] > summary strong")].map(n=>n.textContent).join("|")===window.developerExpanded'
+      - hidden: '.collab-bug-identity'
       - eval: 'Math.abs(document.querySelector(".collab-bug-drawer").getBoundingClientRect().top-window.developerModalTop)<=1'
 
   - name: developer can return to the source defect for manual routing
@@ -814,9 +832,24 @@ cases:
           }
       - eval: 'document.querySelector("[aria-label=\"修复会话 ID\"] code").textContent.startsWith("browser-batch-repair-")'
 
+  - name: switching round tabs preserves the unfinished batch deployment report
+    steps:
+      - fill:
+          {
+            sel: '[aria-label="确认整批更新结果"] textarea',
+            text: 切换轮次后保留部署说明,
+          }
+      - click: '[role="tablist"][aria-label="修复与更新轮次"] button:last-child'
+      - click: '[role="tablist"][aria-label="修复与更新轮次"] button:first-child'
+    assert:
+      - text: { sel: '[role="tab"][aria-selected="true"]', equals: 第 1 轮更新 }
+      - eval: 'document.querySelector("[aria-label=\"确认整批更新结果\"] textarea").value === "切换轮次后保留部署说明"'
+      - count: { sel: '[role="tabpanel"]:not([hidden])', eq: 1 }
+      - hidden: '.collab-execution-round details'
+
   - name: deployment confirmation updates every member of the shared batch
     steps:
-      - eval: '[...document.querySelectorAll(".collab-execution-round button")].find(b=>b.textContent==="查看批次详情").click(); true'
+      - eval: '[...document.querySelectorAll("[role=tabpanel]:not([hidden]) .collab-execution-round button")].find(b=>b.textContent==="查看批次详情").click(); true'
       - wait: '[aria-label="批次内缺陷"]'
       - eval: '[...document.querySelectorAll("[aria-label=\"确认整批更新结果\"] button")].find(b=>b.textContent==="提交外部结果").click(); true'
       - wait: 'article[data-stage="WAITING_FOR_VERIFICATION"] button[aria-label^="批次更新缺陷甲，"]'
