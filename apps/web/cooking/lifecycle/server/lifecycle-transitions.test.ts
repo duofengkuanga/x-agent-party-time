@@ -54,7 +54,9 @@ describe('LifecycleService', () => {
         ...mutation(repairing.version),
       }),
     ).toThrow(expect.objectContaining({ code: 'INVALID_TRANSITION' }));
-    await completeNextRepair(fixture, 'repair-archive', ['6666666']);
+    await completeNextRepair(fixture, 'repair-archive', [
+      '6666666666666666666666666666666666666666',
+    ]);
     await completeUpdate(fixture, fixture.items[0]!.id, {
       outcome: 'COMPLETED',
       summary: '归档前部署完成',
@@ -83,7 +85,9 @@ describe('LifecycleService', () => {
   test('DONE 可在活动期重开，关闭后所有 Lifecycle 写操作只读', async () => {
     const fixture = await setup();
     const bug = createAndRequestBug(fixture, fixture.items[0]!.id, '重开缺陷');
-    await completeNextRepair(fixture, 'repair-reopen', ['4444444']);
+    await completeNextRepair(fixture, 'repair-reopen', [
+      '4444444444444444444444444444444444444444',
+    ]);
     await completeUpdate(fixture, fixture.items[0]!.id, {
       outcome: 'COMPLETED',
       summary: '部署完成',
@@ -111,7 +115,7 @@ describe('LifecycleService', () => {
       repairAttempt: 2,
     });
     await completeClaimedRepair(fixture, reopened.executionId!, 'repair-reopen', [
-      '5555555',
+      '5555555555555555555555555555555555555555',
     ]);
     await completeUpdate(fixture, fixture.items[0]!.id, {
       outcome: 'COMPLETED',

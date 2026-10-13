@@ -25,6 +25,8 @@ import type { BatchRow, FrozenBatch, ItemSourceRow } from './records';
 import { parseCommits } from '@/cooking/shared/server/result-data';
 import type { UpdateQueries } from './update-queries';
 import { staleBatch } from './results';
+import { freezeRepairHandoffs } from './repair-handoffs';
+import { UPDATE_HANDOFF_TEXT_ASSERTION } from '@/cooking/repair/handoff';
 
 const QUIET_WINDOW_MS = 2 * 60 * 1_000;
 
@@ -84,6 +86,7 @@ export class UpdateDelivery {
         taskId: batch.session_id,
         taskSkillBinding: requireTaskSkillBinding(previousExecution, '更新'),
         text: continuationInput,
+        resultAssertions: [UPDATE_HANDOFF_TEXT_ASSERTION],
         outputJsonSchema:
           deployment.kind === 'LOCAL_SCRIPT'
             ? LocalScriptUpdateOutputJsonSchema
@@ -211,13 +214,18 @@ export class UpdateDelivery {
     const attemptId = this.createId();
     const executionId = this.createId();
     const workspaceKey = `update-batch:${batchId}`;
+    const entries = candidates.map((candidate) => {
+      const commits = parseCommits(candidate.pending_commits_json);
+      return {
+        bugTitle: candidate.title,
+        commits,
+        repairHandoffs: freezeRepairHandoffs(this.db, candidate.bug_id, commits),
+      };
+    });
     const executionBrief = buildInitialUpdateBrief({
       targetBranch: source.target_branch,
       environmentName: source.environment_name,
-      entries: candidates.map((candidate) => ({
-        bugTitle: candidate.title,
-        commits: parseCommits(candidate.pending_commits_json),
-      })),
+      entries,
       deployment:
         deployment.kind === 'LOCAL_SCRIPT'
           ? { mode: 'LOCAL_SCRIPT', command: deployment.command }
@@ -233,8 +241,8 @@ export class UpdateDelivery {
     );
     const insertEntry = this.db.prepare(
       `INSERT INTO cooking_update_batch_entry(
-         batch_id, bug_id, position, commits_json, manual_operations_json
-       ) VALUES (?, ?, ?, ?, ?)`,
+         batch_id, bug_id, position, commits_json, manual_operations_json, handoffs_json
+       ) VALUES (?, ?, ?, ?, ?, ?)`,
     );
     candidates.forEach((candidate, position) =>
       insertEntry.run(
@@ -243,6 +251,7 @@ export class UpdateDelivery {
         position,
         candidate.pending_commits_json,
         candidate.pending_manual_operations_json,
+        JSON.stringify(entries[position]!.repairHandoffs),
       ),
     );
     const execution = this.executions.enqueue({
@@ -258,6 +267,7 @@ export class UpdateDelivery {
         manualHandoff: 'EXTERNAL_SESSION',
         requiredSkillName: 'agent-party-time-integrate-update-batch',
         executionBrief,
+        resultAssertions: [UPDATE_HANDOFF_TEXT_ASSERTION],
         outputJsonSchema:
           deployment.kind === 'LOCAL_SCRIPT'
             ? LocalScriptUpdateOutputJsonSchema

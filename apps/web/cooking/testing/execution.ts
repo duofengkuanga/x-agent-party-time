@@ -1,4 +1,5 @@
 import type { ExecutionService } from '@/platform/execution/service';
+import { testRepairHandoff } from './handoff';
 import type {
   CompleteExecutionRequest,
   JsonValue,
@@ -64,6 +65,7 @@ export function completeRepairExecution(
       result: {
         outcome: 'COMPLETED',
         completionKind: 'CHANGES_COMMITTED',
+        handoff: testRepairHandoff(),
         changes: ['完成缺陷修复'],
         validations: [{ name: '定向测试', status: 'PASSED', detail: '' }],
         warnings: [],

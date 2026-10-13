@@ -45,6 +45,7 @@ export class GitExecutionResultVerifier implements ExecutionResultVerifier {
     baseline: ExecutionResultBaseline,
     result: JsonValue,
   ): Promise<void> {
+    verifyResultContent(assertions, result);
     if (!assertions.some(({ kind }) => kind === 'GIT_COMMITS_CREATED')) return;
     for (const assertion of assertions) {
       if (assertion.kind !== 'GIT_COMMITS_CREATED') continue;
@@ -90,6 +91,33 @@ export class GitExecutionResultVerifier implements ExecutionResultVerifier {
     if (result.exitCode !== 0)
       throw new ExecutionResultVerificationError('无法校验本机 Git 提交记录');
     return result.stdout.trim();
+  }
+}
+
+/** Pure assertions also apply to read-only sessions without a Git workspace. */
+export function verifyResultContent(
+  assertions: ExecutionResultAssertion[],
+  result: JsonValue,
+): void {
+  for (const assertion of assertions) {
+    if (assertion.kind !== 'JSON_STRING_PATTERN') continue;
+    const value = valueAtPath(result, assertion.resultPath);
+    if (value === undefined) continue;
+    let pattern: RegExp;
+    try {
+      pattern = new RegExp(assertion.pattern, 'u');
+    } catch {
+      throw new ExecutionResultVerificationError('本机结果字符串约束无效');
+    }
+    const pending: JsonValue[] = [value];
+    while (pending.length) {
+      const item = pending.pop()!;
+      if (typeof item === 'string' && !pattern.test(item))
+        throw new ExecutionResultVerificationError(
+          '结构化结果不符合本机字符串约束，结果未发送',
+        );
+      if (item && typeof item === 'object') pending.push(...Object.values(item));
+    }
   }
 }
 

@@ -12,6 +12,7 @@ import { ExecutionService } from '@/platform/execution/service';
 import { isTerminal } from '@/cooking/shared/server/execution-state';
 import {
   UpdateBatchViewSchema,
+  FrozenRepairHandoffSchema,
   UpdateWorkspaceProjectionSchema,
   type UpdateBatchView,
   type UpdateWorkspaceProjection,
@@ -169,6 +170,9 @@ export class UpdateQueries {
         bugShortId: entry.short_id,
         bugTitle: entry.title,
         commits: technical ? parseCommits(entry.commits_json) : null,
+        repairHandoffs: technical
+          ? FrozenRepairHandoffSchema.array().parse(JSON.parse(entry.handoffs_json))
+          : null,
       })),
       timeline,
       availableActions:
@@ -310,6 +314,7 @@ export class UpdateQueries {
     title: string;
     commits_json: string;
     manual_operations_json: string;
+    handoffs_json: string;
   }> {
     return this.db.all<{
       bug_id: string;
@@ -317,9 +322,10 @@ export class UpdateQueries {
       title: string;
       commits_json: string;
       manual_operations_json: string;
+      handoffs_json: string;
     }>(
       `SELECT entry.bug_id, bug.short_id, bug.title, entry.commits_json,
-                entry.manual_operations_json
+                entry.manual_operations_json, entry.handoffs_json
          FROM cooking_update_batch_entry entry
          JOIN cooking_bug bug ON bug.id = entry.bug_id
          WHERE entry.batch_id = ? ORDER BY entry.position`,

@@ -23,13 +23,17 @@ describe('LifecycleService', () => {
   test('验证失败自动沿用 Repair Session，再次更新通过后关闭并异步清理', async () => {
     const fixture = await setup();
     const localBug = createAndRequestBug(fixture, fixture.items[0]!.id, '本地缺陷');
-    await completeNextRepair(fixture, 'repair-local', ['1111111']);
+    await completeNextRepair(fixture, 'repair-local', [
+      '1111111111111111111111111111111111111111',
+    ]);
     await completeUpdate(fixture, fixture.items[0]!.id, {
       outcome: 'COMPLETED',
       summary: '本地部署完成',
     });
     const ciBug = createAndRequestBug(fixture, fixture.items[1]!.id, '持续集成缺陷');
-    await completeNextRepair(fixture, 'repair-ci', ['2222222']);
+    await completeNextRepair(fixture, 'repair-ci', [
+      '2222222222222222222222222222222222222222',
+    ]);
     const ciBatch = await completeUpdate(fixture, fixture.items[1]!.id, {
       outcome: 'PUSHED',
       summary: '已普通 Push',
@@ -98,7 +102,7 @@ describe('LifecycleService', () => {
     });
 
     await completeClaimedRepair(fixture, failed.executionId!, 'repair-local', [
-      '3333333',
+      '3333333333333333333333333333333333333333',
     ]);
     await completeUpdate(fixture, fixture.items[0]!.id, {
       outcome: 'COMPLETED',

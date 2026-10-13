@@ -1,3 +1,4 @@
+import { testHandoffUse } from '@/cooking/testing/handoff';
 import { mutation } from '@/cooking/testing/project';
 import {
   completeSuccessfulExecution,
@@ -28,7 +29,7 @@ describe('UpdateService', () => {
       fixture,
       '首批候选',
       'repair-one',
-      ['aaaaaaa'],
+      ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
       'first-batch-session',
     );
     completeSuccessfulExecution(fixture, running, failedUpdate('等待负责人处理冲突'));
@@ -36,11 +37,13 @@ describe('UpdateService', () => {
 
     fixture.clock.set('2026-07-27T10:01:00.000Z');
     const later = fixture.createBug('冻结后的新候选');
-    await completeNextRepair(fixture, 'repair-later', ['bbbbbbb']);
+    await completeNextRepair(fixture, 'repair-later', [
+      'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    ]);
     fixture.clock.set('2026-07-27T10:03:00.000Z');
     expect(fixture.updates.prepareDueExecutions()).toEqual([]);
     expect(batchEntries(fixture.database, firstBatch.id)).toEqual([
-      { bug_id: first.id, commits: ['aaaaaaa'] },
+      { bug_id: first.id, commits: ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'] },
     ]);
     expect(currentBug(fixture.database, later.id).stage).toBe('WAITING_FOR_UPDATE');
 
@@ -61,7 +64,7 @@ describe('UpdateService', () => {
     const secondBatch = latestBatch(fixture.database, fixture.item.id);
     expect(secondBatch.id).not.toBe(firstBatch.id);
     expect(batchEntries(fixture.database, secondBatch.id)).toEqual([
-      { bug_id: later.id, commits: ['bbbbbbb'] },
+      { bug_id: later.id, commits: ['bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'] },
     ]);
   });
 
@@ -71,7 +74,7 @@ describe('UpdateService', () => {
       fixture,
       'Lease 恢复候选',
       'repair-one',
-      ['aaaaaaa'],
+      ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
       'lease-update-session',
     );
     fixture.clock.set('2026-07-27T10:00:16.000Z');
@@ -101,7 +104,7 @@ describe('UpdateService', () => {
       fixture,
       '非法结果候选',
       'repair-one',
-      ['aaaaaaa'],
+      ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
       'invalid-result-session',
     );
     const completion = {
@@ -129,10 +132,11 @@ describe('UpdateService', () => {
       fixture,
       '质量门失败候选',
       'repair-one',
-      ['aaaaaaa'],
+      ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
       'failed-update-session',
     );
     const failedResult = {
+      handoffUse: testHandoffUse(),
       outcome: 'FAILED',
       failedStep: '质量门：pnpm run tsc',
       reason: '仓库不存在 tsconfig.json',
@@ -179,7 +183,7 @@ describe('UpdateService', () => {
       fixture,
       '事务回滚候选',
       'repair-one',
-      ['aaaaaaa'],
+      ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
       'rollback-update-session',
     );
     const beforeBatch = latestBatch(fixture.database, fixture.item.id);
@@ -191,7 +195,9 @@ describe('UpdateService', () => {
     expect(fixture.executions.get(running.executionId).state).toBe('RUNNING');
     expect(latestBatch(fixture.database, fixture.item.id)).toEqual(beforeBatch);
     expect(currentBug(fixture.database, bug.id)).toEqual(beforeBug);
-    expect(pendingCommits(fixture.database, bug.id)).toEqual(['aaaaaaa']);
+    expect(pendingCommits(fixture.database, bug.id)).toEqual([
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    ]);
   });
 
   test('负责人可处理 Update Interaction，Tester 只能看到安全等待状态', async () => {
@@ -200,7 +206,7 @@ describe('UpdateService', () => {
       fixture,
       '需要审批的候选',
       'repair-one',
-      ['aaaaaaa'],
+      ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
       'interaction-session',
     );
     const interaction = fixture.executions.openInteraction(

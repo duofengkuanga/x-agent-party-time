@@ -1,4 +1,5 @@
 import type { JsonObject } from '@agent-party-time/execution-contract';
+import type { FrozenRepairHandoff } from './contract';
 
 export function buildInitialUpdateBrief(input: {
   targetBranch: string;
@@ -6,6 +7,7 @@ export function buildInitialUpdateBrief(input: {
   entries: Array<{
     bugTitle: string;
     commits: string[];
+    repairHandoffs: FrozenRepairHandoff[];
   }>;
   deployment: { mode: 'CI_CD' } | { mode: 'LOCAL_SCRIPT'; command: string };
 }): JsonObject {
@@ -15,6 +17,9 @@ export function buildInitialUpdateBrief(input: {
     frozenCandidates: input.entries.map((entry, position) => ({
       position,
       ...entry,
+      repairHandoffs: entry.repairHandoffs.map(
+        ({ attemptId: _attempt, executionId: _execution, ...context }) => context,
+      ),
     })),
     deployment: input.deployment,
   };

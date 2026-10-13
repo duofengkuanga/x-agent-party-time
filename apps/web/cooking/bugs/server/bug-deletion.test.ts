@@ -129,8 +129,8 @@ describe('BugService', () => {
     );
     fixture.database.run(
       `INSERT INTO cooking_update_batch_entry(
-           batch_id, bug_id, position, commits_json, manual_operations_json
-         ) VALUES (?, ?, 0, '[]', '[]')`,
+           batch_id, bug_id, position, commits_json, manual_operations_json, handoffs_json
+         ) VALUES (?, ?, 0, '[]', '[]', '[]')`,
       [batchId, bug.id],
     );
     fixture.database.run(

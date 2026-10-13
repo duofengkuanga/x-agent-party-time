@@ -12,6 +12,30 @@ const assertions: ExecutionResultAssertion[] = [
   { kind: 'GIT_COMMITS_CREATED', resultPath: ['result', 'commits'] },
 ];
 
+test('纯结果字符串约束在上传前执行，不依赖 Git 工作区或基线', async () => {
+  const verifier = new GitExecutionResultVerifier(new NodeCommandRunner());
+  const rules: ExecutionResultAssertion[] = [
+    {
+      kind: 'JSON_STRING_PATTERN',
+      resultPath: ['result', 'context'],
+      pattern: '^[a-z ]*$',
+    },
+  ];
+  await expect(
+    verifier.verify('', rules, null, {
+      result: { context: { note: 'portable text', nested: ['allowed'] } },
+    }),
+  ).resolves.toBeUndefined();
+  await expect(
+    verifier.verify('', rules, null, {
+      result: { context: { nested: ['NOT_ALLOWED'] } },
+    }),
+  ).rejects.toThrow('字符串约束');
+  await expect(
+    verifier.verify('', rules, null, { result: { outcome: 'FAILED' } }),
+  ).resolves.toBeUndefined();
+});
+
 test('只接受本次 Execution 创建且按顺序返回的真实 Commit', async () => {
   const repository = await gitRepository();
   const commands = new NodeCommandRunner();

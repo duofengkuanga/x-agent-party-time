@@ -27,6 +27,7 @@ import {
 } from './developer-detail-model';
 import type { RunWorkspaceAction } from './repair-timeline';
 import { formatDateTime } from './board-model';
+import { HandoffUseDetails, RepairHandoffDetails } from './handoff-details';
 
 export function UpdateAttemptDetails({
   batch,
@@ -159,6 +160,9 @@ export function UpdateAttemptDetails({
                       ))}
                     </ul>
                   ) : null}
+                  {entry.repairHandoffs?.length ? (
+                    <RepairHandoffDetails sources={entry.repairHandoffs} />
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -170,7 +174,17 @@ export function UpdateAttemptDetails({
           ) : null}
         </>
       }
-      checks={<RoundChecks items={work?.validations ?? []} />}
+      checks={
+        <>
+          <RoundChecks items={work?.validations ?? []} />
+          {work?.handoffUse ? (
+            <HandoffUseDetails
+              use={work.handoffUse}
+              validations={work.validations}
+            />
+          ) : null}
+        </>
+      }
       delivery={
         <>
           <p>

@@ -18,7 +18,9 @@ describe('环境切换与验证、关闭', () => {
     const fixture = await setup();
     const originalItem = fixture.items[0]!;
     const bug = createAndRequestBug(fixture, originalItem.id, '环境切换验证');
-    await completeNextRepair(fixture, 'switch-repair', ['1111111']);
+    await completeNextRepair(fixture, 'switch-repair', [
+      '1111111111111111111111111111111111111111',
+    ]);
     await completeUpdate(fixture, originalItem.id, {
       outcome: 'COMPLETED',
       summary: '部署完成',

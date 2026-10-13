@@ -1,3 +1,4 @@
+import { testRepairHandoff } from '@/cooking/testing/handoff';
 import { expect, test } from 'bun:test';
 import { testDatabases } from '@/testing/database';
 import { mutation } from '@/cooking/testing/project';
@@ -83,10 +84,11 @@ test('人工接管保留等待状态和问题，负责人同步最新结果后�
           result: {
             outcome: 'COMPLETED',
             completionKind: 'CHANGES_COMMITTED',
+            handoff: testRepairHandoff(),
             changes: ['移除权限'],
             validations: [{ name: '回归', status: 'PASSED', detail: '' }],
             warnings: [],
-            commits: ['abcdef1'],
+            commits: ['abcdef1111111111111111111111111111111111'],
             manualOperations: [],
           },
         },

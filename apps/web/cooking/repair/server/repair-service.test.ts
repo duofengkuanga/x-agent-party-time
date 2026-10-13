@@ -1,3 +1,4 @@
+import { testRepairHandoff } from '@/cooking/testing/handoff';
 import { mutation } from '@/cooking/testing/project';
 import { completeSuccessfulExecution } from '@/cooking/testing/execution';
 import { testDatabases } from '@/testing/database';
@@ -47,6 +48,11 @@ describe('RepairService', () => {
         requiredSkillName: 'agent-party-time-repair-bug',
         taskSkillBinding: null,
         resultAssertions: [
+          {
+            kind: 'JSON_STRING_PATTERN',
+            resultPath: ['result', 'handoff'],
+            pattern: expect.any(String),
+          },
           {
             kind: 'GIT_COMMITS_CREATED',
             resultPath: ['result', 'commits'],
@@ -115,6 +121,7 @@ describe('RepairService', () => {
             result: {
               outcome: 'COMPLETED',
               completionKind: 'CHANGES_COMMITTED',
+              handoff: testRepairHandoff(),
               changes: ['修复支付按钮事件绑定'],
               validations: [
                 {
@@ -124,7 +131,10 @@ describe('RepairService', () => {
                 },
               ],
               warnings: [],
-              commits: ['aaaaaaa', 'bbbbbbb'],
+              commits: [
+                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+              ],
               manualOperations: [],
             },
           },
@@ -160,7 +170,10 @@ describe('RepairService', () => {
       kind: 'REPAIR_ATTEMPT',
       result: {
         outcome: 'COMPLETED',
-        commits: ['aaaaaaa', 'bbbbbbb'],
+        commits: [
+          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        ],
       },
     });
 
@@ -180,7 +193,10 @@ describe('RepairService', () => {
     expect(
       fixture.repairs.repairView(fixture.users.developer.id, fixture.requested.bug.id)
         ?.pendingCommits,
-    ).toEqual(['aaaaaaa', 'bbbbbbb']);
+    ).toEqual([
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    ]);
   });
 
   test('已保存的完成结果可投影到时间线', async () => {

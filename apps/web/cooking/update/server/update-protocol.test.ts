@@ -63,7 +63,9 @@ test('统一装配只向 Update 投影更新会话同步，保留原失败尝试
   const fixture = await setup();
   const { users, updates, executions, runner, item, database } = fixture;
   fixture.createBug('平台外完成更新');
-  await completeNextRepair(fixture, 'repair-before-sync', ['aaaaaaa']);
+  await completeNextRepair(fixture, 'repair-before-sync', [
+    'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  ]);
   const frozen = updates.freezeNow(users.developer.id, item.id, {
     mutationId: randomUUID(),
   });
@@ -113,7 +115,9 @@ describe('更新遵守环境使用权', () => {
   test('暂停后不自动冻结也不能手动更新，重新取得环境后恢复；活动更新阻止切换', async () => {
     const fixture = await setup();
     fixture.createBug('切换期间保留候选');
-    await completeNextRepair(fixture, 'environment-repair', ['aaaaaaa']);
+    await completeNextRepair(fixture, 'environment-repair', [
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    ]);
     const submissions = new SubmissionService(fixture.database, fixture.clock.now);
     const view = submissions.getWorkspace(fixture.users.owner.id, fixture.submission.id);
     const originalItem = view.submission.items[0]!;
@@ -185,7 +189,7 @@ test('外部部署等待期间禁止切换；失败后允许切换但原批次�
     fixture,
     '外部部署占用',
     'external-lock-repair',
-    ['ccccccc'],
+    ['cccccccccccccccccccccccccccccccccccccccc'],
     'external-lock-update',
   );
   completeSuccessfulExecution(fixture, running, pushedUpdate());

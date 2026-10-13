@@ -9,12 +9,13 @@ import {
 import { outputJsonSchema } from '@/cooking/shared/output-schema';
 import { ExecutionStateSchema } from '@agent-party-time/execution-contract';
 import { z } from 'zod';
+import { RepairHandoffSchema } from './handoff';
 
 export const CommitShaSchema = z
   .string()
   .trim()
   .toLowerCase()
-  .regex(/^[a-f0-9]{7,64}$/u);
+  .regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u);
 
 export const RepairValidationSchema = CookingValidationSchema;
 
@@ -38,27 +39,48 @@ export const ManualOperationSchema = z.strictObject({
 
 export const ManualOperationsSchema = z.array(ManualOperationSchema).max(5);
 
-const RepairExecutionResultValueSchema = z.discriminatedUnion('outcome', [
+const CompletedRepairFields = {
+  outcome: z.literal('COMPLETED'),
+  changes: z.array(z.string().trim().min(1).max(300)).max(5),
+  validations: z.array(RepairValidationSchema).max(5),
+  warnings: z.array(z.string().trim().min(1).max(300)).max(3),
+  commits: z.array(CommitShaSchema).max(5),
+  manualOperations: ManualOperationsSchema,
+};
+
+export const CommittedRepairResultSchema = z
+  .strictObject({
+    ...CompletedRepairFields,
+    completionKind: z.literal('CHANGES_COMMITTED'),
+    commits: z.array(CommitShaSchema).min(1).max(5),
+    handoff: RepairHandoffSchema,
+  })
+  .superRefine((result, context) => {
+    if (new Set(result.commits).size !== result.commits.length)
+      context.addIssue({
+        code: 'custom',
+        path: ['commits'],
+        message: '候选提交不得重复',
+      });
+    result.handoff.validationCommands.forEach((entry, index) => {
+      const validation = result.validations[entry.validationIndex];
+      if (!validation || validation.status === 'SKIPPED')
+        context.addIssue({
+          code: 'custom',
+          path: ['handoff', 'validationCommands', index, 'validationIndex'],
+          message: '交接命令必须关联本次实际执行的验证条目',
+        });
+    });
+  });
+
+const RepairExecutionResultValueSchema = z.union([
+  CommittedRepairResultSchema,
   z
     .strictObject({
-      outcome: z.literal('COMPLETED'),
-      completionKind: z.enum(['CHANGES_COMMITTED', 'TARGET_ALREADY_FIXED']),
-      changes: z.array(z.string().trim().min(1).max(300)).max(5),
-      validations: z.array(RepairValidationSchema).max(5),
-      warnings: z.array(z.string().trim().min(1).max(300)).max(3),
-      commits: z.array(CommitShaSchema).max(5),
-      manualOperations: ManualOperationsSchema,
+      ...CompletedRepairFields,
+      completionKind: z.literal('TARGET_ALREADY_FIXED'),
     })
     .superRefine((result, context) => {
-      if (result.completionKind === 'CHANGES_COMMITTED') {
-        if (result.commits.length === 0)
-          context.addIssue({
-            code: 'custom',
-            path: ['commits'],
-            message: '有代码改动的修复必须返回候选本地提交',
-          });
-        return;
-      }
       if (result.changes.length > 0)
         context.addIssue({
           code: 'custom',

@@ -9,6 +9,7 @@
     "packages/*"
   ],
   "scripts": {
+    "eval:handoff": "bun scripts/evaluate-repair-handoff.ts",
     "dev": "bun scripts/dev-all.ts",
     "dev:app": "bun --cwd apps/web dev",
     "dev:xapt": "XAPT_DEVELOPMENT_HOME=.scratch/xapt-development bun apps/xapt/src/index.ts internal-daemon",

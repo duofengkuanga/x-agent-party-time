@@ -75,10 +75,18 @@ export const TaskSkillBindingSchema = z.strictObject({
   sourceRevision: z.string().regex(/^[a-f0-9]{40}$/u),
 });
 
-export const ExecutionResultAssertionSchema = z.strictObject({
-  kind: z.literal('GIT_COMMITS_CREATED'),
-  resultPath: z.array(z.string().trim().min(1).max(120)).min(1).max(8),
-});
+const ResultPathSchema = z.array(z.string().trim().min(1).max(120)).min(1).max(8);
+export const ExecutionResultAssertionSchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('GIT_COMMITS_CREATED'),
+    resultPath: ResultPathSchema,
+  }),
+  z.strictObject({
+    kind: z.literal('JSON_STRING_PATTERN'),
+    resultPath: ResultPathSchema,
+    pattern: z.string().min(1).max(4_000),
+  }),
+]);
 
 export const CodexTurnSchema = z.discriminatedUnion('kind', [
   z.strictObject({

@@ -1,3 +1,4 @@
+import { testHandoffUse } from '@/cooking/testing/handoff';
 import { createCooking } from '@/cooking/runtime/create-cooking';
 import { completeRepairExecution, testSkillBinding } from '@/cooking/testing/execution';
 import { deliveryProject, mutableClock, mutation } from '@/cooking/testing/project';
@@ -164,6 +165,7 @@ export async function completeUpdate(
       kind: 'SUCCEEDED',
       result: {
         result: {
+          handoffUse: testHandoffUse(),
           outcome: result.outcome,
           completedActions: ['集成候选并完成更新'],
           validations: [{ name: '定向检查', status: 'PASSED', detail: '' }],

@@ -1,3 +1,4 @@
+import { testRepairHandoff } from '@/cooking/testing/handoff';
 import { mutation } from '@/cooking/testing/project';
 import { completeClaimedExecution, testSkillBinding } from '@/cooking/testing/execution';
 import { testDatabases } from '@/testing/database';
@@ -63,10 +64,11 @@ describe('RepairService', () => {
             result: {
               outcome: 'COMPLETED',
               completionKind: 'CHANGES_COMMITTED',
+              handoff: testRepairHandoff(),
               changes: ['完成第二次修复'],
               validations: [{ name: '定向检查', status: 'PASSED', detail: '' }],
               warnings: [],
-              commits: ['abcdef1'],
+              commits: ['abcdef1111111111111111111111111111111111'],
               manualOperations: [],
             },
           },
@@ -91,7 +93,7 @@ describe('RepairService', () => {
     expect(
       fixture.repairs.repairView(fixture.users.developer.id, fixture.requested.bug.id)
         ?.pendingCommits,
-    ).toEqual(['abcdef1']);
+    ).toEqual(['abcdef1111111111111111111111111111111111']);
   });
 
   test('同步状态把手动 Session 的有效结果追加为新 Repair 尝试', async () => {
@@ -102,6 +104,11 @@ describe('RepairService', () => {
       codexTurn: {
         kind: 'READ_SESSION',
         resultAssertions: [
+          {
+            kind: 'JSON_STRING_PATTERN',
+            resultPath: ['result', 'handoff'],
+            pattern: expect.any(String),
+          },
           { kind: 'GIT_COMMITS_CREATED', resultPath: ['result', 'commits'] },
         ],
       },
@@ -127,10 +134,11 @@ describe('RepairService', () => {
             result: {
               outcome: 'COMPLETED',
               completionKind: 'CHANGES_COMMITTED',
+              handoff: testRepairHandoff(),
               changes: ['修复支付'],
               validations: [{ name: '测试', status: 'PASSED', detail: '' }],
               warnings: [],
-              commits: ['ccccccc'],
+              commits: ['cccccccccccccccccccccccccccccccccccccccc'],
               manualOperations: [],
             },
           },
@@ -305,7 +313,10 @@ describe('RepairService', () => {
     fixture.database.run(
       `UPDATE cooking_bug_repair_context
          SET pending_commits_json = ? WHERE bug_id = ?`,
-      [JSON.stringify(['aaaaaaa']), fixture.requested.bug.id],
+      [
+        JSON.stringify(['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa']),
+        fixture.requested.bug.id,
+      ],
     );
     completeClaimedExecution(fixture, started, {
       kind: 'FAILED',
@@ -331,6 +342,11 @@ describe('RepairService', () => {
       taskSkillBinding: testSkillBinding('agent-party-time-repair-bug'),
       input: '继续完成上次未完成的任务。',
       resultAssertions: [
+        {
+          kind: 'JSON_STRING_PATTERN',
+          resultPath: ['result', 'handoff'],
+          pattern: expect.any(String),
+        },
         {
           kind: 'GIT_COMMITS_CREATED',
           resultPath: ['result', 'commits'],

@@ -37,6 +37,23 @@ afterEach(async () => {
 });
 
 describe('Server SQLite schema', () => {
+  test.each([26, 27, 28])(
+    '交接契约切换拒绝旧 Schema %i 并保留原数据',
+    async (version) => {
+      const path = await temporaryDatabasePath();
+      const raw = new Database(path, { create: true });
+      raw.exec(
+        `CREATE TABLE preserved(value TEXT); INSERT INTO preserved VALUES ('keep'); PRAGMA user_version = ${version}`,
+      );
+      raw.close();
+      expect(() => openDatabase(path)).toThrow('数据库版本不匹配');
+      const saved = new Database(path, { readonly: true });
+      expect(saved.query('SELECT value FROM preserved').get()).toEqual({ value: 'keep' });
+      expect(saved.query('PRAGMA user_version').get()).toEqual({ user_version: version });
+      saved.close();
+    },
+  );
+
   test('从空目录创建最新 Schema 并启用安全 PRAGMA', async () => {
     const path = await temporaryDatabasePath();
     const database = openDatabase(path);

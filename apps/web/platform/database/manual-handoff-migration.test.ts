@@ -1,11 +1,11 @@
 import { expect, test } from 'bun:test';
 import { testDatabases } from '@/testing/database';
 import { repairFixture, startLatest } from '@/cooking/repair/server/repair-fixture';
-import { initializeSchema, SERVER_SCHEMA_VERSION } from './schema';
+import { initializeSchema } from './schema';
 import { PLATFORM_SCHEMA } from './platform-schema';
 
 const setup = repairFixture(testDatabases());
-test('27 升级保留执行、租约、交互及业务关联，并接受新交接状态', async () => {
+test('旧 27 契约明确拒绝且保留执行、租约、交互和业务关联', async () => {
   const f = await setup();
   const started = await startLatest(f, 'migration-session');
   const questions = ['确认权限范围？'];
@@ -44,18 +44,11 @@ test('27 升级保留执行、租约、交互及业务关联，并接受新交�
       started.executionId,
     ]),
   ).toThrow();
-  initializeSchema(f.database);
-  initializeSchema(f.database);
+  expect(() => initializeSchema(f.database)).toThrow('数据库版本不匹配');
   expect(snapshot()).toEqual(before);
   expect(f.database.all('PRAGMA foreign_key_check')).toEqual([]);
   expect(f.database.get('PRAGMA foreign_keys')).toEqual({ foreign_keys: 1 });
   expect(f.database.get('PRAGMA user_version')).toEqual({
-    user_version: SERVER_SCHEMA_VERSION,
+    user_version: 27,
   });
-  f.executions.complete(f.runner.id, started.executionId, {
-    leaseToken: started.leaseToken,
-    sessionId: started.sessionId,
-    outcome: { kind: 'HANDED_OFF', questions },
-  });
-  expect(f.executions.get(started.executionId).state).toBe('HANDED_OFF');
 });

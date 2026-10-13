@@ -1,5 +1,6 @@
 import { BugIdSchema } from '@/cooking/bugs/contract';
-import { CommitShaSchema } from '@/cooking/repair/contract';
+import { CommitShaSchema, CommittedRepairResultSchema } from '@/cooking/repair/contract';
+import { HandoffTextSchema, HandoffRelativePathSchema } from '@/cooking/repair/handoff';
 import {
   CookingAttachmentViewSchema,
   CookingInteractionViewSchema,
@@ -30,29 +31,81 @@ export const UpdateBatchStateSchema = z.enum([
 
 export const UpdateValidationSchema = CookingValidationSchema;
 
+export const FrozenRepairHandoffSchema = z.strictObject({
+  attemptId: z.uuid(),
+  executionId: z.uuid(),
+  commits: CommittedRepairResultSchema.shape.commits,
+  changes: CommittedRepairResultSchema.shape.changes,
+  validations: CommittedRepairResultSchema.shape.validations,
+  warnings: CommittedRepairResultSchema.shape.warnings,
+  handoff: CommittedRepairResultSchema.shape.handoff,
+});
+
+export const UpdateHandoffUseSchema = z.strictObject({
+  adopted: z.array(HandoffTextSchema).max(5),
+  rechecked: z
+    .array(z.strictObject({ context: HandoffTextSchema, reason: HandoffTextSchema }))
+    .max(5),
+  validationCommands: z
+    .array(
+      z.strictObject({
+        validationIndex: z.number().int().min(0).max(4),
+        command: HandoffTextSchema.min(1),
+        workingDirectory: HandoffRelativePathSchema,
+        reason: HandoffTextSchema,
+      }),
+    )
+    .max(10),
+});
+
+function validateHandoffUse(
+  result: {
+    validations: z.infer<typeof UpdateValidationSchema>[];
+    handoffUse: z.infer<typeof UpdateHandoffUseSchema>;
+  },
+  context: z.RefinementCtx,
+) {
+  result.handoffUse.validationCommands.forEach((entry, index) => {
+    const validation = result.validations[entry.validationIndex];
+    if (!validation || validation.status === 'SKIPPED')
+      context.addIssue({
+        code: 'custom',
+        path: ['handoffUse', 'validationCommands', index, 'validationIndex'],
+        message: '交接使用记录必须关联本次实际执行的验证',
+      });
+  });
+}
+
 const UpdateResultFields = {
   completedActions: z.array(z.string().trim().min(1).max(300)).max(5),
   validations: z.array(UpdateValidationSchema).max(5),
   warnings: z.array(z.string().trim().min(1).max(300)).max(3),
+  handoffUse: UpdateHandoffUseSchema,
 };
 
-const CompletedUpdateExecutionResultSchema = z.strictObject({
-  outcome: z.literal('COMPLETED'),
-  ...UpdateResultFields,
-});
+const CompletedUpdateExecutionResultSchema = z
+  .strictObject({
+    outcome: z.literal('COMPLETED'),
+    ...UpdateResultFields,
+  })
+  .superRefine(validateHandoffUse);
 
-const PushedUpdateExecutionResultSchema = z.strictObject({
-  outcome: z.literal('PUSHED'),
-  ...UpdateResultFields,
-});
+const PushedUpdateExecutionResultSchema = z
+  .strictObject({
+    outcome: z.literal('PUSHED'),
+    ...UpdateResultFields,
+  })
+  .superRefine(validateHandoffUse);
 
-const FailedUpdateExecutionResultSchema = z.strictObject({
-  outcome: z.literal('FAILED'),
-  failedStep: z.string().trim().min(1).max(240),
-  reason: z.string().trim().min(1).max(500),
-  ...UpdateResultFields,
-  pendingActions: z.array(z.string().trim().min(1).max(300)).max(5),
-});
+const FailedUpdateExecutionResultSchema = z
+  .strictObject({
+    outcome: z.literal('FAILED'),
+    failedStep: z.string().trim().min(1).max(240),
+    reason: z.string().trim().min(1).max(500),
+    ...UpdateResultFields,
+    pendingActions: z.array(z.string().trim().min(1).max(300)).max(5),
+  })
+  .superRefine(validateHandoffUse);
 
 export const LocalScriptUpdateExecutionResultSchema = z.strictObject({
   result: z.discriminatedUnion('outcome', [
@@ -87,6 +140,7 @@ export const UpdateBatchEntryViewSchema = z.object({
   bugShortId: z.number().int().positive(),
   bugTitle: z.string().trim().min(1).max(240),
   commits: z.array(CommitShaSchema).nullable(),
+  repairHandoffs: z.array(FrozenRepairHandoffSchema).nullable(),
 });
 
 const UpdateAttemptResultViewSchema = z.discriminatedUnion('outcome', [
@@ -96,6 +150,7 @@ const UpdateAttemptResultViewSchema = z.discriminatedUnion('outcome', [
     completedActions: z.array(z.string()),
     validations: z.array(UpdateValidationSchema),
     warnings: z.array(z.string()),
+    handoffUse: UpdateHandoffUseSchema.nullable(),
   }),
   z.object({
     outcome: z.literal('FAILED'),
@@ -106,6 +161,7 @@ const UpdateAttemptResultViewSchema = z.discriminatedUnion('outcome', [
     warnings: z.array(z.string()),
     pendingActions: z.array(z.string()),
     failureCode: z.string().nullable(),
+    handoffUse: UpdateHandoffUseSchema.nullable(),
   }),
 ]);
 
@@ -202,6 +258,8 @@ export const UpdateMutationResultSchema = z.object({
 });
 
 export type UpdateBatchView = z.infer<typeof UpdateBatchViewSchema>;
+export type FrozenRepairHandoff = z.infer<typeof FrozenRepairHandoffSchema>;
+export type UpdateHandoffUse = z.infer<typeof UpdateHandoffUseSchema>;
 export type UpdateWorkspaceProjection = z.infer<typeof UpdateWorkspaceProjectionSchema>;
 export type RetryUpdateInput = z.infer<typeof RetryUpdateInputSchema>;
 export type SynchronizeUpdateSessionInput = z.infer<

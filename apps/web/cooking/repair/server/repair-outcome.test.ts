@@ -1,3 +1,4 @@
+import { testRepairHandoff } from '@/cooking/testing/handoff';
 import { mutation } from '@/cooking/testing/project';
 import { completeSuccessfulExecution } from '@/cooking/testing/execution';
 import { testDatabases } from '@/testing/database';
@@ -17,11 +18,12 @@ describe('RepairService', () => {
     const committed = {
       outcome: 'COMPLETED',
       completionKind: 'CHANGES_COMMITTED',
+      handoff: testRepairHandoff(),
       summary: '重复提交',
       changes: ['修改'],
       validations: [],
       warnings: [],
-      commits: ['aaaaaaa'],
+      commits: ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
       manualOperations: [],
     };
     const alreadyFixed = {
@@ -35,7 +37,13 @@ describe('RepairService', () => {
       manualOperations: [],
     };
     const invalidResults = [
-      { ...committed, commits: ['aaaaaaa', 'aaaaaaa'] },
+      {
+        ...committed,
+        commits: [
+          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        ],
+      },
       { ...committed, summary: '伪造字段', pushed: true },
       {
         ...committed,
@@ -52,7 +60,11 @@ describe('RepairService', () => {
         summary: '验证失败',
         validations: [{ name: '目标分支检查', status: 'FAILED' }],
       },
-      { outcome: 'UNKNOWN', summary: '非法状态', commits: ['aaaaaaa'] },
+      {
+        outcome: 'UNKNOWN',
+        summary: '非法状态',
+        commits: ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
+      },
     ];
     for (const result of invalidResults) {
       const fixture = await setup();
@@ -124,10 +136,11 @@ describe('RepairService', () => {
         result: {
           outcome: 'COMPLETED',
           completionKind: 'CHANGES_COMMITTED',
+          handoff: testRepairHandoff(),
           changes: ['修改支付按钮'],
           validations: [],
           warnings: [],
-          commits: ['ddddddd'],
+          commits: ['dddddddddddddddddddddddddddddddddddddddd'],
           manualOperations: [],
         },
       }),

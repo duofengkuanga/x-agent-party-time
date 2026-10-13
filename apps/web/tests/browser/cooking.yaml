@@ -267,6 +267,26 @@ cases:
       - hidden: '.collab-developer-source[open]'
       - hidden: '.collab-bug-detail-tabs'
       - hidden: '.collab-tester-detail'
+      - text:
+          {
+            sel: '[role="tabpanel"]:not([hidden])',
+            contains: 历史上下文不代表本轮检查通过,
+          }
+      - text:
+          {
+            sel: '[role="tabpanel"]:not([hidden])',
+            contains: 沿用修复阶段已确认的测试入口,
+          }
+      - text:
+          {
+            sel: '[role="tabpanel"]:not([hidden])',
+            contains: 一次入口覆盖测试与构建,
+          }
+      - text:
+          {
+            sel: '[role="tabpanel"]:not([hidden])',
+            contains: 'bun run check:delivery',
+          }
 
   - name: defect and session identifiers copy exact values and report clipboard errors
     steps:

@@ -7,6 +7,7 @@ import type {
 } from '@/cooking/shared/contract';
 import { interactionVisual, queueVisual } from '@/cooking/shared/server/execution-visual';
 import type { BatchRow, AttemptRow } from './records';
+import { UpdateHandoffUseSchema } from '../contract';
 
 export function parseManualOperations(value: string) {
   return parseStoredManualOperations(value, '更新批次的人工操作记录无效');
@@ -25,6 +26,7 @@ export function projectUpdateAttemptResult(outcomeJson: string, technical: boole
       completedActions: stringArray(outcome.completedActions),
       validations: Array.isArray(outcome.validations) ? outcome.validations : [],
       warnings: stringArray(outcome.warnings),
+      handoffUse: technical ? UpdateHandoffUseSchema.parse(outcome.handoffUse) : null,
     };
   return {
     outcome: 'FAILED' as const,
@@ -45,6 +47,10 @@ export function projectUpdateAttemptResult(outcomeJson: string, technical: boole
     failureCode:
       technical && typeof outcome.technicalFailure === 'string'
         ? outcome.technicalFailure
+        : null,
+    handoffUse:
+      technical && !outcome.technicalFailure
+        ? UpdateHandoffUseSchema.parse(outcome.handoffUse)
         : null,
   };
 }

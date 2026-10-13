@@ -38,11 +38,15 @@ test('登记不冻结配置，首次修复读取最新部署，同工程不同�
     mutationId: randomUUID(),
     expectedVersion: created.bug.version,
   }).bug;
-  await completeNextRepair(f, 'old-deployment', ['aaaaaaa']);
-  await completeNextRepair(f, 'new-deployment', ['bbbbbbb']);
+  await completeNextRepair(f, 'old-deployment', [
+    'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  ]);
+  await completeNextRepair(f, 'new-deployment', [
+    'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+  ]);
   const frozen = freezeUpdate(f);
   expect(batchEntries(f.database, frozen.batchId)).toEqual([
-    { bug_id: first.id, commits: ['aaaaaaa'] },
+    { bug_id: first.id, commits: ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'] },
   ]);
   expect(f.updates.batchView(f.users.developer.id, frozen.batchId).deploymentKind).toBe(
     'LOCAL_SCRIPT',
@@ -53,7 +57,7 @@ test('登记不冻结配置，首次修复读取最新部署，同工程不同�
   completeSuccessfulExecution(f, started, completedUpdate());
   const next = freezeUpdate(f);
   expect(batchEntries(f.database, next.batchId)).toEqual([
-    { bug_id: second.id, commits: ['bbbbbbb'] },
+    { bug_id: second.id, commits: ['bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'] },
   ]);
   expect(f.updates.batchView(f.users.developer.id, next.batchId).deploymentKind).toBe(
     'CI_CD',
@@ -68,7 +72,9 @@ test('已开始修复和更新批次不会因后台修改部署脚本而改变',
     'UPDATE cooking_environment SET deployment_json = ? WHERE id = (SELECT environment_id FROM cooking_submission_item WHERE id = ?)',
     [JSON.stringify({ kind: 'LOCAL_SCRIPT', command: 'pnpm run deploy:84' }), f.item.id],
   );
-  await completeNextRepair(f, 'original-repair', ['aaaaaaa']);
+  await completeNextRepair(f, 'original-repair', [
+    'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  ]);
   const frozen = freezeUpdate(f);
   expect(
     f.database.get<{ deployment_json: string }>(

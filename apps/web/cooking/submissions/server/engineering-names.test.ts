@@ -85,7 +85,7 @@ test('工程改名在已有提测、缺陷、关联、流转目标和更新批�
     claimed.id,
     claimed.lease.token,
     'rename-repair',
-    ['abcdef1'],
+    ['abcdef1111111111111111111111111111111111'],
   );
   app.updates.freezeNow(f.users.developerA.id, items[0]!.id, {
     mutationId: randomUUID(),

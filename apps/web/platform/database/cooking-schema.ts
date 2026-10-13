@@ -355,6 +355,7 @@ CREATE TABLE cooking_update_batch_entry (
   position INTEGER NOT NULL CHECK (position >= 0),
   commits_json TEXT NOT NULL,
   manual_operations_json TEXT NOT NULL,
+  handoffs_json TEXT NOT NULL,
   PRIMARY KEY(batch_id, bug_id),
   UNIQUE(batch_id, position)
 ) STRICT;

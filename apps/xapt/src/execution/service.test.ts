@@ -132,6 +132,31 @@ test('同步会话拒绝不符合原任务结果约束的结果', async () => {
   expect(fixture.http.outcomes).toEqual([]);
 });
 
+test.each([true, false])(
+  '无工作区的只读同步也在发送前校验纯结果规则：%s',
+  async (valid) => {
+    const fixture = await createFixture({
+      readSessionId: 'manual-session',
+      workspace: null,
+      readResult: { summary: valid ? 'allowed' : 'NOT_ALLOWED' },
+      readResultAssertions: [
+        { kind: 'JSON_STRING_PATTERN', resultPath: ['summary'], pattern: '^[a-z]+$' },
+      ],
+    });
+    await cycleToIdle(fixture);
+    if (valid) {
+      expect(fixture.http.outcomes[0]).toMatchObject({ outcome: { kind: 'SUCCEEDED' } });
+    } else {
+      expect(fixture.http.starts[0]).toMatchObject({
+        kind: 'START_FAILED',
+        failure: { code: 'CODEX_EXECUTION_FAILED' },
+      });
+      expect(fixture.http.outcomes).toEqual([]);
+      expect(JSON.stringify(fixture.http.starts)).not.toContain('NOT_ALLOWED');
+    }
+  },
+);
+
 test('同步会话保留原结果证据校验失败原因', async () => {
   const previousExecutionId = '00000000-0000-4000-8000-000000000398';
   const fixture = await createFixture({

@@ -25,12 +25,14 @@ describe('UpdateService', () => {
   test('LOCAL_SCRIPT 失败后沿用 Session 继续，成功时全部原子进入待验证', async () => {
     const fixture = await setup();
     const first = fixture.createBug('支付按钮无响应');
-    await completeNextRepair(fixture, 'repair-one', ['aaaaaaa']);
+    await completeNextRepair(fixture, 'repair-one', [
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    ]);
     const { bug: second, started: failed } = await startCandidateUpdate(
       fixture,
       '支付金额错误',
       'repair-two',
-      ['bbbbbbb'],
+      ['bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'],
       'update-session',
     );
     completeSuccessfulExecution(fixture, failed, failedUpdate('部署脚本返回非零状态'));
@@ -82,7 +84,9 @@ describe('UpdateService', () => {
   test('首次启动失败且原 Task 不存在时不自动重建 Update Task', async () => {
     const fixture = await setup();
     fixture.createBug('启动失败候选');
-    await completeNextRepair(fixture, 'repair-before-start-failure', ['aaaaaaa']);
+    await completeNextRepair(fixture, 'repair-before-start-failure', [
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    ]);
     const frozen = freezeUpdate(fixture);
     const claimed = (await fixture.executions.claim(fixture.runner.id, 1, 0))[0]!;
     expect(claimed.id).toBe(frozen.executionId);
@@ -115,7 +119,7 @@ describe('UpdateService', () => {
       fixture,
       '流水线部署失败',
       'repair-ci',
-      ['c1c1c1c'],
+      ['c1c1c1cccccccccccccccccccccccccccccccccc'],
       'update-ci-session',
     );
     completeSuccessfulExecution(fixture, first, pushedUpdate());
@@ -128,6 +132,7 @@ describe('UpdateService', () => {
         {
           kind: 'UPDATE_ATTEMPT',
           result: {
+            handoffUse: null,
             outcome: 'PUSHED',
             completedActions: ['集成候选并普通 Push'],
             validations: [{ name: '定向检查', status: 'PASSED', detail: '' }],

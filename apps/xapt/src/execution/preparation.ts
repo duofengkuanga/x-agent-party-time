@@ -22,6 +22,7 @@ import type { LocalStateStore } from '../state/store';
 import type { AttachmentMaterializer, MaterializedAttachment } from './attachments';
 import {
   ExecutionResultVerificationError,
+  verifyResultContent,
   type ExecutionResultBaseline,
   type ExecutionResultVerifier,
 } from './result-verification';
@@ -180,7 +181,8 @@ export class ExecutionPreparation {
       const completed = await this.executor.readLastCompletedTurn(sessionId);
       verifySessionResultSchema(execution.codexTurn?.outputJsonSchema, completed.result);
       const resultAssertions = execution.codexTurn?.resultAssertions ?? [];
-      if (resultAssertions.length > 0) {
+      verifyResultContent(resultAssertions, completed.result);
+      if (resultAssertions.some(({ kind }) => kind === 'GIT_COMMITS_CREATED')) {
         const bindingPath = await this.state.resolveBinding(execution.bindingId);
         if (!bindingPath)
           throw new ExecutionResultVerificationError(

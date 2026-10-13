@@ -31,7 +31,7 @@ describe('UpdateService', () => {
       fixture,
       '需要数据库脚本的更新',
       'repair-with-sql',
-      ['aaaaaaa'],
+      ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
       'update-with-sql',
       [{ kind: 'DATABASE_SQL', paths: ['sql/add-payment-index.sql'] }],
     );
@@ -50,7 +50,7 @@ describe('UpdateService', () => {
       fixture,
       '未收集变更文件的更新',
       'repair-without-changes',
-      ['aaaaaaa'],
+      ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
       'update-without-changes',
     );
     completeSuccessfulExecution(fixture, started, completedUpdate());
@@ -66,7 +66,9 @@ describe('UpdateService', () => {
   test('候选提交重算两分钟截止，重启后由惰性准备原子冻结', async () => {
     const fixture = await setup();
     const first = fixture.createBug('支付按钮无响应');
-    await completeNextRepair(fixture, 'repair-one', ['aaaaaaa']);
+    await completeNextRepair(fixture, 'repair-one', [
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    ]);
     expect(pending(fixture.database, fixture.item.id)).toEqual({
       last_candidate_at: '2026-07-27T10:00:00.000Z',
       eligible_at: '2026-07-27T10:02:00.000Z',
@@ -74,7 +76,10 @@ describe('UpdateService', () => {
 
     fixture.clock.set('2026-07-27T10:01:00.000Z');
     const second = fixture.createBug('支付金额错误');
-    await completeNextRepair(fixture, 'repair-two', ['bbbbbbb', 'ccccccc']);
+    await completeNextRepair(fixture, 'repair-two', [
+      'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      'cccccccccccccccccccccccccccccccccccccccc',
+    ]);
     expect(pending(fixture.database, fixture.item.id)).toEqual({
       last_candidate_at: '2026-07-27T10:01:00.000Z',
       eligible_at: '2026-07-27T10:03:00.000Z',
@@ -94,8 +99,14 @@ describe('UpdateService', () => {
     const batch = latestBatch(fixture.database, fixture.item.id);
     expect(batch).toMatchObject({ state: 'READY', version: 1 });
     expect(batchEntries(fixture.database, batch.id)).toEqual([
-      { bug_id: first.id, commits: ['aaaaaaa'] },
-      { bug_id: second.id, commits: ['bbbbbbb', 'ccccccc'] },
+      { bug_id: first.id, commits: ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'] },
+      {
+        bug_id: second.id,
+        commits: [
+          'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+          'cccccccccccccccccccccccccccccccccccccccc',
+        ],
+      },
     ]);
     expect(currentBug(fixture.database, first.id).stage).toBe('UPDATING');
     expect(currentBug(fixture.database, second.id).stage).toBe('UPDATING');
@@ -105,10 +116,14 @@ describe('UpdateService', () => {
   test('待更新 Bug 的成功 Repair 已冻结，不能移出候选批次', async () => {
     const fixture = await setup();
     const first = fixture.createBug('保留候选');
-    await completeNextRepair(fixture, 'repair-one', ['aaaaaaa']);
+    await completeNextRepair(fixture, 'repair-one', [
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    ]);
     fixture.clock.set('2026-07-27T10:01:00.000Z');
     const second = fixture.createBug('需要继续修复的候选');
-    await completeNextRepair(fixture, 'repair-two', ['bbbbbbb']);
+    await completeNextRepair(fixture, 'repair-two', [
+      'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    ]);
     expect(pending(fixture.database, fixture.item.id)?.eligible_at).toBe(
       '2026-07-27T10:03:00.000Z',
     );
@@ -129,7 +144,9 @@ describe('UpdateService', () => {
   test('Workspace Query 会在读取前准备到期 Batch', async () => {
     const fixture = await setup();
     const bug = fixture.createBug('Workspace 到期候选');
-    await completeNextRepair(fixture, 'repair-one', ['aaaaaaa']);
+    await completeNextRepair(fixture, 'repair-one', [
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    ]);
     fixture.clock.set('2026-07-27T10:02:00.000Z');
     const workspace = new CookingWorkspaceService(
       new SubmissionService(fixture.database),
@@ -181,7 +198,9 @@ describe('UpdateService', () => {
   test('无权访问的 Workspace Query 不会触发到期冻结', async () => {
     const fixture = await setup();
     fixture.createBug('无权访问时到期的候选');
-    await completeNextRepair(fixture, 'repair-one', ['aaaaaaa']);
+    await completeNextRepair(fixture, 'repair-one', [
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    ]);
     fixture.clock.set('2026-07-27T10:02:00.000Z');
     const outsider = await seedTestUser(new AuthService(fixture.database), [
       'update-outsider',
@@ -210,7 +229,9 @@ describe('UpdateService', () => {
   test('Runner Claim 会在认证和解析请求后准备到期 Batch', async () => {
     const fixture = await setup();
     fixture.createBug('Claim 到期候选');
-    await completeNextRepair(fixture, 'repair-one', ['aaaaaaa']);
+    await completeNextRepair(fixture, 'repair-one', [
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    ]);
     fixture.clock.set('2026-07-27T10:02:00.000Z');
     const response = await handleExecutionClaim(
       new Request('http://update.test/api/runner/executions/claim', {
@@ -239,9 +260,13 @@ describe('UpdateService', () => {
     expect(fixture.secondItem).not.toBeNull();
     expect(fixture.secondBinding).not.toBeNull();
     fixture.createBug('支付工程候选');
-    await completeNextRepair(fixture, 'repair-payment', ['aaaaaaa']);
+    await completeNextRepair(fixture, 'repair-payment', [
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    ]);
     fixture.createBugFor(fixture.secondItem!.id, '订单工程候选');
-    await completeNextRepair(fixture, 'repair-order', ['bbbbbbb']);
+    await completeNextRepair(fixture, 'repair-order', [
+      'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    ]);
     const first = freezeUpdate(fixture);
     const second = freezeUpdate(fixture, fixture.secondItem!.id);
     const claimed = await fixture.executions.claim(fixture.runner.id, 2, 0);
@@ -256,7 +281,9 @@ describe('UpdateService', () => {
   test('立即冻结仅允许负责人，同 Binding 普通任务按创建时间 FIFO', async () => {
     const fixture = await setup();
     const first = fixture.createBug('首个候选');
-    await completeNextRepair(fixture, 'repair-one', ['aaaaaaa']);
+    await completeNextRepair(fixture, 'repair-one', [
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    ]);
     expect(() =>
       fixture.updates.freezeNow(fixture.users.owner.id, fixture.item.id, {
         mutationId: randomUUID(),

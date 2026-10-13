@@ -31,8 +31,10 @@ import { RepairProjection } from './repair-projection';
 import { RepairQueries } from './repair-queries';
 import { parseCommits } from '@/cooking/shared/server/result-data';
 import { isFailedAttemptOutcome, isSynchronizableAttempt, staleRepair } from './results';
+import { REPAIR_HANDOFF_TEXT_ASSERTION } from '../handoff';
 
 const REPAIR_RESULT_ASSERTIONS: ExecutionResultAssertion[] = [
+  REPAIR_HANDOFF_TEXT_ASSERTION,
   {
     kind: 'GIT_COMMITS_CREATED',
     resultPath: ['result', 'commits'],

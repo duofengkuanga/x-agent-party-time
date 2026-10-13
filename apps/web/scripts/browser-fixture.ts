@@ -279,6 +279,18 @@ export async function seedBrowserFixture(home: string): Promise<BrowserFixture> 
         kind: 'SUCCEEDED',
         result: {
           result: {
+            handoffUse: {
+              adopted: ['沿用修复阶段已确认的测试入口'],
+              rechecked: [{ context: '构建参数', reason: '集成后的配置需要再次核实' }],
+              validationCommands: [
+                {
+                  validationIndex: 0,
+                  command: 'bun run check:delivery',
+                  workingDirectory: '.',
+                  reason: '一次入口覆盖测试与构建，未重复运行前置阶段',
+                },
+              ],
+            },
             outcome: 'PUSHED',
             completedActions: ['集成修复提交并完成推送'],
             validations: [{ name: '构建检查', status: 'PASSED', detail: '' }],
@@ -395,6 +407,18 @@ export async function seedBrowserFixture(home: string): Promise<BrowserFixture> 
       },
       {
         result: {
+          handoffUse: {
+            adopted: ['沿用修复阶段已确认的测试入口'],
+            rechecked: [{ context: '构建参数', reason: '集成后的配置需要再次核实' }],
+            validationCommands: [
+              {
+                validationIndex: 0,
+                command: 'bun run check:delivery',
+                workingDirectory: '.',
+                reason: '一次入口覆盖测试与构建，未重复运行前置阶段',
+              },
+            ],
+          },
           outcome: 'PUSHED',
           completedActions: ['合入两条缺陷修复并推送目标分支'],
           validations: [{ name: '共享批次构建', status: 'PASSED', detail: '' }],

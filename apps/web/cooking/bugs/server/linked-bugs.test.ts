@@ -1,3 +1,4 @@
+import { testRepairHandoff } from '@/cooking/testing/handoff';
 import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
@@ -67,10 +68,11 @@ async function finishedBug(
           ? {
               outcome: 'COMPLETED',
               completionKind: 'CHANGES_COMMITTED',
+              handoff: testRepairHandoff(),
               changes: ['完成本工程修改'],
               validations: [{ name: '定向验证', status: 'PASSED', detail: '' }],
               warnings: [],
-              commits: ['abcdef1'],
+              commits: ['abcdef1111111111111111111111111111111111'],
               manualOperations: [],
             }
           : {

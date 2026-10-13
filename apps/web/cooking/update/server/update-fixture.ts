@@ -1,3 +1,4 @@
+import { testHandoffUse } from '@/cooking/testing/handoff';
 import { createCooking } from '@/cooking/runtime/create-cooking';
 import { completeRepairExecution, testSkillBinding } from '@/cooking/testing/execution';
 import { deliveryProject, mutableClock, mutation } from '@/cooking/testing/project';
@@ -115,6 +116,7 @@ async function setup(
 export function completedUpdate() {
   return {
     result: {
+      handoffUse: testHandoffUse(),
       outcome: 'COMPLETED' as const,
       completedActions: ['集成候选并完成部署'],
       validations: [{ name: '定向检查', status: 'PASSED' as const, detail: '' }],
@@ -126,6 +128,7 @@ export function completedUpdate() {
 export function pushedUpdate() {
   return {
     result: {
+      handoffUse: testHandoffUse(),
       outcome: 'PUSHED' as const,
       completedActions: ['集成候选并普通 Push'],
       validations: [{ name: '定向检查', status: 'PASSED' as const, detail: '' }],
@@ -137,6 +140,7 @@ export function pushedUpdate() {
 export function failedUpdate(summary: string) {
   return {
     result: {
+      handoffUse: testHandoffUse(),
       outcome: 'FAILED' as const,
       failedStep: '执行统一更新',
       reason: summary,
