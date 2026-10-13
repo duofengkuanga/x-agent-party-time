@@ -92,14 +92,15 @@ const CreateBugInputBaseSchema = z.object({
   actualResultAttachmentIds: BugAttachmentIdsSchema,
   expectedResultAttachmentIds: BugAttachmentIdsSchema,
 });
-export const CreateBugInputSchema = CreateBugInputBaseSchema.superRefine(
-  requireDisjointAttachments,
-);
+export const CreateBugInputSchema = CreateBugInputBaseSchema.extend({
+  startRepair: z.boolean().optional(),
+}).superRefine(requireDisjointAttachments);
 
 export const CreateLinkedBugsInputSchema = CreateBugInputBaseSchema.omit({
   submissionItemId: true,
 })
   .extend({
+    startRepair: z.boolean().optional(),
     submissionItemIds: z
       .array(SubmissionItemIdSchema)
       .length(2)

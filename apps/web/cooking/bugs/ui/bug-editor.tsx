@@ -155,8 +155,16 @@ export function BugForm({
   const [error, setError] = useState<string | null>(null);
   const [saving, startSaving] = useTransition();
 
+  const canCreateAndRepair =
+    !bug &&
+    (joint ? Boolean(frontItemId && backItemId) : Boolean(submissionItemId));
+
   function submit(event: FormEvent) {
     event.preventDefault();
+    const startRepair =
+      canCreateAndRepair &&
+      (event.nativeEvent as SubmitEvent).submitter?.getAttribute('value') ===
+        'repair';
     startSaving(async () => {
       try {
         const primaryItemId = joint
@@ -191,6 +199,7 @@ export function BugForm({
         }
         const formData = new FormData();
         formData.set('mutationId', mutationId);
+        formData.set('startRepair', String(startRepair));
         if (bug) formData.set('expectedVersion', String(bug.version));
         formData.set('submissionItemId', primaryItemId);
         if (bug && additionalSubmissionItemId)
@@ -227,9 +236,13 @@ export function BugForm({
             ? joint
               ? '缺陷已保存，并补建另一工程的关联单。'
               : '缺陷已保存。'
-            : joint
-              ? '已登记两张前后端关联单。'
-              : '缺陷已登记。',
+            : startRepair
+              ? joint
+                ? '已登记两张前后端关联单，并加入修复队列。'
+                : '缺陷已登记，并加入修复队列。'
+              : joint
+                ? '已登记两张前后端关联单。'
+                : '缺陷已登记。',
         );
       } catch (submitError) {
         setError(messageOf(submitError, '无法保存缺陷。'));
@@ -406,6 +419,17 @@ export function BugForm({
         >
           {saving ? '保存中…' : bug ? '保存修改' : '登记缺陷'}
         </button>
+        {canCreateAndRepair ? (
+          <button
+            disabled={saving || !title.trim()}
+            form="collab-bug-form"
+            name="intent"
+            type="submit"
+            value="repair"
+          >
+            {saving ? '保存中…' : '登记并修复'}
+          </button>
+        ) : null}
       </footer>
     </>
   );

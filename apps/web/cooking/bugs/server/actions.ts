@@ -44,6 +44,7 @@ export async function createBugAction(
       );
       const report = {
         mutationId: formField(formData, 'mutationId'),
+        startRepair: formField(formData, 'startRepair') === 'true',
         submissionItemId: nullableFormField(formData, 'submissionItemId'),
         title: formField(formData, 'title'),
         operationPath: optionalFormField(formData, 'operationPath'),

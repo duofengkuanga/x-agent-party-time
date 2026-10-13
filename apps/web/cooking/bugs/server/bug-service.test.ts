@@ -154,7 +154,7 @@ describe('BugService', () => {
     ).toBe(true);
   });
 
-  test('分诊后仅测试负责人可开始修复且报告永久锁定', async () => {
+  test('分诊后测试负责人可开始修复，非创建人的工程负责人不能越权且报告永久锁定', async () => {
     const fixture = await setup();
     const created = createBug(fixture, fixture.users.tester.id, {
       title: '待分诊缺陷',

@@ -70,7 +70,7 @@ export class BugService {
     return this.writes.run({
       mutationId: parsed.mutationId,
       actorUserId,
-      operation: 'BUG_CREATE',
+      operation: parsed.startRepair ? 'BUG_CREATE_AND_REPAIR' : 'BUG_CREATE',
       resourceType: 'BUG',
       resultSchema: BugMutationResultSchema,
       submissionId: (mutation) => mutation.bug.submissionId,
@@ -84,6 +84,7 @@ export class BugService {
         requireBindableFiles(this.db, actorUserId, attachmentIds);
         const now = this.now().toISOString();
         const bugId = this.insertBug(actorUserId, submissionId, parsed, now);
+        if (parsed.startRepair) this.startRepair(this.queries.requireBug(bugId), now);
         const shortId = this.queries.requireBug(bugId).shortId;
         const revision = this.writes.bumpRevision(submissionId, now);
         const bug = this.queries.requireBug(bugId);
@@ -102,6 +103,7 @@ export class BugService {
               shortId,
               submissionItemId: parsed.submissionItemId,
               attachmentCount: attachmentIds.length,
+              repairRequested: parsed.startRepair === true,
             },
           },
         };
@@ -118,7 +120,9 @@ export class BugService {
     return this.writes.run({
       mutationId: parsed.mutationId,
       actorUserId,
-      operation: 'BUG_CREATE_LINKED',
+      operation: parsed.startRepair
+        ? 'BUG_CREATE_LINKED_AND_REPAIR'
+        : 'BUG_CREATE_LINKED',
       resourceType: 'BUG',
       resultSchema: LinkedBugsMutationResultSchema,
       submissionId: () => submissionId,
@@ -159,9 +163,10 @@ export class BugService {
           actorUserId,
           now,
         });
+        if (parsed.startRepair) for (const bug of bugs) this.startRepair(bug, now);
         return {
           result: {
-            bugs,
+            bugs: bugs.map((bug) => this.queries.requireBug(bug.id)),
             revision: this.writes.bumpRevision(submissionId, now),
             boundAttachmentIds: attachmentIds,
           },
@@ -169,7 +174,10 @@ export class BugService {
           audit: {
             projectId: access.project_id,
             action: 'BUGS_REGISTERED',
-            details: { bugIds: bugs.map(({ id }) => id) },
+            details: {
+              bugIds: bugs.map(({ id }) => id),
+              repairRequested: parsed.startRepair === true,
+            },
           },
         };
       },
@@ -507,28 +515,38 @@ export class BugService {
       'BUG_REPAIR_REQUEST',
       (bug, access, now) => {
         if (bug.version !== parsed.expectedVersion) throw staleBug();
-        if (bug.stage !== 'WAITING_FOR_REPAIR')
-          throw new PlatformError('INVALID_TRANSITION', '只有待修复缺陷可以开始自动修复');
-        if (!bug.submissionItemId)
-          throw new PlatformError('VALIDATION_FAILED', '请先确定缺陷所属工程');
-        this.queries.requireItem(bug.submissionId, bug.submissionItemId);
-        if (actorUserId !== access.tester_user_id)
-          throw new PlatformError('PERMISSION_DENIED', '只有测试负责人可以开始自动修复');
-        const update = this.db.run(
-          `UPDATE cooking_bug
-             SET stage = 'REPAIRING', report_locked_at = COALESCE(report_locked_at, ?),
-                 version = version + 1, updated_at = ?
-             WHERE id = ? AND version = ? AND stage = 'WAITING_FOR_REPAIR'`,
-          [now, now, bug.id, parsed.expectedVersion],
-        );
-        if (update.changes !== 1) throw staleBug();
-        this.repairHooks.requested(bug.id);
+        if (
+          actorUserId !== access.tester_user_id &&
+          actorUserId !== access.created_by_user_id
+        )
+          throw new PlatformError(
+            'PERMISSION_DENIED',
+            '只有测试负责人或提测单创建人可以开始自动修复',
+          );
+        this.startRepair(bug, now);
         return {
           action: 'BUG_REPAIR_REQUESTED',
           details: { submissionItemId: bug.submissionItemId },
         };
       },
     );
+  }
+
+  private startRepair(bug: Bug, now: string): void {
+    if (bug.stage !== 'WAITING_FOR_REPAIR' || bug.archivedAt)
+      throw new PlatformError('INVALID_TRANSITION', '只有待修复缺陷可以开始自动修复');
+    if (!bug.submissionItemId)
+      throw new PlatformError('VALIDATION_FAILED', '请先确定缺陷所属工程');
+    this.queries.requireItem(bug.submissionId, bug.submissionItemId);
+    const update = this.db.run(
+      `UPDATE cooking_bug
+         SET stage = 'REPAIRING', report_locked_at = COALESCE(report_locked_at, ?),
+             version = version + 1, updated_at = ?
+         WHERE id = ? AND version = ? AND stage = 'WAITING_FOR_REPAIR'`,
+      [now, now, bug.id, bug.version],
+    );
+    if (update.changes !== 1) throw staleBug();
+    this.repairHooks.requested(bug.id);
   }
 
   workspace(userId: string, submissionId: string): BugWorkspaceProjection {

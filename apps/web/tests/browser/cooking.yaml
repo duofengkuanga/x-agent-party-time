@@ -77,7 +77,7 @@ cases:
           const transfer = new DataTransfer(); transfer.items.add(new File([bytes], 'large-screenshot.png', { type: 'image/png' }));
           Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
           input.dispatchEvent(new Event('change', { bubbles: true })); return true; })()
-      - click: 'button[form="collab-bug-form"]'
+      - click: 'button[form="collab-bug-form"]:not([value="repair"])'
       - wait: 1500
     assert:
       - hidden: '#collab-bug-form'
@@ -100,17 +100,17 @@ cases:
           if (new Headers(args[1]?.headers).has('Next-Action')) {
           window.fetch = original; return Promise.reject(new TypeError('Failed to fetch')); }
           return original(...args); }; return true; })()
-      - click: 'button[form="collab-bug-form"]'
+      - click: 'button[form="collab-bug-form"]:not([value="repair"])'
       - wait: '[role="alert"]'
     assert:
       - text: { sel: '[role="alert"]', contains: 未收到服务器响应 }
       - text: { sel: '[role="alert"]', contains: 先核对当前记录 }
       - eval: 'document.querySelector(''#collab-bug-form input[maxlength="240"]'').value === ''网络中断保留草稿'''
-      - eval: '!document.querySelector(''button[form="collab-bug-form"]'').disabled'
+      - eval: '!document.querySelector(''button[form="collab-bug-form"]:not([value="repair"])'').disabled'
 
   - name: retry succeeds after the connection recovers
     steps:
-      - click: 'button[form="collab-bug-form"]'
+      - click: 'button[form="collab-bug-form"]:not([value="repair"])'
       - wait: 1500
     assert:
       - hidden: '#collab-bug-form'
@@ -122,7 +122,7 @@ cases:
       - click: '.collab-bug-detail-context__actions button'
       - wait: '#collab-bug-form'
       - click: '.collab-joint-choice input'
-      - click: 'button[form="collab-bug-form"]'
+      - click: 'button[form="collab-bug-form"]:not([value="repair"])'
       - wait: 1500
     assert:
       - hidden: '#collab-bug-form'
@@ -146,7 +146,7 @@ cases:
           }
       - count:
           { sel: '[aria-label="实际结果附件"] .collab-attachment-tile', eq: 0 }
-      - visible: 'button[form="collab-bug-form"]'
+      - visible: 'button[form="collab-bug-form"]:not([value="repair"])'
 
   - name: both report groups accept five attachments at the 10 MB boundary
     steps:
@@ -166,7 +166,7 @@ cases:
           transfer.items.add(new File([new Uint8Array(10 * 1024 * 1024)], `${label}-${i}.txt`, { type: 'text/plain' }));
           Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
           input.dispatchEvent(new Event('change', { bubbles: true })); } return true; })()
-      - click: 'button[form="collab-bug-form"]'
+      - click: 'button[form="collab-bug-form"]:not([value="repair"])'
       - wait: 'button[aria-label^="双组附件上限登记，"]'
       - click: 'button[aria-label^="双组附件上限登记，"]'
       - wait: '[role="dialog"]'
@@ -191,7 +191,7 @@ cases:
           const transfer = new DataTransfer(); transfer.items.add(new File(['joint proof'], 'joint-proof.txt', { type: 'text/plain' }));
           Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
           input.dispatchEvent(new Event('change', { bubbles: true })); return true; })()
-      - click: 'button[form="collab-bug-form"]'
+      - click: 'button[form="collab-bug-form"]:not([value="repair"])'
       - wait: 1000
       - click: 'button[aria-label^="浏览器前后端关联单，前端，"]'
       - wait: '[role="dialog"]'
@@ -319,7 +319,7 @@ cases:
       - visible: 'select[aria-label="前端工程"]'
       - visible: 'select[aria-label="后端工程"]'
       - eval: "document.activeElement === document.querySelector('select[aria-label=前端工程]')"
-      - visible: 'button[form="collab-bug-form"]'
+      - visible: 'button[form="collab-bug-form"]:not([value="repair"])'
 
   - name: existing completed repair validations remain visible to the tester
     steps:
@@ -401,7 +401,7 @@ cases:
           Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
           input.dispatchEvent(new Event('change', { bubbles: true })); return true; })()
       - wait: 250
-      - click: 'button[form="collab-bug-form"]'
+      - click: 'button[form="collab-bug-form"]:not([value="repair"])'
       - wait: 1200
       - eval: "[...document.querySelectorAll('button.collab-bug-card__open')].find((button) => button.getAttribute('aria-label')?.startsWith('浏览器登记缺陷，'))?.click(); true"
       - wait: '[role="dialog"]'
@@ -605,7 +605,7 @@ cases:
       - click: '.collab-bug-detail-context__actions button'
       - wait: '#collab-bug-form'
       - click: '.collab-joint-choice input'
-      - click: 'button[form="collab-bug-form"]'
+      - click: 'button[form="collab-bug-form"]:not([value="repair"])'
       - wait: 1500
     assert:
       - hidden: '#collab-bug-form'
@@ -739,3 +739,128 @@ cases:
     assert:
       - hidden: '.collab-add-items-trigger'
       - hidden: '.collab-add-items-dialog'
+
+  - name: register and repair appears only after assignment and requires a title
+    steps:
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: { load: networkidle }
+      - eval: "[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('退出登录'))?.click(); true"
+      - wait: 'input[name="username"]'
+      - fill: { sel: 'input[name="username"]', text: __USERNAME__ }
+      - fill: { sel: 'input[name="password"]', text: __PASSWORD__ }
+      - click: '.auth-submit'
+      - wait: { load: networkidle }
+      - open: __BASE_URL__/cooking
+      - wait: { load: networkidle }
+      - eval: "document.querySelector('button[aria-label=切换纸张主题]')?.click(); [...document.querySelectorAll('button')].find((button) => button.textContent?.includes('登记缺陷'))?.click(); true"
+      - wait: '#collab-bug-form'
+    assert:
+      - hidden: 'button[value="repair"]'
+      - visible: 'button[form="collab-bug-form"]:not([value="repair"])'
+
+  - name: selected engineering reveals the disabled repair action at the bottom right
+    steps:
+      - eval: >-
+          (() => { const select = document.querySelector('#collab-bug-form select');
+          select.value = select.querySelector('optgroup option').value;
+          select.dispatchEvent(new Event('change', {bubbles:true})); return true; })()
+    assert:
+      - visible: 'button[value="repair"]:disabled'
+      - eval: 'document.querySelector(".collab-bug-drawer__actions").lastElementChild.value === "repair"'
+      - eval: 'document.querySelector("button[value=repair]").getBoundingClientRect().bottom <= innerHeight'
+
+  - name: register and repair preserves the draft on error and queues on retry
+    steps:
+      - fill:
+          {
+            sel: '#collab-bug-form input[maxlength="240"]',
+            text: 一键登记修复回归,
+          }
+      - eval: >-
+          (() => { const button = document.querySelector('button[value=repair]'); button.focus();
+          window.repairButtonFocused = document.activeElement === button;
+          const original = window.fetch;
+          window.fetch = (...args) => {
+            if (new Headers(args[1]?.headers).has('Next-Action')) {
+              window.fetch = original;
+              return new Promise((resolve, reject) => setTimeout(() => reject(new TypeError('Failed to fetch')), 600));
+            }
+            return original(...args);
+          }; return true; })()
+      - click: 'button[value="repair"]'
+      - wait: 900
+    assert:
+      - eval: 'window.repairButtonFocused'
+      - visible: '#collab-bug-form'
+      - visible: '#collab-bug-form [role="alert"]'
+      - eval: 'document.querySelector("#collab-bug-form input[maxlength]").value === "一键登记修复回归"'
+
+  - name: single engineering registration enters repair without a second action
+    steps:
+      - click: 'button[value="repair"]'
+      - wait: 1200
+    assert:
+      - hidden: '#collab-bug-form'
+      - count:
+          {
+            sel: 'article[data-stage="REPAIRING"] button[aria-label^="一键登记修复回归，"]',
+            eq: 1,
+          }
+      - text: { sel: '[role="status"]', contains: 加入修复队列 }
+
+  - name: joint registration and repair stays reachable in night theme
+    steps:
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: { load: networkidle }
+      - click: 'button[aria-label="切换暗夜主题"]'
+      - eval: "[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('登记缺陷'))?.click(); true"
+      - wait: '#collab-bug-form'
+      - click: '#collab-bug-form input[type="checkbox"]'
+      - fill:
+          {
+            sel: '#collab-bug-form input[maxlength="240"]',
+            text: 双工程一键修复回归,
+          }
+      - eval: 'document.querySelector("button[value=repair]").focus(); true'
+    assert:
+      - visible: '.collab-shell[data-theme="night"] button[value="repair"]:enabled'
+      - visible: 'select[aria-label="前端工程"]'
+      - visible: 'select[aria-label="后端工程"]'
+      - eval: 'document.activeElement === document.querySelector("button[value=repair]")'
+      - eval: 'document.querySelector("button[value=repair]").getBoundingClientRect().bottom <= innerHeight'
+
+  - name: both related bugs enter repair together
+    steps:
+      - click: 'button[value="repair"]'
+      - wait: 1200
+    assert:
+      - hidden: '#collab-bug-form'
+      - count:
+          {
+            sel: 'article[data-stage="REPAIRING"] button[aria-label^="双工程一键修复回归，"]',
+            eq: 2,
+          }
+      - text: { sel: '[role="status"]', contains: 两张前后端关联单 }
+
+  - name: submission creator can drag an assigned bug into repair
+    steps:
+      - eval: "[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('退出登录'))?.click(); true"
+      - wait: 'input[name="username"]'
+      - fill: { sel: 'input[name="username"]', text: browser-owner }
+      - fill: { sel: 'input[name="password"]', text: __PASSWORD__ }
+      - click: '.auth-submit'
+      - wait: { load: networkidle }
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: { load: networkidle }
+      - eval: >-
+          (() => { const source = [...document.querySelectorAll('article.collab-bug-card')]
+          .find((card) => card.textContent?.includes('待取消缺陷')); const target = [...document.querySelectorAll('section.collab-column')]
+          .find((column) => column.querySelector('h2')?.textContent === '修复中'); const transfer = new DataTransfer();
+          window.creatorCanDrag = source.draggable;
+          source.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: transfer }));
+          target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+          target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer })); return true; })()
+      - wait: 1000
+    assert:
+      - eval: 'window.creatorCanDrag'
+      - visible: 'article[data-stage="REPAIRING"] button[aria-label^="待取消缺陷，"]'

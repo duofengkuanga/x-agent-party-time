@@ -25,6 +25,7 @@ export type AccessRow = {
   submission_id: string;
   submission_status: 'ACTIVE' | 'CLOSED';
   tester_user_id: string;
+  created_by_user_id: string;
   project_id: string;
   membership_role: 'OWNER' | 'MEMBER';
 };
@@ -151,6 +152,7 @@ export class BugQueries {
       `SELECT submission.id submission_id,
                 submission.status submission_status,
                 submission.tester_user_id,
+                submission.created_by_user_id,
                 submission.project_id,
                 membership.role membership_role
          FROM cooking_test_submission submission
@@ -275,9 +277,12 @@ export class BugQueries {
       )
         actions.push('ASSIGN');
     }
+    const canRequestRepair =
+      bug.stage === 'WAITING_FOR_REPAIR' && bug.submissionItemId && !bug.archivedAt;
+    if (canRequestRepair && (tester || userId === access.created_by_user_id))
+      actions.push('REQUEST_REPAIR');
     if (!tester) return actions;
-    if (bug.stage === 'WAITING_FOR_REPAIR' && bug.submissionItemId && !bug.archivedAt)
-      actions.push('REQUEST_REPAIR', 'CANCEL');
+    if (canRequestRepair) actions.push('CANCEL');
     if (bug.stage === 'CANCELLED' && !bug.transferredAt) actions.push('RESTORE');
     if (
       bug.stage === 'WAITING_FOR_VERIFICATION' &&
