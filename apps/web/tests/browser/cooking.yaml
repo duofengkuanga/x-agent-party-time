@@ -322,6 +322,23 @@ cases:
       - hidden: '.collab-bug-identity'
       - eval: 'Math.abs(document.querySelector(".collab-bug-drawer").getBoundingClientRect().top-window.developerModalTop)<=1'
 
+  - name: sticky round tabs cover the full scroll edge in defect details
+    steps:
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: 'button[aria-label^="修复更新页签滚动回归，"]'
+      - click: 'button[aria-label^="修复更新页签滚动回归，"]'
+      - wait: '.collab-execution-round-tabs__list'
+      - eval: >-
+          window.stickyGeometry=[];
+          (()=>{const body=document.querySelector('.collab-developer-detail'),tabs=document.querySelector('.collab-execution-round-tabs__list'),shell=document.querySelector('.collab-shell'),theme=shell.dataset.theme;
+          body.scrollTo({top:0,behavior:'instant'}); const origin=tabs.getBoundingClientRect().top-body.getBoundingClientRect().top;
+          body.scrollTo({top:origin+40,behavior:'instant'});
+          for(const mode of ['paper','night']){shell.dataset.theme=mode;const b=body.getBoundingClientRect(),t=tabs.getBoundingClientRect();
+          window.stickyGeometry.push({theme:mode,gap:t.top-b.top,covered:tabs.contains(document.elementFromPoint(t.left+t.width/2,b.top+5)),background:getComputedStyle(tabs).backgroundColor});}
+          shell.dataset.theme=theme;body.scrollTo({top:0,behavior:'instant'});return window.stickyGeometry;})()
+    assert:
+      - eval: 'window.stickyGeometry.every(result=>Math.abs(result.gap)<=1 && result.covered && result.background!=="rgba(0, 0, 0, 0)")'
+
   - name: developer can return to the source defect for manual routing
     steps:
       - click: 'button[aria-label="关闭详情抽屉"]'
@@ -815,6 +832,23 @@ cases:
       - text:
           { sel: '[aria-label="确认整批更新结果"]', contains: 全部 2 条缺陷 }
       - text: { sel: '.collab-execution-round__delivery', contains: 本轮已推送 }
+
+  - name: sticky round tabs cover the full scroll edge in batch details
+    steps:
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: '.collab-update-batch-card'
+      - click: '.collab-update-batch-card .collab-bug-card__open'
+      - wait: '[aria-label="批次内缺陷"]'
+      - eval: >-
+          window.stickyGeometry=[];
+          (()=>{const body=document.querySelector('.collab-developer-detail'),tabs=document.querySelector('.collab-execution-round-tabs__list'),shell=document.querySelector('.collab-shell'),theme=shell.dataset.theme;
+          body.scrollTo({top:0,behavior:'instant'}); const origin=tabs.getBoundingClientRect().top-body.getBoundingClientRect().top;
+          body.scrollTo({top:origin+40,behavior:'instant'});
+          for(const mode of ['paper','night']){shell.dataset.theme=mode;const b=body.getBoundingClientRect(),t=tabs.getBoundingClientRect();
+          window.stickyGeometry.push({theme:mode,gap:t.top-b.top,covered:tabs.contains(document.elementFromPoint(t.left+t.width/2,b.top+5)),background:getComputedStyle(tabs).backgroundColor});}
+          shell.dataset.theme=theme;body.scrollTo({top:0,behavior:'instant'});return window.stickyGeometry;})()
+    assert:
+      - eval: 'window.stickyGeometry.every(result=>Math.abs(result.gap)<=1 && result.covered && result.background!=="rgba(0, 0, 0, 0)")'
 
   - name: a batch member opens its own history and can return to the shared update
     steps:

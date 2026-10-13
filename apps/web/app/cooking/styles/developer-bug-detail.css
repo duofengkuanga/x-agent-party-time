@@ -23,7 +23,7 @@
 
 .collab-developer-detail {
   max-height: none;
-  padding: 20px 24px;
+  padding: 0 24px 20px;
 }
 
 .collab-developer-status {
@@ -32,6 +32,7 @@
   flex-wrap: wrap;
   gap: 8px 20px;
   margin-bottom: 16px;
+  padding-top: 20px;
 }
 
 .collab-developer-status strong {
