@@ -12,3 +12,7 @@ Execution 过程以增量 Progress Update 呈现；需要用户决定或授权�
 
 - 每次进度均返回完整 Outcome：易于单条消息独立展示，但持续重复事实、浪费 token，并混淆过程、等待和失败。
 - 保留完整 Brief 和内联规则：实现直接，但重复传输平台元数据与稳定策略，且会使入口规则逐步漂移。
+
+## 后续补充
+
+[ADR-0014](0014-reuse-repair-context-before-validation-results.md) 为 Repair 到 Update 增加有界的工作上下文交接，补充当前工作区无法推导的历史事实；保留本文的 Schema 所有权、摘要限制和最小输入原则。
