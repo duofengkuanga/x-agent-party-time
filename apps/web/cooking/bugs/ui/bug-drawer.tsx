@@ -7,7 +7,6 @@ import { drawerTitle, bugLabel } from './board-model';
 import { UpdateBatchDetails } from './update-details';
 import { BugDetail } from './bug-detail';
 import { BugForm } from './bug-editor';
-import { BugIdentity } from './bug-identity';
 import { TesterBugDetail, type RunTesterAction } from './tester-bug-detail';
 
 export function BugDrawer({
@@ -17,6 +16,7 @@ export function BugDrawer({
   onClose,
   onEdit,
   onOpen,
+  onOpenBatch,
   onClearError,
   run,
   pending,
@@ -28,6 +28,7 @@ export function BugDrawer({
   onClose: () => void;
   onEdit: (bugId: string) => void;
   onOpen: (bugId: string) => void;
+  onOpenBatch: (batchId: string) => void;
   onClearError: () => void;
   run: RunTesterAction;
   pending: boolean;
@@ -58,7 +59,7 @@ export function BugDrawer({
             : drawerTitle(drawer.mode, bug)
         }
         aria-modal="true"
-        className={`collab-dialog collab-bug-drawer${drawer.mode === 'view' ? (summaryOnly ? ' collab-bug-drawer--tester' : ' collab-bug-drawer--split') : ''}`}
+        className={`collab-dialog collab-bug-drawer${drawer.mode === 'view' ? (summaryOnly ? ' collab-bug-drawer--tester' : ' collab-bug-drawer--developer') : drawer.mode === 'batch' ? ' collab-bug-drawer--developer' : ''}`}
         role="dialog"
       >
         <header className={viewing ? 'collab-bug-drawer__chrome' : undefined}>
@@ -82,14 +83,12 @@ export function BugDrawer({
                     </>
                   ) : null}
                 </div>
-              ) : (
-                <BugIdentity key={bug.id} bugId={bug.id} />
-              )}
+              ) : null}
             </div>
           ) : viewing ? (
-            <small>
-              {drawer.mode === 'batch' ? '统一更新批次详情' : '缺陷详情'}
-            </small>
+            <div className="collab-bug-drawer__heading">
+              <h2>{batch!.engineeringName} · 统一更新</h2>
+            </div>
           ) : (
             <div>
               <small>{bug ? bugLabel(bug) : '新缺陷'}</small>
@@ -111,7 +110,7 @@ export function BugDrawer({
           <UpdateBatchDetails
             batch={batch!}
             onChanged={onChanged}
-            summaryOnly={summaryOnly}
+            onOpen={onOpen}
           />
         ) : drawer.mode === 'view' && summaryOnly ? (
           <TesterBugDetail
@@ -131,6 +130,7 @@ export function BugDrawer({
             bug={bug!}
             onOpen={onOpen}
             onChanged={onChanged}
+            onOpenBatch={onOpenBatch}
             onEdit={
               bug!.availableActions.some((action) =>
                 ['EDIT_REPORT', 'ASSIGN'].includes(action),

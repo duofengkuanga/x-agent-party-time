@@ -1,257 +1,127 @@
 'use client';
-import { ManualHandoff } from './manual-handoff';
-import { useWorkspaceMutation } from './use-workspace-mutation';
-import {
-  ProgressTimeline,
-  ProgressAttachments,
-  type ProgressHeading,
-} from './progress-timeline';
-import { ValidationResults } from './validation-results';
-import { SessionFacts } from './session-facts';
 
-import { createClientId } from '@/cooking/shared/ui/client-id';
-import { repairStateLabel } from '@/cooking/shared/execution-labels';
+import { useRef, useState } from 'react';
 import type { UpdateBatchView } from '@/cooking/update/contract';
 import {
   reportExternalDeploymentAction,
   resolveUpdateInteractionAction,
   synchronizeUpdateSessionAction,
 } from '@/cooking/update/server/actions';
-import { useRef, useState } from 'react';
-import {
-  deploymentLabel,
-  formatDateTime,
-  updateAttemptLabel,
-} from './board-model';
-import { Detail, DetailList } from './detail-fields';
-
+import { createClientId } from '@/cooking/shared/ui/client-id';
 import { AttachmentPicker } from './attachments';
-
+import { useWorkspaceMutation } from './use-workspace-mutation';
+import { ManualHandoff } from './manual-handoff';
 import { CookingInteractionRecord } from './interaction-record';
+import { ProgressAttachments } from './progress-timeline';
+import {
+  ExecutionIdentity,
+  ExecutionRound,
+  RoundChecks,
+  RoundLines,
+} from './execution-round';
+import {
+  executionRoundProgress,
+  executionRoundStatus,
+  type UpdateRound,
+} from './developer-detail-model';
+import type { RunWorkspaceAction } from './repair-timeline';
+import { formatDateTime } from './board-model';
 
-export function UpdateBatchDetails({
+export function UpdateAttemptDetails({
   batch,
-  embedded = false,
-  onChanged,
-  summaryOnly = false,
+  node,
+  round,
+  latest,
+  current,
+  pending,
+  run,
+  currentSessionId,
+  onOpenBatch,
 }: {
   batch: UpdateBatchView;
-  embedded?: boolean;
-  onChanged: (revision: number, message: string) => void;
-  summaryOnly?: boolean;
+  node: UpdateRound;
+  round: number;
+  latest: boolean;
+  current: boolean;
+  pending: boolean;
+  run: RunWorkspaceAction;
+  currentSessionId: string | null;
+  onOpenBatch?: (batchId: string) => void;
 }) {
-  const [externalOutcome, setExternalOutcome] = useState<
-    'SUCCEEDED' | 'FAILED'
-  >('SUCCEEDED');
-  const [externalSummary, setExternalSummary] = useState('');
-  const [externalFiles, setExternalFiles] = useState<File[]>([]);
-  const { error, pending, run } = useWorkspaceMutation(onChanged);
-  const externalFileInput = useRef<HTMLInputElement>(null);
-
-  const batchFacts = (
-    <dl>
-      <Detail label="批次状态">{batch.presentation.statusLabel}</Detail>
-      <Detail label="当前状态">
-        <span
-          aria-label={batch.presentation.visual.label}
-          className="collab-current-visual"
-          data-visual-state={batch.presentation.visual.state}
-        >
-          <span aria-hidden="true">{batch.presentation.visual.symbol}</span>
-          {batch.presentation.visual.label}
-        </span>
-      </Detail>
-      <Detail label="目标分支">{batch.targetBranch}</Detail>
-      <Detail label="部署方式">{deploymentLabel(batch.deploymentKind)}</Detail>
-      <Detail label="环境">{batch.environmentName}</Detail>
-      {batch.hasManualDatabaseOperation ? (
-        <Detail label="数据库操作">请人工执行代码仓库中的 SQL</Detail>
-      ) : null}
-    </dl>
-  );
-
+  const result = node.result;
+  const work = result && result.outcome !== 'HANDED_OFF' ? result : null;
   return (
-    <div
-      className={`collab-update-batch-detail${embedded ? ' collab-update-batch-detail--embedded' : ' collab-dialog__body collab-bug-drawer__body'}`}
-    >
-      {!embedded && !summaryOnly ? (
-        <header className="collab-bug-detail-hero">
-          <div>
-            <small>共享更新对象</small>
-            <h2>{batch.engineeringName} · 统一更新批次</h2>
-          </div>
-          {batchFacts}
-        </header>
-      ) : null}
-      {error ? (
-        <p className="collab-form__error" role="alert">
-          {error}
-        </p>
-      ) : null}
-      {!embedded && !summaryOnly ? (
-        <section className="collab-bug-detail-section">
-          <h3>冻结范围</h3>
-          <p>
-            {formatDateTime(batch.frozenAt)} 冻结，共 {batch.entries.length}{' '}
-            条缺陷。批次完成后会分别回到待验证。
+    <ExecutionRound
+      kind="update"
+      title={`第 ${round} 次更新`}
+      status={executionRoundStatus(node)}
+      at={node.queuedAt}
+      finishedAt={node.finishedAt}
+      current={current}
+      identity={
+        <>
+          <p className="collab-round-agent">
+            {batch.engineeringName} · {batch.targetBranch} ·{' '}
+            {batch.environmentName} · 共 {batch.entries.length} 条缺陷
           </p>
-          <UpdateBatchEntries batch={batch} embedded={false} />
-        </section>
-      ) : null}
-      <ProgressTimeline
-        nodes={batch.timeline}
-        title={embedded || summaryOnly ? '更新进展' : '批次进展'}
-        description={
-          embedded || summaryOnly
-            ? '按批次从旧到新记录。'
-            : `${batch.engineeringName} 的统一更新执行记录。`
-        }
-        summaryOnly={summaryOnly}
-        sessionDetails={
-          <SessionFacts
-            label="更新会话"
-            attempts={batch.timeline.filter(
-              (node) => node.kind === 'UPDATE_ATTEMPT',
-            )}
-          />
-        }
-        update
-      >
-        {(node) => {
-          const heading = describeUpdateProgress(node);
-          if (node.kind === 'BATCH_FORMED')
-            return {
-              ...heading,
-              content: (
-                <>
-                  {embedded ? (
-                    <>
-                      <p>
-                        已冻结 {node.bugCount}{' '}
-                        条缺陷，更新完成后分别回到待验证。
-                      </p>
-                      <details className="collab-update-scope">
-                        <summary>
-                          冻结范围 · {batch.entries.length} 条缺陷
-                        </summary>
-                        <UpdateBatchEntries batch={batch} embedded />
-                      </details>
-                    </>
-                  ) : (
-                    <p>已冻结 {node.bugCount} 条缺陷。</p>
-                  )}
-                </>
-              ),
-            };
-          if (node.kind === 'EXTERNAL_REPORT')
-            return {
-              ...heading,
-              content: (
-                <>
-                  {node.summary ? <p>{node.summary}</p> : null}
-                  <ProgressAttachments attachments={node.attachments} />
-                </>
-              ),
-            };
-          return {
-            ...heading,
-            content: (
-              <>
-                {node.result?.outcome === 'HANDED_OFF' ? (
-                  <ManualHandoff
-                    questions={node.result.questions}
-                    sessionId={node.sessionId}
-                  />
-                ) : node.result ? (
-                  <>
-                    {node.result.outcome === 'FAILED' ? (
-                      <div className="collab-structured-failure">
-                        <header>
-                          <span>本轮中断</span>
-                          <strong>{node.result.failedStep}</strong>
-                        </header>
-                        <p>
-                          <span>失败原因</span>
-                          {node.result.reason}
-                        </p>
-                      </div>
-                    ) : null}
-                    <div className="collab-update-attempt-results">
-                      <DetailList
-                        kind="completed"
-                        items={node.result.completedActions}
-                        title="已完成操作"
-                      />
-                      <ValidationResults
-                        items={node.result.validations}
-                        title="验证结果"
-                        emptyLabel="Codex 未报告验证项"
-                        kind="validation"
-                      />
-                      {node.result.warnings.length ? (
-                        <DetailList
-                          kind="warning"
-                          items={node.result.warnings}
-                          title="提醒"
-                        />
-                      ) : null}
-                      {node.result.outcome === 'FAILED' ? (
-                        <DetailList
-                          kind="pending"
-                          items={node.result.pendingActions}
-                          title="待处理事项"
-                        />
-                      ) : null}
-                    </div>
-                  </>
-                ) : (
-                  <dl className="collab-bug-detail-list">
-                    <Detail label="处理状态">
-                      {repairStateLabel(node.executionState)}
-                    </Detail>
-                  </dl>
-                )}
-                {node.interactions.length ? (
-                  <ol className="collab-update-interactions">
-                    {node.interactions.map((interaction) => (
-                      <li key={interaction.id}>
-                        <CookingInteractionRecord
-                          interaction={interaction}
-                          onResolve={(resolution) =>
-                            resolveUpdateInteractionAction(interaction.id, {
-                              mutationId: createClientId(),
-                              expectedVersion: batch.version,
-                              resolution,
-                            })
-                          }
-                          pending={pending}
-                          run={run}
-                        />
-                      </li>
-                    ))}
-                  </ol>
-                ) : null}
-                {node.result?.outcome === 'FAILED' &&
-                node.result.failureCode ? (
-                  <details className="collab-technical-details">
-                    <summary>技术详情</summary>
-                    <code>{node.result.failureCode}</code>
-                  </details>
-                ) : null}
-              </>
-            ),
-          };
-        }}
-      </ProgressTimeline>
-      {!summaryOnly && batch.availableActions.length ? (
-        <section className="collab-bug-detail-section">
-          <h3>批次操作</h3>
-          {batch.availableActions.includes('SYNC_SESSION') ? (
+          {node.sessionId && node.sessionId !== currentSessionId ? (
+            <ExecutionIdentity
+              label="本轮更新会话 ID"
+              value={node.sessionId}
+              session
+            />
+          ) : null}
+        </>
+      }
+      progress={
+        <>
+          {result?.outcome !== 'HANDED_OFF' ? (
+            <p>{executionRoundProgress(node)}</p>
+          ) : null}
+          {result?.outcome === 'HANDED_OFF' ? (
+            <ManualHandoff
+              questions={result.questions}
+              sessionId={node.sessionId}
+            />
+          ) : null}
+          {node.interactions.map((interaction) => (
+            <CookingInteractionRecord
+              key={interaction.id}
+              interaction={interaction}
+              pending={pending}
+              run={run}
+              onResolve={(resolution) =>
+                resolveUpdateInteractionAction(interaction.id, {
+                  mutationId: createClientId(),
+                  expectedVersion: batch.version,
+                  resolution,
+                })
+              }
+            />
+          ))}
+          {work?.outcome === 'FAILED' ? (
             <>
+              <RoundLines
+                items={work.pendingActions}
+                empty="未提供待处理事项。"
+                label="查看待处理事项"
+              />
+              {work.failureCode ? (
+                <details className="collab-round-disclosure">
+                  <summary>查看技术原因</summary>
+                  <code>{work.failureCode}</code>
+                </details>
+              ) : null}
+            </>
+          ) : null}
+          {latest && batch.availableActions.includes('SYNC_SESSION') ? (
+            <div className="collab-batch-actions">
+              <p>同步本批全部 {batch.entries.length} 条缺陷的更新结果。</p>
               {batch.synchronizationError ? (
-                <p>{batch.synchronizationError}</p>
+                <p role="alert">{batch.synchronizationError}</p>
               ) : null}
               <button
+                type="button"
                 disabled={pending}
                 onClick={() =>
                   run(
@@ -263,138 +133,264 @@ export function UpdateBatchDetails({
                     '正在同步原统一更新会话状态。',
                   )
                 }
-                type="button"
               >
                 同步状态
               </button>
-            </>
-          ) : null}
-          {batch.availableActions.includes('REPORT_EXTERNAL') ? (
-            <div className="collab-form collab-bug-verification">
-              <label>
-                <span>外部更新结果</span>
-                <select
-                  onChange={(event) =>
-                    setExternalOutcome(
-                      event.target.value as 'SUCCEEDED' | 'FAILED',
-                    )
-                  }
-                  value={externalOutcome}
-                >
-                  <option value="SUCCEEDED">外部更新成功</option>
-                  <option value="FAILED">外部更新失败</option>
-                </select>
-              </label>
-              <textarea
-                maxLength={8_000}
-                onChange={(event) => setExternalSummary(event.target.value)}
-                placeholder={
-                  externalOutcome === 'FAILED'
-                    ? '说明持续集成或部署失败原因'
-                    : '可补充外部更新结果'
-                }
-                rows={3}
-                value={externalSummary}
-              />
-              <AttachmentPicker
-                files={externalFiles}
-                inputRef={externalFileInput}
-                onChange={setExternalFiles}
-              />
-              <button
-                disabled={
-                  pending ||
-                  (externalOutcome === 'FAILED' && !externalSummary.trim())
-                }
-                onClick={() => {
-                  const formData = new FormData();
-                  formData.set('mutationId', createClientId());
-                  formData.set('expectedVersion', String(batch.version));
-                  formData.set('outcome', externalOutcome);
-                  formData.set('summary', externalSummary);
-                  externalFiles.forEach((file) =>
-                    formData.append('attachments', file),
-                  );
-                  run(
-                    () => reportExternalDeploymentAction(batch.id, formData),
-                    externalOutcome === 'SUCCEEDED'
-                      ? '外部更新已确认成功，缺陷进入待验证。'
-                      : '外部更新失败记录已追加，可重新执行原批次。',
-                    () => {
-                      setExternalSummary('');
-                      setExternalFiles([]);
-                      if (externalFileInput.current)
-                        externalFileInput.current.value = '';
-                    },
-                  );
-                }}
-                type="button"
-              >
-                提交外部结果
-              </button>
             </div>
           ) : null}
-        </section>
+        </>
+      }
+      changes={
+        <>
+          <p>本次更新包含 {batch.entries.length} 条缺陷的修复。</p>
+          <details className="collab-round-disclosure">
+            <summary>查看本批修复范围</summary>
+            <ul>
+              {batch.entries.map((entry) => (
+                <li key={entry.bugId}>
+                  <span>{entry.bugTitle}</span>
+                  {entry.commits?.length ? (
+                    <ul>
+                      {entry.commits.map((commit) => (
+                        <li key={commit}>
+                          <code>{commit}</code>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </details>
+          {onOpenBatch ? (
+            <button type="button" onClick={() => onOpenBatch(batch.id)}>
+              查看批次详情
+            </button>
+          ) : null}
+        </>
+      }
+      checks={<RoundChecks items={work?.validations ?? []} />}
+      delivery={
+        <>
+          <p>
+            {work?.outcome === 'COMPLETED'
+              ? '本轮已完成推送和环境更新。'
+              : work?.outcome === 'PUSHED'
+                ? '本轮已推送；环境更新结果以后续确认记录为准。'
+                : work?.outcome === 'FAILED'
+                  ? '本轮更新未完成。'
+                  : '本轮尚未收到交付结果。'}
+          </p>
+          {work ? (
+            <RoundLines
+              items={work.completedActions}
+              empty="未提供已完成操作。"
+              label="查看交付明细"
+            />
+          ) : null}
+          {work?.warnings.length ? (
+            <RoundLines items={work.warnings} empty="" label="查看提醒" />
+          ) : null}
+          {latest && batch.availableActions.includes('REPORT_EXTERNAL') ? (
+            <>
+              {batch.hasManualDatabaseOperation ? (
+                <p>请先人工执行代码仓库中的 SQL，并确认本批环境更新结果。</p>
+              ) : null}
+              <UpdateBatchActions batch={batch} pending={pending} run={run} />
+            </>
+          ) : null}
+        </>
+      }
+    />
+  );
+}
+
+export function ExternalUpdateReport({
+  node,
+}: {
+  node: Extract<
+    UpdateBatchView['timeline'][number],
+    { kind: 'EXTERNAL_REPORT' }
+  >;
+}) {
+  return (
+    <section className="collab-developer-event" aria-label="环境更新确认">
+      <header>
+        <strong>
+          第 {node.round} 次环境更新确认：
+          {node.outcome === 'SUCCEEDED' ? '成功' : '失败'}
+        </strong>
+        <time dateTime={node.occurredAt}>
+          {formatDateTime(node.occurredAt)}
+        </time>
+      </header>
+      {node.summary ? <p>{node.summary}</p> : null}
+      <ProgressAttachments attachments={node.attachments} />
+    </section>
+  );
+}
+
+export function UpdateBatchDetails({
+  batch,
+  onChanged,
+  onOpen,
+}: {
+  batch: UpdateBatchView;
+  onChanged: (revision: number, message: string) => void;
+  onOpen: (bugId: string) => void;
+}) {
+  const { error, pending, run } = useWorkspaceMutation(onChanged);
+  const attempts = batch.timeline.filter(
+    (node) => node.kind === 'UPDATE_ATTEMPT',
+  );
+  const latest = attempts.at(-1);
+  return (
+    <div className="collab-dialog__body collab-bug-drawer__body collab-developer-detail">
+      <section className="collab-developer-status" aria-live="polite">
+        <strong>{batch.presentation.visual.label}</strong>
+        <span>
+          {batch.targetBranch} · {batch.environmentName} · 共{' '}
+          {batch.entries.length} 条缺陷
+        </span>
+      </section>
+      <div className="collab-execution-identities">
+        <ExecutionIdentity
+          label="更新会话 ID"
+          value={latest?.sessionId ?? null}
+          session
+        />
+      </div>
+      <section className="collab-batch-members" aria-label="批次内缺陷">
+        <h3>本批 {batch.entries.length} 条缺陷</h3>
+        <p>更新进展和操作由整批共享，点击缺陷查看各自的修复过程。</p>
+        <ul>
+          {batch.entries.map((entry) => (
+            <li key={entry.bugId}>
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => onOpen(entry.bugId)}
+              >
+                缺陷-{String(entry.bugShortId).padStart(3, '0')} ·{' '}
+                {entry.bugTitle}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </section>
+      {error ? (
+        <p className="collab-form__error" role="alert">
+          {error}
+        </p>
       ) : null}
+      <ol className="collab-developer-timeline" aria-label="批次更新记录">
+        {[...batch.timeline].reverse().map((node) =>
+          node.kind === 'UPDATE_ATTEMPT' ? (
+            <li key={node.id}>
+              <UpdateAttemptDetails
+                batch={batch}
+                node={node}
+                round={node.attempt}
+                latest={node.id === latest?.id}
+                current={node.id === latest?.id}
+                pending={pending}
+                run={run}
+                currentSessionId={latest?.sessionId ?? null}
+              />
+            </li>
+          ) : node.kind === 'EXTERNAL_REPORT' ? (
+            <li key={node.id}>
+              <ExternalUpdateReport node={node} />
+            </li>
+          ) : null,
+        )}
+      </ol>
     </div>
   );
 }
 
-function describeUpdateProgress(
-  node: UpdateBatchView['timeline'][number],
-): Omit<ProgressHeading, 'content'> {
-  const title =
-    node.kind === 'BATCH_FORMED'
-      ? '统一更新批次已形成'
-      : node.kind === 'EXTERNAL_REPORT'
-        ? `第 ${node.round} 轮外部部署${node.outcome === 'SUCCEEDED' ? '成功' : '失败'}`
-        : updateAttemptLabel(node);
-  const occurredAt =
-    node.kind === 'UPDATE_ATTEMPT' ? node.queuedAt : node.occurredAt;
-  const outcome =
-    node.kind === 'EXTERNAL_REPORT'
-      ? node.outcome
-      : node.kind === 'UPDATE_ATTEMPT'
-        ? node.result?.outcome
-        : undefined;
-  return { title, occurredAt, outcome };
-}
-
-function UpdateBatchEntries({
+function UpdateBatchActions({
   batch,
-  embedded,
+  pending,
+  run,
 }: {
   batch: UpdateBatchView;
-  embedded: boolean;
+  pending: boolean;
+  run: RunWorkspaceAction;
 }) {
+  const [externalOutcome, setExternalOutcome] = useState<
+    'SUCCEEDED' | 'FAILED'
+  >('SUCCEEDED');
+  const [externalSummary, setExternalSummary] = useState('');
+  const [externalFiles, setExternalFiles] = useState<File[]>([]);
+  const externalFileInput = useRef<HTMLInputElement>(null);
+
   return (
-    <ol className="collab-repair-records collab-update-scope__entries">
-      {batch.entries.map((entry) => (
-        <li key={entry.bugId}>
-          <strong>
-            {embedded ? (
-              entry.bugTitle
-            ) : (
-              <>
-                缺陷-{String(entry.bugShortId).padStart(3, '0')} ·{' '}
-                {entry.bugTitle}
-              </>
-            )}
-          </strong>
-          {entry.commits?.length ? (
-            <details>
-              <summary>{entry.commits.length} 个候选 Commit</summary>
-              <ol className="collab-repair-records">
-                {entry.commits.map((commit) => (
-                  <li key={commit}>
-                    <code>{commit}</code>
-                  </li>
-                ))}
-              </ol>
-            </details>
-          ) : null}
-        </li>
-      ))}
-    </ol>
+    <section className="collab-batch-actions" aria-label="确认整批更新结果">
+      <p>本次确认将作用于本批全部 {batch.entries.length} 条缺陷。</p>
+      {batch.availableActions.includes('REPORT_EXTERNAL') ? (
+        <div className="collab-form collab-bug-verification">
+          <label>
+            <span>外部更新结果</span>
+            <select
+              onChange={(event) =>
+                setExternalOutcome(event.target.value as 'SUCCEEDED' | 'FAILED')
+              }
+              value={externalOutcome}
+            >
+              <option value="SUCCEEDED">外部更新成功</option>
+              <option value="FAILED">外部更新失败</option>
+            </select>
+          </label>
+          <textarea
+            maxLength={8_000}
+            onChange={(event) => setExternalSummary(event.target.value)}
+            placeholder={
+              externalOutcome === 'FAILED'
+                ? '说明持续集成或部署失败原因'
+                : '可补充外部更新结果'
+            }
+            rows={3}
+            value={externalSummary}
+          />
+          <AttachmentPicker
+            files={externalFiles}
+            inputRef={externalFileInput}
+            onChange={setExternalFiles}
+          />
+          <button
+            disabled={
+              pending ||
+              (externalOutcome === 'FAILED' && !externalSummary.trim())
+            }
+            onClick={() => {
+              const formData = new FormData();
+              formData.set('mutationId', createClientId());
+              formData.set('expectedVersion', String(batch.version));
+              formData.set('outcome', externalOutcome);
+              formData.set('summary', externalSummary);
+              externalFiles.forEach((file) =>
+                formData.append('attachments', file),
+              );
+              run(
+                () => reportExternalDeploymentAction(batch.id, formData),
+                externalOutcome === 'SUCCEEDED'
+                  ? '外部更新已确认成功，缺陷进入待验证。'
+                  : '外部更新失败记录已追加。',
+                () => {
+                  setExternalSummary('');
+                  setExternalFiles([]);
+                  if (externalFileInput.current)
+                    externalFileInput.current.value = '';
+                },
+              );
+            }}
+            type="button"
+          >
+            提交外部结果
+          </button>
+        </div>
+      ) : null}
+    </section>
   );
 }

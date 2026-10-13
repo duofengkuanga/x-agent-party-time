@@ -1,31 +1,30 @@
 'use client';
-import { ManualHandoff } from './manual-handoff';
-import {
-  ProgressTimeline,
-  ProgressAttachments,
-  type ProgressHeading,
-} from './progress-timeline';
-import { ValidationResults } from './validation-results';
-import { SessionFacts } from './session-facts';
 
+import { useState } from 'react';
 import type { BugRepairView } from '@/cooking/repair/contract';
 import {
   resolveRepairInteractionAction,
   synchronizeRepairSessionAction,
 } from '@/cooking/repair/server/actions';
 import { createClientId } from '@/cooking/shared/ui/client-id';
-import { repairStateLabel } from '@/cooking/shared/execution-labels';
-import type { BugProgressTimelineNode } from '@/cooking/workspace/contract';
-import { useState } from 'react';
 import type { BugView } from '../contract';
-import type { StoredAttachment } from './attachments';
-import { AttachmentLink } from './attachments';
+import { AttachmentLink, type StoredAttachment } from './attachments';
 import type { WorkspaceActionResult } from './board-model';
-import { formatDateTime } from './board-model';
-import { Detail, TimelineList } from './detail-fields';
+import { ManualHandoff } from './manual-handoff';
 import { CookingInteractionRecord } from './interaction-record';
+import {
+  ExecutionIdentity,
+  ExecutionRound,
+  RoundChecks,
+  RoundLines,
+} from './execution-round';
+import {
+  executionRoundProgress,
+  executionRoundStatus,
+  type RepairRound,
+} from './developer-detail-model';
 
-type RunWorkspaceAction = (
+export type RunWorkspaceAction = (
   command: () => Promise<WorkspaceActionResult>,
   message: string,
   afterSuccess?: () => void,
@@ -55,49 +54,6 @@ export function BugResultDetail({
         </ul>
       ) : null}
     </div>
-  );
-}
-
-type RepairProgressContext = {
-  bug: BugView;
-  pending: boolean;
-  repair: BugRepairView | null;
-  run: RunWorkspaceAction;
-};
-
-export function RepairAttemptDetails({
-  timeline,
-  summaryOnly,
-  ...context
-}: RepairProgressContext & {
-  summaryOnly: boolean;
-  timeline: BugProgressTimelineNode[];
-}) {
-  const latestRepairAttemptId = [...timeline]
-    .reverse()
-    .find((node) => node.kind === 'REPAIR_ATTEMPT')?.id;
-  const isUpdateTimeline = timeline.every(
-    (node) => node.kind === 'UPDATE_BATCH',
-  );
-  return (
-    <ProgressTimeline
-      nodes={timeline}
-      title={isUpdateTimeline ? '更新进展' : '修复进展'}
-      description={
-        isUpdateTimeline
-          ? '按批次从旧到新记录。'
-          : '按修复生命周期从旧到新记录。'
-      }
-      summaryOnly={summaryOnly}
-      sessionDetails={
-        <SessionFacts
-          label="修复会话"
-          attempts={timeline.filter((node) => node.kind === 'REPAIR_ATTEMPT')}
-        />
-      }
-    >
-      {(node) => describeBugProgress(node, context, latestRepairAttemptId)}
-    </ProgressTimeline>
   );
 }
 
@@ -133,243 +89,150 @@ function SynchronizationCorrection({
   );
 }
 
-function describeBugProgress(
-  node: BugProgressTimelineNode,
-  context: RepairProgressContext,
-  latestRepairAttemptId: string | undefined,
-): ProgressHeading {
-  switch (node.kind) {
-    case 'BUG_REGISTERED':
-      return {
-        title: '缺陷已登记',
-        occurredAt: node.occurredAt,
-        content: <p>原始报告已进入待修复阶段。</p>,
-      };
-    case 'UPDATE_BATCH':
-      return {
-        title: '已进入统一更新批次',
-        summaryTitle: `统一更新 · ${node.visual.label}`,
-        occurredAt: node.occurredAt,
-        content: (
-          <>
-            <p>
-              {node.statusLabel} · 共 {node.bugCount} 条缺陷
-            </p>
-            <span
-              aria-label={node.visual.label}
-              className="collab-current-visual collab-progress-visual"
-              data-visual-state={node.visual.state}
-            >
-              <span aria-hidden="true">{node.visual.symbol}</span>
-              {node.visual.label}
-            </span>
-          </>
-        ),
-      };
-    case 'VERIFICATION': {
-      const title = `第 ${node.round} 轮验证${node.result === 'PASSED' ? '已通过' : '未通过'}`;
-      return {
-        title,
-        summaryTitle: title + (node.result === 'FAILED' ? '，已返修' : ''),
-        occurredAt: node.createdAt,
-        content: (
-          <>
-            <p>{node.comment || '测试负责人未补充说明。'}</p>
-            {node.result === 'FAILED' && node.repairAttempt ? (
-              <strong>已进入第 {node.repairAttempt} 轮修复</strong>
-            ) : null}
-            <ProgressAttachments attachments={node.attachments} />
-          </>
-        ),
-      };
-    }
-    case 'REOPEN':
-      return {
-        title: `第 ${node.round} 次重新打开`,
-        summaryTitle: `第 ${node.round} 次重新打开，已返修`,
-        occurredAt: node.createdAt,
-        content: (
-          <>
-            <p>{node.feedback}</p>
-            <strong>已进入第 {node.repairAttempt} 轮修复</strong>
-            <ProgressAttachments attachments={node.attachments} />
-          </>
-        ),
-      };
-    case 'CANCELLED':
-    case 'RESTORED':
-      return {
-        title: node.kind === 'CANCELLED' ? '缺陷已取消' : '缺陷已恢复到待修复',
-        occurredAt: node.createdAt,
-        content: (
-          <p>
-            {node.kind === 'CANCELLED'
-              ? '缺陷已移出主看板，可从已取消缺陷中恢复。'
-              : '原始资料已重新开放编辑，尚未自动开始修复。'}
-          </p>
-        ),
-      };
-    case 'REPAIR_ATTEMPT': {
-      const content = (
-        <RepairAttemptTimelineArticle
-          {...context}
-          isLatestRepairAttempt={node.id === latestRepairAttemptId}
-          node={node}
-        />
-      );
-      return {
-        title: `第 ${node.attempt} 轮修复${node.result?.outcome === 'COMPLETED' ? '已完成' : node.result?.outcome === 'FAILED' ? '未完成' : node.result?.outcome === 'HANDED_OFF' ? '等待人工确认' : '进行中'}`,
-        occurredAt: node.finishedAt ?? node.startedAt ?? node.queuedAt,
-        content,
-        summaryContent: node.result ? content : null,
-      };
-    }
-  }
-}
-
-function RepairAttemptTimelineArticle({
+export function RepairAttemptDetails({
   bug,
-  isLatestRepairAttempt,
   node,
-  pending,
   repair,
+  latest,
+  current,
+  pending,
   run,
-}: RepairProgressContext & {
-  isLatestRepairAttempt: boolean;
-  node: Extract<BugProgressTimelineNode, { kind: 'REPAIR_ATTEMPT' }>;
+  currentSessionId,
+}: {
+  bug: BugView;
+  node: RepairRound;
+  repair: BugRepairView | null;
+  latest: boolean;
+  current: boolean;
+  pending: boolean;
+  run: RunWorkspaceAction;
+  currentSessionId: string | null;
 }) {
+  const result = node.result;
+  const completed = result?.outcome === 'COMPLETED' ? result : null;
+  const failed = result?.outcome === 'FAILED' ? result : null;
   return (
-    <>
-      {node.interactions.map((interaction) => (
-        <CookingInteractionRecord
-          interaction={interaction}
-          key={interaction.id}
-          onResolve={(resolution) =>
-            resolveRepairInteractionAction(interaction.id, {
-              mutationId: createClientId(),
-              expectedVersion: bug.version,
-              resolution,
-            })
-          }
-          pending={pending}
-          run={run}
-        />
-      ))}
-      {!node.result ? (
-        <dl className="collab-bug-detail-list">
-          <Detail label="处理状态">
-            {['CLAIMED', 'RUNNING'].includes(node.executionState)
-              ? '正在自动处理'
-              : repairStateLabel(node.executionState)}
-          </Detail>
-          <Detail label="开始时间">
-            {node.startedAt
-              ? formatDateTime(node.startedAt)
-              : '等待 Agent 开始'}
-          </Detail>
-        </dl>
-      ) : node.result.outcome === 'HANDED_OFF' ? (
-        <ManualHandoff
-          questions={node.result.questions}
-          sessionId={node.sessionId}
-        />
-      ) : node.result.outcome === 'COMPLETED' ? (
+    <ExecutionRound
+      title={`第 ${node.attempt} 轮修复`}
+      kind="repair"
+      status={executionRoundStatus(node)}
+      at={node.queuedAt}
+      finishedAt={node.finishedAt}
+      current={current}
+      identity={
         <>
-          <TimelineList
-            emptyLabel="Codex 未报告具体修改"
-            items={node.result.changes}
-            title="修改内容"
-          />
-          <ValidationResults
-            statusLabel={validationStatusLabel}
-            items={node.result.validations}
-            title="检查结果"
-            emptyLabel="Codex 未报告检查项"
-          />
-          {node.result.warnings.length ? (
-            <TimelineList items={node.result.warnings} title="警告" />
-          ) : null}
-          <p className="collab-repair-commit-count">
-            已记录 {node.result.commitCount} 个候选提交
-          </p>
-          {node.result.commits ? (
-            <details>
-              <summary>技术详情</summary>
-              {node.result.commits?.length ? (
-                <ol>
-                  {node.result.commits.map((commit) => (
-                    <li key={commit}>
-                      <code>{commit}</code>
-                    </li>
-                  ))}
-                </ol>
-              ) : null}
-            </details>
-          ) : null}
-        </>
-      ) : (
-        <>
-          <dl className="collab-bug-detail-list">
-            <Detail label="失败阶段">{node.result.failedStep}</Detail>
-            <Detail label="失败原因">{node.result.reason}</Detail>
-          </dl>
-          <TimelineList
-            emptyLabel="无"
-            items={node.result.completedActions}
-            title="已完成事项"
-          />
-          <TimelineList
-            emptyLabel="无"
-            items={node.result.pendingActions}
-            title="未执行事项"
-          />
-          {node.result.failureCode ? (
-            <details>
-              <summary>技术详情</summary>
-              <code>{node.result.failureCode}</code>
-            </details>
-          ) : null}
-        </>
-      )}
-      {isLatestRepairAttempt &&
-      repair?.availableActions.includes('SYNC_SESSION') ? (
-        <>
-          {repair.synchronizationError ? (
-            <p>{repair.synchronizationError}</p>
-          ) : null}
-          {repair.synchronizationCorrection ? (
-            <SynchronizationCorrection
-              correction={repair.synchronizationCorrection}
+          <p className="collab-round-agent">Agent：{node.agentName}</p>
+          {node.sessionId && node.sessionId !== currentSessionId ? (
+            <ExecutionIdentity
+              label="本轮修复会话 ID"
+              value={node.sessionId}
+              session
             />
           ) : null}
-          <button
-            disabled={pending}
-            onClick={() =>
-              run(
-                () =>
-                  synchronizeRepairSessionAction(bug.id, {
-                    mutationId: createClientId(),
-                    expectedVersion: bug.version,
-                  }),
-                '正在同步原修复会话状态。',
-              )
-            }
-            type="button"
-          >
-            同步状态
-          </button>
         </>
-      ) : null}
-    </>
+      }
+      progress={
+        <>
+          {result?.outcome !== 'HANDED_OFF' ? (
+            <p>{executionRoundProgress(node)}</p>
+          ) : null}
+          {result?.outcome === 'HANDED_OFF' ? (
+            <ManualHandoff
+              questions={result.questions}
+              sessionId={node.sessionId}
+            />
+          ) : null}
+          {node.interactions.map((interaction) => (
+            <CookingInteractionRecord
+              key={interaction.id}
+              interaction={interaction}
+              pending={pending}
+              run={run}
+              onResolve={(resolution) =>
+                resolveRepairInteractionAction(interaction.id, {
+                  mutationId: createClientId(),
+                  expectedVersion: bug.version,
+                  resolution,
+                })
+              }
+            />
+          ))}
+          {failed?.pendingActions.length ? (
+            <RoundLines
+              items={failed.pendingActions}
+              empty=""
+              label="查看待处理事项"
+            />
+          ) : null}
+          {failed?.failureCode ? (
+            <details className="collab-round-disclosure">
+              <summary>查看技术原因</summary>
+              <code>{failed.failureCode}</code>
+            </details>
+          ) : null}
+          {latest && repair?.availableActions.includes('SYNC_SESSION') ? (
+            <>
+              {repair.synchronizationError ? (
+                <p role="alert">{repair.synchronizationError}</p>
+              ) : null}
+              {repair.synchronizationCorrection ? (
+                <SynchronizationCorrection
+                  correction={repair.synchronizationCorrection}
+                />
+              ) : null}
+              <button
+                disabled={pending}
+                type="button"
+                onClick={() =>
+                  run(
+                    () =>
+                      synchronizeRepairSessionAction(bug.id, {
+                        mutationId: createClientId(),
+                        expectedVersion: bug.version,
+                      }),
+                    '正在同步原修复会话状态。',
+                  )
+                }
+              >
+                同步状态
+              </button>
+            </>
+          ) : null}
+        </>
+      }
+      changes={
+        <RoundLines
+          items={completed?.changes ?? failed?.completedActions ?? []}
+          empty="本轮尚未收到代码变更说明。"
+        />
+      }
+      checks={<RoundChecks items={completed?.validations ?? []} />}
+      delivery={
+        <>
+          <p>
+            {completed
+              ? completed.commitCount
+                ? `本轮已记录 ${completed.commitCount} 个本地提交，后续更新单独记录。`
+                : '本轮无需新增提交，目标分支已有修复。'
+              : '本轮尚未确认完成交付。'}
+          </p>
+          {completed?.commits?.length ? (
+            <details className="collab-round-disclosure">
+              <summary>查看提交</summary>
+              <ul>
+                {completed.commits.map((commit) => (
+                  <li key={commit}>
+                    <code>{commit}</code>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
+          {completed?.warnings.length ? (
+            <RoundLines items={completed.warnings} empty="" label="查看提醒" />
+          ) : null}
+        </>
+      }
+    />
   );
-}
-
-function validationStatusLabel(
-  status: 'PASSED' | 'FAILED' | 'SKIPPED',
-): string {
-  return {
-    PASSED: '通过',
-    FAILED: '未通过',
-    SKIPPED: '未执行',
-  }[status];
 }

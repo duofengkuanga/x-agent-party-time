@@ -350,6 +350,59 @@ export async function seedBrowserFixture(home: string): Promise<BrowserFixture> 
       },
     });
 
+    // 两条缺陷共享一个更新会话，等待工程负责人确认整批部署。
+    for (const [index, title] of ['批次更新缺陷甲', '批次更新缺陷乙'].entries()) {
+      const member = bugs.createBug(tester.id, submission.id, {
+        mutationId: randomUUID(),
+        submissionItemId: items[1]!.id,
+        title,
+        expectedResult: `${title} 的预期结果`,
+        actualResult: `${title} 的实际结果`,
+        actualResultAttachmentIds: [],
+        expectedResultAttachmentIds: [],
+      }).bug;
+      bugs.requestRepair(tester.id, member.id, {
+        mutationId: randomUUID(),
+        expectedVersion: member.version,
+      });
+      const repair = (await executions.claim(paired.runner.id, 1, 0))[0]!;
+      completeRepairExecution(
+        { executions, runner: paired.runner },
+        repair.id,
+        repair.lease.token,
+        `browser-batch-repair-${index}`,
+        [(index ? 'c' : 'b').repeat(40)],
+      );
+    }
+    const sharedBatch = updates.freezeNow(developer.id, items[1]!.id, {
+      mutationId: randomUUID(),
+    });
+    const sharedUpdate = (await executions.claim(paired.runner.id, 1, 0))[0]!;
+    if (sharedUpdate.id !== sharedBatch.executionId)
+      throw new Error('未领取到共享更新批次');
+    executions.start(paired.runner.id, sharedUpdate.id, {
+      kind: 'STARTED',
+      leaseToken: sharedUpdate.lease.token,
+      sessionId: 'browser-shared-update',
+      taskSkillBinding: fixtureSkillBinding('agent-party-time-integrate-update-batch'),
+    });
+    completeSuccessfulExecution(
+      { executions, runner: paired.runner },
+      {
+        executionId: sharedUpdate.id,
+        leaseToken: sharedUpdate.lease.token,
+        sessionId: 'browser-shared-update',
+      },
+      {
+        result: {
+          outcome: 'PUSHED',
+          completedActions: ['合入两条缺陷修复并推送目标分支'],
+          validations: [{ name: '共享批次构建', status: 'PASSED', detail: '' }],
+          warnings: [],
+        },
+      },
+    );
+
     return {
       developerUsername: developer.username,
       password,

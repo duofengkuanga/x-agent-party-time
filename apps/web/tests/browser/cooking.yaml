@@ -247,19 +247,61 @@ cases:
       - text: { sel: '[aria-label="人工工程流转"]', contains: 增加后端协作 }
       - eval: 'parseFloat(getComputedStyle(document.querySelector(".collab-routing-actions")).columnGap) >= 8'
 
-  - name: developer process tabs still preserve the report and modal position
+  - name: developer timeline keeps four fixed fields and all identifiers
     steps:
       - click: 'button[aria-label="关闭详情抽屉"]'
       - click: 'button[aria-label^="修复更新页签滚动回归，"]'
-      - wait: '.collab-bug-drawer--split'
+      - wait: '.collab-bug-drawer--developer'
       - eval: 'window.developerModalTop=document.querySelector(".collab-bug-drawer").getBoundingClientRect().top; true'
-      - click: '.collab-bug-detail-tabs button:last-child'
-      - click: '.collab-bug-detail-tabs button:first-child'
     assert:
-      - visible: '.collab-bug-identity'
-      - visible: '.collab-bug-detail-context'
-      - visible: '.collab-bug-detail-activity > [data-progress-kind="repair"]'
+      - visible: '.collab-execution-identities [aria-label="缺陷 ID"]'
+      - visible: '.collab-execution-identities [aria-label="修复会话 ID"]'
+      - visible: '.collab-execution-identities [aria-label="更新会话 ID"]'
+      - count: { sel: '.collab-execution-round', eq: 3 }
+      - count: { sel: '.collab-execution-round[open]', eq: 1 }
+      - eval: '[...document.querySelectorAll(".collab-execution-round__fields")].every(dl=>[...dl.querySelectorAll(":scope > div > dt")].map(dt=>dt.textContent).join("|")==="执行进展|代码变更|检查结果|交付状态")'
+      - hidden: '.collab-developer-source[open]'
+      - hidden: '.collab-bug-detail-tabs'
       - hidden: '.collab-tester-detail'
+
+  - name: defect and session identifiers copy exact values and report clipboard errors
+    steps:
+      - eval: >-
+          window.originalClipboard=navigator.clipboard;
+          Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async value=>{window.copiedIdentifier=value;}}}); true
+      - click: 'button[aria-label="复制缺陷 ID"]'
+      - eval: 'window.defectCopyMatches=window.copiedIdentifier===document.querySelector("[aria-label=\"缺陷 ID\"] code").textContent; true'
+      - click: 'button[aria-label="复制修复会话 ID"]'
+      - eval: 'window.repairCopyMatches=window.copiedIdentifier===document.querySelector("[aria-label=\"修复会话 ID\"] code").textContent; true'
+      - click: 'button[aria-label="复制更新会话 ID"]'
+      - eval: >-
+          window.updateCopyMatches=window.copiedIdentifier===document.querySelector('[aria-label="更新会话 ID"] code').textContent;
+          Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async ()=>{throw new Error('denied');}}}); true
+      - click: 'button[aria-label="复制更新会话 ID"]'
+      - wait: '[aria-label="更新会话 ID"] [role="alert"]'
+      - eval: 'Object.defineProperty(navigator,"clipboard",{configurable:true,value:window.originalClipboard}); true'
+    assert:
+      - eval: 'window.defectCopyMatches && window.repairCopyMatches && window.updateCopyMatches'
+      - text:
+          {
+            sel: '[aria-label="更新会话 ID"] [role="alert"]',
+            contains: 复制失败,
+          }
+      - text: { sel: 'button[aria-label="复制更新会话 ID"]', equals: 复制 }
+
+  - name: history expansion and source report stay stable during refresh
+    steps:
+      - click: '.collab-execution-round[data-round-kind="repair"] > summary'
+      - click: '.collab-developer-source > summary'
+      - eval: 'window.developerExpanded=[...document.querySelectorAll(".collab-execution-round[open] > summary strong")].map(n=>n.textContent).join("|"); true'
+      - wait: 1800
+    assert:
+      - text:
+          {
+            sel: '.collab-developer-source[open]',
+            contains: 修复更新页签滚动回归 的预期结果,
+          }
+      - eval: '[...document.querySelectorAll(".collab-execution-round[open] > summary strong")].map(n=>n.textContent).join("|")===window.developerExpanded'
       - eval: 'Math.abs(document.querySelector(".collab-bug-drawer").getBoundingClientRect().top-window.developerModalTop)<=1'
 
   - name: developer can return to the source defect for manual routing
@@ -268,7 +310,7 @@ cases:
       - click: 'button[aria-label^="定位数据缺失缺陷，"]'
       - wait: '[aria-label="人工工程流转"]'
     assert:
-      - visible: '.collab-bug-detail-tabs'
+      - visible: '.collab-developer-timeline'
 
   - name: manual transfer closes the source and queues a related backend bug
     steps:
@@ -725,6 +767,7 @@ cases:
       - open: __BASE_URL__/cooking/__SUBMISSION_ID__
       - wait: 'button[aria-label^="待前后端分诊缺陷，"]'
       - click: 'button[aria-label^="待前后端分诊缺陷，"]'
+      - click: '.collab-developer-source > summary'
       - click: '.collab-bug-detail-context__actions button'
       - wait: '#collab-bug-form'
       - click: '.collab-joint-choice input'
@@ -735,6 +778,53 @@ cases:
       - count: { sel: 'button[aria-label^="待前后端分诊缺陷，"]', eq: 2 }
       - visible: 'article[data-stage="WAITING_FOR_REPAIR"] button[aria-label^="待前后端分诊缺陷，前端"]'
       - visible: 'article[data-stage="WAITING_FOR_REPAIR"] button[aria-label^="待前后端分诊缺陷，后端"]'
+
+  - name: shared update opens a batch with one execution and two defect entries
+    steps:
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: '.collab-update-batch-card'
+      - click: '.collab-update-batch-card .collab-bug-card__open'
+      - wait: '[aria-label="批次内缺陷"]'
+    assert:
+      - count: { sel: '[aria-label="批次内缺陷"] button', eq: 2 }
+      - count:
+          { sel: '.collab-execution-round[data-round-kind="update"]', eq: 1 }
+      - text:
+          {
+            sel: '[aria-label="更新会话 ID"] code',
+            equals: browser-shared-update,
+          }
+      - text:
+          { sel: '[aria-label="确认整批更新结果"]', contains: 全部 2 条缺陷 }
+      - text: { sel: '.collab-execution-round__delivery', contains: 本轮已推送 }
+
+  - name: a batch member opens its own history and can return to the shared update
+    steps:
+      - click: '[aria-label="批次内缺陷"] button:first-child'
+      - wait: '[aria-label="修复与更新记录"]'
+    assert:
+      - count:
+          { sel: '.collab-execution-round[data-round-kind="repair"]', eq: 1 }
+      - count:
+          { sel: '.collab-execution-round[data-round-kind="update"]', eq: 1 }
+      - text:
+          {
+            sel: '[aria-label="更新会话 ID"] code',
+            equals: browser-shared-update,
+          }
+      - eval: 'document.querySelector("[aria-label=\"修复会话 ID\"] code").textContent.startsWith("browser-batch-repair-")'
+
+  - name: deployment confirmation updates every member of the shared batch
+    steps:
+      - eval: '[...document.querySelectorAll(".collab-execution-round button")].find(b=>b.textContent==="查看批次详情").click(); true'
+      - wait: '[aria-label="批次内缺陷"]'
+      - eval: '[...document.querySelectorAll("[aria-label=\"确认整批更新结果\"] button")].find(b=>b.textContent==="提交外部结果").click(); true'
+      - wait: 'article[data-stage="WAITING_FOR_VERIFICATION"] button[aria-label^="批次更新缺陷甲，"]'
+    assert:
+      - visible: 'article[data-stage="WAITING_FOR_VERIFICATION"] button[aria-label^="批次更新缺陷乙，"]'
+      - text: { sel: '[aria-label="环境更新确认"]', contains: 成功 }
+      - text: { sel: '.collab-execution-round__delivery', contains: 本轮已推送 }
+      - hidden: '[aria-label="确认整批更新结果"]'
 
   - name: occupied environment shows explicit takeover confirmation and retains form on cancel
     steps:

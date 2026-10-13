@@ -382,6 +382,10 @@ export function BugBoard({
           pending={pending}
           run={run}
           onClearError={() => setError(null)}
+          onOpenBatch={(batchId) => {
+            setError(null);
+            setDrawer({ mode: 'batch', batchId });
+          }}
           onChanged={(revision, message) => {
             setDrawer(
               drawer.mode === 'create'
