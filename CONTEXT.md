@@ -96,6 +96,10 @@ _Avoid_: Issue、Ticket
 针对一个 Bug 的一次 Codex 修复尝试；再次执行会产生新的 Attempt，而不是重置已有记录。
 _Avoid_: Execution、Repair Task
 
+**Repair Handoff**:
+一次已完成 Repair Attempt 留给后续 Update 的工作上下文，随该次修复的候选提交进入冻结批次；它说明先前工作和剩余事项，不代表最终组合已经通过验收。
+_Avoid_: Validation Certificate、Evidence Cache、Session Summary
+
 **Update Batch**:
 同一 Submission Item 中使用相同部署配置的一组待更新 Bug 在一个冻结时刻形成的原子集成、Push 和部署单位。
 _Avoid_: Deployment、Release
