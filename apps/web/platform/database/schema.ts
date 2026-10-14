@@ -40,6 +40,6 @@ export function initializeSchema(database: Database): void {
 function schemaMismatch(current: number, expected: number): PlatformError {
   return new PlatformError(
     'SCHEMA_VERSION_MISMATCH',
-    `Server 数据库版本不匹配（当前 ${current}，需要 ${expected}）。数据已保留，请先备份并提供对应版本的迁移方案。`,
+    `Server 数据库版本不匹配（当前 ${current}，需要 ${expected}）。数据已保留，请先使用 bun run migrate:server -- --database <数据库路径> 预检保留数据的迁移方案。`,
   );
 }

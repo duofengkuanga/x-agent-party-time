@@ -78,7 +78,7 @@ bun install --frozen-lockfile
 bun run dev
 ```
 
-`bun run dev` 会在仓库 `.scratch/development/` 中准备数据库并自动创建上述本地开发用户。新流程使用 Schema 29；旧版本明确报错并保留数据，不自动迁移或清空。切换前先完成需保留的旧任务，再备份并明确确认重建开发数据。
+`bun run dev` 会在仓库 `.scratch/development/` 中准备数据库并自动创建上述本地开发用户。新流程使用 Schema 29；旧版本明确报错并保留数据，不自动迁移或清空。Schema 27、28 可按下述流程保留数据升级。
 
 `bun run dev` 前台管理两个进程：
 
@@ -130,7 +130,29 @@ bun run dev:xapt
 
 `bun run dev`、`bun run dev:app` 和 `bun run seed:app` 使用这个目录。开发启动流程保留数据库和附件，不支持的 Schema 版本会阻止启动；如果 `AGENT_PARTY_TIME_HOME` 指向仓库 `.scratch/` 之外，开发准备脚本会拒绝处理。
 
-正式 Server 数据默认位于 `~/.agent-party-time/`，也可以通过 `AGENT_PARTY_TIME_HOME` 指定。启动只接受 Schema 29 和空数据库。新交接契约不兼容旧任务；切换前清点旧任务、备份数据，并按明确确认的方案重建。现有旧库不会被启动流程改写。
+正式 Server 数据默认位于 `~/.agent-party-time/`，也可以通过 `AGENT_PARTY_TIME_HOME` 指定。启动只接受 Schema 29 和空数据库，现有旧库不会被启动流程改写。
+
+### 保留数据升级 Server
+
+从仓库根目录执行预检，明确指定报错 Server 实际使用的数据库。下面的路径仅指本仓库开发库：
+
+```bash
+bun run migrate:server -- --database .scratch/development/server/server.sqlite
+```
+
+预检默认只读，检查 Schema 27/28 的完整结构、数据库完整性和未完成旧流程。若存在未完成执行、交互、更新批次、候选提交或已开始但未结束的修复流程，先在旧 Server 完成，不清空任务来绕过检查。
+
+确认目标库及迁移方案后停止该 Server；本仓库开发进程可用 `bun run stop`。再执行：
+
+```bash
+bun run migrate:server -- --database .scratch/development/server/server.sqlite --apply
+```
+
+工具先取得写锁，通过 SQLite `VACUUM INTO` 将包含 WAL 提交的完整数据库备份到原库旁的 `server.sqlite.backup-*/server.sqlite`，验证备份后才在事务中升级。备份目录权限为 `0700`，文件为 `0600`；输出 `backupPath` 是本次备份路径。迁移前后逐表校验记录数量、原有字段和业务内容，并检查外键和完整性；失败时回滚，版本号最后才更新。重复运行 Schema 29 不再迁移。
+
+保留全部历史修复、更新、会话、账号、项目、绑定和附件索引，附件文件目录不变。旧结果一次性转换成当前契约：修复记录新增交接字段并注明旧版本未记录的信息；更新记录的交接使用列表表示旧记录中实际留存的内容，不虚构命令或验证结果；已完成批次根据原修复来源和完整提交 Hash 重建交接关联。执行结果及已报告结果同步转换，所有既有字段的业务内容保持不变。无法无损转换或关联不完整时整次回滚。应用运行时只接受最新格式，不增加旧格式读取分支。完成后重新启动对应 Server，并核对历史详情与 Agent 连接。
+
+事务失败无需手工恢复。若成功迁移后必须退回旧 Server，先停止全部访问该库的进程，将当前数据库及同名 WAL/SHM 文件一起另存，保留现有附件目录，再从已验证的备份复制恢复到原路径并启动匹配版本的 Server。备份之后产生的新记录需要另行处理；不要只改 `user_version`，也不要把旧 WAL 文件与恢复库混用。
 
 xapt 本机状态：
 
