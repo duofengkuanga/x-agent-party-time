@@ -6,6 +6,103 @@ setup:
   - click: '.auth-submit'
   - wait: { load: networkidle }
 cases:
+  - name: unassigned deletion asks for confirmation and cancel restores focus
+    steps:
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: 'button[aria-label^="测试负责人删除缺陷，"]'
+      - click: 'button[aria-label^="测试负责人删除缺陷，"]'
+      - wait: '[aria-label="删除待分配缺陷"] button'
+      - eval: >-
+          (() => { const shell=document.querySelector('.collab-shell'), button=document.querySelector('[aria-label="删除待分配缺陷"] button');
+          window.deleteDefaultStyles=['paper','night'].every(theme=>{shell.dataset.theme=theme;return getComputedStyle(button).backgroundColor==='rgba(0, 0, 0, 0)';});
+          shell.dataset.theme='paper';return true;})()
+      - click: '[aria-label="删除待分配缺陷"] button'
+      - wait: '[aria-label="确认删除缺陷"]'
+    assert:
+      - text: { sel: '[aria-label="删除待分配缺陷"]', contains: 删除后无法恢复 }
+      - eval: 'document.activeElement.textContent.trim() === "取消"'
+      - eval: 'window.deleteDefaultStyles'
+      - visible: 'button[aria-label^="测试负责人删除缺陷，"]'
+
+  - name: cancel leaves the unassigned bug intact and the delete trigger focused
+    steps:
+      - click: '[aria-label="确认删除缺陷"] button:first-child'
+    assert:
+      - hidden: '[aria-label="确认删除缺陷"]'
+      - eval: 'document.activeElement.textContent.trim() === "删除缺陷"'
+      - visible: 'button[aria-label^="测试负责人删除缺陷，"]'
+
+  - name: deletion has reachable confirmation in both themes and disables pending actions
+    steps:
+      - click: '[aria-label="删除待分配缺陷"] button'
+      - eval: >-
+          (() => { const shell=document.querySelector('.collab-shell');
+          window.deleteFits=['paper','night'].every(theme=>{ shell.dataset.theme=theme;
+          const group=document.querySelector('[aria-label="确认删除缺陷"]');
+          const box=group.getBoundingClientRect(); return box.top>=0 && box.bottom<=innerHeight && box.right<=innerWidth; });
+          shell.dataset.theme='paper'; window.deleteOriginalFetch=window.fetch;
+          window.fetch=(...args)=>new Headers(args[1]?.headers).has('Next-Action')
+          ? new Promise((resolve,reject)=>{window.rejectDelete=reject;}) : window.deleteOriginalFetch(...args); return true; })()
+      - click: '[aria-label="确认删除缺陷"] button:last-child'
+      - wait: '[aria-label="确认删除缺陷"] button:disabled'
+    assert:
+      - eval: 'window.deleteFits'
+      - eval: '[...document.querySelectorAll("[aria-label=确认删除缺陷] button")].every(button=>button.disabled)'
+      - text: { sel: '[aria-label="删除待分配缺陷"]', contains: 正在删除 }
+
+  - name: deletion failure stays visible and permits retry
+    steps:
+      - eval: 'window.fetch=window.deleteOriginalFetch; window.rejectDelete(new TypeError("Failed to fetch")); true'
+      - wait: '[aria-label="删除待分配缺陷"] [role="alert"]'
+    assert:
+      - visible: 'button[aria-label^="测试负责人删除缺陷，"]'
+      - eval: '[...document.querySelectorAll("[aria-label=确认删除缺陷] button")].every(button=>!button.disabled)'
+
+  - name: tester confirms deletion and refresh removes the card and drawer
+    steps:
+      - click: '[aria-label="确认删除缺陷"] button:last-child'
+      - wait: 1200
+    assert:
+      - hidden: 'button[aria-label^="测试负责人删除缺陷，"]'
+      - hidden: '.collab-bug-drawer'
+      - text: { sel: '[role="status"]', contains: 已删除 }
+
+  - name: submission item developer can delete unassigned bugs from developer details
+    steps:
+      - eval: "[...document.querySelectorAll('button')].find(button=>button.textContent?.includes('退出登录'))?.click(); true"
+      - wait: 'input[name="username"]'
+      - fill: { sel: 'input[name="username"]', text: __DEVELOPER_USERNAME__ }
+      - fill: { sel: 'input[name="password"]', text: __PASSWORD__ }
+      - click: '.auth-submit'
+      - wait: { load: networkidle }
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: 'button[aria-label^="开发负责人删除缺陷，"]'
+      - click: 'button[aria-label^="开发负责人删除缺陷，"]'
+      - wait: '.collab-bug-drawer--developer'
+      - click: '[aria-label="删除待分配缺陷"] button'
+      - click: '[aria-label="确认删除缺陷"] button:last-child'
+      - wait: 1200
+    assert:
+      - hidden: 'button[aria-label^="开发负责人删除缺陷，"]'
+      - hidden: '.collab-bug-drawer'
+
+  - name: assigned bugs do not offer deletion and tester session is restored
+    steps:
+      - click: 'button[aria-label^="待取消缺陷，"]'
+      - wait: '.collab-bug-drawer--developer'
+    assert:
+      - hidden: '[aria-label="删除待分配缺陷"]'
+
+  - name: return to tester for remaining acceptance cases
+    steps:
+      - click: 'button[aria-label="关闭详情抽屉"]'
+      - eval: "[...document.querySelectorAll('button')].find(button=>button.textContent?.includes('退出登录'))?.click(); true"
+      - wait: 'input[name="username"]'
+      - fill: { sel: 'input[name="username"]', text: __USERNAME__ }
+      - fill: { sel: 'input[name="password"]', text: __PASSWORD__ }
+      - click: '.auth-submit'
+      - wait: { load: networkidle }
+
   - name: tester details show a compact report without technical chrome
     steps:
       - open: __BASE_URL__/cooking/__SUBMISSION_ID__

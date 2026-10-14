@@ -120,6 +120,16 @@ export const AssignBugInputSchema = VersionedCookingMutationSchema.extend({
 
 export const RequestRepairInputSchema = VersionedCookingMutationSchema;
 
+export const DeleteUnassignedBugInputSchema = VersionedCookingMutationSchema;
+export type DeleteUnassignedBugInput = z.infer<typeof DeleteUnassignedBugInputSchema>;
+export const DeleteUnassignedBugResultSchema = z.object({
+  deletedBugId: BugIdSchema,
+  submissionId: SubmissionIdSchema,
+  revision: z.number().int().positive(),
+  unboundAttachmentIds: BugMutationAttachmentIdsSchema,
+});
+export type DeleteUnassignedBugResult = z.infer<typeof DeleteUnassignedBugResultSchema>;
+
 export const RouteBugInputSchema = VersionedCookingMutationSchema.extend({
   kind: z.enum(['TRANSFER', 'COLLABORATE']),
   targetSubmissionItemId: SubmissionItemIdSchema,
@@ -129,6 +139,7 @@ export type RouteBugInput = z.infer<typeof RouteBugInputSchema>;
 export const BugAttachmentViewSchema = CookingAttachmentViewSchema;
 
 export const BugActionSchema = z.enum([
+  'DELETE',
   'TRANSFER',
   'COLLABORATE',
   'EDIT_REPORT',

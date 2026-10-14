@@ -35,6 +35,8 @@ import {
   type BugDeleteResponse,
   type CreateBugInput,
   type RequestRepairInput,
+  type DeleteUnassignedBugInput,
+  type DeleteUnassignedBugResult,
   type UpdateBugReportInput,
 } from '../contract';
 
@@ -651,6 +653,19 @@ export class BugService {
   ): void {
     this.db.run(`DELETE FROM cooking_bug_attachment WHERE bug_id = ?`, [bugId]);
     this.bindReportAttachments(bugId, attachmentIds, now);
+  }
+
+  deleteUnassignedBug(
+    actorUserId: string,
+    bugId: string,
+    input: DeleteUnassignedBugInput,
+  ): DeleteUnassignedBugResult {
+    return new BugDeletion(
+      this.db,
+      (id) => this.queries.requireBug(id),
+      this.writes,
+      () => this.now(),
+    ).deleteUnassignedBug(actorUserId, bugId, input);
   }
 
   deleteBugs(input: BugDeleteRequest): BugDeleteResponse {

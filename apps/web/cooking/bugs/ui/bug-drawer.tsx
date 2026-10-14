@@ -7,6 +7,7 @@ import { drawerTitle, bugLabel } from './board-model';
 import { UpdateBatchDetails } from './update-details';
 import { BugDetail } from './bug-detail';
 import { BugForm } from './bug-editor';
+import { BugDeleteControl } from './bug-delete-control';
 import { TesterBugDetail, type RunTesterAction } from './tester-bug-detail';
 
 export function BugDrawer({
@@ -106,6 +107,17 @@ export function BugDrawer({
             </button>
           </div>
         </header>
+        {drawer.mode === 'view' && bug ? (
+          <BugDeleteControl
+            key={`delete-${bug.id}`}
+            bug={bug}
+            error={error}
+            pending={pending}
+            run={run}
+            onClearError={onClearError}
+            onDeleted={onClose}
+          />
+        ) : null}
         {drawer.mode === 'batch' ? (
           <UpdateBatchDetails
             batch={batch!}

@@ -10,7 +10,11 @@ import { type RepairActionResult } from '@/cooking/repair/server/actions';
 import type { UpdateBatchView } from '@/cooking/update/contract';
 import { type UpdateActionResult } from '@/cooking/update/server/actions';
 import type { BugView } from '../contract';
-import { requestRepairAction, type BugActionResult } from '../server/actions';
+import {
+  requestRepairAction,
+  type BugActionResult,
+  type DeleteBugActionResult,
+} from '../server/actions';
 
 export const STATUS_COLUMNS = [
   { status: 'WAITING_FOR_REPAIR', label: '待修复', note: '录入' },
@@ -31,7 +35,11 @@ export type Drawer =
   | { mode: 'batch'; batchId: string };
 
 export type WorkspaceActionResult =
-  BugActionResult | RepairActionResult | UpdateActionResult | BugLifecycleActionResult;
+  | BugActionResult
+  | DeleteBugActionResult
+  | RepairActionResult
+  | UpdateActionResult
+  | BugLifecycleActionResult;
 
 export type UndoAction = {
   message: string;

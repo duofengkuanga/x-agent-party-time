@@ -13,12 +13,32 @@ import { bugService } from '@/cooking/runtime/services';
 import type {
   AssignBugInput,
   BugMutationResult,
+  DeleteUnassignedBugInput,
+  DeleteUnassignedBugResult,
   LinkedBugsMutationResult,
   RequestRepairInput,
 } from '../contract';
 import type { RouteBugInput } from '../contract';
 
 export type BugActionResult = InteractiveActionResult<BugMutationResult>;
+export type DeleteBugActionResult = InteractiveActionResult<DeleteUnassignedBugResult>;
+
+export async function deleteUnassignedBugAction(
+  bugId: string,
+  input: DeleteUnassignedBugInput,
+): Promise<DeleteBugActionResult> {
+  return runInteractiveMutation({
+    validationEvent: 'cooking_bug_action_validation_failed',
+    command: ({ userId }) => {
+      const result = bugService().deleteUnassignedBug(userId, bugId, input);
+      return {
+        result,
+        cleanupFileIds: result.unboundAttachmentIds,
+        refreshPaths: ['/cooking', `/cooking/${result.submissionId}`],
+      };
+    },
+  });
+}
 
 const REPORT_UPLOAD_OPTIONS = {
   maxFiles: 5,

@@ -271,7 +271,7 @@ Execution 的领域无关状态转换在 `platform/execution/service.ts`；`queu
 
 Cooking 样式入口 `app/cooking/cooking.css` 只声明有序导入；`styles/` 按页面和职责维护样式，导入顺序保留共享控件与布局的层叠规则。看板卡片与表单、工程目录与工程管理分别维护在相邻的样式文件中，附件选择与展示集中在 `styles/attachments.css`，Agent 台账与连接页分别由 `styles/agents.css` 和 `styles/agent-connect.css` 承担；跨页面的 accent 悬停与焦点规则由最后导入的 `styles/accent-interactions.css` 统一管理。集成测试通过 `testing/database.ts` 管理隔离数据库，通过 `cooking/testing/scenario.ts` 装配真实用户、成员、工程与绑定，再由 `cooking/testing/project.ts` 建立完整提测场景；协议级 Agent 测试通过 `cooking/testing/runner-http.ts` 装配本地 Runner HTTP 处理器。
 
-`BugService` 保留缺陷命令入口，`BugQueries` 集中有权限的读取、附件访问与工作区投影。`BugService.deleteBugs()` 是调用方的删除 Interface，内部 `BugDeletion` 集中处理关联执行收集、活动检查、事务删除、依赖校验与提测版本推进。测试继续通过 `BugService` 验证完整行为，不依赖私有步骤。
+`BugService` 保留缺陷命令入口，`BugQueries` 集中有权限的读取、附件访问与工作区投影。`BugService.deleteBugs()` 提供维护命令的删除 Interface；`deleteUnassignedBug()` 提供网页删除入口，仅允许活动提测单的测试负责人或提测项开发负责人删除尚未分配、未开始修复的缺陷。网页删除需确认，并校验版本、记录审计及支持幂等重试。内部 `BugDeletion` 集中处理权限与状态校验、关联执行收集、活动检查、事务删除、依赖校验与提测版本推进。测试继续通过 `BugService` 验证完整行为，不依赖私有步骤。
 
 依赖方向：
 

@@ -1,7 +1,13 @@
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
 import type { TestSubmissionWriteStore } from '@/cooking/submissions/server/test-submission-write-store';
+import { BugQueries } from './bug-queries';
+import { canDeleteUnassignedBug } from './bug-deletion-policy';
 import {
+  DeleteUnassignedBugInputSchema,
+  DeleteUnassignedBugResultSchema,
+  type DeleteUnassignedBugInput,
+  type DeleteUnassignedBugResult,
   BugDeleteRequestSchema,
   type BugDeleteRequest,
   type BugDeleteResponse,
@@ -15,6 +21,61 @@ export class BugDeletion {
     private readonly writes: TestSubmissionWriteStore,
     private readonly now: () => Date,
   ) {}
+
+  deleteUnassignedBug(
+    actorUserId: string,
+    bugId: string,
+    input: DeleteUnassignedBugInput,
+  ): DeleteUnassignedBugResult {
+    const parsed = DeleteUnassignedBugInputSchema.parse(input);
+    return this.writes.run({
+      mutationId: parsed.mutationId,
+      actorUserId,
+      operation: `BUG_DELETE_UNASSIGNED:${bugId}`,
+      resourceType: 'BUG',
+      resultSchema: DeleteUnassignedBugResultSchema,
+      submissionId: (result) => result.submissionId,
+      perform: () => {
+        const bug = this.requireBug(bugId);
+        const queries = new BugQueries(this.db);
+        const access = queries.requireAccess(actorUserId, bug.submissionId);
+        const anyResponsible = queries.isAnyResponsible(actorUserId, bug.submissionId);
+        if (actorUserId !== access.tester_user_id && !anyResponsible)
+          throw new PlatformError(
+            'PERMISSION_DENIED',
+            '只有测试负责人或提测项的开发负责人可以删除待分配缺陷',
+          );
+        if (bug.version !== parsed.expectedVersion)
+          throw new PlatformError('RESOURCE_CONFLICT', '缺陷已发生变化，请刷新后重试');
+        if (!canDeleteUnassignedBug(actorUserId, access, bug, anyResponsible))
+          throw new PlatformError(
+            'INVALID_TRANSITION',
+            '只能删除活动提测单中尚未分配且未开始修复的缺陷',
+          );
+        this.deleteBugRows([bug.id], []);
+        return {
+          result: {
+            deletedBugId: bug.id,
+            submissionId: bug.submissionId,
+            revision: this.writes.bumpRevision(
+              bug.submissionId,
+              this.now().toISOString(),
+            ),
+            unboundAttachmentIds: [
+              ...bug.report.actualResultAttachmentIds,
+              ...bug.report.expectedResultAttachmentIds,
+            ],
+          },
+          resourceId: bug.id,
+          audit: {
+            projectId: access.project_id,
+            action: 'BUG_DELETED',
+            details: { shortId: bug.shortId, title: bug.report.title },
+          },
+        };
+      },
+    });
+  }
 
   deleteBugs(input: BugDeleteRequest): BugDeleteResponse {
     const parsed = BugDeleteRequestSchema.parse(input);

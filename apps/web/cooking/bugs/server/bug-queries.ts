@@ -1,5 +1,6 @@
 import { BugRelations, stageLabel } from './bug-relations';
 import { bugRoutingPolicy } from './bug-routing-policy';
+import { canDeleteUnassignedBug } from './bug-deletion-policy';
 import { parseRow, type DatabaseRow } from '@/platform/database/row-mapper';
 import { environmentReady } from '@/cooking/submissions/server/environment-access';
 import { CookingAttachmentViewSchema } from '@/cooking/shared/contract';
@@ -254,6 +255,7 @@ export class BugQueries {
     const tester = userId === access.tester_user_id;
     const anyResponsible = this.isAnyResponsible(userId, bug.submissionId);
     const actions: Array<
+      | 'DELETE'
       | 'TRANSFER'
       | 'COLLABORATE'
       | 'EDIT_REPORT'
@@ -267,6 +269,8 @@ export class BugQueries {
       | 'ARCHIVE'
       | 'UNARCHIVE'
     > = [];
+    if (canDeleteUnassignedBug(userId, access, bug, anyResponsible))
+      actions.push('DELETE');
     if (!routing.transferReason) actions.push('TRANSFER');
     if (!routing.collaborationReason) actions.push('COLLABORATE');
     if (!bug.reportLockedAt) {

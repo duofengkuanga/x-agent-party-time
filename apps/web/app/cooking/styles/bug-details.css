@@ -616,6 +616,14 @@
   gap: 12px;
 }
 
+.collab-bug-delete-control {
+  flex: 0 0 auto;
+  max-height: 35%;
+  overflow-y: auto;
+  padding: 12px 28px;
+  border-bottom: 1px solid var(--line);
+}
+
 .collab-routing-actions {
   display: flex;
   flex-wrap: wrap;
