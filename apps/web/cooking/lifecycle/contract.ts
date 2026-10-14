@@ -123,6 +123,38 @@ export const ReopenBugInputSchema = VersionedCookingMutationSchema.extend({
   attachmentIds: z.array(z.uuid()).max(5),
 });
 
+export const LinkedBugReviewInputSchema = z.discriminatedUnion('decision', [
+  VersionedCookingMutationSchema.extend({
+    decision: z.literal('PASSED'),
+    relatedExpectedVersion: z.number().int().positive(),
+    attachmentIds: z.array(z.uuid()).length(0),
+  }),
+  VersionedCookingMutationSchema.extend({
+    decision: z.literal('ISSUE'),
+    relatedExpectedVersion: z.number().int().positive(),
+    ownership: z.enum(['FRONTEND', 'BACKEND', 'BOTH']),
+    feedback: z.string().trim().min(1).max(8_000),
+    attachmentIds: z.array(z.uuid()).max(5),
+  }),
+]);
+
+export const LinkedBugReviewResultSchema = z.object({
+  bugIds: z.array(BugIdSchema).length(2),
+  changedBugIds: z.array(BugIdSchema).min(1).max(2),
+  executionIds: z.array(z.uuid()).max(2),
+  revision: z.number().int().positive(),
+});
+
+export const LinkedBugArchiveInputSchema = VersionedCookingMutationSchema.extend({
+  relatedExpectedVersion: z.number().int().positive(),
+});
+
+export const LinkedBugArchiveResultSchema = z.object({
+  bugIds: z.array(BugIdSchema).length(2),
+  bugVersions: z.array(z.number().int().positive()).length(2),
+  revision: z.number().int().positive(),
+});
+
 export const LifecycleCommandInputSchema = VersionedCookingMutationSchema;
 
 export const ResolveCleanupInteractionInputSchema = VersionedCookingMutationSchema.extend(
@@ -165,6 +197,10 @@ export const CleanupExecutionResultSchema = z.discriminatedUnion('outcome', [
 ]);
 export type VerifyBugInput = z.infer<typeof VerifyBugInputSchema>;
 export type ReopenBugInput = z.infer<typeof ReopenBugInputSchema>;
+export type LinkedBugReviewInput = z.infer<typeof LinkedBugReviewInputSchema>;
+export type LinkedBugReviewResult = z.infer<typeof LinkedBugReviewResultSchema>;
+export type LinkedBugArchiveInput = z.infer<typeof LinkedBugArchiveInputSchema>;
+export type LinkedBugArchiveResult = z.infer<typeof LinkedBugArchiveResultSchema>;
 export type LifecycleCommandInput = z.infer<typeof LifecycleCommandInputSchema>;
 export type ResolveCleanupInteractionInput = z.infer<
   typeof ResolveCleanupInteractionInputSchema

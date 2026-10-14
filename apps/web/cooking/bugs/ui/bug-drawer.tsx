@@ -9,6 +9,7 @@ import { BugDetail } from './bug-detail';
 import { BugForm } from './bug-editor';
 import { BugDeleteControl } from './bug-delete-control';
 import { TesterBugDetail, type RunTesterAction } from './tester-bug-detail';
+import { linkedReviewPairFor } from './linked-review-model';
 
 export function BugDrawer({
   drawer,
@@ -45,6 +46,8 @@ export function BugDrawer({
       : null;
   const summaryOnly =
     snapshot.submission.submission.testerUserId === snapshot.currentUser.id;
+  const pair =
+    summaryOnly && bug ? linkedReviewPairFor(bug, snapshot.bugs) : null;
   if (drawer.mode !== 'create' && drawer.mode !== 'batch' && !bug) return null;
   if (drawer.mode === 'batch' && !batch) return null;
   const viewing = drawer.mode === 'view' || drawer.mode === 'batch';
@@ -69,8 +72,12 @@ export function BugDrawer({
               <h2>{bug.report.title}</h2>
               {summaryOnly ? (
                 <div className="collab-tester-detail__meta">
-                  <span>{bugLabel(bug)}</span>
-                  {bug.assignment ? (
+                  {pair?.ready ? (
+                    <span>前端＋后端 · 同一问题</span>
+                  ) : (
+                    <span>{bugLabel(bug)}</span>
+                  )}
+                  {!pair?.ready && bug.assignment ? (
                     <>
                       <span>
                         {bug.assignment.engineeringType === 'FRONTEND'

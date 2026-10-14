@@ -60,6 +60,12 @@ export class LifecycleService {
     this.bugCommands.verifyBug(...args);
   readonly reopenBug: BugLifecycleCommands['reopenBug'] = (...args) =>
     this.bugCommands.reopenBug(...args);
+  readonly reviewLinkedBugs: BugLifecycleCommands['reviewLinkedBugs'] = (...args) =>
+    this.bugCommands.reviewLinkedBugs(...args);
+  readonly archiveLinkedBugs: BugLifecycleCommands['archiveLinkedBugs'] = (...args) =>
+    this.bugCommands.archiveLinkedBugs(...args);
+  readonly unarchiveLinkedBugs: BugLifecycleCommands['unarchiveLinkedBugs'] = (...args) =>
+    this.bugCommands.unarchiveLinkedBugs(...args);
   readonly cancelBug: BugLifecycleCommands['cancelBug'] = (...args) =>
     this.bugCommands.cancelBug(...args);
   readonly restoreBug: BugLifecycleCommands['restoreBug'] = (...args) =>

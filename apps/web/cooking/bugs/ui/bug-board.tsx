@@ -8,18 +8,23 @@ import { useWorkspaceMutation } from './use-workspace-mutation';
 
 import {
   archiveBugAction,
+  archiveLinkedBugsAction,
   cancelBugAction,
   reopenBugAction,
+  reviewLinkedBugsAction,
   restoreBugAction,
   unarchiveBugAction,
+  unarchiveLinkedBugsAction,
   verifyBugAction,
 } from '@/cooking/lifecycle/server/actions';
 import { createClientId } from '@/cooking/shared/ui/client-id';
 import type { CookingWorkspaceSnapshot } from '@/cooking/workspace/contract';
 import {
+  Fragment,
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type DragEvent as ReactDragEvent,
 } from 'react';
 import type { BugView } from '../contract';
@@ -40,10 +45,19 @@ import {
   verificationPassTransition,
 } from './board-model';
 
-import { BugCard, UpdateBatchCard } from './bug-card';
+import { BugCard, LinkedReviewCard, UpdateBatchCard } from './bug-card';
+import {
+  linkedReviewBlockedReason,
+  linkedReviewPairFor,
+  type LinkedReviewPair,
+} from './linked-review-model';
 
 import { BugDrawer } from './bug-drawer';
 import { BugReworkDialog } from './bug-editor';
+import {
+  BoardColumnDivider,
+  useBoardColumnWidths,
+} from './board-column-resize';
 
 const STORAGE_TRANSITIONS = {
   cancelled: {
@@ -80,10 +94,23 @@ export function BugBoard({
   const [archiveDropActive, setArchiveDropActive] = useState(false);
   const [undoAction, setUndoAction] = useState<UndoAction | null>(null);
   const { error, setError, pending, run } = useWorkspaceMutation(onChanged);
+  const columnResize = useBoardColumnWidths();
   const testerView =
     snapshot.currentUser.id === snapshot.submission.submission.testerUserId;
   const activeBugs = snapshot.bugs.filter(
     ({ stage, archivedAt }) => stage !== 'CANCELLED' && !archivedAt,
+  );
+  const linkedReviewPairs = testerView
+    ? activeBugs.flatMap((bug) => {
+        const pair = linkedReviewPairFor(bug, snapshot.bugs);
+        return pair?.ready && pair.primary.id === bug.id ? [pair] : [];
+      })
+    : [];
+  const groupedBugIds = new Set(
+    linkedReviewPairs.flatMap(({ frontend, backend }) => [
+      frontend.id,
+      backend.id,
+    ]),
   );
   const cancelledBugs = snapshot.bugs.filter(
     ({ stage }) => stage === 'CANCELLED',
@@ -91,6 +118,9 @@ export function BugBoard({
   const archivedBugs = snapshot.bugs.filter(({ archivedAt }) => archivedAt);
   const feedbackBug =
     snapshot.bugs.find(({ id }) => id === feedbackIntent?.bugId) ?? null;
+  const feedbackPair = feedbackBug
+    ? linkedReviewPairFor(feedbackBug, snapshot.bugs)
+    : null;
   const draggingBug = snapshot.bugs.find(({ id }) => id === draggingBugId);
 
   useEffect(() => {
@@ -145,6 +175,37 @@ export function BugBoard({
     );
   }
 
+  function archiveLinkedPair(pair: LinkedReviewPair) {
+    const related =
+      pair.frontend.id === pair.primary.id ? pair.backend : pair.frontend;
+    const message = '前后端关联缺陷已归档。';
+    run(
+      () =>
+        archiveLinkedBugsAction(pair.primary.id, {
+          mutationId: createClientId(),
+          expectedVersion: pair.primary.version,
+          relatedExpectedVersion: related.version,
+        }),
+      message,
+      (result) => {
+        if (!result.ok || !('bugVersions' in result.result)) return;
+        const [expectedVersion, relatedExpectedVersion] =
+          result.result.bugVersions;
+        setUndoAction({
+          message,
+          successMessage: '前后端关联缺陷已移出归档。',
+          command: () =>
+            unarchiveLinkedBugsAction(pair.primary.id, {
+              mutationId: createClientId(),
+              expectedVersion: expectedVersion!,
+              relatedExpectedVersion: relatedExpectedVersion!,
+            }),
+        });
+      },
+      null,
+    );
+  }
+
   function dropBug(event: ReactDragEvent<HTMLElement>, stage: MainStage) {
     const bug = draggedBugFrom(event);
     if (!bug) return;
@@ -152,6 +213,10 @@ export function BugBoard({
     if (!transition) return;
     event.preventDefault();
     clearDraggingBug();
+    if (stage === 'DONE') {
+      setDrawer({ mode: 'view', bugId: bug.id });
+      return;
+    }
     run(transition.command, transition.message);
   }
 
@@ -218,10 +283,18 @@ export function BugBoard({
           </button>
         </div>
       ) : null}
-      <div className="collab-board">
-        {STATUS_COLUMNS.map((column) => {
+      <div
+        className="collab-board"
+        ref={columnResize.boardRef}
+        style={{ '--board-columns': columnResize.template } as CSSProperties}
+      >
+        {STATUS_COLUMNS.map((column, index) => {
           const bugs = activeBugs.filter(
-            ({ stage }) => stage === column.status,
+            ({ id, stage }) =>
+              stage === column.status && !groupedBugIds.has(id),
+          );
+          const reviewPairs = linkedReviewPairs.filter(
+            ({ column: reviewColumn }) => reviewColumn === column.status,
           );
           const showBatches = column.status === 'UPDATING' && !testerView;
           const batches = showBatches
@@ -239,130 +312,215 @@ export function BugBoard({
             draggingBug && dragTransition(draggingBug, column.status),
           );
           return (
-            <section
-              className="collab-column"
-              data-drop-target={
-                acceptsDrop && dropTarget === column.status ? 'true' : undefined
-              }
-              key={column.status}
-              onDragEnter={() => {
-                if (acceptsDrop) setDropTarget(column.status);
-              }}
-              onDragLeave={(event) => {
-                if (
-                  event.relatedTarget instanceof Node &&
-                  event.currentTarget.contains(event.relatedTarget)
-                )
-                  return;
-                if (dropTarget === column.status) setDropTarget(null);
-              }}
-              onDragOver={(event) => {
-                if (!acceptsDrop) return;
-                event.preventDefault();
-                event.dataTransfer.dropEffect = 'move';
-              }}
-              onDrop={(event) => dropBug(event, column.status)}
-            >
-              <header>
-                <span>{column.note}</span>
-                <h2>{column.label}</h2>
-                <b>
+            <Fragment key={column.status}>
+              <section
+                className="collab-column"
+                data-drop-target={
+                  acceptsDrop && dropTarget === column.status
+                    ? 'true'
+                    : undefined
+                }
+                onDragEnter={() => {
+                  if (acceptsDrop) setDropTarget(column.status);
+                }}
+                onDragLeave={(event) => {
+                  if (
+                    event.relatedTarget instanceof Node &&
+                    event.currentTarget.contains(event.relatedTarget)
+                  )
+                    return;
+                  if (dropTarget === column.status) setDropTarget(null);
+                }}
+                onDragOver={(event) => {
+                  if (!acceptsDrop) return;
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = 'move';
+                }}
+                onDrop={(event) => dropBug(event, column.status)}
+              >
+                <header>
+                  <span>{column.note}</span>
+                  <h2>{column.label}</h2>
+                  <b>
+                    {showBatches
+                      ? batches.length.toString().padStart(2, '0')
+                      : (bugs.length + reviewPairs.length)
+                          .toString()
+                          .padStart(2, '0')}
+                  </b>
+                </header>
+                <div className="collab-column__cards">
                   {showBatches
-                    ? batches.length.toString().padStart(2, '0')
-                    : bugs.length.toString().padStart(2, '0')}
-                </b>
-              </header>
-              <div className="collab-column__cards">
-                {showBatches
-                  ? batches.map((batch) => {
-                      const engineeringType = snapshot.bugs.find(
-                        ({ id }) => id === batch.entries[0]?.bugId,
-                      )?.assignment?.engineeringType;
-                      return (
-                        <UpdateBatchCard
-                          batch={batch}
-                          engineeringType={engineeringType}
-                          key={batch.id}
-                          onOpen={() =>
-                            setDrawer({ mode: 'batch', batchId: batch.id })
-                          }
-                        />
-                      );
-                    })
-                  : bugs.map((bug) => {
-                      const draggable = Boolean(
-                        dragTransition(bug, 'REPAIRING') ||
-                        dragTransition(bug, 'DONE') ||
-                        bug.availableActions.includes('CANCEL') ||
-                        bug.availableActions.includes('ARCHIVE'),
-                      );
-                      const visual = snapshot.visualByBug[bug.id]!;
-                      const pendingDelivery = pendingDeliveryFor(bug, snapshot);
-                      return (
-                        <BugCard
-                          bug={bug}
-                          draggable={!pending && draggable}
-                          dragging={draggingBugId === bug.id}
-                          eligibleAt={pendingDelivery?.eligibleAt}
-                          key={bug.id}
-                          pending={pending}
-                          onVerifyPass={() => {
-                            const transition = verificationPassTransition(bug);
-                            if (transition)
-                              run(transition.command, transition.message);
-                          }}
-                          onDragEnd={() => {
-                            clearDraggingBug();
-                          }}
-                          onDragStart={(event) => {
-                            const dragPreview = document.createElement('span');
-                            dragPreview.className = 'collab-bug-drag-preview';
-                            dragPreview.setAttribute('aria-hidden', 'true');
-                            dragPreview.textContent = '✊';
-                            document.body.append(dragPreview);
-                            event.dataTransfer.setDragImage(
-                              dragPreview,
-                              14,
-                              14,
-                            );
-                            window.requestAnimationFrame(() =>
-                              dragPreview.remove(),
-                            );
-                            draggingBugIdRef.current = bug.id;
-                            setDraggingBugId(bug.id);
-                            event.dataTransfer.effectAllowed = 'move';
-                            event.dataTransfer.setData(
-                              'application/x-cooking-bug-id',
-                              bug.id,
-                            );
-                          }}
-                          onOpen={() => {
-                            setError(null);
-                            setDrawer({ mode: 'view', bugId: bug.id });
-                          }}
-                          onReopen={() => {
-                            setError(null);
-                            setFeedbackIntent({
-                              bugId: bug.id,
-                              kind: 'REOPEN',
-                            });
-                          }}
-                          onRequestRework={() => {
-                            setError(null);
-                            setFeedbackIntent({
-                              bugId: bug.id,
-                              kind: 'VERIFY_FAIL',
-                            });
-                          }}
-                          visual={visual}
-                        />
-                      );
-                    })}
-                {(showBatches ? batches.length : bugs.length) === 0 ? (
-                  <p className="collab-column__empty">暂无卡片</p>
-                ) : null}
-              </div>
-            </section>
+                    ? batches.map((batch) => {
+                        const engineeringType = snapshot.bugs.find(
+                          ({ id }) => id === batch.entries[0]?.bugId,
+                        )?.assignment?.engineeringType;
+                        return (
+                          <UpdateBatchCard
+                            batch={batch}
+                            engineeringType={engineeringType}
+                            key={batch.id}
+                            onOpen={() =>
+                              setDrawer({ mode: 'batch', batchId: batch.id })
+                            }
+                          />
+                        );
+                      })
+                    : bugs.map((bug) => {
+                        const pair = testerView
+                          ? linkedReviewPairFor(bug, snapshot.bugs)
+                          : null;
+                        const blockedReason = linkedReviewBlockedReason(
+                          bug,
+                          pair,
+                        );
+                        const draggable = Boolean(
+                          (!pair &&
+                            (dragTransition(bug, 'REPAIRING') ||
+                              dragTransition(bug, 'DONE'))) ||
+                          bug.availableActions.includes('CANCEL') ||
+                          bug.availableActions.includes('ARCHIVE'),
+                        );
+                        const visual = snapshot.visualByBug[bug.id]!;
+                        const pendingDelivery = pendingDeliveryFor(
+                          bug,
+                          snapshot,
+                        );
+                        return (
+                          <BugCard
+                            bug={bug}
+                            blockedReason={blockedReason}
+                            draggable={!pending && draggable}
+                            dragging={draggingBugId === bug.id}
+                            eligibleAt={pendingDelivery?.eligibleAt}
+                            key={bug.id}
+                            pending={pending}
+                            onArchive={() => storeBug(bug, 'archived')}
+                            onVerifyPass={() => {
+                              if (blockedReason) {
+                                setError(blockedReason);
+                                return;
+                              }
+                              const transition =
+                                verificationPassTransition(bug);
+                              if (transition)
+                                run(transition.command, transition.message);
+                            }}
+                            onDragEnd={() => {
+                              clearDraggingBug();
+                            }}
+                            onDragStart={(event) => {
+                              const dragPreview =
+                                document.createElement('span');
+                              dragPreview.className = 'collab-bug-drag-preview';
+                              dragPreview.setAttribute('aria-hidden', 'true');
+                              dragPreview.textContent = '✊';
+                              document.body.append(dragPreview);
+                              event.dataTransfer.setDragImage(
+                                dragPreview,
+                                14,
+                                14,
+                              );
+                              window.requestAnimationFrame(() =>
+                                dragPreview.remove(),
+                              );
+                              draggingBugIdRef.current = bug.id;
+                              setDraggingBugId(bug.id);
+                              event.dataTransfer.effectAllowed = 'move';
+                              event.dataTransfer.setData(
+                                'application/x-cooking-bug-id',
+                                bug.id,
+                              );
+                            }}
+                            onOpen={() => {
+                              setError(null);
+                              setDrawer({ mode: 'view', bugId: bug.id });
+                            }}
+                            onReopen={() => {
+                              if (blockedReason) {
+                                setError(blockedReason);
+                                return;
+                              }
+                              setError(null);
+                              setFeedbackIntent({
+                                bugId: bug.id,
+                                kind: 'REOPEN',
+                              });
+                            }}
+                            onRequestRework={() => {
+                              if (blockedReason) {
+                                setError(blockedReason);
+                                return;
+                              }
+                              setError(null);
+                              setFeedbackIntent({
+                                bugId: bug.id,
+                                kind: 'VERIFY_FAIL',
+                              });
+                            }}
+                            visual={visual}
+                          />
+                        );
+                      })}
+                  {reviewPairs.map((pair) => (
+                    <LinkedReviewCard
+                      backend={pair.backend}
+                      frontend={pair.frontend}
+                      key={pair.primary.id}
+                      pending={pending}
+                      onArchive={() => archiveLinkedPair(pair)}
+                      onOpen={() => {
+                        setError(null);
+                        setDrawer({ mode: 'view', bugId: pair.primary.id });
+                      }}
+                      onVerifyPass={() => {
+                        const other =
+                          pair.frontend.id === pair.primary.id
+                            ? pair.backend
+                            : pair.frontend;
+                        const formData = new FormData();
+                        formData.set('mutationId', createClientId());
+                        formData.set(
+                          'expectedVersion',
+                          String(pair.primary.version),
+                        );
+                        formData.set(
+                          'relatedExpectedVersion',
+                          String(other.version),
+                        );
+                        formData.set('decision', 'PASSED');
+                        run(
+                          () =>
+                            reviewLinkedBugsAction(pair.primary.id, formData),
+                          '前后端关联缺陷已完成本次验收。',
+                        );
+                      }}
+                      onIssue={() => {
+                        setError(null);
+                        setFeedbackIntent({
+                          bugId: pair.primary.id,
+                          kind:
+                            pair.column === 'DONE' ? 'REOPEN' : 'VERIFY_FAIL',
+                        });
+                      }}
+                    />
+                  ))}
+                  {(showBatches
+                    ? batches.length
+                    : bugs.length + reviewPairs.length) === 0 ? (
+                    <p className="collab-column__empty">暂无卡片</p>
+                  ) : null}
+                </div>
+              </section>
+              {index < STATUS_COLUMNS.length - 1 ? (
+                <BoardColumnDivider
+                  index={index}
+                  leftLabel={column.label}
+                  rightLabel={STATUS_COLUMNS[index + 1]!.label}
+                  resize={columnResize}
+                />
+              ) : null}
+            </Fragment>
           );
         })}
       </div>
@@ -408,6 +566,7 @@ export function BugBoard({
       {feedbackBug && feedbackIntent ? (
         <BugReworkDialog
           bug={feedbackBug}
+          pair={feedbackPair}
           error={error}
           kind={feedbackIntent.kind}
           onCancel={() => {
@@ -419,10 +578,14 @@ export function BugBoard({
               formData.set('result', 'FAILED');
             run(
               () =>
-                feedbackIntent.kind === 'VERIFY_FAIL'
-                  ? verifyBugAction(feedbackBug.id, formData)
-                  : reopenBugAction(feedbackBug.id, formData),
-              `${bugLabel(feedbackBug)} 已带反馈重新进入修复。`,
+                feedbackPair?.ready
+                  ? reviewLinkedBugsAction(feedbackBug.id, formData)
+                  : feedbackIntent.kind === 'VERIFY_FAIL'
+                    ? verifyBugAction(feedbackBug.id, formData)
+                    : reopenBugAction(feedbackBug.id, formData),
+              feedbackPair?.ready
+                ? '已按所选归属提交返修，未选中的待验证缺陷继续等待。'
+                : `${bugLabel(feedbackBug)} 已带反馈重新进入修复。`,
               () => setFeedbackIntent(null),
             );
           }}

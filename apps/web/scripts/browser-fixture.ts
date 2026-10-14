@@ -436,6 +436,16 @@ export async function seedBrowserFixture(home: string): Promise<BrowserFixture> 
       },
     );
 
+    const linkedDone = bugs.createLinkedBugs(tester.id, submission.id, {
+      mutationId: randomUUID(),
+      submissionItemIds: [items[0]!.id, items[1]!.id],
+      title: '区县级自然资源管理部门，需要前后端共同修复的长标题',
+      actualResultAttachmentIds: [],
+      expectedResultAttachmentIds: [],
+    });
+    for (const bug of linkedDone.bugs)
+      db.run("UPDATE cooking_bug SET stage = 'DONE' WHERE id = ?", [bug.id]);
+
     return {
       developerUsername: developer.username,
       password,

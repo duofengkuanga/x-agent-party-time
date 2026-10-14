@@ -3,15 +3,24 @@ import { requireSubmissionAccess } from '@/cooking/shared/server/access';
 import { requireBindableFiles } from '@/cooking/shared/server/attachments';
 import { requireEnvironment } from '@/cooking/submissions/server/environment-access';
 import { TestSubmissionWriteStore } from '@/cooking/submissions/server/test-submission-write-store';
+import { insertAuditEvent } from '@/cooking/shared/server/audit-event';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
 import {
   BugLifecycleMutationResultSchema,
+  LinkedBugArchiveInputSchema,
+  LinkedBugArchiveResultSchema,
+  LinkedBugReviewInputSchema,
+  LinkedBugReviewResultSchema,
   LifecycleCommandInputSchema,
   ReopenBugInputSchema,
   VerifyBugInputSchema,
   type BugLifecycleMutationResult,
   type LifecycleCommandInput,
+  type LinkedBugArchiveInput,
+  type LinkedBugArchiveResult,
+  type LinkedBugReviewInput,
+  type LinkedBugReviewResult,
   type ReopenBugInput,
   type VerifyBugInput,
 } from '../contract';
@@ -36,6 +45,30 @@ const STORED_BUG_TRANSITIONS = {
   },
 } as const;
 
+const REVIEW_STAGE_LABELS: Record<string, string> = {
+  WAITING_FOR_REPAIR: '待修复',
+  REPAIRING: '修复中',
+  WAITING_FOR_UPDATE: '待更新',
+  UPDATING: '更新中',
+  WAITING_FOR_VERIFICATION: '待验证',
+  DONE: '已完成',
+  CANCELLED: '已取消',
+};
+
+type TransitionOutcome = {
+  revision: number;
+  executionId?: string;
+  action: string;
+  details: Record<string, unknown>;
+};
+
+type LinkedPeer = {
+  id: string;
+  stage: string;
+  archived_at: string | null;
+  engineering_type: 'FRONTEND' | 'BACKEND';
+};
+
 export class BugLifecycleCommands {
   constructor(
     private readonly db: AppDatabase,
@@ -53,73 +86,14 @@ export class BugLifecycleCommands {
   ): BugLifecycleMutationResult {
     const input = VerifyBugInputSchema.parse(inputValue);
     return this.writeBugTransition(actorUserId, bugId, input, 'BUG_VERIFY', (source) => {
-      if (source.submission_item_id)
-        requireEnvironment(this.db, source.submission_item_id, true);
       this.requireBugVersion(source, input.expectedVersion);
-      if (source.stage !== 'WAITING_FOR_VERIFICATION')
-        throw new PlatformError('INVALID_TRANSITION', '当前缺陷不在待验证阶段');
-      const now = this.now().toISOString();
-      const round = this.nextVerificationRound(bugId);
-      requireBindableFiles(this.db, actorUserId, input.attachmentIds);
-      if (input.result === 'PASSED' && input.attachmentIds.length)
-        throw new PlatformError('VALIDATION_FAILED', '验证通过不需要上传失败证据');
-      const verificationId = this.createId();
-      const repairAttempt =
-        input.result === 'FAILED' ? this.nextRepairAttempt(bugId) : null;
-      this.db.run(
-        `INSERT INTO cooking_verification_record(
-               id, bug_id, round, result, comment, repair_attempt,
-               verified_by_user_id, created_at
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          verificationId,
-          bugId,
-          round,
-          input.result,
-          input.result === 'PASSED'
-            ? input.comment?.trim() || null
-            : input.feedback.trim(),
-          repairAttempt,
-          actorUserId,
-          now,
-        ],
-      );
-      if (input.result === 'PASSED') {
-        this.updateBugStage(bugId, 'WAITING_FOR_VERIFICATION', 'DONE', now);
-        const revision = this.writes.bumpRevision(source.submission_id, now);
-        return {
-          revision,
-          action: 'BUG_VERIFICATION_PASSED',
-          details: {
-            round,
-            comment: Boolean(input.comment),
-          },
-        };
-      }
-      this.bindLifecycleAttachments(
-        'cooking_verification_attachment',
-        'verification_id',
-        verificationId,
-        input.attachmentIds,
-        now,
-      );
-      const failure = this.continueRepair(
+      this.requireLinkedReady(bugId);
+      return this.performVerification(
         source,
-        'WAITING_FOR_VERIFICATION',
-        `测试负责人第 ${round} 轮验证未通过：${input.feedback.trim()}`,
-        input.attachmentIds,
-        now,
+        actorUserId,
+        input,
+        this.now().toISOString(),
       );
-      return {
-        revision: failure.revision,
-        executionId: failure.executionId,
-        action: 'BUG_VERIFICATION_FAILED',
-        details: {
-          round,
-          attachmentCount: input.attachmentIds.length,
-          executionId: failure.executionId,
-        },
-      };
     });
   }
 
@@ -131,46 +105,372 @@ export class BugLifecycleCommands {
     const input = ReopenBugInputSchema.parse(inputValue);
     return this.writeBugTransition(actorUserId, bugId, input, 'BUG_REOPEN', (source) => {
       this.requireBugVersion(source, input.expectedVersion);
-      if (source.stage !== 'DONE')
-        throw new PlatformError('INVALID_TRANSITION', '只有已完成缺陷可以重开');
-      const now = this.now().toISOString();
-      const round = this.nextReopenRound(bugId);
-      const repairAttempt = this.nextRepairAttempt(bugId);
-      const reopenId = this.createId();
-      requireBindableFiles(this.db, actorUserId, input.attachmentIds);
-      this.db.run(
-        `INSERT INTO cooking_reopen_record(
-               id, bug_id, round, feedback, repair_attempt,
-               reopened_by_user_id, created_at
-             ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [reopenId, bugId, round, input.feedback.trim(), repairAttempt, actorUserId, now],
-      );
-      this.bindLifecycleAttachments(
-        'cooking_reopen_attachment',
-        'reopen_id',
-        reopenId,
-        input.attachmentIds,
-        now,
-      );
-      const continuation = this.continueRepair(
-        source,
-        'DONE',
-        `第 ${round} 次重新打开：${input.feedback.trim()}`,
-        input.attachmentIds,
-        now,
-      );
-      return {
-        revision: continuation.revision,
-        executionId: continuation.executionId,
-        action: 'BUG_REOPENED',
-        details: {
-          round,
-          repairAttempt,
-          attachmentCount: input.attachmentIds.length,
-          executionId: continuation.executionId,
-        },
-      };
+      this.requireLinkedReady(bugId);
+      return this.performReopen(source, actorUserId, input, this.now().toISOString());
     });
+  }
+
+  reviewLinkedBugs(
+    actorUserId: string,
+    bugId: string,
+    inputValue: LinkedBugReviewInput,
+  ): LinkedBugReviewResult {
+    const input = LinkedBugReviewInputSchema.parse(inputValue);
+    return this.writes.run({
+      mutationId: input.mutationId,
+      actorUserId,
+      operation: 'LINKED_BUG_REVIEW',
+      resourceType: 'BUG',
+      resultSchema: LinkedBugReviewResultSchema,
+      submissionId: () => this.queries.bugSource(bugId).submission_id,
+      perform: () => {
+        const source = this.requireTester(actorUserId, bugId);
+        const related = this.linkedPeer(bugId);
+        if (!related)
+          throw new PlatformError(
+            'INVALID_TRANSITION',
+            '当前缺陷没有可共同验收的关联缺陷',
+          );
+        const peer = this.requireTester(actorUserId, related.id);
+        this.requireBugVersion(source, input.expectedVersion);
+        this.requireBugVersion(peer, input.relatedExpectedVersion);
+        if (source.submission_id !== peer.submission_id)
+          throw new PlatformError('RESOURCE_CONFLICT', '关联缺陷不属于同一提测单');
+        const pairs = [source, peer];
+        if (
+          pairs.some(({ stage }) => !['WAITING_FOR_VERIFICATION', 'DONE'].includes(stage))
+        )
+          throw new PlatformError(
+            'INVALID_TRANSITION',
+            '请等前端和后端关联缺陷都进入待验证或已完成后再操作',
+          );
+        if (pairs.some(({ archived_at }) => archived_at))
+          throw new PlatformError('INVALID_TRANSITION', '请先将已归档的关联缺陷移出归档');
+        if (input.decision === 'PASSED' && pairs.every(({ stage }) => stage === 'DONE'))
+          throw new PlatformError('INVALID_TRANSITION', '关联缺陷均已完成，无需再次通过');
+        const now = this.now().toISOString();
+        const changedBugIds: string[] = [];
+        const executionIds: string[] = [];
+        let revision = 0;
+        for (const bug of pairs) {
+          const engineering = this.engineeringType(bug);
+          const selected =
+            input.decision === 'PASSED' ||
+            input.ownership === 'BOTH' ||
+            input.ownership === engineering;
+          if (!selected || (input.decision === 'PASSED' && bug.stage === 'DONE'))
+            continue;
+          const outcome =
+            input.decision === 'PASSED'
+              ? this.performVerification(
+                  bug,
+                  actorUserId,
+                  { result: 'PASSED', attachmentIds: [] },
+                  now,
+                )
+              : bug.stage === 'DONE'
+                ? this.performReopen(bug, actorUserId, input, now)
+                : this.performVerification(
+                    bug,
+                    actorUserId,
+                    {
+                      result: 'FAILED',
+                      feedback: input.feedback,
+                      attachmentIds: input.attachmentIds,
+                    },
+                    now,
+                  );
+          changedBugIds.push(bug.id);
+          if (outcome.executionId) executionIds.push(outcome.executionId);
+          revision = outcome.revision;
+          insertAuditEvent(this.db, {
+            id: this.createId(),
+            projectId: bug.project_id,
+            actorUserId,
+            action: outcome.action,
+            targetType: 'BUG',
+            targetId: bug.id,
+            details: { ...outcome.details, linkedBugIds: pairs.map(({ id }) => id) },
+            createdAt: now,
+          });
+        }
+        return {
+          resourceId: bugId,
+          result: {
+            bugIds: pairs.map(({ id }) => id),
+            changedBugIds,
+            executionIds,
+            revision,
+          },
+        };
+      },
+    });
+  }
+
+  archiveLinkedBugs(
+    actorUserId: string,
+    bugId: string,
+    inputValue: LinkedBugArchiveInput,
+  ): LinkedBugArchiveResult {
+    return this.changeLinkedArchive(actorUserId, bugId, inputValue, true);
+  }
+
+  unarchiveLinkedBugs(
+    actorUserId: string,
+    bugId: string,
+    inputValue: LinkedBugArchiveInput,
+  ): LinkedBugArchiveResult {
+    return this.changeLinkedArchive(actorUserId, bugId, inputValue, false);
+  }
+
+  private changeLinkedArchive(
+    actorUserId: string,
+    bugId: string,
+    inputValue: LinkedBugArchiveInput,
+    archived: boolean,
+  ): LinkedBugArchiveResult {
+    const input = LinkedBugArchiveInputSchema.parse(inputValue);
+    return this.writes.run({
+      mutationId: input.mutationId,
+      actorUserId,
+      operation: archived ? 'LINKED_BUG_ARCHIVE' : 'LINKED_BUG_UNARCHIVE',
+      resourceType: 'BUG',
+      resultSchema: LinkedBugArchiveResultSchema,
+      submissionId: () => this.queries.bugSource(bugId).submission_id,
+      perform: () => {
+        const source = this.requireTester(actorUserId, bugId);
+        const related = this.linkedPeer(bugId);
+        if (!related)
+          throw new PlatformError(
+            'INVALID_TRANSITION',
+            '当前缺陷没有可共同归档的关联缺陷',
+          );
+        const peer = this.requireTester(actorUserId, related.id);
+        this.requireBugVersion(source, input.expectedVersion);
+        this.requireBugVersion(peer, input.relatedExpectedVersion);
+        const pair = [source, peer];
+        if (
+          source.submission_id !== peer.submission_id ||
+          pair.some(
+            ({ stage, archived_at }) =>
+              stage !== 'DONE' || Boolean(archived_at) !== !archived,
+          )
+        )
+          throw new PlatformError(
+            'INVALID_TRANSITION',
+            archived
+              ? '只有两张均已完成且未归档的关联缺陷可以一同归档'
+              : '只有两张均已归档的关联缺陷可以一同撤销归档',
+          );
+        const now = this.now().toISOString();
+        for (const bug of pair) {
+          const update = this.db.run(
+            `UPDATE cooking_bug
+               SET archived_at = ?, archived_by_user_id = ?,
+                   version = version + 1, updated_at = ?
+               WHERE id = ? AND version = ? AND stage = 'DONE'
+                 AND archived_at IS ${archived ? 'NULL' : 'NOT NULL'}`,
+            [
+              archived ? now : null,
+              archived ? actorUserId : null,
+              now,
+              bug.id,
+              bug.version,
+            ],
+          );
+          if (update.changes !== 1) throw staleLifecycle('缺陷');
+          insertAuditEvent(this.db, {
+            id: this.createId(),
+            projectId: bug.project_id,
+            actorUserId,
+            action: archived ? 'BUG_ARCHIVED' : 'BUG_UNARCHIVED',
+            targetType: 'BUG',
+            targetId: bug.id,
+            details: { linkedBugIds: pair.map(({ id }) => id) },
+            createdAt: now,
+          });
+        }
+        return {
+          resourceId: bugId,
+          result: {
+            bugIds: pair.map(({ id }) => id),
+            bugVersions: pair.map(({ version }) => version + 1),
+            revision: this.writes.bumpRevision(source.submission_id, now),
+          },
+        };
+      },
+    });
+  }
+
+  private performVerification(
+    source: BugSourceRow,
+    actorUserId: string,
+    input:
+      | { result: 'PASSED'; attachmentIds: string[]; comment?: string }
+      | { result: 'FAILED'; attachmentIds: string[]; feedback: string },
+    now: string,
+  ): TransitionOutcome {
+    if (source.submission_item_id)
+      requireEnvironment(this.db, source.submission_item_id, true);
+    if (source.stage !== 'WAITING_FOR_VERIFICATION')
+      throw new PlatformError('INVALID_TRANSITION', '当前缺陷不在待验证阶段');
+    const round = this.nextVerificationRound(source.id);
+    requireBindableFiles(this.db, actorUserId, input.attachmentIds);
+    if (input.result === 'PASSED' && input.attachmentIds.length)
+      throw new PlatformError('VALIDATION_FAILED', '验证通过不需要上传失败证据');
+    const verificationId = this.createId();
+    const repairAttempt =
+      input.result === 'FAILED' ? this.nextRepairAttempt(source.id) : null;
+    this.db.run(
+      `INSERT INTO cooking_verification_record(
+             id, bug_id, round, result, comment, repair_attempt,
+             verified_by_user_id, created_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        verificationId,
+        source.id,
+        round,
+        input.result,
+        input.result === 'PASSED' ? input.comment?.trim() || null : input.feedback.trim(),
+        repairAttempt,
+        actorUserId,
+        now,
+      ],
+    );
+    if (input.result === 'PASSED') {
+      this.updateBugStage(source.id, 'WAITING_FOR_VERIFICATION', 'DONE', now);
+      return {
+        revision: this.writes.bumpRevision(source.submission_id, now),
+        action: 'BUG_VERIFICATION_PASSED',
+        details: { round, comment: Boolean(input.comment) },
+      };
+    }
+    this.bindLifecycleAttachments(
+      'cooking_verification_attachment',
+      'verification_id',
+      verificationId,
+      input.attachmentIds,
+      now,
+    );
+    const failure = this.continueRepair(
+      source,
+      'WAITING_FOR_VERIFICATION',
+      `测试负责人第 ${round} 轮验证未通过：${input.feedback.trim()}`,
+      input.attachmentIds,
+      now,
+    );
+    return {
+      revision: failure.revision,
+      executionId: failure.executionId,
+      action: 'BUG_VERIFICATION_FAILED',
+      details: {
+        round,
+        attachmentCount: input.attachmentIds.length,
+        executionId: failure.executionId,
+      },
+    };
+  }
+
+  private performReopen(
+    source: BugSourceRow,
+    actorUserId: string,
+    input: { feedback: string; attachmentIds: string[] },
+    now: string,
+  ): TransitionOutcome {
+    if (source.stage !== 'DONE' || source.archived_at)
+      throw new PlatformError('INVALID_TRANSITION', '只有未归档的已完成缺陷可以重开');
+    const round = this.nextReopenRound(source.id);
+    const repairAttempt = this.nextRepairAttempt(source.id);
+    const reopenId = this.createId();
+    requireBindableFiles(this.db, actorUserId, input.attachmentIds);
+    this.db.run(
+      `INSERT INTO cooking_reopen_record(
+             id, bug_id, round, feedback, repair_attempt,
+             reopened_by_user_id, created_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        reopenId,
+        source.id,
+        round,
+        input.feedback.trim(),
+        repairAttempt,
+        actorUserId,
+        now,
+      ],
+    );
+    this.bindLifecycleAttachments(
+      'cooking_reopen_attachment',
+      'reopen_id',
+      reopenId,
+      input.attachmentIds,
+      now,
+    );
+    const continuation = this.continueRepair(
+      source,
+      'DONE',
+      `第 ${round} 次重新打开：${input.feedback.trim()}`,
+      input.attachmentIds,
+      now,
+    );
+    return {
+      revision: continuation.revision,
+      executionId: continuation.executionId,
+      action: 'BUG_REOPENED',
+      details: {
+        round,
+        repairAttempt,
+        attachmentCount: input.attachmentIds.length,
+        executionId: continuation.executionId,
+      },
+    };
+  }
+
+  private linkedPeer(bugId: string): LinkedPeer | null {
+    const peers = this.db.all<LinkedPeer>(
+      `SELECT other.id, other.stage, other.archived_at, item.engineering_type
+         FROM cooking_bug_relation relation
+         JOIN cooking_bug other ON other.id = CASE
+           WHEN relation.source_bug_id = ? THEN relation.target_bug_id
+           ELSE relation.source_bug_id END
+         JOIN cooking_submission_item item ON item.id = other.submission_item_id
+         WHERE relation.kind IN ('JOINT', 'COLLABORATION')
+           AND (relation.source_bug_id = ? OR relation.target_bug_id = ?)`,
+      bugId,
+      bugId,
+      bugId,
+    );
+    if (peers.length > 1)
+      throw new PlatformError(
+        'RESOURCE_CONFLICT',
+        '当前缺陷存在多个协作关联，请联系负责人',
+      );
+    return peers[0] ?? null;
+  }
+
+  private requireLinkedReady(bugId: string): void {
+    const peer = this.linkedPeer(bugId);
+    if (!peer) return;
+    const engineering = peer.engineering_type === 'FRONTEND' ? '前端' : '后端';
+    if (peer.archived_at)
+      throw new PlatformError(
+        'INVALID_TRANSITION',
+        `关联的${engineering}缺陷已归档，请先移出归档后再操作`,
+      );
+    if (['WAITING_FOR_VERIFICATION', 'DONE'].includes(peer.stage)) return;
+    const stage = REVIEW_STAGE_LABELS[peer.stage] ?? '处理中';
+    throw new PlatformError(
+      'INVALID_TRANSITION',
+      `关联的${engineering}缺陷仍在${stage}，请等它进入待验证或已完成后再操作`,
+    );
+  }
+
+  private engineeringType(source: BugSourceRow): 'FRONTEND' | 'BACKEND' {
+    const item = this.db.get<{ engineering_type: 'FRONTEND' | 'BACKEND' }>(
+      'SELECT engineering_type FROM cooking_submission_item WHERE id = ?',
+      source.submission_item_id,
+    );
+    if (!item) throw new PlatformError('RESOURCE_CONFLICT', '关联缺陷缺少工程归属');
+    return item.engineering_type;
   }
 
   cancelBug(

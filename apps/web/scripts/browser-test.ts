@@ -19,7 +19,8 @@ try {
   nextDistDir = `.next-browser-${port}`;
   const templatePath = join(webRoot, 'tests/browser/cooking.yaml');
   const suitePath = join(home, 'cooking.browser.yaml');
-  const suite = (await readFile(templatePath, 'utf8'))
+  const template = await readFile(templatePath, 'utf8');
+  const suite = selectBrowserCase(template, process.env.AGENT_PARTY_TIME_BROWSER_CASE)
     .replaceAll('__BASE_URL__', baseUrl)
     .replaceAll('__PROJECT_ID__', fixture.projectId)
     .replaceAll('__SUBMISSION_ID__', fixture.submissionId)
@@ -50,8 +51,27 @@ try {
     },
   );
   await waitForServer(`${baseUrl}/login`, server);
+  const browserSession = `agent-party-time-${port}`;
+  const viewport = Bun.spawn(
+    [
+      chromeUse,
+      '--launch',
+      '--session',
+      browserSession,
+      'set',
+      'viewport',
+      '1800',
+      '900',
+    ],
+    {
+      cwd: repositoryRoot,
+      stdout: 'inherit',
+      stderr: 'inherit',
+    },
+  );
+  if ((await viewport.exited) !== 0) throw new Error('无法准备桌面浏览器视口');
   const browser = Bun.spawn(
-    [chromeUse, '--launch', '--session', `agent-party-time-${port}`, 'test', suitePath],
+    [chromeUse, '--launch', '--session', browserSession, 'test', suitePath],
     {
       cwd: repositoryRoot,
       env: {
@@ -76,6 +96,18 @@ try {
 }
 
 process.exit(exitCode);
+
+function selectBrowserCase(template: string, name: string | undefined): string {
+  if (!name) return template;
+  const cases = template.indexOf('\ncases:\n');
+  const start = template.indexOf(`\n  - name: ${name}\n`, cases);
+  if (cases < 0 || start < 0) throw new Error(`浏览器用例不存在：${name}`);
+  const end = template.indexOf('\n  - name: ', start + 1);
+  return (
+    template.slice(0, cases + '\ncases:\n'.length) +
+    template.slice(start, end < 0 ? undefined : end)
+  );
+}
 
 async function reservePort(): Promise<number> {
   const placeholder = Bun.serve({

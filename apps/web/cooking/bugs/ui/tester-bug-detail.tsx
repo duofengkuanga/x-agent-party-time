@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import type { CookingWorkspaceSnapshot } from '@/cooking/workspace/contract';
 import {
   reopenBugAction,
+  reviewLinkedBugsAction,
   restoreBugAction,
   unarchiveBugAction,
   verifyBugAction,
@@ -20,6 +21,15 @@ import {
   type WorkspaceActionResult,
 } from './board-model';
 import { latestTesterFeedback, testerBugStatus } from './tester-detail-model';
+import {
+  linkedReviewBlockedReason,
+  linkedReviewPairFor,
+} from './linked-review-model';
+import { PassConfirmButton } from './pass-confirm-button';
+import {
+  LinkedOwnershipChoice,
+  type LinkedOwnership,
+} from './linked-ownership-choice';
 
 export type RunTesterAction = (
   command: () => Promise<WorkspaceActionResult>,
@@ -50,17 +60,35 @@ export function TesterBugDetail({
     'VERIFY_FAIL' | 'REOPEN' | null
   >(null);
   const [feedback, setFeedback] = useState('');
+  const [ownership, setOwnership] = useState<LinkedOwnership>('BOTH');
+  const [notice, setNotice] = useState<string | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const feedbackInput = useRef<HTMLInputElement>(null);
   const feedbackButton = useRef<HTMLButtonElement>(null);
   const latestFeedback = latestTesterFeedback(bug.id, snapshot);
+  const pair = linkedReviewPairFor(bug, snapshot.bugs);
+  const blockedReason = linkedReviewBlockedReason(bug, pair);
+  const canPass = pair?.ready
+    ? pair.column === 'WAITING_FOR_VERIFICATION'
+    : bug.availableActions.includes('VERIFY_PASS');
+  const canIssue = pair?.ready
+    ? true
+    : bug.availableActions.some((action) =>
+        ['VERIFY_FAIL', 'REOPEN'].includes(action),
+      );
+  const issueLabel =
+    pair?.column === 'DONE' || (!pair && bug.stage === 'DONE')
+      ? '重新打开'
+      : '还有问题';
   const canEdit = bug.availableActions.some((action) =>
     ['EDIT_REPORT', 'ASSIGN'].includes(action),
   );
   const feedbackAllowed =
-    feedbackKind !== null && bug.availableActions.includes(feedbackKind);
+    feedbackKind !== null &&
+    (pair?.ready || bug.availableActions.includes(feedbackKind));
   const showActions =
     canEdit ||
+    Boolean(pair?.ready) ||
     bug.availableActions.some((action) =>
       [
         'REQUEST_REPAIR',
@@ -75,6 +103,29 @@ export function TesterBugDetail({
     mutationId: createClientId(),
     expectedVersion: bug.version,
   });
+  const submitPass = () => {
+    if (blockedReason) {
+      setNotice(blockedReason);
+      return;
+    }
+    setNotice(null);
+    if (pair?.ready) {
+      const related =
+        pair.frontend.id === bug.id ? pair.backend : pair.frontend;
+      const formData = new FormData();
+      formData.set('mutationId', createClientId());
+      formData.set('expectedVersion', String(bug.version));
+      formData.set('relatedExpectedVersion', String(related.version));
+      formData.set('decision', 'PASSED');
+      run(
+        () => reviewLinkedBugsAction(bug.id, formData),
+        '前后端关联缺陷已完成本次验收。',
+      );
+      return;
+    }
+    const transition = verificationPassTransition(bug);
+    if (transition) run(transition.command, transition.message);
+  };
   return (
     <>
       <div className="collab-dialog__body collab-tester-detail">
@@ -84,8 +135,32 @@ export function TesterBugDetail({
           aria-live="polite"
         >
           <span>{bug.presentation.stageLabel}</span>
-          <p>{testerBugStatus(bug, snapshot)}</p>
+          <p>
+            {blockedReason ??
+              (pair?.ready
+                ? pair.column === 'DONE'
+                  ? '前后端均已完成，可按本次问题归属重新打开。'
+                  : '前后端均已就绪，可以验证完整问题。'
+                : testerBugStatus(bug, snapshot))}
+          </p>
         </section>
+        {pair ? (
+          <section
+            className="collab-tester-detail__pair"
+            aria-label="前后端关联进度"
+          >
+            {[pair.frontend, pair.backend].map((side) => (
+              <div key={side.id}>
+                <strong>
+                  {side.assignment?.engineeringType === 'FRONTEND'
+                    ? '前端'
+                    : '后端'}
+                </strong>
+                <span>{side.presentation.stageLabel}</span>
+              </div>
+            ))}
+          </section>
+        ) : null}
         <div className="collab-tester-detail__report">
           <dl className="collab-tester-detail__comparison">
             {bug.report.expectedResult ||
@@ -134,7 +209,7 @@ export function TesterBugDetail({
               </time>
             </section>
           ) : null}
-          {bug.relatedBugs.length ? (
+          {!pair && bug.relatedBugs.length ? (
             <section
               className="collab-tester-detail__related"
               aria-label="关联缺陷"
@@ -175,16 +250,29 @@ export function TesterBugDetail({
               formData.set('feedback', feedback);
               if (feedbackKind === 'VERIFY_FAIL')
                 formData.set('result', 'FAILED');
+              if (pair?.ready) {
+                const related =
+                  pair.frontend.id === bug.id ? pair.backend : pair.frontend;
+                formData.set('relatedExpectedVersion', String(related.version));
+                formData.set('decision', 'ISSUE');
+                formData.set('ownership', ownership);
+              }
               files.forEach((file) => formData.append('attachments', file));
               run(
                 () =>
-                  feedbackKind === 'REOPEN'
-                    ? reopenBugAction(bug.id, formData)
-                    : verifyBugAction(bug.id, formData),
-                `${bugLabel(bug)} 已反馈，等待继续修复。`,
+                  pair?.ready
+                    ? reviewLinkedBugsAction(bug.id, formData)
+                    : feedbackKind === 'REOPEN'
+                      ? reopenBugAction(bug.id, formData)
+                      : verifyBugAction(bug.id, formData),
+                pair?.ready
+                  ? '已按所选归属提交返修，未选中的待验证缺陷继续等待。'
+                  : `${bugLabel(bug)} 已反馈，等待继续修复。`,
                 () => {
                   setFeedbackKind(null);
                   setFeedback('');
+                  setOwnership('BOTH');
+                  setNotice(null);
                   setFiles([]);
                   if (feedbackInput.current) feedbackInput.current.value = '';
                 },
@@ -208,6 +296,13 @@ export function TesterBugDetail({
                 placeholder="描述这次复测的结果"
               />
             </label>
+            {pair?.ready ? (
+              <LinkedOwnershipChoice
+                disabled={pending}
+                onChange={setOwnership}
+                value={ownership}
+              />
+            ) : null}
             <fieldset disabled={pending}>
               <AttachmentPicker
                 files={files}
@@ -218,7 +313,7 @@ export function TesterBugDetail({
           </form>
         ) : null}
       </div>
-      {showActions || error ? (
+      {showActions || error || notice ? (
         <footer
           aria-busy={pending}
           aria-label="缺陷操作"
@@ -227,6 +322,11 @@ export function TesterBugDetail({
           {error ? (
             <p className="collab-form__error" role="alert">
               {error}
+            </p>
+          ) : null}
+          {notice ? (
+            <p className="collab-form__error" role="alert">
+              {notice}
             </p>
           ) : null}
           {pending ? <span role="status">正在提交…</span> : null}
@@ -277,38 +377,45 @@ export function TesterBugDetail({
                     开始修复
                   </button>
                 ) : null}
-                {bug.availableActions.includes('VERIFY_PASS') ? (
-                  <button
-                    disabled={pending}
-                    type="button"
-                    onClick={() => {
-                      const transition = verificationPassTransition(bug);
-                      if (transition)
-                        run(transition.command, transition.message);
-                    }}
-                  >
-                    通过
-                  </button>
+                {canPass ? (
+                  blockedReason ? (
+                    <button
+                      disabled={pending}
+                      onClick={submitPass}
+                      type="button"
+                    >
+                      通过
+                    </button>
+                  ) : (
+                    <PassConfirmButton
+                      disabled={pending}
+                      message={
+                        pair?.ready
+                          ? '确认前端和后端的待验证缺陷都已通过测试？已完成的缺陷保持原状。'
+                          : '确认这张缺陷已通过测试？'
+                      }
+                      onConfirm={submitPass}
+                    />
+                  )
                 ) : null}
-                {bug.availableActions.some((action) =>
-                  ['VERIFY_FAIL', 'REOPEN'].includes(action),
-                ) ? (
+                {canIssue ? (
                   <button
                     ref={feedbackButton}
                     disabled={pending}
                     type="button"
                     onClick={() => {
+                      if (blockedReason) {
+                        setNotice(blockedReason);
+                        return;
+                      }
+                      setNotice(null);
                       onClearError();
                       setFeedbackKind(
-                        bug.availableActions.includes('REOPEN')
-                          ? 'REOPEN'
-                          : 'VERIFY_FAIL',
+                        issueLabel === '重新打开' ? 'REOPEN' : 'VERIFY_FAIL',
                       );
                     }}
                   >
-                    {bug.availableActions.includes('REOPEN')
-                      ? '重新打开'
-                      : '还有问题'}
+                    {issueLabel}
                   </button>
                 ) : null}
                 {bug.availableActions.includes('RESTORE') ? (

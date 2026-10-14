@@ -11,6 +11,9 @@ import {
 import { lifecycleService } from '../../runtime/services';
 import type {
   BugLifecycleMutationResult,
+  LinkedBugArchiveInput,
+  LinkedBugArchiveResult,
+  LinkedBugReviewResult,
   CleanupMutationResult,
   CloseSubmissionMutationResult,
   LifecycleCommandInput,
@@ -19,6 +22,9 @@ import type {
 
 export type BugLifecycleActionResult =
   InteractiveActionResult<BugLifecycleMutationResult>;
+export type LinkedBugReviewActionResult = InteractiveActionResult<LinkedBugReviewResult>;
+export type LinkedBugArchiveActionResult =
+  InteractiveActionResult<LinkedBugArchiveResult>;
 export type CloseSubmissionActionResult =
   InteractiveActionResult<CloseSubmissionMutationResult>;
 export type CleanupActionResult = InteractiveActionResult<CleanupMutationResult>;
@@ -63,6 +69,51 @@ export async function reopenBugAction(
       feedback: requiredFormField(formData, 'feedback'),
       attachmentIds,
     }),
+  );
+}
+
+export async function reviewLinkedBugsAction(
+  bugId: string,
+  formData: FormData,
+): Promise<LinkedBugReviewActionResult> {
+  return runLifecycleUpload(formData, (userId, attachmentIds) => {
+    const common = {
+      mutationId: requiredFormField(formData, 'mutationId'),
+      expectedVersion: integerFormField(formData, 'expectedVersion'),
+      relatedExpectedVersion: integerFormField(formData, 'relatedExpectedVersion'),
+      attachmentIds,
+    };
+    return lifecycleService().reviewLinkedBugs(
+      userId,
+      bugId,
+      requiredFormField(formData, 'decision') === 'PASSED'
+        ? { ...common, decision: 'PASSED' }
+        : {
+            ...common,
+            decision: 'ISSUE',
+            ownership: requiredFormField(formData, 'ownership') as
+              'FRONTEND' | 'BACKEND' | 'BOTH',
+            feedback: requiredFormField(formData, 'feedback'),
+          },
+    );
+  });
+}
+
+export async function archiveLinkedBugsAction(
+  bugId: string,
+  input: LinkedBugArchiveInput,
+): Promise<LinkedBugArchiveActionResult> {
+  return simpleAction((userId) =>
+    lifecycleService().archiveLinkedBugs(userId, bugId, input),
+  );
+}
+
+export async function unarchiveLinkedBugsAction(
+  bugId: string,
+  input: LinkedBugArchiveInput,
+): Promise<LinkedBugArchiveActionResult> {
+  return simpleAction((userId) =>
+    lifecycleService().unarchiveLinkedBugs(userId, bugId, input),
   );
 }
 
@@ -121,13 +172,10 @@ export async function resolveCleanupInteractionAction(
   );
 }
 
-function runLifecycleUpload(
+function runLifecycleUpload<T>(
   formData: FormData,
-  command: (
-    userId: string,
-    attachmentIds: string[],
-  ) => BugLifecycleMutationResult | Promise<BugLifecycleMutationResult>,
-): Promise<BugLifecycleActionResult> {
+  command: (userId: string, attachmentIds: string[]) => T | Promise<T>,
+): Promise<InteractiveActionResult<T>> {
   return runInteractiveMutation({
     validationEvent: 'cooking_lifecycle_action_validation_failed',
     command: async ({ userId, uploadFiles }) => {

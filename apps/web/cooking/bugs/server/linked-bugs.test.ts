@@ -91,7 +91,7 @@ async function finishedBug(
 }
 
 describe('前后端关联 Bug', () => {
-  test('协作目标完成后不唤醒原单，人工同步原会话后分别验收', async () => {
+  test('协作目标完成后不唤醒原单，人工同步原会话后共同验收', async () => {
     const f = await setup();
     const source = await finishedBug(f);
     const added = f.bugs.routeBug(f.users.tester.id, source.id, {
@@ -128,12 +128,14 @@ describe('前后端关联 Bug', () => {
       .workspace(f.users.tester.id, f.submission.id)
       .bugs.find(({ id }) => id === added.createdBug.id)!;
     expect(targetBeforeVerify.stage).toBe('WAITING_FOR_VERIFICATION');
-    f.lifecycle.verifyBug(f.users.tester.id, targetBeforeVerify.id, {
-      mutationId: randomUUID(),
-      expectedVersion: targetBeforeVerify.version,
-      result: 'PASSED',
-      attachmentIds: [],
-    });
+    expect(() =>
+      f.lifecycle.verifyBug(f.users.tester.id, targetBeforeVerify.id, {
+        mutationId: randomUUID(),
+        expectedVersion: targetBeforeVerify.version,
+        result: 'PASSED',
+        attachmentIds: [],
+      }),
+    ).toThrow('关联的前端缺陷仍在修复中');
     expect(await f.executions.claim(f.runner.id, 1, 0)).toEqual([]);
     expect(f.repairs.repairView(f.users.developer.id, source.id)?.timeline).toEqual(
       sourceBefore.timeline,
@@ -168,10 +170,14 @@ describe('前后端关联 Bug', () => {
       .workspace(f.users.tester.id, f.submission.id)
       .bugs.find(({ id }) => id === source.id)!;
     expect(ready.stage).toBe('WAITING_FOR_VERIFICATION');
-    f.lifecycle.verifyBug(f.users.tester.id, source.id, {
+    const targetReady = f.bugs
+      .workspace(f.users.tester.id, f.submission.id)
+      .bugs.find(({ id }) => id === targetBeforeVerify.id)!;
+    f.lifecycle.reviewLinkedBugs(f.users.tester.id, source.id, {
       mutationId: randomUUID(),
       expectedVersion: ready.version,
-      result: 'PASSED',
+      relatedExpectedVersion: targetReady.version,
+      decision: 'PASSED',
       attachmentIds: [],
     });
     expect(

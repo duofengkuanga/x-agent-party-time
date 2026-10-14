@@ -10,6 +10,11 @@ import {
   updateBugReportAction,
 } from '../server/actions';
 import type { BugFeedbackIntent } from './board-model';
+import type { LinkedReviewPair } from './linked-review-model';
+import {
+  LinkedOwnershipChoice,
+  type LinkedOwnership,
+} from './linked-ownership-choice';
 import { AttachmentPicker } from './attachments';
 import { messageOf } from '@/cooking/shared/ui/action-error';
 
@@ -17,6 +22,7 @@ export function BugReworkDialog({
   bug,
   error,
   kind,
+  pair,
   onCancel,
   onSubmit,
   pending,
@@ -24,12 +30,14 @@ export function BugReworkDialog({
   bug: BugView;
   error: string | null;
   kind: BugFeedbackIntent['kind'];
+  pair: LinkedReviewPair | null;
   onCancel: () => void;
   onSubmit: (formData: FormData) => void;
   pending: boolean;
 }) {
   const [feedback, setFeedback] = useState('');
   const [files, setFiles] = useState<File[]>([]);
+  const [ownership, setOwnership] = useState<LinkedOwnership>('BOTH');
   const reopening = kind === 'REOPEN';
   const title = reopening ? '重新打开' : '还有问题';
   return (
@@ -47,6 +55,13 @@ export function BugReworkDialog({
           formData.set('mutationId', createClientId());
           formData.set('expectedVersion', String(bug.version));
           formData.set('feedback', feedback);
+          if (pair?.ready) {
+            const other =
+              pair.frontend.id === bug.id ? pair.backend : pair.frontend;
+            formData.set('relatedExpectedVersion', String(other.version));
+            formData.set('decision', 'ISSUE');
+            formData.set('ownership', ownership);
+          }
           files.forEach((file) => formData.append('attachments', file));
           onSubmit(formData);
         }}
@@ -67,6 +82,13 @@ export function BugReworkDialog({
         </header>
         <div className="collab-dialog__body collab-form collab-bug-rework-dialog__body">
           <p>{bug.report.title}</p>
+          {pair?.ready ? (
+            <LinkedOwnershipChoice
+              disabled={pending}
+              onChange={setOwnership}
+              value={ownership}
+            />
+          ) : null}
           <label>
             <span>{reopening ? '重新出现的问题' : '仍然存在的问题'}</span>
             <textarea

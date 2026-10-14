@@ -5,6 +5,8 @@ import type { CookingWorkspaceSnapshot } from '@/cooking/workspace/contract';
 import {
   verifyBugAction,
   type BugLifecycleActionResult,
+  type LinkedBugArchiveActionResult,
+  type LinkedBugReviewActionResult,
 } from '@/cooking/lifecycle/server/actions';
 import { type RepairActionResult } from '@/cooking/repair/server/actions';
 import type { UpdateBatchView } from '@/cooking/update/contract';
@@ -39,7 +41,9 @@ export type WorkspaceActionResult =
   | DeleteBugActionResult
   | RepairActionResult
   | UpdateActionResult
-  | BugLifecycleActionResult;
+  | BugLifecycleActionResult
+  | LinkedBugArchiveActionResult
+  | LinkedBugReviewActionResult;
 
 export type UndoAction = {
   message: string;

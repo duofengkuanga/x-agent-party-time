@@ -9,14 +9,17 @@ import {
   stopCardAction,
   formatCountdown,
 } from './board-model';
+import { PassConfirmButton } from './pass-confirm-button';
 
 export function BugCard({
+  blockedReason,
   bug,
   draggable,
   dragging,
   eligibleAt,
   onDragEnd,
   onDragStart,
+  onArchive,
   onOpen,
   onReopen,
   onRequestRework,
@@ -24,12 +27,14 @@ export function BugCard({
   pending,
   visual,
 }: {
+  blockedReason?: string | null;
   bug: BugView;
   draggable: boolean;
   dragging: boolean;
   eligibleAt?: string;
   onDragEnd: () => void;
   onDragStart: (event: ReactDragEvent<HTMLElement>) => void;
+  onArchive: () => void;
   onOpen: () => void;
   onReopen: () => void;
   onRequestRework: () => void;
@@ -57,6 +62,9 @@ export function BugCard({
         {visual.symbol}
       </span>
       <h3>{bug.report.title}</h3>
+      {blockedReason ? (
+        <p className="collab-bug-card__blocked">{blockedReason}</p>
+      ) : null}
       <footer className="collab-bug-card__footer">
         <small className="collab-bug-card__type">
           {engineeringTypeLabel(bug.assignment?.engineeringType)}
@@ -80,13 +88,21 @@ export function BugCard({
               className={`collab-bug-card__actions${bug.availableActions.includes('VERIFY_PASS') ? ' collab-bug-card__verification' : ''}`}
             >
               {bug.availableActions.includes('VERIFY_PASS') ? (
-                <button
-                  disabled={pending}
-                  onClick={stopCardAction(onVerifyPass)}
-                  type="button"
-                >
-                  通过
-                </button>
+                blockedReason ? (
+                  <button
+                    disabled={pending}
+                    onClick={stopCardAction(onVerifyPass)}
+                    type="button"
+                  >
+                    通过
+                  </button>
+                ) : (
+                  <PassConfirmButton
+                    disabled={pending}
+                    message="确认这张缺陷已通过测试？"
+                    onConfirm={onVerifyPass}
+                  />
+                )
               ) : null}
               {bug.availableActions.includes('VERIFY_FAIL') ? (
                 <button
@@ -106,7 +122,84 @@ export function BugCard({
                   重新打开
                 </button>
               ) : null}
+              {bug.availableActions.includes('ARCHIVE') ? (
+                <button
+                  disabled={pending}
+                  onClick={stopCardAction(onArchive)}
+                  type="button"
+                >
+                  归档
+                </button>
+              ) : null}
             </div>
+          ) : null}
+        </div>
+      </footer>
+    </article>
+  );
+}
+
+export function LinkedReviewCard({
+  backend,
+  frontend,
+  onOpen,
+  onIssue,
+  onArchive,
+  onVerifyPass,
+  pending,
+}: {
+  backend: BugView;
+  frontend: BugView;
+  onOpen: () => void;
+  onIssue: () => void;
+  onArchive: () => void;
+  onVerifyPass: () => void;
+  pending: boolean;
+}) {
+  const waiting =
+    frontend.stage === 'WAITING_FOR_VERIFICATION' ||
+    backend.stage === 'WAITING_FOR_VERIFICATION';
+  return (
+    <article
+      className="collab-bug-card collab-linked-review-card"
+      data-stage={waiting ? 'WAITING_FOR_VERIFICATION' : 'DONE'}
+      data-visual-state="IDLE"
+    >
+      <button
+        aria-label={`${frontend.report.title}，前端和后端关联缺陷详情`}
+        className="collab-bug-card__open"
+        onClick={onOpen}
+        type="button"
+      />
+      <span aria-hidden="true" className="collab-bug-card__state">
+        ·
+      </span>
+      <h3>{frontend.report.title}</h3>
+      <div className="collab-linked-review-card__sides">
+        {[frontend, backend].map((bug) => (
+          <div key={bug.id}>
+            <span>{engineeringTypeLabel(bug.assignment?.engineeringType)}</span>
+            <span>{bug.presentation.stageLabel}</span>
+          </div>
+        ))}
+      </div>
+      <footer className="collab-bug-card__footer">
+        <small className="collab-bug-card__type">前端＋后端</small>
+        <div className="collab-bug-card__actions" aria-busy={pending}>
+          {waiting ? (
+            <PassConfirmButton
+              disabled={pending}
+              message="确认前端和后端的待验证缺陷都已通过测试？已完成的缺陷保持原状。"
+              onConfirm={onVerifyPass}
+            />
+          ) : null}
+          <button disabled={pending} onClick={onIssue} type="button">
+            {waiting ? '还有问题' : '重新打开'}
+          </button>
+          {!waiting ? (
+            <button disabled={pending} onClick={onArchive} type="button">
+              归档
+            </button>
           ) : null}
         </div>
       </footer>

@@ -58,6 +58,25 @@
   overflow-wrap: anywhere;
 }
 
+.collab-tester-detail__pair {
+  display: grid;
+  gap: 0 24px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.collab-tester-detail__pair > div {
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  font-size: 12px;
+  gap: 12px;
+  justify-content: space-between;
+  padding-block: 12px;
+}
+
+.collab-tester-detail__pair span {
+  color: var(--muted);
+}
+
 .collab-tester-detail__report {
   display: grid;
   gap: 24px;
@@ -160,6 +179,72 @@
   padding: 0;
 }
 
+.collab-linked-review-choice {
+  border: 0;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.collab-linked-review-choice__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.collab-linked-review-choice legend {
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 9px;
+}
+
+.collab-linked-review-choice__options label {
+  align-items: center;
+  display: inline-flex;
+  background: transparent;
+  border: 1px solid var(--strong-line);
+  color: var(--ink);
+  cursor: pointer;
+  min-height: 36px;
+  padding: 7px 12px;
+  position: relative;
+}
+
+.collab-linked-review-choice__options label:has(input:checked) {
+  background: color-mix(in srgb, var(--accent) 14%, var(--panel));
+  border-color: var(--accent);
+  box-shadow: inset 0 -2px var(--accent);
+}
+
+.collab-linked-review-choice__options label:hover:not(:has(input:disabled)) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fffaf0;
+}
+
+.collab-linked-review-choice__options label:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.collab-linked-review-choice__options label:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.collab-linked-review-choice__options input {
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  width: 1px;
+}
+
+.collab-linked-review-choice__options span {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .collab-tester-detail__actions {
   border-top: 1px solid var(--line);
   display: flex;
@@ -196,6 +281,9 @@
 }
 
 @media (max-width: 640px) {
+  .collab-tester-detail__pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .collab-tester-detail__comparison {
     grid-template-columns: minmax(0, 1fr);
   }

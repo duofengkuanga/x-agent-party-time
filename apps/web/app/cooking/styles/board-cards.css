@@ -1,8 +1,36 @@
 .collab-board {
   display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0;
+  grid-template-columns: var(--board-columns, repeat(6, minmax(140px, 1fr)));
   margin-top: 12px;
+}
+
+.collab-board__resize-handle {
+  align-items: center;
+  cursor: col-resize;
+  display: flex;
+  justify-content: center;
+  min-height: 0;
+  touch-action: none;
+  user-select: none;
+}
+
+.collab-board__resize-handle::before {
+  background: var(--line);
+  content: '';
+  height: 42px;
+  width: 2px;
+}
+
+.collab-board__resize-handle:hover::before,
+.collab-board__resize-handle:focus-visible::before {
+  background: var(--accent);
+  width: 3px;
+}
+
+.collab-board__resize-handle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .collab-column {
@@ -13,7 +41,12 @@
 
 @container (max-width: 1080px) {
   .collab-board {
+    gap: 8px;
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .collab-board__resize-handle {
+    display: none;
   }
 }
 
@@ -219,6 +252,10 @@
   animation: none;
 }
 
+.collab-bug-card[data-stage='DONE'][data-visual-state='IDLE'] {
+  --bug-stage-color: var(--success);
+}
+
 .collab-current-visual {
   align-items: center;
   border-left: 2px solid currentColor;
@@ -372,6 +409,31 @@
   text-align: right;
 }
 
+.collab-bug-card:not(.collab-linked-review-card)
+  .collab-bug-card__footer:has(.collab-bug-card__actions) {
+  align-items: stretch;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.collab-bug-card:not(.collab-linked-review-card)
+  .collab-bug-card__footer:has(.collab-bug-card__actions)
+  .collab-bug-card__footer-end {
+  align-items: stretch;
+  margin-left: 0;
+  width: 100%;
+}
+
+.collab-bug-card:not(.collab-linked-review-card)
+  .collab-bug-card__footer:has(.collab-bug-card__actions)
+  .collab-bug-card__actions {
+  flex-wrap: wrap;
+}
+
+.collab-bug-card__actions button {
+  white-space: nowrap;
+}
+
 .collab-bug-card__footer time {
   color: var(--faint);
   font-size: 9px;
@@ -421,6 +483,103 @@
 .collab-bug-card__actions {
   display: grid;
   gap: 6px;
+}
+
+.collab-bug-card__blocked {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.collab-linked-review-card {
+  align-content: start;
+  cursor: default;
+  grid-template-rows: repeat(3, max-content);
+  height: max-content;
+  min-height: 0;
+  overflow: visible;
+}
+
+.collab-linked-review-card > h3 {
+  grid-row: 1;
+}
+
+.collab-linked-review-card__sides {
+  border-block: 1px solid var(--line);
+  display: grid;
+  gap: 4px;
+  grid-column: 2;
+  grid-row: 2;
+  padding-block: 8px;
+}
+
+.collab-linked-review-card__sides > div {
+  display: flex;
+  font-size: 10px;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.collab-linked-review-card__sides > div > span:last-child {
+  color: var(--muted);
+}
+
+.collab-linked-review-card .collab-bug-card__footer {
+  align-items: center;
+  flex-wrap: wrap;
+  grid-row: 3;
+  margin-top: 0;
+  pointer-events: auto;
+}
+
+.collab-linked-review-card .collab-bug-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+  pointer-events: auto;
+  width: 100%;
+}
+
+.collab-linked-review-card .collab-bug-card__actions button {
+  min-height: 28px;
+  padding: 5px 8px;
+}
+
+.collab-pass-confirm {
+  display: inline-grid;
+  gap: 6px;
+  min-width: 0;
+  pointer-events: auto;
+  position: relative;
+}
+
+.collab-pass-confirm:has(.collab-pass-confirm__panel) {
+  flex-basis: 100%;
+  width: 100%;
+}
+
+.collab-pass-confirm__panel {
+  background: var(--panel);
+  border: 1px solid var(--strong-line);
+  box-shadow: 3px 3px 0 color-mix(in srgb, var(--ink), transparent 80%);
+  box-sizing: border-box;
+  display: grid;
+  font-size: 11px;
+  gap: 10px;
+  line-height: 1.5;
+  padding: 10px;
+  position: relative;
+  max-width: 300px;
+  width: 100%;
+  z-index: 4;
+}
+
+.collab-pass-confirm__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
 }
 
 .collab-bug-card select {
