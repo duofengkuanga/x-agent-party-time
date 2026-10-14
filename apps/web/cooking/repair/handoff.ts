@@ -9,7 +9,9 @@ const credentialName =
     /[a-z]/gu,
     (letter) => `[${letter}${letter.toUpperCase()}]`,
   );
-const absolutePath = String.raw`(?:(?:^|[\s"'=\x60([{<：:，,;；（【《“‘])(?:/(?!/)|~/)|\b[A-Za-z]:(?:\\|/(?!/))|(?<![A-Za-z0-9_./-])/(?:Users|home|private|var|tmp|Volumes|Applications|Library|opt|usr|root|workspace|data)(?:/|$))`;
+// A leading slash also denotes a web route; only recognizable filesystem roots
+// identify Unix paths here. Relative-path fields are validated separately.
+const absolutePath = String.raw`(?:(?:^|[\s"'=\x60([{<：:，,;；（【《“‘])~/|\b[A-Za-z]:(?:\\|/(?!/))|(?<![A-Za-z0-9_./-])/(?:Users|home|private|var|tmp|Volumes|Applications|Library|opt|usr|root|workspace|data|etc|bin|sbin|dev|proc|sys|run|srv|mnt|media|System|Network|cores)(?:/|$))`;
 const portableContext = new RegExp(
   String.raw`^(?![\s\S]*${absolutePath})(?![\s\S]*(?:${credentialName})["']?\s*[:=：]\s*\S+)[\s\S]*$`,
 );
