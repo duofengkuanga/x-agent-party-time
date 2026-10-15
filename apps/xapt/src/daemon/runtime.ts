@@ -15,6 +15,7 @@ export interface DaemonRuntimeOptions {
   codex: CodexInstallation;
   connection?: ConnectionCoordinator;
   agentService?: AgentService;
+  observations?: { readonly degraded: boolean; shutdown(): Promise<void> };
 }
 
 export class DaemonRuntime {
@@ -51,9 +52,16 @@ export class DaemonRuntime {
       throw error;
     }
     const serviceTask = this.options.agentService?.run();
-    await this.control.done;
-    this.options.agentService?.stop();
-    await serviceTask;
+    try {
+      await this.control.done;
+    } finally {
+      this.options.agentService?.stop();
+      try {
+        await serviceTask;
+      } finally {
+        await this.options.observations?.shutdown();
+      }
+    }
   }
 
   private async snapshot(): Promise<DaemonSnapshot> {
@@ -64,6 +72,11 @@ export class DaemonRuntime {
     ]);
     return {
       service: 'RUNNING',
+      observationStatus: this.options.observations
+        ? this.options.observations.degraded
+          ? 'DEGRADED'
+          : 'HEALTHY'
+        : 'UNAVAILABLE',
       connection:
         this.options.connection?.projection.status ??
         (connection ? 'DEGRADED' : 'UNCONFIGURED'),

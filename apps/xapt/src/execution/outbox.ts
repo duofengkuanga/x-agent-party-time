@@ -7,12 +7,22 @@ import type { RunnerExecutionHttp } from '../agent/server-http';
 import { RunnerHttpError } from '@agent-party-time/runner-contract/http-client';
 import { OUTBOX_STATE_SCHEMA_VERSION, type OutboxEntry } from '../state/schemas';
 import type { LocalStateStore } from '../state/store';
+import { randomUUID } from 'node:crypto';
+
+type DeliveryNotice = {
+  executionId: string;
+  entryId: string;
+  attemptId: string;
+  terminal: boolean;
+  stage: 'started' | 'accepted' | 'rejected' | 'unknown';
+};
 export class ExecutionOutbox {
   constructor(
     private readonly http: RunnerExecutionHttp,
     private readonly state: LocalStateStore,
     private readonly now: () => Date,
     private readonly createId: () => string,
+    private readonly observation: (notice: DeliveryNotice) => void,
   ) {}
   async persistAndDeliver(
     session: AuthenticatedRunnerSession,
@@ -72,6 +82,23 @@ export class ExecutionOutbox {
     entry: OutboxEntry,
     mode: 'LIVE' | 'RECOVERY',
   ): Promise<boolean> {
+    const attemptId = randomUUID();
+    const terminal = entry.kind === 'OUTCOME' || entry.request.kind === 'START_FAILED';
+    const observe = (stage: DeliveryNotice['stage']) => {
+      try {
+        this.observation({
+          executionId: entry.executionId,
+          entryId: entry.id,
+          attemptId,
+          terminal,
+          stage,
+        });
+      } catch {
+        /* Diagnostics are independent. */
+      }
+    };
+    observe('started');
+    let accepted = false;
     try {
       const address = [
         session.serverOrigin,
@@ -81,6 +108,8 @@ export class ExecutionOutbox {
       if (entry.kind === 'START')
         await this.http.startExecution(...address, entry.request);
       else await this.http.completeExecution(...address, entry.request);
+      accepted = true;
+      observe('accepted');
       await this.state.removeOutbox(entry.id);
       if (
         mode === 'RECOVERY' &&
@@ -89,6 +118,7 @@ export class ExecutionOutbox {
         await this.state.removeExecution(entry.executionId);
       return true;
     } catch (error) {
+      if (!accepted) observe(isTerminalDeliveryError(error) ? 'rejected' : 'unknown');
       if (!isTerminalDeliveryError(error)) return false;
       await this.state.removeOutbox(entry.id);
       if (mode === 'RECOVERY') await this.state.removeExecution(entry.executionId);

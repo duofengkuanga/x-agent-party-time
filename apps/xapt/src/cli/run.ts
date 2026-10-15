@@ -214,6 +214,7 @@ function renderDaemonStatus(snapshot: DaemonSnapshot): string {
     `等待交互      ${snapshot.waitingInteractions}`,
     `待发送结果    ${snapshot.outboxCount}`,
     `本机关联      ${snapshot.bindingCount} 个`,
+    `耗时归因      ${{ HEALTHY: '正常', DEGRADED: '部分不可用（本次运行曾降级）', UNAVAILABLE: '未运行' }[snapshot.observationStatus]}`,
   );
   if (snapshot.connection === 'UNCONFIGURED' && snapshot.service === 'RUNNING')
     lines.push('下一步：xapt daemon connect <server-url>');

@@ -37,7 +37,6 @@ require('node:readline').createInterface({input:process.stdin}).on('line',line=>
         skill: null,
         outputSchema: {},
         attachments: [],
-        artifactsDirectory: root,
         taskId: null,
         onInteraction: async () => ({}),
         onManualHandoff: async () => {
@@ -90,7 +89,6 @@ require('node:readline').createInterface({input: process.stdin}).on('line', line
     skill: null,
     outputSchema: {},
     attachments: [],
-    artifactsDirectory: root,
     taskId: null,
     onInteraction: async () => {
       throw new Error('异步消息不是同步审批');

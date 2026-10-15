@@ -173,3 +173,28 @@ function runner(): Runner {
     createdAt: now.toISOString(),
   };
 }
+
+test('daemon正常停止等待有界本机归因收尾', async () => {
+  const home = await createTestDirectory();
+  const paths = xaptPaths(home);
+  const files = new NodeLocalFileSystem();
+  const state = new LocalStateStore(paths, files);
+  let persisted = false;
+  const runtime = new DaemonRuntime({
+    paths,
+    files,
+    state,
+    codex: { executable: '/opt/bin/codex', version: '0.146.0' },
+    observations: {
+      degraded: false,
+      shutdown: async () => {
+        await Bun.sleep(10);
+        persisted = true;
+      },
+    },
+  });
+  const task = runtime.run();
+  await stopWhenReady(new DaemonControlClient(paths.controlSocket, 200));
+  await task;
+  expect(persisted).toBe(true);
+});

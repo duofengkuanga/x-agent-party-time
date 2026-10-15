@@ -68,6 +68,7 @@ export function ExecutionRound({
   checks,
   delivery,
   kind,
+  analysis,
 }: {
   title: string;
   status: string;
@@ -80,6 +81,7 @@ export function ExecutionRound({
   checks: ReactNode;
   delivery: ReactNode;
   kind: 'repair' | 'update';
+  analysis?: ReactNode;
 }) {
   return (
     <article
@@ -112,6 +114,7 @@ export function ExecutionRound({
             <dd>{delivery}</dd>
           </div>
         </dl>
+        {analysis}
         {finishedAt ? (
           <p className="collab-execution-round__time">
             结束于 {formatDateTime(finishedAt)}

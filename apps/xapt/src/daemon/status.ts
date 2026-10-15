@@ -18,6 +18,7 @@ export interface DaemonSnapshot {
   outboxCount: number;
   bindingCount: number;
   bindingActive: boolean;
+  observationStatus: 'HEALTHY' | 'DEGRADED' | 'UNAVAILABLE';
 }
 
 export function stoppedSnapshot(version: string): DaemonSnapshot {
@@ -36,6 +37,7 @@ export function stoppedSnapshot(version: string): DaemonSnapshot {
     outboxCount: 0,
     bindingCount: 0,
     bindingActive: false,
+    observationStatus: 'UNAVAILABLE',
   };
 }
 

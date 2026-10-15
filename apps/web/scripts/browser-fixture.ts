@@ -6,6 +6,13 @@ import {
   completeSuccessfulExecution,
 } from '@/cooking/testing/execution';
 import { openDatabase } from '@/platform/database';
+import { ExecutionObservations } from '@/platform/execution/observations';
+import { cookingObservationAccess } from '@/cooking/runtime/observation-access';
+import {
+  calculateObservationReport,
+  observationDigest,
+  type ObservationEvent,
+} from '@agent-party-time/execution-contract/observability';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 
@@ -308,6 +315,94 @@ export async function seedBrowserFixture(home: string): Promise<BrowserFixture> 
         },
       },
     });
+    const observations = new ExecutionObservations(db, cookingObservationAccess(db));
+    for (const executionId of [nextScrollRepair.id, scrollUpdate.id]) {
+      const segmentId = randomUUID();
+      const workId = randomUUID();
+      const data: Array<
+        Partial<ObservationEvent> & Pick<ObservationEvent, 'name' | 'observedElapsedMs'>
+      > = [
+        { name: 'execution.received', observedElapsedMs: 0 },
+        {
+          name: 'configuration.observed',
+          observedElapsedMs: 1,
+          configuration: {
+            effectiveModel: 'fixture-model',
+            effectiveEffort: 'high',
+            clockSleep: 'unknown',
+          },
+        },
+        {
+          name: 'item.started',
+          observedElapsedMs: 20,
+          activity: 'build',
+          workId,
+          correlation: { sourceItemId: 'build' },
+        },
+        {
+          name: 'item.finished',
+          observedElapsedMs: 120,
+          activity: 'build',
+          workId,
+          status: 'succeeded',
+          correlation: { sourceItemId: 'build' },
+        },
+        {
+          name: 'item.started',
+          observedElapsedMs: 130,
+          activity: 'deploy',
+          correlation: { sourceItemId: 'deploy' },
+        },
+        {
+          name: 'item.finished',
+          observedElapsedMs: 330,
+          activity: 'deploy',
+          status: 'succeeded',
+          correlation: { sourceItemId: 'deploy' },
+        },
+        {
+          name: 'activity.observed',
+          observedElapsedMs: 330,
+          activity: 'build',
+          reason: 'source_reported',
+          workId,
+          status: 'succeeded',
+          sourceDurationMs: 80,
+          correlation: { sourceItemId: 'inner-build', parentIntervalId: 'deploy' },
+        },
+        { name: 'delivery.accepted', observedElapsedMs: 400 },
+        { name: 'segment.closed', observedElapsedMs: 401 },
+      ];
+      const events: ObservationEvent[] = data.map((event, i) => ({
+        schemaVersion: 1,
+        eventId: randomUUID(),
+        executionId,
+        segmentId,
+        sequence: i + 1,
+        observedAt: new Date().toISOString(),
+        source: 'xapt',
+        ...event,
+      }));
+      const report = calculateObservationReport(events, {
+        executionId,
+        reportId: randomUUID(),
+        revision: 1,
+        parentReportId: null,
+        inputDigest: await observationDigest(events),
+        calculatedAt: new Date().toISOString(),
+      });
+      const payload = {
+        schemaVersion: 1 as const,
+        batchId: randomUUID(),
+        executionId,
+        events,
+        report,
+      };
+      await observations.accept(paired.runner.id, {
+        ...payload,
+        digest: await observationDigest(payload),
+      });
+    }
     updates.reportExternalDeployment(developer.id, scrollBatch.batchId, {
       mutationId: randomUUID(),
       expectedVersion: updates.batchView(developer.id, scrollBatch.batchId).version,

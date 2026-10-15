@@ -28,6 +28,7 @@ import {
 import type { RunWorkspaceAction } from './repair-timeline';
 import { formatDateTime } from './board-model';
 import { HandoffUseDetails, RepairHandoffDetails } from './handoff-details';
+import { ObservationDetails } from './observation-details';
 
 export function UpdateAttemptDetails({
   batch,
@@ -55,6 +56,15 @@ export function UpdateAttemptDetails({
   return (
     <ExecutionRound
       kind="update"
+      analysis={
+        node.canReadObservations ? (
+          <ObservationDetails
+            key={node.executionId}
+            executionId={node.executionId}
+            shared
+          />
+        ) : null
+      }
       title={`第 ${round} 轮更新`}
       status={executionRoundStatus(node)}
       at={node.queuedAt}

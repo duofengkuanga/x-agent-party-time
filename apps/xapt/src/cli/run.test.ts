@@ -279,5 +279,6 @@ function runningSnapshot(connection: DaemonSnapshot['connection']): DaemonSnapsh
     outboxCount: 0,
     bindingCount: 0,
     bindingActive: false,
+    observationStatus: 'HEALTHY',
   };
 }

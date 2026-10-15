@@ -12,6 +12,7 @@ import { AttachmentLink, type StoredAttachment } from './attachments';
 import type { WorkspaceActionResult } from './board-model';
 import { ManualHandoff } from './manual-handoff';
 import { CookingInteractionRecord } from './interaction-record';
+import { ObservationDetails } from './observation-details';
 import {
   ExecutionIdentity,
   ExecutionRound,
@@ -115,6 +116,14 @@ export function RepairAttemptDetails({
     <ExecutionRound
       title={`第 ${node.attempt} 轮修复`}
       kind="repair"
+      analysis={
+        node.canReadObservations ? (
+          <ObservationDetails
+            key={node.executionId}
+            executionId={node.executionId}
+          />
+        ) : null
+      }
       status={executionRoundStatus(node)}
       at={node.queuedAt}
       finishedAt={node.finishedAt}

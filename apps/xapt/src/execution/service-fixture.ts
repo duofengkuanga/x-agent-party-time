@@ -31,6 +31,7 @@ import type {
 } from './result-verification';
 import type { SkillBundleManager } from '../skills/manager';
 import type { ExecutionWorkspaceManager } from './workspaces';
+import { ObservationService } from '../observability/service';
 
 const createTestDirectory = testDirectories('xapt-execution-');
 export const executionId = '00000000-0000-4000-8000-000000000301';
@@ -119,7 +120,6 @@ export async function createFixture(
       files,
       {
         materialize: async () => [],
-        artifactsDirectory: (id: string) => join(paths.logs, id),
       } as unknown as AttachmentMaterializer,
       {
         prepare: async () => ({ kind: 'EXECUTE', cwd: repositoryPath }),
@@ -140,6 +140,20 @@ export async function createFixture(
           if (options.resultValidationFailure) throw options.resultValidationFailure;
         },
       } as ExecutionResultVerifier,
+      new ObservationService(
+        join(paths.state, 'observations'),
+        files,
+        state,
+        {
+          send: async (_session, batch) => ({
+            batchId: batch.batchId,
+            digest: batch.digest,
+            accepted: true,
+            duplicate: false,
+          }),
+        },
+        () => now,
+      ),
       () => now,
       () => `00000000-0000-4000-8000-${String(nextId++).padStart(12, '0')}`,
     );

@@ -28,6 +28,8 @@ import {
 } from './result-verification';
 import type { ExecutionWorkspaceManager } from './workspaces';
 import { failureMessage } from './failure-message';
+import type { ExecutionObservation } from '../observability/recorder';
+import { protocolObserver } from '../observability/protocol';
 
 const sessionResultSchemaValidator = new Ajv({
   allErrors: true,
@@ -73,6 +75,7 @@ export class ExecutionPreparation {
     session: AuthenticatedRunnerSession,
     execution: ClaimedExecution,
     turn: InitialTurn,
+    observation: ExecutionObservation,
   ): Promise<PreparedExecution> {
     const bindingPath = await this.state.resolveBinding(execution.bindingId);
     if (!bindingPath) {
@@ -92,7 +95,9 @@ export class ExecutionPreparation {
     let repositoryPath = bindingPath;
     if (execution.workspace)
       try {
-        const prepared = await this.workspaces.prepare(bindingPath, execution.workspace);
+        const prepared = await observation.phase('workspace', () =>
+          this.workspaces.prepare(bindingPath, execution.workspace!),
+        );
         if (prepared.kind === 'COMPLETED')
           return { kind: 'WORKSPACE_COMPLETED', result: prepared.result };
         repositoryPath = prepared.cwd;
@@ -105,10 +110,8 @@ export class ExecutionPreparation {
       }
     let materialized: MaterializedAttachment[];
     try {
-      materialized = await this.attachments.materialize(
-        session.serverOrigin,
-        session.credential,
-        execution,
+      materialized = await observation.phase('attachments', () =>
+        this.attachments.materialize(session.serverOrigin, session.credential, execution),
       );
     } catch {
       return failed({
@@ -128,15 +131,17 @@ export class ExecutionPreparation {
           throw new Error('任务说明校验值不匹配');
         if (!XAPT_SKILL_NAMES.includes(turn.requiredSkillName as XaptSkillName))
           throw new Error('任务请求了未知规则');
-        resolvedSkill = await this.skills.resolveCurrent(
-          turn.requiredSkillName as XaptSkillName,
+        resolvedSkill = await observation.phase('skill', () =>
+          this.skills.resolveCurrent(turn.requiredSkillName as XaptSkillName),
         );
       } else
-        resolvedSkill = await this.skills.resolveBound({
-          skillName: turn.taskSkillBinding.skillName as XaptSkillName,
-          bundleHash: turn.taskSkillBinding.bundleHash,
-          sourceRevision: turn.taskSkillBinding.sourceRevision,
-        });
+        resolvedSkill = await observation.phase('skill', () =>
+          this.skills.resolveBound({
+            skillName: turn.taskSkillBinding.skillName as XaptSkillName,
+            bundleHash: turn.taskSkillBinding.bundleHash,
+            sourceRevision: turn.taskSkillBinding.sourceRevision,
+          }),
+        );
     } catch (error) {
       return failed({
         code: 'CODEX_START_FAILED',
@@ -149,9 +154,8 @@ export class ExecutionPreparation {
     const resultAssertions = turn.resultAssertions ?? [];
     let resultBaseline: ExecutionResultBaseline;
     try {
-      resultBaseline = await this.resultVerifier.capture(
-        repositoryPath,
-        resultAssertions,
+      resultBaseline = await observation.phase('baseline', () =>
+        this.resultVerifier.capture(repositoryPath, resultAssertions),
       );
       await this.state.saveExecutionResultBaseline(execution.id, resultBaseline);
     } catch (error) {
@@ -163,6 +167,11 @@ export class ExecutionPreparation {
         retryable: true,
       });
     }
+    observation.record({
+      name: 'configuration.observed',
+      source: 'xapt',
+      configuration: { bundleHash: resolvedSkill.bundleHash },
+    });
     return {
       kind: 'READY',
       repositoryPath,
@@ -176,9 +185,12 @@ export class ExecutionPreparation {
   async readSession(
     execution: ClaimedExecution,
     sessionId: string,
+    observation: ExecutionObservation,
   ): Promise<SynchronizedSession> {
     try {
-      const completed = await this.executor.readLastCompletedTurn(sessionId);
+      const completed = await observation.phase('synchronization', () =>
+        this.executor.readLastCompletedTurn(sessionId, protocolObserver(observation)),
+      );
       verifySessionResultSchema(execution.codexTurn?.outputJsonSchema, completed.result);
       const resultAssertions = execution.codexTurn?.resultAssertions ?? [];
       verifyResultContent(resultAssertions, completed.result);

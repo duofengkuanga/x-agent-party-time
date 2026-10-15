@@ -27,6 +27,11 @@ import {
   type ExecutionResultVerifier,
 } from './result-verification';
 import type { ExecutionWorkspaceManager } from './workspaces';
+import type { ObservationService } from '../observability/service';
+import type { ExecutionObservation } from '../observability/recorder';
+import { protocolObserver } from '../observability/protocol';
+import { XAPT_VERSION } from '../version';
+import { createCommandClassifier } from '../observability/command-context';
 
 export interface ExecutionProjection {
   activeExecutionCount: number;
@@ -58,15 +63,54 @@ export class ExecutionService {
     private readonly http: RunnerExecutionHttp,
     private readonly state: LocalStateStore,
     files: LocalFileSystem,
-    private readonly attachments: AttachmentMaterializer,
+    attachments: AttachmentMaterializer,
     workspaces: ExecutionWorkspaceManager,
     private readonly executor: CodexExecutor,
     skills: SkillBundleManager,
     private readonly resultVerifier: ExecutionResultVerifier,
+    private readonly observations: ObservationService,
     now: () => Date = () => new Date(),
     createId: () => string = randomUUID,
   ) {
-    this.outbox = new ExecutionOutbox(http, state, now, createId);
+    this.outbox = new ExecutionOutbox(http, state, now, createId, (notice) => {
+      const correlation = {
+        intervalId: notice.attemptId,
+        parentIntervalId: notice.entryId,
+      };
+      if (!notice.terminal) {
+        this.observations.event(notice.executionId, {
+          name: notice.stage === 'started' ? 'phase.started' : 'phase.finished',
+          source: 'xapt',
+          phase: 'startup',
+          correlation,
+          status:
+            notice.stage === 'accepted'
+              ? 'succeeded'
+              : notice.stage === 'started'
+                ? 'running'
+                : 'unknown',
+        });
+      } else
+        this.observations.event(notice.executionId, {
+          name:
+            notice.stage === 'started'
+              ? 'delivery.started'
+              : notice.stage === 'accepted'
+                ? 'delivery.accepted'
+                : notice.stage === 'rejected'
+                  ? 'delivery.rejected'
+                  : 'delivery.unknown',
+          source: notice.stage === 'started' ? 'xapt' : 'server_response',
+          phase: 'delivery',
+          correlation,
+        });
+      if (
+        notice.terminal &&
+        notice.stage !== 'started' &&
+        !this.tasks.has(notice.executionId)
+      )
+        this.observations.close(notice.executionId);
+    });
     this.preparation = new ExecutionPreparation(
       state,
       files,
@@ -80,6 +124,7 @@ export class ExecutionService {
   }
 
   async cycle(session: AuthenticatedRunnerSession): Promise<boolean> {
+    await this.observations.prepareCycle(session);
     if (this.tasks.size === 0) {
       if (
         !(await this.outbox.replayOutbox(session, async (entry) => {
@@ -94,6 +139,14 @@ export class ExecutionService {
               return false;
             }
           }
+          const attemptId = randomUUID();
+          const correlation = { intervalId: attemptId, parentIntervalId: entry.id };
+          this.observations.event(entry.executionId, {
+            name: 'delivery.started',
+            source: 'xapt',
+            phase: 'delivery',
+            correlation,
+          });
           try {
             await this.http.completeExecution(
               session.serverOrigin,
@@ -101,8 +154,26 @@ export class ExecutionService {
               entry.executionId,
               entry.request,
             );
+            this.observations.event(entry.executionId, {
+              name: 'delivery.accepted',
+              source: 'server_response',
+              phase: 'delivery',
+              correlation,
+            });
             return true;
           } catch (error) {
+            this.observations.event(entry.executionId, {
+              name:
+                error instanceof RunnerHttpError &&
+                ['OUTCOME_CONFLICT', 'INVALID_TRANSITION', 'LEASE_EXPIRED'].includes(
+                  error.code,
+                )
+                  ? 'delivery.rejected'
+                  : 'delivery.unknown',
+              source: 'server_response',
+              phase: 'delivery',
+              correlation,
+            });
             if (!(error instanceof RunnerHttpError)) return false;
             if (error.code === 'OUTCOME_CONFLICT') return true;
             if (error.code !== 'INVALID_TRANSITION') return false;
@@ -164,15 +235,35 @@ export class ExecutionService {
     execution: ClaimedExecution,
   ): void {
     if (this.tasks.has(execution.id)) return;
+    const observation = this.observations.receive(session, execution);
+    const waitId = randomUUID();
+    observation.record({
+      name: 'configuration.observed',
+      source: 'xapt',
+      configuration: { xaptVersion: XAPT_VERSION },
+    });
+    observation.record({
+      name: 'phase.started',
+      source: 'xapt',
+      phase: 'local_wait',
+      correlation: { intervalId: waitId },
+    });
     const previous = this.bindingTails.get(execution.bindingId);
     const persisted = this.recovery.recordPhase(execution, 'CLAIMED', null);
     let task!: Promise<void>;
     task = Promise.all([persisted, previous ?? Promise.resolve()])
       .then(async () => {
         if (this.forceStopping) return;
+        observation.record({
+          name: 'phase.finished',
+          source: 'xapt',
+          phase: 'local_wait',
+          correlation: { intervalId: waitId },
+          status: 'succeeded',
+        });
         this.runningExecutionIds.add(execution.id);
         try {
-          await this.execute(session, execution);
+          await this.execute(session, execution, observation);
         } finally {
           this.runningExecutionIds.delete(execution.id);
         }
@@ -181,6 +272,7 @@ export class ExecutionService {
         this.recoveryRequired = true;
       })
       .finally(() => {
+        this.observations.close(execution.id);
         this.tasks.delete(execution.id);
         if (this.bindingTails.get(execution.bindingId) === task)
           this.bindingTails.delete(execution.bindingId);
@@ -192,6 +284,7 @@ export class ExecutionService {
   private async execute(
     session: AuthenticatedRunnerSession,
     execution: ClaimedExecution,
+    observation: ExecutionObservation,
   ): Promise<void> {
     if (execution.cancellationRequested) {
       await this.reportStartFailure(session, execution, {
@@ -211,7 +304,11 @@ export class ExecutionService {
       return;
     }
     if (turn.kind === 'READ_SESSION') {
-      const synchronization = await this.preparation.readSession(execution, turn.taskId);
+      const synchronization = await this.preparation.readSession(
+        execution,
+        turn.taskId,
+        observation,
+      );
       if (synchronization.kind === 'FAILED')
         await this.reportStartFailure(session, execution, synchronization.failure);
       else
@@ -223,7 +320,12 @@ export class ExecutionService {
         );
       return;
     }
-    const prepared = await this.preparation.prepare(session, execution, turn);
+    const prepared = await this.preparation.prepare(
+      session,
+      execution,
+      turn,
+      observation,
+    );
     if (prepared.kind === 'FAILED') {
       await this.reportStartFailure(session, execution, prepared.failure);
       return;
@@ -279,11 +381,16 @@ export class ExecutionService {
               : null,
           outputSchema: turn.outputJsonSchema,
           attachments: materialized,
-          artifactsDirectory: this.attachments.artifactsDirectory(execution.id),
           taskId: turn.kind === 'CONTINUATION' ? turn.taskId : null,
+          observe: protocolObserver(observation, createCommandClassifier(repositoryPath)),
           onManualHandoff:
             turn.manualHandoff === 'EXTERNAL_SESSION'
               ? async (questions) => {
+                  observation.record({
+                    name: 'handoff.requested',
+                    source: 'xapt',
+                    status: 'handed_off',
+                  });
                   await startGate;
                   if (!startAccepted) throw new Error('任务启动状态尚未被服务接受');
                   const payload = sanitizeExecutionInteractionPayload(
@@ -373,12 +480,19 @@ export class ExecutionService {
     let request: CompleteExecutionRequest;
     try {
       const result = await Promise.race([started.completion, lease.lost]);
-      await this.resultVerifier.verify(
-        repositoryPath,
-        resultAssertions,
-        resultBaseline,
-        result,
+      await observation.phase('validation', () =>
+        this.resultVerifier.verify(
+          repositoryPath,
+          resultAssertions,
+          resultBaseline,
+          result,
+        ),
       );
+      observation.record({
+        name: 'outcome.validated',
+        source: 'xapt',
+        status: 'succeeded',
+      });
       request = {
         leaseToken: execution.lease.token,
         sessionId: started.sessionId,

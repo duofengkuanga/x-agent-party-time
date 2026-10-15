@@ -1,7 +1,4 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { createWriteStream, type WriteStream } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
 import { type JsonValue } from '@agent-party-time/execution-contract';
 import { XAPT_VERSION } from '../version';
 import type {
@@ -34,6 +31,7 @@ import {
 
 import { CodexAppServerError } from './errors';
 import { readCompletedTurn } from './session-reader';
+import type { CodexObservationNotice } from '../observability/protocol';
 
 type JsonRpcRequest = {
   id: string | number;
@@ -50,7 +48,6 @@ type ActiveTurn = {
   threadId: string;
   turnId: string;
   input: CodexExecutionInput;
-  log: WriteStream;
   resolve: (result: JsonValue) => void;
   reject: (error: Error) => void;
 };
@@ -61,6 +58,7 @@ const XAPT_THREAD_SECURITY = {
 } as const;
 
 export class CodexAppServerExecutor implements CodexExecutor {
+  private observer?: (notice: CodexObservationNotice) => void;
   private readonly operations = new Set<CodexAppServerExecutor>();
   private closing: Promise<void> | null = null;
   private child: ChildProcessWithoutNullStreams | null = null;
@@ -118,7 +116,7 @@ export class CodexAppServerExecutor implements CodexExecutor {
     input: CodexExecutionInput,
     signal: AbortSignal,
   ): Promise<StartedCodexExecution> {
-    await mkdir(input.artifactsDirectory, { recursive: true, mode: 0o700 });
+    this.observer = input.observe;
     await this.ensureStarted();
     let threadId = input.taskId;
     try {
@@ -157,8 +155,12 @@ export class CodexAppServerExecutor implements CodexExecutor {
     }
   }
 
-  async readLastCompletedTurn(sessionId: string): Promise<CompletedCodexTurn> {
+  async readLastCompletedTurn(
+    sessionId: string,
+    observe?: (notice: CodexObservationNotice) => void,
+  ): Promise<CompletedCodexTurn> {
     const operation = new CodexAppServerExecutor(this.executable, this.spawnProcess);
+    operation.observer = observe;
     this.operations.add(operation);
     try {
       return await operation.readOwnedTurn(sessionId);
@@ -190,6 +192,7 @@ export class CodexAppServerExecutor implements CodexExecutor {
     if (this.closing) return this.closing;
     const child = this.child;
     if (!child) return;
+    this.observe({ type: 'closing' });
     this.closing = new Promise<void>((resolve) => {
       child.once('close', () => {
         clearTimeout(timeout);
@@ -215,24 +218,24 @@ export class CodexAppServerExecutor implements CodexExecutor {
   }
 
   private async start(): Promise<void> {
+    this.observe({ type: 'spawn' });
     const child = this.spawnProcess(this.executable, ['app-server'], {
       stdio: ['pipe', 'pipe', 'pipe'],
     }) as ChildProcessWithoutNullStreams;
     this.child = child;
     child.stdout.on('data', (chunk: Buffer) => this.consume(chunk));
-    child.stderr.on('data', (chunk: Buffer) => {
-      for (const turn of this.turns.values()) turn.log.write(chunk);
-    });
+    child.stderr.on('data', () => this.observe({ type: 'stderr' }));
     child.once('error', (error) => this.failProcess(error));
-    child.once('close', (code, closeSignal) =>
+    child.once('close', (code, closeSignal) => {
+      this.observe({ type: 'exit', code });
       this.failProcess(
         new Error(
           `Codex App Server 已退出（code=${String(code)}, signal=${String(
             closeSignal,
           )}）`,
         ),
-      ),
-    );
+      );
+    });
     await this.request('initialize', {
       clientInfo: {
         name: 'xapt',
@@ -250,17 +253,13 @@ export class CodexAppServerExecutor implements CodexExecutor {
     input: CodexExecutionInput,
     signal: AbortSignal,
   ): Promise<JsonValue> {
-    const log = createWriteStream(
-      join(input.artifactsDirectory, 'codex-app-server.jsonl'),
-      { flags: 'a', mode: 0o600 },
-    );
     return new Promise<JsonValue>((resolve, reject) => {
       const key = turnKey(threadId, turnId);
       const finish = (callback: () => void) => {
         signal.removeEventListener('abort', abort);
         this.turns.delete(key);
         this.agentMessages.delete(key);
-        log.end(callback);
+        callback();
       };
       const abort = () => {
         void this.request('turn/interrupt', { threadId, turnId }).catch(() => undefined);
@@ -270,7 +269,6 @@ export class CodexAppServerExecutor implements CodexExecutor {
         threadId,
         turnId,
         input,
-        log,
         resolve: (result) => finish(() => resolve(result)),
         reject: (error) => finish(() => reject(error)),
       };
@@ -306,7 +304,8 @@ export class CodexAppServerExecutor implements CodexExecutor {
     }
   }
 
-  private route(message: Record<string, unknown>, raw: string): void {
+  private route(message: Record<string, unknown>, _raw: string): void {
+    this.observe({ type: 'receive', message });
     const id = message.id;
     if ((typeof id === 'string' || typeof id === 'number') && !message.method) {
       const pending = this.pending.get(id);
@@ -329,7 +328,6 @@ export class CodexAppServerExecutor implements CodexExecutor {
     const turnId =
       optionalString(params.turnId) ?? optionalString(asRecord(params.turn).id);
     const active = threadId && turnId ? this.turns.get(turnKey(threadId, turnId)) : null;
-    if (active) active.log.write(`${raw}\n`);
 
     if (method === 'item/completed' && threadId && turnId) {
       const questions = asyncQuestions(params.item);
@@ -429,6 +427,7 @@ export class CodexAppServerExecutor implements CodexExecutor {
     const id = this.nextRequestId++;
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
+      this.observe({ type: 'send', message: { id, method, params } });
       this.write({ jsonrpc: '2.0', id, method, params });
     });
   }
@@ -438,6 +437,7 @@ export class CodexAppServerExecutor implements CodexExecutor {
   }
 
   private respond(id: string | number, result: unknown): void {
+    this.observe({ type: 'send', message: { id, result } });
     this.write({ jsonrpc: '2.0', id, result });
   }
 
@@ -459,5 +459,13 @@ export class CodexAppServerExecutor implements CodexExecutor {
     this.turns.clear();
     this.completedTurns.clear();
     this.agentMessages.clear();
+  }
+
+  private observe(notice: CodexObservationNotice): void {
+    try {
+      this.observer?.(notice);
+    } catch {
+      // The business execution is independent of diagnostic subscribers.
+    }
   }
 }

@@ -28,6 +28,9 @@ import { GitExecutionWorkspaceManager } from './execution/workspaces';
 import { DEFAULT_UPDATE_SOURCE, UpdateManager } from './install/update';
 import { UninstallManager } from './install/uninstall';
 import { SkillBundleManager } from './skills/manager';
+import { join } from 'node:path';
+import { ObservationService } from './observability/service';
+import { ObservationHttpClient } from './observability/transport';
 
 export function createCliRuntime(): CliRuntime {
   const environment = new CurrentUserEnvironment();
@@ -131,6 +134,14 @@ export function createCliRuntime(): CliRuntime {
         http,
         clock,
       );
+      const observations = new ObservationService(
+        join(paths.state, 'observations'),
+        files,
+        state,
+        new ObservationHttpClient(),
+        () => new Date(),
+        installation.version,
+      );
       const agentService = new AgentService(
         connection,
         http,
@@ -147,6 +158,7 @@ export function createCliRuntime(): CliRuntime {
           new CodexAppServerExecutor(installation.executable),
           skills,
           new GitExecutionResultVerifier(commands),
+          observations,
         ),
       );
       await new DaemonRuntime({
@@ -156,6 +168,7 @@ export function createCliRuntime(): CliRuntime {
         codex: installation,
         connection,
         agentService,
+        observations,
       }).run();
     },
   };

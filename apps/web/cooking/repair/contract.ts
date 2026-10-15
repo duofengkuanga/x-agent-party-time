@@ -155,6 +155,7 @@ export const RepairTimelineNodeSchema = z.discriminatedUnion('kind', [
     kind: z.literal('REPAIR_ATTEMPT'),
     executionId: z.uuid(),
     sessionId: z.string().trim().min(1).nullable(),
+    canReadObservations: z.boolean(),
     attempt: z.number().int().positive(),
     executionState: ExecutionStateSchema,
     agentName: z.string().trim().min(1),

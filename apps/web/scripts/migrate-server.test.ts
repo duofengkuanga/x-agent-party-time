@@ -118,7 +118,7 @@ test('预检只读；迁移备份并逐字段保留全部旧数据、关联和�
   expectOriginalFacts(f.db, before);
   expect(result.rewrittenResults).toBeGreaterThan(0);
   expect(f.db.get<{ user_version: number }>('PRAGMA user_version')).toEqual({
-    user_version: 29,
+    user_version: 30,
   });
   expect(f.db.all('PRAGMA foreign_key_check')).toEqual([]);
   const handoffs = JSON.parse(
@@ -210,7 +210,7 @@ test('提交前故障回滚全部 DDL；备份和旧数据均可重新打开', a
     this: Database,
     sql: string,
   ) {
-    if (sql === 'PRAGMA user_version=29') throw new Error('模拟提交前故障');
+    if (sql === 'PRAGMA user_version=30') throw new Error('模拟提交前故障');
     return originalExec.call(this, sql);
   });
   try {
@@ -226,7 +226,7 @@ test('提交前故障回滚全部 DDL；备份和旧数据均可重新打开', a
   expect(readdirSync(f.directory).some((name) => name.includes('.backup-'))).toBe(true);
 });
 
-test('Schema 28 同样支持保留数据升级，29 重复执行无副作用', async () => {
+test('Schema 28 同样支持保留数据升级，最新版本重复执行无副作用', async () => {
   const f = await legacyFixture();
   const start = PLATFORM_SCHEMA.indexOf('CREATE TABLE platform_execution (');
   const end = PLATFORM_SCHEMA.indexOf('CREATE TABLE platform_execution_attachment (');
@@ -281,4 +281,38 @@ test('运行时只接受最新结果契约，无修改结果仍正常显示', ()
   expect(() =>
     projectUpdateAttemptResult(JSON.stringify({ ...update, handoffUse: {} }), true),
   ).toThrow();
+});
+
+test('Schema29只新增归因存储，活动执行与全部业务事实保持不变', async () => {
+  const f = await setup();
+  const { started } = await startCandidateUpdate(
+    f,
+    '归因升级活动执行',
+    'repair-active',
+    ['a'.repeat(40)],
+    'update-active',
+  );
+  const path = join(f.directory, 'server.sqlite');
+  // Recreate the exact prior schema in this isolated database, retaining active business rows.
+  f.database.exec('DROP TRIGGER platform_observation_deleted');
+  for (const table of [
+    'platform_observation_head',
+    'platform_observation_report',
+    'platform_observation_event',
+    'platform_observation_batch',
+    'platform_observation_tombstone',
+  ])
+    f.database.exec(`DROP TABLE ${table}`);
+  f.database.exec('PRAGMA user_version=29');
+  const before = originalRows(f.database);
+  expect(migrateServerDatabase(path).status).toBe('ready');
+  expect(migrateServerDatabase(path, true).from).toBe(29);
+  expectOriginalFacts(f.database, before);
+  expect(f.executions.get(started.executionId).state).toBe('RUNNING');
+  expect(
+    f.database.get<{ count: number }>(
+      'SELECT COUNT(*) count FROM platform_observation_event',
+    ),
+  ).toEqual({ count: 0 });
+  expect(migrateServerDatabase(path, true).status).toBe('current');
 });

@@ -1416,3 +1416,67 @@ cases:
     assert:
       - eval: 'window.creatorCanDrag'
       - visible: 'article[data-stage="REPAIRING"] button[aria-label^="待取消缺陷，"]'
+
+  - name: observations are lazy private readable and export the selected snapshot
+    steps:
+      - eval: "[...document.querySelectorAll('button')].find(button=>button.textContent?.includes('退出登录'))?.click(); true"
+      - wait: 'input[name="username"]'
+      - fill: { sel: 'input[name="username"]', text: __USERNAME__ }
+      - fill: { sel: 'input[name="password"]', text: __PASSWORD__ }
+      - click: '.auth-submit'
+      - wait: { load: networkidle }
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: 'button[aria-label^="修复更新页签滚动回归，"]'
+      - click: 'button[aria-label^="修复更新页签滚动回归，"]'
+      - wait: '[role="dialog"]'
+      - eval: 'sessionStorage.setItem("observationTesterPrivate",String(document.querySelectorAll(".collab-observation").length===0)); [...document.querySelectorAll("button")].find(button=>button.textContent?.includes("退出登录"))?.click(); true'
+      - wait: 'input[name="username"]'
+      - fill: { sel: 'input[name="username"]', text: __DEVELOPER_USERNAME__ }
+      - fill: { sel: 'input[name="password"]', text: __PASSWORD__ }
+      - click: '.auth-submit'
+      - wait: { load: networkidle }
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: 'button[aria-label^="修复更新页签滚动回归，"]'
+      - click: 'button[aria-label^="修复更新页签滚动回归，"]'
+      - wait: '[role="tabpanel"]:not([hidden]) .collab-observation'
+      - eval: >-
+          window.observationOriginalFetch=window.fetch; window.observationRequests=0;
+          window.fetch=(...args)=>String(args[0]).includes('/observations')
+          ? (window.observationRequests++,new Promise(resolve=>{window.observationRelease=()=>window.observationOriginalFetch(...args).then(resolve);}))
+          : window.observationOriginalFetch(...args);
+          window.observationLazy=!document.querySelector('[role="tabpanel"]:not([hidden]) .collab-observation__panel'); true
+      - click: '[role="tabpanel"]:not([hidden]) .collab-observation__header button'
+      - wait: '[role="tabpanel"]:not([hidden]) .collab-observation__panel[aria-busy="true"]'
+      - eval: 'window.observationLoading=true; window.fetch=window.observationOriginalFetch; window.observationRelease(); true'
+      - wait: '[role="tabpanel"]:not([hidden]) [aria-label="诊断与证据"]'
+      - eval: >-
+          (()=>{const panel=document.querySelector('[role="tabpanel"]:not([hidden]) .collab-observation__panel');
+          window.observationDiagnostic=panel.textContent.includes('疑似重复工作')&&panel.textContent.includes('来源报告');
+          const shell=document.querySelector('.collab-shell');window.observationThemes=['paper','night'].every(theme=>{shell.dataset.theme=theme;const button=panel.querySelector('button');return getComputedStyle(button).backgroundColor==='rgba(0, 0, 0, 0)'&&panel.scrollWidth<=panel.clientWidth+1;});shell.dataset.theme='paper';
+          window.observationOriginalCreate=URL.createObjectURL;window.observationOriginalClick=HTMLAnchorElement.prototype.click;
+          URL.createObjectURL=blob=>{window.observationDownloaded=blob;return window.observationOriginalCreate(blob);};HTMLAnchorElement.prototype.click=function(){window.observationDownloadName=this.download;};
+          window.fetch=(...args)=>String(args[0]).includes('format=')?new Promise(resolve=>{window.observationExportRelease=()=>window.observationOriginalFetch(...args).then(resolve);}):window.observationOriginalFetch(...args);
+          return true;})()
+      - click: '[role="tabpanel"]:not([hidden]) [aria-label="导出所见报告"] button:nth-child(2)'
+      - wait: '[role="tabpanel"]:not([hidden]) [aria-label="导出所见报告"] button:disabled'
+      - eval: 'window.observationDisabled=[...document.querySelectorAll("[role=tabpanel]:not([hidden]) [aria-label=导出所见报告] button")].every(button=>button.disabled); window.fetch=window.observationOriginalFetch; window.observationExportRelease(); true'
+      - wait: '[role="tabpanel"]:not([hidden]) [aria-label="导出所见报告"] button:not(:disabled)'
+      - eval: 'window.observationDownloaded.text().then(text=>{const data=JSON.parse(text);window.observationExportPinned=window.observationDownloadName.includes(data.report.reportId)&&data.report.revision===1;URL.createObjectURL=window.observationOriginalCreate;HTMLAnchorElement.prototype.click=window.observationOriginalClick;return true;})'
+      - click: '[role="tabpanel"]:not([hidden]) .collab-observation__header button'
+      - eval: 'window.fetch=(...args)=>String(args[0]).includes("/observations")?Promise.resolve(new Response(JSON.stringify({report:null,detailAvailable:false,storedEventCount:0}),{headers:{"content-type":"application/json"}})):window.observationOriginalFetch(...args);true'
+      - click: '[role="tabpanel"]:not([hidden]) .collab-observation__header button'
+      - wait: 500
+      - eval: 'window.observationEmpty=document.querySelector("[role=tabpanel]:not([hidden]) .collab-observation__panel").textContent.includes("不能据此认定耗时为零");window.fetch=(...args)=>String(args[0]).includes("/observations")?Promise.resolve(new Response("{}",{status:403})):window.observationOriginalFetch(...args);true'
+      - click: '[role="tabpanel"]:not([hidden]) .collab-observation__header button'
+      - click: '[role="tabpanel"]:not([hidden]) .collab-observation__header button'
+      - wait: '[role="tabpanel"]:not([hidden]) .collab-observation__panel [role="alert"]'
+      - eval: 'window.observationDenied=!document.querySelector("[role=tabpanel]:not([hidden]) [aria-label=诊断与证据]");window.fetch=window.observationOriginalFetch;true'
+    assert:
+      - eval: 'sessionStorage.getItem("observationTesterPrivate")==="true" && window.observationLazy && window.observationLoading'
+      - eval: 'window.observationDiagnostic && window.observationThemes && window.observationDisabled'
+      - eval: 'window.observationExportPinned && window.observationEmpty && window.observationDenied'
+      - text:
+          {
+            sel: '[role="tabpanel"]:not([hidden]) .collab-observation__panel',
+            contains: 无权读取,
+          }

@@ -3,10 +3,12 @@ import { PlatformError } from '@/platform/errors';
 import { PLATFORM_SCHEMA } from './platform-schema';
 import { COOKING_SCHEMA } from './cooking-schema';
 import { BUG_DEPLOYMENT_SCHEMA } from './bug-deployment-schema';
+import { OBSERVATION_SCHEMA } from './observation-schema';
 
-export const SERVER_SCHEMA_VERSION = 29;
+export const SERVER_SCHEMA_VERSION = 30;
 
-const SCHEMA = PLATFORM_SCHEMA + COOKING_SCHEMA + BUG_DEPLOYMENT_SCHEMA;
+const SCHEMA =
+  PLATFORM_SCHEMA + COOKING_SCHEMA + BUG_DEPLOYMENT_SCHEMA + OBSERVATION_SCHEMA;
 
 export function initializeSchema(database: Database): void {
   database.exec('PRAGMA foreign_keys = ON');

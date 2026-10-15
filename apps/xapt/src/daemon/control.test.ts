@@ -153,5 +153,6 @@ function runningSnapshot(): DaemonSnapshot {
     outboxCount: 0,
     bindingCount: 0,
     bindingActive: false,
+    observationStatus: 'HEALTHY',
   };
 }

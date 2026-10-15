@@ -4,6 +4,7 @@ import {
   type JsonValue,
 } from '@agent-party-time/execution-contract';
 import type { MaterializedAttachment } from '../execution/attachments';
+import type { CodexObservationNotice } from '../observability/protocol';
 
 export type CodexInteraction = {
   method: string;
@@ -18,10 +19,10 @@ export type CodexExecutionInput = {
   skill: { name: string; path: string } | null;
   outputSchema: JsonObject;
   attachments: MaterializedAttachment[];
-  artifactsDirectory: string;
   taskId: string | null;
   onInteraction: (interaction: CodexInteraction) => Promise<JsonValue>;
   onManualHandoff?: (questions: string[]) => Promise<void>;
+  observe?: (notice: CodexObservationNotice) => void;
 };
 
 export type StartedCodexExecution = {
@@ -36,6 +37,9 @@ export type CompletedCodexTurn = {
 
 export interface CodexExecutor {
   begin(input: CodexExecutionInput, signal: AbortSignal): Promise<StartedCodexExecution>;
-  readLastCompletedTurn(sessionId: string): Promise<CompletedCodexTurn>;
+  readLastCompletedTurn(
+    sessionId: string,
+    observe?: (notice: CodexObservationNotice) => void,
+  ): Promise<CompletedCodexTurn>;
   releaseSession?(sessionId: string): Promise<void>;
 }

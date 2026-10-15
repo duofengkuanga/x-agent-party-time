@@ -10,6 +10,8 @@
   ],
   "scripts": {
     "migrate:server": "bun apps/web/scripts/migrate-server.ts",
+    "eval:observability-overhead": "bun scripts/observability/measure-overhead.ts",
+    "eval:observability": "bun apps/web/scripts/evaluate-observability.ts",
     "eval:handoff": "bun scripts/evaluate-repair-handoff.ts",
     "dev": "bun scripts/dev-all.ts",
     "dev:app": "bun --cwd apps/web dev",

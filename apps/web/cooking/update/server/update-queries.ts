@@ -117,6 +117,7 @@ export class UpdateQueries {
           kind: 'UPDATE_ATTEMPT' as const,
           executionId: attempt.execution_id,
           sessionId: technical ? attempt.session_id : null,
+          canReadObservations: technical,
           attempt: attempt.attempt,
           executionState: attempt.state,
           queuedAt: attempt.created_at,

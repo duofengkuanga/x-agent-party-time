@@ -62,10 +62,6 @@ export class AttachmentMaterializer {
     }
     return result;
   }
-
-  artifactsDirectory(executionId: string): string {
-    return join(this.paths.logs, 'executions', executionId);
-  }
 }
 
 function safeExtension(originalName: string): string {

@@ -65,6 +65,7 @@ export class RepairQueries {
       kind: 'REPAIR_ATTEMPT' as const,
       executionId: attempt.execution_id,
       sessionId: technical ? attempt.session_id : null,
+      canReadObservations: technical,
       attempt: attempt.attempt,
       executionState: attempt.state,
       agentName: attempt.runner_name,
