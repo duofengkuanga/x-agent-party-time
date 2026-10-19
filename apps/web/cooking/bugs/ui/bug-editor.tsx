@@ -5,7 +5,6 @@ import { createClientId } from '@/cooking/shared/ui/client-id';
 import type { CookingWorkspaceSnapshot } from '@/cooking/workspace/contract';
 import type { BugView } from '../contract';
 import { FormChoice } from '@/cooking/shared/ui/form-choice';
-import { DiscardDraft } from '@/cooking/shared/ui/discard-draft';
 import {
   createBugFormDraft,
   type BugFormDraft,
@@ -140,7 +139,6 @@ export function BugForm({
   savedDraft,
   preferredOwnership,
   onDraftChange,
-  onDiscard,
   onSavingChange,
 }: {
   bug: BugView | null;
@@ -154,7 +152,6 @@ export function BugForm({
   savedDraft: BugFormDraft | null;
   preferredOwnership: BugOwnershipDraft | null;
   onDraftChange: (draft: BugFormDraft) => void;
-  onDiscard: () => void;
   onSavingChange: (saving: boolean) => void;
 }) {
   const [initial] = useState(() =>
@@ -174,7 +171,7 @@ export function BugForm({
   const [joint, setJoint] = useState(initial.joint);
   const [frontItemId, setFrontItemId] = useState(initial.frontItemId);
   const [backItemId, setBackItemId] = useState(initial.backItemId);
-  const [mutationId, setMutationId] = useState(initial.mutationId);
+  const mutationId = initial.mutationId;
   const [title, setTitle] = useState(initial.title);
   const [operationPath, setOperationPath] = useState(initial.operationPath);
   const [actualResult, setActualResult] = useState(initial.actualResult);
@@ -232,35 +229,12 @@ export function BugForm({
       expectedResultFiles,
     ],
   );
-  const dirty =
-    title !== (bug?.report.title ?? '') ||
-    operationPath !== (bug?.report.operationPath ?? '') ||
-    actualResult !== (bug?.report.actualResult ?? '') ||
-    expectedResult !== (bug?.report.expectedResult ?? '') ||
-    actualResultFiles.length > 0 ||
-    expectedResultFiles.length > 0 ||
-    JSON.stringify(keptActualResultAttachmentIds) !==
-      JSON.stringify(
-        bug?.report.actualResultAttachments.map(({ id }) => id) ?? [],
-      ) ||
-    JSON.stringify(keptExpectedResultAttachmentIds) !==
-      JSON.stringify(
-        bug?.report.expectedResultAttachments.map(({ id }) => id) ?? [],
-      ) ||
-    Boolean(
-      bug && (joint || submissionItemId !== (bug.submissionItemId ?? '')),
-    );
-
   const canCreateAndRepair =
     !bug &&
     (joint ? Boolean(frontItemId && backItemId) : Boolean(submissionItemId));
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    const continueRegistering =
-      !bug &&
-      (event.nativeEvent as SubmitEvent).submitter?.getAttribute('value') ===
-        'continue';
     const startRepair =
       canCreateAndRepair &&
       (event.nativeEvent as SubmitEvent).submitter?.getAttribute('value') ===
@@ -331,18 +305,6 @@ export function BugForm({
           setError(result.error.message);
           return;
         }
-        if (!bug && continueRegistering) {
-          setTitle('');
-          setOperationPath('');
-          setActualResult('');
-          setExpectedResult('');
-          setActualResultFiles([]);
-          setExpectedResultFiles([]);
-          setKeptActualResultAttachmentIds([]);
-          setKeptExpectedResultAttachmentIds([]);
-          setMutationId(createClientId());
-          setError(null);
-        }
         onChanged(
           result.result.revision,
           bug
@@ -358,7 +320,6 @@ export function BugForm({
                 : '缺陷已登记。',
           !bug
             ? {
-                continueRegistering,
                 ownership: { submissionItemId, joint, frontItemId, backItemId },
               }
             : undefined,
@@ -529,38 +490,24 @@ export function BugForm({
       </form>
       <footer className="collab-dialog__actions collab-bug-drawer__actions">
         <button disabled={saving} onClick={onCancel} type="button">
-          暂存并关闭
+          关闭
         </button>
-        {dirty ? (
-          <DiscardDraft disabled={saving} onDiscard={onDiscard} />
-        ) : null}
         <button
           disabled={saving || (!canEditReport && !canAssign)}
           form="collab-bug-form"
           type="submit"
         >
-          {saving ? '保存中…' : bug ? '保存修改' : '登记缺陷'}
+          {saving ? '保存中…' : '确认'}
         </button>
         {!bug ? (
           <button
-            disabled={saving || !title.trim()}
-            form="collab-bug-form"
-            name="intent"
-            type="submit"
-            value="continue"
-          >
-            {saving ? '保存中…' : '登记并继续'}
-          </button>
-        ) : null}
-        {canCreateAndRepair ? (
-          <button
-            disabled={saving || !title.trim()}
+            disabled={saving || !canCreateAndRepair || !title.trim()}
             form="collab-bug-form"
             name="intent"
             type="submit"
             value="repair"
           >
-            {saving ? '保存中…' : '登记并修复'}
+            {saving ? '保存中…' : '确认并修复'}
           </button>
         ) : null}
       </footer>

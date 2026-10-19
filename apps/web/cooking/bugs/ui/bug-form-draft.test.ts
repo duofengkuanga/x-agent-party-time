@@ -9,7 +9,7 @@ import { createBugFormDraft } from './bug-form-draft';
 
 const setup = lifecycleFixture(testDatabases());
 
-test('连续登记沿用明确选择的工程，草稿恢复保留附件和幂等标识', async () => {
+test('再次登记沿用明确选择的工程，草稿恢复保留附件和幂等标识', async () => {
   const f = await setup();
   const snapshot = createCooking(f.database, { now: f.clock.now }).workspace.getWorkspace(
     f.users.tester.id,

@@ -21,7 +21,7 @@ cases:
           }
       - eval: '[...document.querySelector("[role=combobox][aria-label=测试负责人]").closest(".collab-choice-field").querySelectorAll("[role=option]")].every(option => option.textContent !== "浏览器测试开发者")'
       - visible: 'output[aria-label="开发负责人"]'
-      - visible: 'output[aria-label="Agent"]'
+      - hidden: 'output[aria-label="Agent"]'
       - hidden: 'select[aria-label="Agent"]'
       - text: { sel: '.collab-create-item', contains: 使用中 }
       - eval: 'document.querySelector("input[aria-label=目标分支]").value === "feature/browser-test"'
@@ -140,10 +140,13 @@ cases:
       - eval: 'document.querySelector("#collab-bug-form select").selectedOptions[0].textContent.includes("browser-api")'
       - text: { sel: '[aria-label="实际结果附件"]', contains: 草稿证据.txt }
 
-  - name: register and continue keeps ownership but clears content and attachments
+  - name: confirm closes registration and next report clears content and attachments
     steps:
-      - click: 'button[value="continue"]'
-      - wait: 800
+      - click: 'button[form="collab-bug-form"]:not([value])'
+      - wait: 'button[aria-label^="连续登记第一张，后端，"]'
+      - eval: 'window.confirmClosedRegistration = !document.querySelector("#collab-bug-form"); true'
+      - eval: "[...document.querySelectorAll('button')].find(button=>button.textContent?.includes('登记缺陷')).click();true"
+      - wait: '#collab-bug-form'
     assert:
       - visible: '#collab-bug-form'
       - eval: 'document.querySelector("#collab-bug-form input[maxlength]").value === ""'
@@ -151,6 +154,7 @@ cases:
       - count:
           { sel: '[aria-label="实际结果附件"] li[data-source="new"]', eq: 0 }
       - count: { sel: 'button[aria-label^="连续登记第一张，后端，"]', eq: 1 }
+      - eval: 'window.confirmClosedRegistration'
 
   - name: regular registration remembers the last engineering for the next report
     steps:
@@ -179,16 +183,18 @@ cases:
       - hidden: 'select[aria-label="后端工程"]'
       - eval: 'document.activeElement === document.querySelector("#collab-bug-form input[maxlength]")'
 
-  - name: explicit bug draft discard clears unsaved content without changing saved reports
+  - name: closing bug registration retains its draft without changing saved reports
     steps:
       - fill:
-          { sel: '#collab-bug-form input[maxlength="240"]', text: 放弃这张草稿 }
-      - eval: "[...document.querySelectorAll('[role=dialog] button')].find(button=>button.textContent==='放弃草稿').click();true"
-      - click: '[aria-label="确认放弃草稿"] button:last-child'
+          {
+            sel: '#collab-bug-form input[maxlength="240"]',
+            text: 关闭保留这张草稿,
+          }
+      - click: '.collab-bug-drawer__actions > button:first-child'
       - eval: "[...document.querySelectorAll('button')].find(button=>button.textContent?.includes('登记缺陷')).click();true"
       - wait: '#collab-bug-form'
     assert:
-      - eval: 'document.querySelector("#collab-bug-form input[maxlength]").value === ""'
+      - eval: 'document.querySelector("#collab-bug-form input[maxlength]").value === "关闭保留这张草稿"'
       - count: { sel: 'button[aria-label^="连续登记第一张，"]', eq: 1 }
       - count: { sel: 'button[aria-label^="连续登记第二张，"]', eq: 1 }
 
@@ -1492,6 +1498,7 @@ cases:
       - eval: "document.querySelector('button[aria-label=切换纸张主题]')?.click(); [...document.querySelectorAll('button')].find((button) => button.textContent?.includes('登记缺陷'))?.click(); true"
       - wait: '#collab-bug-form'
     assert:
+      - eval: 'JSON.stringify([...document.querySelectorAll(".collab-bug-drawer__actions > button")].map(button=>button.textContent.trim())) === JSON.stringify(["关闭","确认","确认并修复"])'
       - visible: 'button[value="repair"]:disabled'
       - eval: 'document.querySelector("#collab-bug-form select").value === document.querySelector("#collab-bug-form optgroup option").value'
       - visible: 'button[form="collab-bug-form"]:not([value])'

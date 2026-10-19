@@ -324,7 +324,7 @@ export function SubmissionComposer({
                     }
                     placeholder="说明本次提测范围与验收重点"
                     required
-                    rows={4}
+                    rows={3}
                     value={requirementDescription}
                   />
                 </label>

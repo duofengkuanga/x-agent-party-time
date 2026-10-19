@@ -21,7 +21,6 @@ export type BugFormDraft = BugOwnershipDraft & {
   expectedResultFiles: File[];
 };
 export type BugRegistration = {
-  continueRegistering: boolean;
   ownership: BugOwnershipDraft;
 };
 

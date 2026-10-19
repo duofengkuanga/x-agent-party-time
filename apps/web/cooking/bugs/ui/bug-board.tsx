@@ -553,10 +553,6 @@ export function BugBoard({
           savedDraft={reportDrafts.current.get(reportDraftKey) ?? null}
           preferredOwnership={registeredOwnership.current}
           onDraftChange={saveReportDraft}
-          onDiscardDraft={() => {
-            reportDrafts.current.delete(reportDraftKey);
-            setDrawer(null);
-          }}
           onClearError={() => setError(null)}
           onOpenBatch={(batchId) => {
             setError(null);
@@ -569,9 +565,7 @@ export function BugBoard({
               registeredOwnership.current = registration.ownership;
             setDrawer(
               drawer.mode === 'create'
-                ? registration?.continueRegistering
-                  ? drawer
-                  : null
+                ? null
                 : drawer.mode === 'edit'
                   ? { mode: 'view', bugId: drawer.bugId }
                   : drawer,

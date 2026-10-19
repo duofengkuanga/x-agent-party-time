@@ -40,7 +40,6 @@ export function ItemEditor({
   );
   if (!engineering) return <p role="alert">工程配置已变化，请重新选择工程。</p>;
   const responsibleMembers = boundResponsibleMembers(engineering, testerUserId);
-  const binding = engineering.bindings.find(({ id }) => id === draft.bindingId);
   const environment = engineering.environments.find(
     ({ id }) => id === draft.environmentId,
   );
@@ -94,12 +93,6 @@ export function ItemEditor({
             })
           }
         />
-        <label>
-          <span>Agent</span>
-          <output className="collab-form__value" aria-label="Agent">
-            {binding?.runnerName ?? '尚无可用 Agent，请先完成绑定'}
-          </output>
-        </label>
       </div>
       <div className="collab-create-item__delivery">
         <label>

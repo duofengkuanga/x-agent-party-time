@@ -32,7 +32,6 @@ export function BugDrawer({
   savedDraft,
   preferredOwnership,
   onDraftChange,
-  onDiscardDraft,
 }: {
   drawer: Drawer;
   error: string | null;
@@ -52,7 +51,6 @@ export function BugDrawer({
   savedDraft: BugFormDraft | null;
   preferredOwnership: BugOwnershipDraft | null;
   onDraftChange: (draft: BugFormDraft) => void;
-  onDiscardDraft: () => void;
 }) {
   const [formSaving, setFormSaving] = useState(false);
   const bug =
@@ -188,7 +186,6 @@ export function BugDrawer({
             savedDraft={savedDraft}
             preferredOwnership={preferredOwnership}
             onDraftChange={onDraftChange}
-            onDiscard={onDiscardDraft}
             onSavingChange={setFormSaving}
           />
         )}
