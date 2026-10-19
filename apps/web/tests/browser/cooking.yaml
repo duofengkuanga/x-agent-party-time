@@ -1292,7 +1292,7 @@ cases:
       - hidden: '.collab-add-items-trigger'
       - hidden: '.collab-add-items-dialog'
 
-  - name: register and repair appears only after assignment and requires a title
+  - name: registration defaults to the first engineering and repair requires a title
     steps:
       - open: __BASE_URL__/cooking/__SUBMISSION_ID__
       - wait: { load: networkidle }
@@ -1307,14 +1307,15 @@ cases:
       - eval: "document.querySelector('button[aria-label=切换纸张主题]')?.click(); [...document.querySelectorAll('button')].find((button) => button.textContent?.includes('登记缺陷'))?.click(); true"
       - wait: '#collab-bug-form'
     assert:
-      - hidden: 'button[value="repair"]'
+      - visible: 'button[value="repair"]:disabled'
+      - eval: 'document.querySelector("#collab-bug-form select").value === document.querySelector("#collab-bug-form optgroup option").value'
       - visible: 'button[form="collab-bug-form"]:not([value="repair"])'
 
-  - name: selected engineering reveals the disabled repair action at the bottom right
+  - name: changing engineering keeps the disabled repair action at the bottom right
     steps:
       - eval: >-
           (() => { const select = document.querySelector('#collab-bug-form select');
-          select.value = select.querySelector('optgroup option').value;
+          select.value = [...select.querySelectorAll('optgroup option')].at(-1).value;
           select.dispatchEvent(new Event('change', {bubbles:true})); return true; })()
     assert:
       - visible: 'button[value="repair"]:disabled'

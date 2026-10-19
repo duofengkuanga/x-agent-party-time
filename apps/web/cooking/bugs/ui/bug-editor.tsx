@@ -144,7 +144,9 @@ export function BugForm({
     ({ engineering }) => engineering.type === 'BACKEND',
   );
   const [submissionItemId, setSubmissionItemId] = useState(
-    bug?.submissionItemId ?? '',
+    bug
+      ? (bug.submissionItemId ?? '')
+      : (snapshot.submission.items[0]?.id ?? ''),
   );
   const [joint, setJoint] = useState(false);
   const [frontItemId, setFrontItemId] = useState(
@@ -281,7 +283,9 @@ export function BugForm({
       >
         <fieldset disabled={!canAssign || saving}>
           <legend>问题归属</legend>
-          {canAssign &&
+          {frontendItems.length > 0 &&
+          backendItems.length > 0 &&
+          canAssign &&
           (!bug ||
             (!bug.collaborationLocked &&
               bug.stage === 'WAITING_FOR_REPAIR')) ? (
@@ -289,7 +293,6 @@ export function BugForm({
               <input
                 type="checkbox"
                 checked={joint}
-                disabled={!frontendItems.length || !backendItems.length}
                 onChange={(event) => setJoint(event.target.checked)}
               />
               <span>
