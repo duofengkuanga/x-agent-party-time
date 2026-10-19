@@ -3,10 +3,8 @@ import { BindingService } from '@/cooking/bindings/server/binding-service';
 import { EngineeringService } from '@/cooking/engineering/server/engineering-service';
 import { projectMemberHasEngineeringResponsibilities } from '@/cooking/engineering/server/responsibilities';
 import { ProjectService } from '@/cooking/projects/server/project-service';
-import {
-  SubmissionCreationCatalogSchema,
-  type SubmissionCreationCatalog,
-} from '@/cooking/submissions/contract';
+import type { SubmissionCreationCatalog } from '@/cooking/submissions/contract';
+import { readSubmissionCreationCatalog } from '@/cooking/submissions/server/creation-catalog';
 import {
   engineeringMemberHasSubmissionResponsibilities,
   projectMemberHasSubmissionResponsibilities,
@@ -57,41 +55,7 @@ export function cookingFileStore(): LocalFileStore {
 }
 
 export function submissionCreationCatalog(userId: string): SubmissionCreationCatalog {
-  const projects = projectService();
-  const engineering = engineeringService();
-  const bindings = bindingService();
-  return SubmissionCreationCatalogSchema.parse(
-    projects.listProjects(userId).map(({ project }) => ({
-      projectId: project.id,
-      projectName: project.name,
-      members: projects.listMembers(userId, project.id).map(({ user }) => user),
-      engineerings: engineering
-        .listEngineering(userId, project.id)
-        .filter((item) => !item.archivedAt && item.repositoryState === 'CONFIRMED')
-        .map((item) => {
-          const workspace = engineering.getWorkspace(userId, item.id);
-          return {
-            id: item.id,
-            name: item.name,
-            type: item.type,
-            identifier: item.identifier,
-            members: workspace.members.map(({ user }) => user),
-            environments: workspace.environments.map(({ id, name }) => ({
-              id,
-              name,
-            })),
-            bindings: bindings
-              .listBindings(userId, item.id)
-              .filter(({ runner }) => !runner.revokedAt)
-              .map(({ binding, runner }) => ({
-                id: binding.id,
-                userId: binding.userId,
-                runnerName: runner.name,
-              })),
-          };
-        }),
-    })),
-  );
+  return readSubmissionCreationCatalog(database(), userId);
 }
 
 const workflows = new WeakMap<

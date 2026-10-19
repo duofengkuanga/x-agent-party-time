@@ -14,7 +14,15 @@ import {
   addSubmissionItemsAction,
   loadSubmissionCreationCatalogAction,
 } from '../server/actions';
-import { createItemDraft, ItemEditor, type ItemDraft } from './item-editor';
+import {
+  createItemDraft,
+  ItemEditor,
+  normalizeItemDraft,
+  engineeringIsReady,
+  itemDraftIsValid,
+  type ItemDraft,
+} from './item-editor';
+import { DiscardDraft } from '@/cooking/shared/ui/discard-draft';
 import {
   EnvironmentConfirmation,
   EnvironmentConflicts,
@@ -35,6 +43,7 @@ export function AddSubmissionItems({
     SubmissionCreationCatalog[number] | null
   >(null);
   const [draft, setDraft] = useState<ItemDraft | null>(null);
+  const savedDraft = useRef<ItemDraft | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [conflicts, setConflicts] = useState<EnvironmentConflict[]>([]);
   const [confirm, setConfirm] = useState(false);
@@ -68,9 +77,21 @@ export function AddSubmissionItems({
           (entry) => entry.projectId === view.submission.projectId,
         ) ?? null;
       setProject(project);
-      setDraft(
-        project ? createItemDraft(project, view.tester.id, selectedIds) : null,
+      const saved = savedDraft.current;
+      const engineering = project?.engineerings.find(
+        ({ id }) => id === saved?.engineeringId && !selectedIds.includes(id),
       );
+      const next =
+        project &&
+        saved &&
+        engineering &&
+        engineeringIsReady(engineering, view.tester.id)
+          ? normalizeItemDraft(project, saved, view.tester.id, engineering.id)
+          : project
+            ? createItemDraft(project, view.tester.id, selectedIds)
+            : null;
+      savedDraft.current = next;
+      setDraft(next);
     } catch (error) {
       setError(messageOf(error, '读取工程配置失败，请重试。'));
     } finally {
@@ -79,7 +100,17 @@ export function AddSubmissionItems({
   }
 
   async function submit(takeover = false) {
-    if (!draft) return;
+    if (!draft || !project || !itemDraftIsValid(project, draft, view.tester.id))
+      return;
+    if (!takeover) {
+      const conflict = project.engineerings
+        .find(({ id }) => id === draft.engineeringId)
+        ?.environments.find(({ id }) => id === draft.environmentId)?.conflict;
+      if (conflict) {
+        setConflicts([conflict]);
+        return;
+      }
+    }
     setPending(true);
     setError(null);
     try {
@@ -104,6 +135,7 @@ export function AddSubmissionItems({
         return;
       }
       setOpened(false);
+      savedDraft.current = null;
       router.refresh();
     } catch (error) {
       setError(messageOf(error, '追加工程失败，请稍后重试。'));
@@ -176,6 +208,7 @@ export function AddSubmissionItems({
                       onRemove={null}
                       onChange={(next) => {
                         setDraft(next);
+                        savedDraft.current = next;
                         setConflicts([]);
                         setError(null);
                       }}
@@ -190,8 +223,17 @@ export function AddSubmissionItems({
                     disabled={pending}
                     onClick={() => setOpened(false)}
                   >
-                    取消
+                    暂存并关闭
                   </button>
+                  {draft ? (
+                    <DiscardDraft
+                      disabled={pending}
+                      onDiscard={() => {
+                        savedDraft.current = null;
+                        setOpened(false);
+                      }}
+                    />
+                  ) : null}
                   {!draft && error ? (
                     <button
                       type="button"
@@ -201,7 +243,15 @@ export function AddSubmissionItems({
                       重新读取
                     </button>
                   ) : null}
-                  <button type="submit" disabled={pending || !draft}>
+                  <button
+                    type="submit"
+                    disabled={
+                      pending ||
+                      !draft ||
+                      !project ||
+                      !itemDraftIsValid(project, draft, view.tester.id)
+                    }
+                  >
                     {pending ? '正在处理…' : '追加工程'}
                   </button>
                   {conflicts.length ? (

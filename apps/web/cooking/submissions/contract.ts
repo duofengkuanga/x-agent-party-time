@@ -165,11 +165,18 @@ export const SubmissionCreationCatalogSchema = z.array(
         name: EngineeringNameSchema,
         type: EngineeringTypeSchema,
         identifier: EngineeringIdentifierSchema,
+        targetBranchSuggestion: z
+          .object({
+            value: TargetBranchSchema,
+            submissionTitle: SubmissionTitleSchema,
+          })
+          .nullable(),
         members: z.array(UserSchema),
         environments: z.array(
           z.object({
             id: EnvironmentIdSchema,
             name: EnvironmentNameSchema,
+            conflict: EnvironmentConflictSchema.nullable(),
           }),
         ),
         bindings: z.array(

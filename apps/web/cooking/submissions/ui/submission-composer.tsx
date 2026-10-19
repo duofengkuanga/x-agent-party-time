@@ -1,8 +1,16 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
-import { createClientId } from '@/cooking/shared/ui/client-id';
+import { useEffect, useMemo, useState } from 'react';
+import { FormChoice } from '@/cooking/shared/ui/form-choice';
+import { DiscardDraft } from '@/cooking/shared/ui/discard-draft';
+import {
+  createSubmissionDraft,
+  preferredTester,
+  submissionPreparationHint,
+  type SubmissionDraft,
+  type SubmissionContext,
+} from './submission-draft';
 import type { User } from '@/platform/auth/contract';
 import {
   EnvironmentConfirmation,
@@ -19,34 +27,65 @@ import {
   normalizeItemDraft,
   engineeringIsReady,
   type ItemDraft,
+  availableTesterMembers,
+  itemDraftIsValid,
 } from './item-editor';
 import { messageOf } from '@/cooking/shared/ui/action-error';
 
 export function SubmissionComposer({
   catalog,
   currentUser,
+  context,
+  savedDraft,
+  onDraftChange,
+  onDiscard,
   onClose,
   onCreated,
 }: {
   catalog: SubmissionCreationCatalog;
   currentUser: User;
+  context: SubmissionContext;
+  savedDraft: SubmissionDraft | null;
+  onDraftChange: (draft: SubmissionDraft) => void;
+  onDiscard: () => void;
   onClose: () => void;
   onCreated: (submissionId: string) => void;
 }) {
-  const initialProject = catalog[0] ?? null;
-  const initialTesterId =
-    initialProject?.members.find(({ id }) => id !== currentUser.id)?.id ??
-    initialProject?.members[0]?.id ??
-    '';
-  const [projectId, setProjectId] = useState(initialProject?.projectId ?? '');
-  const [title, setTitle] = useState('');
-  const [requirementDescription, setRequirementDescription] = useState('');
-  const [testerUserId, setTesterUserId] = useState(initialTesterId);
-  const [items, setItems] = useState<ItemDraft[]>(() => {
-    if (!initialProject) return [];
-    const first = createItemDraft(initialProject, initialTesterId, []);
-    return first ? [first] : [];
-  });
+  const [defaults] = useState(() =>
+    createSubmissionDraft(catalog, currentUser.id, context, null),
+  );
+  const [initial] = useState(() =>
+    savedDraft
+      ? createSubmissionDraft(catalog, currentUser.id, context, savedDraft)
+      : defaults,
+  );
+  const [projectId, setProjectId] = useState(initial.projectId);
+  const [title, setTitle] = useState(initial.title);
+  const [requirementDescription, setRequirementDescription] = useState(
+    initial.requirementDescription,
+  );
+  const [testerUserId, setTesterUserId] = useState(initial.testerUserId);
+  const [items, setItems] = useState<ItemDraft[]>(initial.items);
+  useEffect(
+    () =>
+      onDraftChange({
+        mutationId: initial.mutationId,
+        projectId,
+        title,
+        requirementDescription,
+        testerUserId,
+        items,
+      }),
+    [
+      initial.mutationId,
+      projectId,
+      title,
+      requirementDescription,
+      testerUserId,
+      items,
+      onDraftChange,
+    ],
+  );
   const [conflicts, setConflicts] = useState<EnvironmentConflict[]>([]);
   const [confirmEnvironment, setConfirmEnvironment] = useState(false);
   const [pending, setPending] = useState(false);
@@ -62,10 +101,9 @@ export function SubmissionComposer({
     const nextProject =
       catalog.find((candidate) => candidate.projectId === nextProjectId) ??
       null;
-    const nextTesterId =
-      nextProject?.members.find(({ id }) => id !== currentUser.id)?.id ??
-      nextProject?.members[0]?.id ??
-      '';
+    const nextTesterId = nextProject
+      ? preferredTester(nextProject, currentUser.id, context)
+      : '';
     setProjectId(nextProjectId);
     setTesterUserId(nextTesterId);
     const first = nextProject
@@ -76,12 +114,24 @@ export function SubmissionComposer({
   }
 
   function changeTester(nextTesterId: string) {
+    if (
+      !project ||
+      !availableTesterMembers(
+        project,
+        items.map(({ engineeringId }) => engineeringId),
+      ).some(({ id }) => id === nextTesterId)
+    )
+      return;
     setTesterUserId(nextTesterId);
-    if (!project) return;
     setItems((current) =>
-      current.map((item) =>
-        normalizeItemDraft(project, item, nextTesterId, item.engineeringId),
-      ),
+      current.length
+        ? current.map((item) =>
+            normalizeItemDraft(project, item, nextTesterId, item.engineeringId),
+          )
+        : (() => {
+            const first = createItemDraft(project, nextTesterId, []);
+            return first ? [first] : [];
+          })(),
     );
   }
 
@@ -96,15 +146,31 @@ export function SubmissionComposer({
       setError('请先选择项目。');
       return;
     }
-    if (!items.length) {
-      setError('至少需要一个配置完整的提测工程。');
+    if (
+      !items.length ||
+      !items.every((item) => itemDraftIsValid(project, item, testerUserId))
+    ) {
+      setError('请补全提测工程、开发负责人、Agent、目标分支和环境。');
       return;
+    }
+    if (!takeover) {
+      const occupied = items.flatMap(
+        (item) =>
+          project.engineerings
+            .find(({ id }) => id === item.engineeringId)
+            ?.environments.find(({ id }) => id === item.environmentId)
+            ?.conflict ?? [],
+      );
+      if (occupied.length) {
+        setConflicts(occupied);
+        return;
+      }
     }
     setPending(true);
     setError(null);
     try {
       const result = await createSubmissionAction(project.projectId, {
-        mutationId: createClientId(),
+        mutationId: initial.mutationId,
         environmentTakeovers: takeover
           ? conflicts.map(
               ({ environmentId, submissionItemId, expectedRevision }) => ({
@@ -154,6 +220,14 @@ export function SubmissionComposer({
   const selectedEngineeringIds = items.map(
     ({ engineeringId }) => engineeringId,
   );
+  const hasDraftChanges = Boolean(
+    title ||
+    requirementDescription ||
+    projectId !== defaults.projectId ||
+    testerUserId !== defaults.testerUserId ||
+    JSON.stringify(items.map(({ key: _key, ...item }) => item)) !==
+      JSON.stringify(defaults.items.map(({ key: _key, ...item }) => item)),
+  );
   const canAddItem = Boolean(
     project?.engineerings.some(
       (engineering) =>
@@ -201,36 +275,27 @@ export function SubmissionComposer({
                 disabled={pending || confirmEnvironment}
               >
                 <div className="collab-form__grid">
-                  <label>
-                    <span>项目</span>
-                    <select
-                      onChange={(event) => changeProject(event.target.value)}
-                      value={projectId}
-                    >
-                      {catalog.map((candidate) => (
-                        <option
-                          key={candidate.projectId}
-                          value={candidate.projectId}
-                        >
-                          {candidate.projectName}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    <span>测试负责人</span>
-                    <select
-                      onChange={(event) => changeTester(event.target.value)}
-                      required
-                      value={testerUserId}
-                    >
-                      {project?.members.map((member) => (
-                        <option key={member.id} value={member.id}>
-                          {member.displayName}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <FormChoice
+                    label="项目"
+                    value={projectId}
+                    onChange={changeProject}
+                    options={catalog.map((candidate) => ({
+                      value: candidate.projectId,
+                      label: candidate.projectName,
+                    }))}
+                  />
+                  <FormChoice
+                    label="测试负责人"
+                    value={testerUserId}
+                    onChange={changeTester}
+                    options={(project
+                      ? availableTesterMembers(project, selectedEngineeringIds)
+                      : []
+                    ).map((member) => ({
+                      value: member.id,
+                      label: member.displayName,
+                    }))}
+                  />
                 </div>
                 <label>
                   <span>提测标题</span>
@@ -284,31 +349,29 @@ export function SubmissionComposer({
                   <div className="collab-form__blocked">
                     <div>
                       <strong>当前项目还不能创建提测单</strong>
-                      <p>
-                        至少需要一个工程成员、可用 Agent 绑定
-                        和测试环境，且测试负责人不能同时负责提测项。
-                      </p>
+                      <p>{submissionPreparationHint(project)}</p>
                     </div>
                     <Link href="/cooking/projects">前往配置</Link>
                   </div>
                 )}
 
-                <button
-                  className="collab-add-engineering"
-                  disabled={!canAddItem}
-                  onClick={() => {
-                    if (!project) return;
-                    const next = createItemDraft(
-                      project,
-                      testerUserId,
-                      selectedEngineeringIds,
-                    );
-                    if (next) setItems((current) => [...current, next]);
-                  }}
-                  type="button"
-                >
-                  ＋ 添加提测工程
-                </button>
+                {canAddItem ? (
+                  <button
+                    className="collab-add-engineering"
+                    onClick={() => {
+                      if (!project) return;
+                      const next = createItemDraft(
+                        project,
+                        testerUserId,
+                        selectedEngineeringIds,
+                      );
+                      if (next) setItems((current) => [...current, next]);
+                    }}
+                    type="button"
+                  >
+                    ＋ 添加提测工程
+                  </button>
+                ) : null}
               </fieldset>
               {conflicts.length ? (
                 <section className="collab-environment-notice" role="alert">
@@ -337,11 +400,23 @@ export function SubmissionComposer({
               ) : null}
               <div className="collab-dialog__actions">
                 <button disabled={pending} onClick={onClose} type="button">
-                  取消
+                  暂存并关闭
                 </button>
+                {hasDraftChanges ? (
+                  <DiscardDraft disabled={pending} onDiscard={onDiscard} />
+                ) : null}
                 <button
                   className="collab-primary"
-                  disabled={pending || !items.length}
+                  disabled={
+                    pending ||
+                    !title.trim() ||
+                    !requirementDescription.trim() ||
+                    !project ||
+                    !items.length ||
+                    !items.every((item) =>
+                      itemDraftIsValid(project, item, testerUserId),
+                    )
+                  }
                   type="submit"
                 >
                   {pending ? '正在创建…' : '创建提测单'}

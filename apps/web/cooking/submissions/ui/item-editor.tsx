@@ -1,6 +1,7 @@
 'use client';
 
 import { createClientId } from '@/cooking/shared/ui/client-id';
+import { FormChoice } from '@/cooking/shared/ui/form-choice';
 import type { SubmissionCreationCatalog } from '../contract';
 
 type CatalogProject = SubmissionCreationCatalog[number];
@@ -34,14 +35,20 @@ export function ItemEditor({
   testerUserId: string;
   showHeading?: boolean;
 }) {
-  const engineering =
-    project.engineerings.find(({ id }) => id === draft.engineeringId) ??
-    project.engineerings[0]!;
-  const responsibleMembers = engineering.members.filter(
-    ({ id }) => id !== testerUserId,
+  const engineering = project.engineerings.find(
+    ({ id }) => id === draft.engineeringId,
   );
-  const bindings = engineering.bindings.filter(
-    ({ userId }) => userId === draft.responsibleUserId,
+  if (!engineering) return <p role="alert">工程配置已变化，请重新选择工程。</p>;
+  const responsibleMembers = boundResponsibleMembers(engineering, testerUserId);
+  const binding = engineering.bindings.find(({ id }) => id === draft.bindingId);
+  const environment = engineering.environments.find(
+    ({ id }) => id === draft.environmentId,
+  );
+  const choices = project.engineerings.filter(
+    (candidate) =>
+      engineeringIsReady(candidate, testerUserId) &&
+      (candidate.id === draft.engineeringId ||
+        !selectedEngineeringIds.includes(candidate.id)),
   );
   return (
     <article className="collab-create-item">
@@ -59,101 +66,76 @@ export function ItemEditor({
         </header>
       ) : null}
       <div className="collab-form__grid collab-form__grid--four">
+        <FormChoice
+          label="工程"
+          value={draft.engineeringId}
+          options={choices.map((candidate) => ({
+            value: candidate.id,
+            label: candidate.name,
+          }))}
+          onChange={(id) =>
+            onChange(normalizeItemDraft(project, draft, testerUserId, id))
+          }
+        />
+        <FormChoice
+          label="开发负责人"
+          value={draft.responsibleUserId}
+          options={responsibleMembers.map((member) => ({
+            value: member.id,
+            label: member.displayName,
+          }))}
+          onChange={(responsibleUserId) =>
+            onChange({
+              ...draft,
+              responsibleUserId,
+              bindingId: engineering.bindings.find(
+                (candidate) => candidate.userId === responsibleUserId,
+              )!.id,
+            })
+          }
+        />
         <label>
-          <span>工程</span>
-          <select
-            onChange={(event) =>
-              onChange(
-                normalizeItemDraft(
-                  project,
-                  draft,
-                  testerUserId,
-                  event.target.value,
-                ),
-              )
-            }
-            value={draft.engineeringId}
-          >
-            {project.engineerings.map((candidate) => (
-              <option
-                disabled={
-                  !engineeringIsReady(candidate, testerUserId) ||
-                  (candidate.id !== draft.engineeringId &&
-                    selectedEngineeringIds.includes(candidate.id))
-                }
-                key={candidate.id}
-                value={candidate.id}
-              >
-                {candidate.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>开发负责人</span>
-          <select
-            onChange={(event) => {
-              const responsibleUserId = event.target.value;
-              const bindingId =
-                engineering.bindings.find(
-                  (binding) => binding.userId === responsibleUserId,
-                )?.id ?? '';
-              onChange({ ...draft, responsibleUserId, bindingId });
-            }}
-            required
-            value={draft.responsibleUserId}
-          >
-            {responsibleMembers.map((member) => (
-              <option key={member.id} value={member.id}>
-                {member.displayName}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Agent 绑定</span>
-          <select
-            onChange={(event) =>
-              onChange({ ...draft, bindingId: event.target.value })
-            }
-            required
-            value={draft.bindingId}
-          >
-            {bindings.map((binding) => (
-              <option key={binding.id} value={binding.id}>
-                {binding.runnerName}
-              </option>
-            ))}
-          </select>
+          <span>Agent</span>
+          <output className="collab-form__value" aria-label="Agent">
+            {binding?.runnerName ?? '尚无可用 Agent，请先完成绑定'}
+          </output>
         </label>
         <label>
           <span>目标分支</span>
           <input
+            aria-label="目标分支"
             maxLength={240}
+            required
+            value={draft.targetBranch}
+            placeholder="填写本次提测的目标分支"
             onChange={(event) =>
               onChange({ ...draft, targetBranch: event.target.value })
             }
-            required
-            value={draft.targetBranch}
           />
+          <small>
+            {engineering.targetBranchSuggestion
+              ? `最近提测「${engineering.targetBranchSuggestion.submissionTitle}」使用 ${engineering.targetBranchSuggestion.value}`
+              : '该工程首次提测，请填写目标分支。'}
+          </small>
         </label>
-        <label>
-          <span>测试环境</span>
-          <select
-            onChange={(event) =>
-              onChange({ ...draft, environmentId: event.target.value })
-            }
-            required
-            value={draft.environmentId}
-          >
-            {engineering.environments.map((environment) => (
-              <option key={environment.id} value={environment.id}>
-                {environment.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <FormChoice
+          label="测试环境"
+          value={draft.environmentId}
+          options={engineering.environments.map((candidate) => ({
+            value: candidate.id,
+            label: `${candidate.name}（${candidate.conflict ? `使用中：${candidate.conflict.submissionTitle}` : '空闲'}）`,
+          }))}
+          onChange={(environmentId) => onChange({ ...draft, environmentId })}
+        />
       </div>
+      {environment?.conflict ? (
+        <p className="collab-form__hint" role="status">
+          {environment.name} 正由「{environment.conflict.submissionTitle}
+          」使用，测试负责人：{environment.conflict.testerName}。
+          {environment.conflict.blockedReason ??
+            '使用此环境需要确认切换，原提测项将暂停更新和验证。'}
+        </p>
+      ) : null}
     </article>
   );
 }
@@ -163,6 +145,7 @@ export function createItemDraft(
   testerUserId: string,
   selectedEngineeringIds: string[],
 ): ItemDraft | null {
+  if (!project.members.some(({ id }) => id === testerUserId)) return null;
   const engineering = project.engineerings.find(
     (candidate) =>
       !selectedEngineeringIds.includes(candidate.id) &&
@@ -177,8 +160,8 @@ export function createItemDraft(
     bindingId: engineering.bindings.find(
       (binding) => binding.userId === responsible.id,
     )!.id,
-    targetBranch: 'main',
-    environmentId: engineering.environments[0]!.id,
+    targetBranch: engineering.targetBranchSuggestion?.value ?? '',
+    environmentId: defaultEnvironmentId(engineering),
   };
 }
 
@@ -198,6 +181,10 @@ export function normalizeItemDraft(
   return {
     ...current,
     engineeringId,
+    targetBranch:
+      engineeringId === current.engineeringId
+        ? current.targetBranch
+        : (engineering.targetBranchSuggestion?.value ?? ''),
     responsibleUserId: responsible?.id ?? '',
     bindingId:
       engineering.bindings.find((binding) => binding.userId === responsible?.id)
@@ -206,7 +193,7 @@ export function normalizeItemDraft(
       (environment) => environment.id === current.environmentId,
     )
       ? current.environmentId
-      : (engineering.environments[0]?.id ?? ''),
+      : defaultEnvironmentId(engineering),
   };
 }
 
@@ -220,12 +207,67 @@ export function engineeringIsReady(
   );
 }
 
-function boundResponsibleMembers(
+export function boundResponsibleMembers(
   engineering: CatalogEngineering,
   testerUserId: string,
 ) {
   const bound = new Set(engineering.bindings.map(({ userId }) => userId));
   return engineering.members.filter(
     ({ id }) => id !== testerUserId && bound.has(id),
+  );
+}
+
+function defaultEnvironmentId(engineering: CatalogEngineering): string {
+  return (
+    engineering.environments.find((environment) => !environment.conflict)?.id ??
+    engineering.environments.find(
+      (environment) => !environment.conflict?.blockedReason,
+    )?.id ??
+    engineering.environments[0]?.id ??
+    ''
+  );
+}
+
+export function availableTesterMembers(
+  project: CatalogProject,
+  engineeringIds: string[] = [],
+) {
+  const selected = project.engineerings.filter(({ id }) =>
+    engineeringIds.includes(id),
+  );
+  return project.members.filter((member) =>
+    selected.length
+      ? selected.every((engineering) =>
+          engineeringIsReady(engineering, member.id),
+        )
+      : project.engineerings.some((engineering) =>
+          engineeringIsReady(engineering, member.id),
+        ),
+  );
+}
+
+export function itemDraftIsValid(
+  project: CatalogProject,
+  draft: ItemDraft,
+  testerUserId: string,
+) {
+  const engineering = project.engineerings.find(
+    ({ id }) => id === draft.engineeringId,
+  );
+  return Boolean(
+    project.members.some(({ id }) => id === testerUserId) &&
+    engineering &&
+    draft.targetBranch.trim() &&
+    boundResponsibleMembers(engineering, testerUserId).some(
+      ({ id }) => id === draft.responsibleUserId,
+    ) &&
+    engineering.bindings.some(
+      ({ id, userId }) =>
+        id === draft.bindingId && userId === draft.responsibleUserId,
+    ) &&
+    engineering.environments.some(
+      ({ id, conflict }) =>
+        id === draft.environmentId && !conflict?.blockedReason,
+    ),
   );
 }

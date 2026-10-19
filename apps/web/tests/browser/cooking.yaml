@@ -6,6 +6,145 @@ setup:
   - click: '.auth-submit'
   - wait: { load: networkidle }
 cases:
+  - name: product defaults follow the current project and only offer valid people
+    steps:
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: '.collab-rail__create'
+      - click: '.collab-rail__create'
+      - wait: '.collab-composer-fields input[maxlength="160"]'
+    assert:
+      - text: { sel: 'output[aria-label="项目"]', contains: 浏览器验收项目 }
+      - eval: 'document.querySelector("select[aria-label=测试负责人]").selectedOptions[0].textContent === "浏览器测试执行人"'
+      - eval: '[...document.querySelector("select[aria-label=测试负责人]").options].every(option => option.textContent !== "浏览器测试开发者")'
+      - visible: 'output[aria-label="开发负责人"]'
+      - visible: 'output[aria-label="Agent"]'
+      - hidden: 'select[aria-label="Agent"]'
+      - text: { sel: '.collab-create-item', contains: 使用中 }
+      - eval: 'document.querySelector("input[aria-label=目标分支]").value === "feature/browser-test"'
+
+  - name: submission draft survives closing and restores the chosen branch
+    steps:
+      - fill:
+          {
+            sel: '.collab-composer-fields input[maxlength="160"]',
+            text: 待恢复的提测草稿,
+          }
+      - fill: { sel: '.collab-composer-fields textarea', text: 保留验收重点 }
+      - fill: { sel: 'input[aria-label="目标分支"]', text: feature/unsaved }
+      - click: 'button[aria-label="关闭创建提测单"]'
+      - click: '.collab-rail__create'
+      - wait: '.collab-composer-fields input[maxlength="160"]'
+    assert:
+      - eval: 'document.querySelector(".collab-composer-fields input").value === "待恢复的提测草稿"'
+      - eval: 'document.querySelector("input[aria-label=目标分支]").value === "feature/unsaved"'
+      - eval: 'document.querySelector(".collab-composer-fields textarea").value === "保留验收重点"'
+
+  - name: explicit submission discard clears the draft after confirmation
+    steps:
+      - eval: "[...document.querySelectorAll('[role=dialog] button')].find(button => button.textContent === '放弃草稿').click(); true"
+      - wait: '[aria-label="确认放弃草稿"]'
+      - click: '[aria-label="确认放弃草稿"] button:last-child'
+      - click: '.collab-rail__create'
+      - wait: '.collab-composer-fields input[maxlength="160"]'
+    assert:
+      - eval: 'document.querySelector(".collab-composer-fields input").value === ""'
+      - eval: 'document.querySelector("input[aria-label=目标分支]").value === "feature/browser-test"'
+
+  - name: changing engineering uses its own branch history and first submission asks for a branch
+    steps:
+      - eval: >-
+          (()=>{const select=document.querySelector('select[aria-label=工程]');
+          select.value=[...select.options].find(option=>option.textContent==='浏览器追加工程').value;
+          select.dispatchEvent(new Event('change',{bubbles:true}));return true;})()
+    assert:
+      - eval: 'document.querySelector("input[aria-label=目标分支]").value === ""'
+      - text: { sel: '.collab-create-item', contains: 首次提测 }
+      - visible: '.collab-dialog__actions button[type="submit"]:disabled'
+
+  - name: bug draft retains its backend selection and attachment when temporarily closed
+    steps:
+      - eval: "[...document.querySelectorAll('[role=dialog] button')].find(button=>button.textContent==='放弃草稿').click();true"
+      - click: '[aria-label="确认放弃草稿"] button:last-child'
+      - eval: "[...document.querySelectorAll('button')].find(button=>button.textContent?.includes('登记缺陷')).click();true"
+      - wait: '#collab-bug-form'
+      - eval: >-
+          (()=>{const select=document.querySelector('#collab-bug-form select');
+          select.value=select.querySelector('optgroup[label=后端] option').value;
+          select.dispatchEvent(new Event('change',{bubbles:true}));return true;})()
+      - fill:
+          {
+            sel: '#collab-bug-form input[maxlength="240"]',
+            text: 连续登记第一张,
+          }
+      - eval: >-
+          (()=>{const input=document.querySelector('[aria-label="实际结果附件"] input[type=file]');
+          const transfer=new DataTransfer();transfer.items.add(new File(['draft'],'草稿证据.txt',{type:'text/plain'}));
+          Object.defineProperty(input,'files',{configurable:true,value:transfer.files});
+          input.dispatchEvent(new Event('change',{bubbles:true}));return true;})()
+      - click: 'button[aria-label="关闭详情抽屉"]'
+      - eval: "[...document.querySelectorAll('button')].find(button=>button.textContent?.includes('登记缺陷')).click();true"
+      - wait: '#collab-bug-form'
+    assert:
+      - eval: 'document.querySelector("#collab-bug-form input[maxlength]").value === "连续登记第一张"'
+      - eval: 'document.querySelector("#collab-bug-form select").selectedOptions[0].textContent.includes("browser-api")'
+      - text: { sel: '[aria-label="实际结果附件"]', contains: 草稿证据.txt }
+
+  - name: register and continue keeps ownership but clears content and attachments
+    steps:
+      - click: 'button[value="continue"]'
+      - wait: 800
+    assert:
+      - visible: '#collab-bug-form'
+      - eval: 'document.querySelector("#collab-bug-form input[maxlength]").value === ""'
+      - eval: 'document.querySelector("#collab-bug-form select").selectedOptions[0].textContent.includes("browser-api")'
+      - count:
+          { sel: '[aria-label="实际结果附件"] li[data-source="new"]', eq: 0 }
+      - count: { sel: 'button[aria-label^="连续登记第一张，后端，"]', eq: 1 }
+
+  - name: regular registration remembers the last engineering for the next report
+    steps:
+      - fill:
+          {
+            sel: '#collab-bug-form input[maxlength="240"]',
+            text: 连续登记第二张,
+          }
+      - click: 'button[form="collab-bug-form"]:not([value])'
+      - wait: 800
+      - eval: "[...document.querySelectorAll('button')].find(button=>button.textContent?.includes('登记缺陷')).click();true"
+      - wait: '#collab-bug-form'
+    assert:
+      - count: { sel: 'button[aria-label^="连续登记第二张，后端，"]', eq: 1 }
+      - eval: 'document.querySelector("#collab-bug-form select").selectedOptions[0].textContent.includes("browser-api")'
+      - eval: 'document.querySelector("#collab-bug-form input[maxlength]").value === ""'
+
+  - name: unique joint engineering values are readable without redundant selectors
+    steps:
+      - click: '.collab-joint-choice input'
+      - press: Tab
+    assert:
+      - visible: 'output[aria-label="前端工程"]'
+      - visible: 'output[aria-label="后端工程"]'
+      - hidden: 'select[aria-label="前端工程"]'
+      - hidden: 'select[aria-label="后端工程"]'
+      - eval: 'document.activeElement === document.querySelector("#collab-bug-form input[maxlength]")'
+
+  - name: explicit bug draft discard clears unsaved content without changing saved reports
+    steps:
+      - fill:
+          { sel: '#collab-bug-form input[maxlength="240"]', text: 放弃这张草稿 }
+      - eval: "[...document.querySelectorAll('[role=dialog] button')].find(button=>button.textContent==='放弃草稿').click();true"
+      - click: '[aria-label="确认放弃草稿"] button:last-child'
+      - eval: "[...document.querySelectorAll('button')].find(button=>button.textContent?.includes('登记缺陷')).click();true"
+      - wait: '#collab-bug-form'
+    assert:
+      - eval: 'document.querySelector("#collab-bug-form input[maxlength]").value === ""'
+      - count: { sel: 'button[aria-label^="连续登记第一张，"]', eq: 1 }
+      - count: { sel: 'button[aria-label^="连续登记第二张，"]', eq: 1 }
+
+  - name: close the product walkthrough and restore the original board
+    steps:
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - wait: 'button[aria-label^="待取消缺陷，"]'
   - name: unassigned deletion asks for confirmation and cancel restores focus
     steps:
       - open: __BASE_URL__/cooking/__SUBMISSION_ID__
@@ -170,7 +309,7 @@ cases:
           const transfer = new DataTransfer(); transfer.items.add(new File([bytes], 'large-screenshot.png', { type: 'image/png' }));
           Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
           input.dispatchEvent(new Event('change', { bubbles: true })); return true; })()
-      - click: 'button[form="collab-bug-form"]:not([value="repair"])'
+      - click: 'button[form="collab-bug-form"]:not([value])'
       - wait: 1500
     assert:
       - hidden: '#collab-bug-form'
@@ -193,17 +332,17 @@ cases:
           if (new Headers(args[1]?.headers).has('Next-Action')) {
           window.fetch = original; return Promise.reject(new TypeError('Failed to fetch')); }
           return original(...args); }; return true; })()
-      - click: 'button[form="collab-bug-form"]:not([value="repair"])'
+      - click: 'button[form="collab-bug-form"]:not([value])'
       - wait: '[role="alert"]'
     assert:
       - text: { sel: '[role="alert"]', contains: 未收到服务器响应 }
       - text: { sel: '[role="alert"]', contains: 先核对当前记录 }
       - eval: 'document.querySelector(''#collab-bug-form input[maxlength="240"]'').value === ''网络中断保留草稿'''
-      - eval: '!document.querySelector(''button[form="collab-bug-form"]:not([value="repair"])'').disabled'
+      - eval: '!document.querySelector(''button[form="collab-bug-form"]:not([value])'').disabled'
 
   - name: retry succeeds after the connection recovers
     steps:
-      - click: 'button[form="collab-bug-form"]:not([value="repair"])'
+      - click: 'button[form="collab-bug-form"]:not([value])'
       - wait: 1500
     assert:
       - hidden: '#collab-bug-form'
@@ -215,7 +354,7 @@ cases:
       - click: '.collab-tester-detail__actions button:first-child'
       - wait: '#collab-bug-form'
       - click: '.collab-joint-choice input'
-      - click: 'button[form="collab-bug-form"]:not([value="repair"])'
+      - click: 'button[form="collab-bug-form"]:not([value])'
       - wait: 1500
     assert:
       - hidden: '#collab-bug-form'
@@ -239,7 +378,7 @@ cases:
           }
       - count:
           { sel: '[aria-label="实际结果附件"] .collab-attachment-tile', eq: 0 }
-      - visible: 'button[form="collab-bug-form"]:not([value="repair"])'
+      - visible: 'button[form="collab-bug-form"]:not([value])'
 
   - name: both report groups accept five attachments at the 10 MB boundary
     steps:
@@ -259,7 +398,7 @@ cases:
           transfer.items.add(new File([new Uint8Array(10 * 1024 * 1024)], `${label}-${i}.txt`, { type: 'text/plain' }));
           Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
           input.dispatchEvent(new Event('change', { bubbles: true })); } return true; })()
-      - click: 'button[form="collab-bug-form"]:not([value="repair"])'
+      - click: 'button[form="collab-bug-form"]:not([value])'
       - wait: 'button[aria-label^="双组附件上限登记，"]'
       - click: 'button[aria-label^="双组附件上限登记，"]'
       - wait: '[role="dialog"]'
@@ -284,7 +423,7 @@ cases:
           const transfer = new DataTransfer(); transfer.items.add(new File(['joint proof'], 'joint-proof.txt', { type: 'text/plain' }));
           Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
           input.dispatchEvent(new Event('change', { bubbles: true })); return true; })()
-      - click: 'button[form="collab-bug-form"]:not([value="repair"])'
+      - click: 'button[form="collab-bug-form"]:not([value])'
       - wait: 1000
       - click: 'button[aria-label^="浏览器前后端关联单，前端，"]'
       - wait: '[role="dialog"]'
@@ -535,10 +674,10 @@ cases:
       - press: Tab
     assert:
       - visible: '.collab-shell[data-theme="night"]'
-      - visible: 'select[aria-label="前端工程"]'
-      - visible: 'select[aria-label="后端工程"]'
-      - eval: "document.activeElement === document.querySelector('select[aria-label=前端工程]')"
-      - visible: 'button[form="collab-bug-form"]:not([value="repair"])'
+      - visible: '[aria-label="前端工程"]'
+      - visible: '[aria-label="后端工程"]'
+      - eval: "document.activeElement === document.querySelector('#collab-bug-form input[maxlength]')"
+      - visible: 'button[form="collab-bug-form"]:not([value])'
 
   - name: tester sees verification readiness without engineering checks
     steps:
@@ -625,7 +764,7 @@ cases:
           Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
           input.dispatchEvent(new Event('change', { bubbles: true })); return true; })()
       - wait: 250
-      - click: 'button[form="collab-bug-form"]:not([value="repair"])'
+      - click: 'button[form="collab-bug-form"]:not([value])'
       - wait: 1200
       - eval: "[...document.querySelectorAll('button.collab-bug-card__open')].find((button) => button.getAttribute('aria-label')?.startsWith('浏览器登记缺陷，'))?.click(); true"
       - wait: '[role="dialog"]'
@@ -1078,7 +1217,7 @@ cases:
       - click: '.collab-bug-detail-context__actions button'
       - wait: '#collab-bug-form'
       - click: '.collab-joint-choice input'
-      - click: 'button[form="collab-bug-form"]:not([value="repair"])'
+      - click: 'button[form="collab-bug-form"]:not([value])'
       - wait: 1500
     assert:
       - hidden: '#collab-bug-form'
@@ -1239,34 +1378,29 @@ cases:
     steps:
       - click: 'button[aria-label="查看浏览器架构验收提测详情"]'
       - click: '.collab-add-items-trigger'
-      - wait: '.collab-add-items-dialog select'
+      - wait: '.collab-add-items-dialog input[aria-label="目标分支"]'
     assert:
       - visible: '.collab-add-items-dialog[open]'
       - eval: 'document.querySelector(".collab-add-items-dialog").contains(document.activeElement)'
       - eval: 'document.querySelector(".collab-add-items-dialog").getBoundingClientRect().width <= 620'
-      - eval: '[...document.querySelector(".collab-add-items-dialog select").options].filter((option) => !option.disabled).length === 1'
+      - visible: '.collab-add-items-dialog output[aria-label="工程"]'
+      - hidden: '.collab-add-items-dialog select[aria-label="工程"]'
       - text: { sel: '.collab-add-items-dialog', contains: 浏览器追加工程 }
 
-  - name: invalid added engineering shows an error and retains its draft
+  - name: invalid added engineering branch prevents submission and retains its draft
     steps:
       - fill: { sel: '.collab-add-items-dialog input', text: '   ' }
-      - click: '.collab-add-items-dialog button[type="submit"]'
-      - wait: '.collab-add-items-dialog [role="alert"]'
     assert:
-      - text:
-          {
-            sel: '.collab-add-items-dialog [role="alert"]',
-            contains: 提交内容不完整,
-          }
-      - visible: '.collab-add-items-dialog select'
-      - eval: '!document.querySelector(".collab-add-items-dialog button[type=submit]").disabled'
+      - visible: '.collab-add-items-dialog button[type="submit"]:disabled'
+      - visible: '.collab-add-items-dialog output[aria-label="工程"]'
+      - eval: 'document.querySelector(".collab-add-items-dialog input").value === "   "'
 
   - name: add engineering remains reachable in night theme and closes with Escape
     steps:
       - press: Escape
       - click: 'button[aria-label="切换暗夜主题"]'
       - click: '.collab-add-items-trigger'
-      - wait: '.collab-add-items-dialog select'
+      - wait: '.collab-add-items-dialog input[aria-label="目标分支"]'
     assert:
       - visible: '.collab-shell[data-theme="night"] .collab-add-items-dialog[open]'
       - eval: 'getComputedStyle(document.querySelector(".collab-add-items-dialog form")).overflowY === "auto"'
@@ -1309,7 +1443,7 @@ cases:
     assert:
       - visible: 'button[value="repair"]:disabled'
       - eval: 'document.querySelector("#collab-bug-form select").value === document.querySelector("#collab-bug-form optgroup option").value'
-      - visible: 'button[form="collab-bug-form"]:not([value="repair"])'
+      - visible: 'button[form="collab-bug-form"]:not([value])'
 
   - name: changing engineering keeps the disabled repair action at the bottom right
     steps:
@@ -1377,8 +1511,8 @@ cases:
       - eval: 'document.querySelector("button[value=repair]").focus(); true'
     assert:
       - visible: '.collab-shell[data-theme="night"] button[value="repair"]:enabled'
-      - visible: 'select[aria-label="前端工程"]'
-      - visible: 'select[aria-label="后端工程"]'
+      - visible: '[aria-label="前端工程"]'
+      - visible: '[aria-label="后端工程"]'
       - eval: 'document.activeElement === document.querySelector("button[value=repair]")'
       - eval: 'document.querySelector("button[value=repair]").getBoundingClientRect().bottom <= innerHeight'
 

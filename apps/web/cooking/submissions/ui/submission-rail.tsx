@@ -111,7 +111,7 @@ export function SubmissionRail({
             <div className="collab-rail__detail-body">
               {snapshot ? (
                 <SubmissionDetails
-                  key={`${snapshot.submission.submission.id}:${snapshot.revision}`}
+                  key={snapshot.submission.submission.id}
                   onResolveCleanupInteraction={onResolveCleanupInteraction}
                   snapshot={snapshot}
                   onRetryCleanup={onRetryCleanup}
@@ -226,7 +226,7 @@ export function SubmissionRail({
               onClick={onCreate}
               type="button"
             >
-              ＋ 创建多工程提测
+              ＋ 创建提测单
             </button>
           </>
         )}

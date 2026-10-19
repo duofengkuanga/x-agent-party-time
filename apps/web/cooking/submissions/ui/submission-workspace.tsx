@@ -37,6 +37,7 @@ import {
 } from '../server/actions';
 import { EnvironmentStatus } from './environment-status';
 import { SubmissionComposer } from './submission-composer';
+import type { SubmissionDraft } from './submission-draft';
 import { workspaceReducer, parseInvalidation } from './workspace-state';
 import { useSidebarWidth } from './sidebar-preference';
 
@@ -71,6 +72,14 @@ export function SubmissionWorkspace({
     },
   );
   const [showCreateSubmission, setShowCreateSubmission] = useState(false);
+  const creationDrafts = useRef(new Map<string, SubmissionDraft>());
+  const draftKey = `${currentUser.id}:${snapshot?.submission.submission.projectId ?? 'new'}`;
+  const saveCreationDraft = useCallback(
+    (draft: SubmissionDraft) => {
+      creationDrafts.current.set(draftKey, draft);
+    },
+    [draftKey],
+  );
   const [creationCatalog, setCreationCatalog] =
     useState<SubmissionCreationCatalog | null>(null);
   const [showDetails, setShowDetails] = useState(false);
@@ -384,6 +393,7 @@ export function SubmissionWorkspace({
                 </div>
               ) : null}
               <BugBoard
+                key={`${currentUser.id}:${snapshot.submission.submission.id}`}
                 onChanged={(revision, message) => {
                   setNotice(message);
                   void refreshSnapshot(revision);
@@ -411,8 +421,23 @@ export function SubmissionWorkspace({
         <SubmissionComposer
           catalog={creationCatalog}
           currentUser={currentUser}
+          context={
+            snapshot
+              ? {
+                  projectId: snapshot.submission.submission.projectId,
+                  testerUserId: snapshot.submission.tester.id,
+                }
+              : null
+          }
+          savedDraft={creationDrafts.current.get(draftKey) ?? null}
+          onDraftChange={saveCreationDraft}
+          onDiscard={() => {
+            creationDrafts.current.delete(draftKey);
+            setShowCreateSubmission(false);
+          }}
           onClose={() => setShowCreateSubmission(false)}
           onCreated={(submissionId) => {
+            creationDrafts.current.delete(draftKey);
             setShowCreateSubmission(false);
             router.push(`/cooking/${submissionId}`);
           }}

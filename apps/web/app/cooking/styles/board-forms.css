@@ -91,6 +91,28 @@
   white-space: nowrap;
 }
 
+.collab-form__value {
+  align-content: center;
+  border-bottom: 1px solid var(--line);
+  min-height: 40px;
+  overflow-wrap: anywhere;
+  padding: 9px 10px;
+}
+
+.collab-form__hint {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.6;
+  margin: 10px 0 0;
+}
+
+.collab-discard-draft {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
 .collab-form input:focus,
 .collab-form select:focus,
 .collab-form textarea:focus {

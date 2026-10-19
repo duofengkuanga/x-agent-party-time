@@ -21,6 +21,7 @@ import { createClientId } from '@/cooking/shared/ui/client-id';
 import type { CookingWorkspaceSnapshot } from '@/cooking/workspace/contract';
 import {
   Fragment,
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -28,6 +29,7 @@ import {
   type DragEvent as ReactDragEvent,
 } from 'react';
 import type { BugView } from '../contract';
+import type { BugFormDraft, BugOwnershipDraft } from './bug-form-draft';
 import type {
   BugFeedbackIntent,
   Drawer,
@@ -84,6 +86,15 @@ export function BugBoard({
   syncLabel: string;
 }) {
   const [drawer, setDrawer] = useState<Drawer | null>(null);
+  const reportDrafts = useRef(new Map<string, BugFormDraft>());
+  const registeredOwnership = useRef<BugOwnershipDraft | null>(null);
+  const reportDraftKey = drawer?.mode === 'edit' ? drawer.bugId : 'create';
+  const saveReportDraft = useCallback(
+    (draft: BugFormDraft) => {
+      reportDrafts.current.set(reportDraftKey, draft);
+    },
+    [reportDraftKey],
+  );
   const [storage, setStorage] = useState<BugStorageKind | null>(null);
   const [feedbackIntent, setFeedbackIntent] =
     useState<BugFeedbackIntent | null>(null);
@@ -539,15 +550,28 @@ export function BugBoard({
           error={error}
           pending={pending}
           run={run}
+          savedDraft={reportDrafts.current.get(reportDraftKey) ?? null}
+          preferredOwnership={registeredOwnership.current}
+          onDraftChange={saveReportDraft}
+          onDiscardDraft={() => {
+            reportDrafts.current.delete(reportDraftKey);
+            setDrawer(null);
+          }}
           onClearError={() => setError(null)}
           onOpenBatch={(batchId) => {
             setError(null);
             setDrawer({ mode: 'batch', batchId });
           }}
-          onChanged={(revision, message) => {
+          onChanged={(revision, message, registration) => {
+            if (drawer.mode === 'create' || drawer.mode === 'edit')
+              reportDrafts.current.delete(reportDraftKey);
+            if (registration)
+              registeredOwnership.current = registration.ownership;
             setDrawer(
               drawer.mode === 'create'
-                ? null
+                ? registration?.continueRegistering
+                  ? drawer
+                  : null
                 : drawer.mode === 'edit'
                   ? { mode: 'view', bugId: drawer.bugId }
                   : drawer,

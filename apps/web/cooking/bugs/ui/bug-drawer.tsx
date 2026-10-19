@@ -1,5 +1,11 @@
 'use client';
 
+import { useState } from 'react';
+import type {
+  BugFormDraft,
+  BugOwnershipDraft,
+  BugRegistration,
+} from './bug-form-draft';
 import type { CookingWorkspaceSnapshot } from '@/cooking/workspace/contract';
 import type { Drawer } from './board-model';
 import { drawerTitle, bugLabel } from './board-model';
@@ -23,10 +29,18 @@ export function BugDrawer({
   run,
   pending,
   snapshot,
+  savedDraft,
+  preferredOwnership,
+  onDraftChange,
+  onDiscardDraft,
 }: {
   drawer: Drawer;
   error: string | null;
-  onChanged: (revision: number, message: string) => void;
+  onChanged: (
+    revision: number,
+    message: string,
+    registration?: BugRegistration,
+  ) => void;
   onClose: () => void;
   onEdit: (bugId: string) => void;
   onOpen: (bugId: string) => void;
@@ -35,7 +49,12 @@ export function BugDrawer({
   run: RunTesterAction;
   pending: boolean;
   snapshot: CookingWorkspaceSnapshot;
+  savedDraft: BugFormDraft | null;
+  preferredOwnership: BugOwnershipDraft | null;
+  onDraftChange: (draft: BugFormDraft) => void;
+  onDiscardDraft: () => void;
 }) {
+  const [formSaving, setFormSaving] = useState(false);
   const bug =
     drawer.mode === 'create' || drawer.mode === 'batch'
       ? null
@@ -106,7 +125,7 @@ export function BugDrawer({
           <div className="collab-bug-drawer__chrome-actions">
             <button
               aria-label="关闭详情抽屉"
-              disabled={pending}
+              disabled={pending || formSaving}
               onClick={onClose}
               type="button"
             >
@@ -161,10 +180,16 @@ export function BugDrawer({
           />
         ) : (
           <BugForm
+            key={bug?.id ?? 'create'}
             bug={bug}
             onCancel={onClose}
             onChanged={onChanged}
             snapshot={snapshot}
+            savedDraft={savedDraft}
+            preferredOwnership={preferredOwnership}
+            onDraftChange={onDraftChange}
+            onDiscard={onDiscardDraft}
+            onSavingChange={setFormSaving}
           />
         )}
       </section>

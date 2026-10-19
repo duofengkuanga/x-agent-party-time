@@ -1,9 +1,17 @@
 'use client';
 
-import { useState, useTransition, type FormEvent } from 'react';
+import { useEffect, useState, useTransition, type FormEvent } from 'react';
 import { createClientId } from '@/cooking/shared/ui/client-id';
 import type { CookingWorkspaceSnapshot } from '@/cooking/workspace/contract';
 import type { BugView } from '../contract';
+import { FormChoice } from '@/cooking/shared/ui/form-choice';
+import { DiscardDraft } from '@/cooking/shared/ui/discard-draft';
+import {
+  createBugFormDraft,
+  type BugFormDraft,
+  type BugOwnershipDraft,
+  type BugRegistration,
+} from './bug-form-draft';
 import {
   assignBugAction,
   createBugAction,
@@ -129,12 +137,29 @@ export function BugForm({
   onCancel,
   onChanged,
   snapshot,
+  savedDraft,
+  preferredOwnership,
+  onDraftChange,
+  onDiscard,
+  onSavingChange,
 }: {
   bug: BugView | null;
   onCancel: () => void;
-  onChanged: (revision: number, message: string) => void;
+  onChanged: (
+    revision: number,
+    message: string,
+    registration?: BugRegistration,
+  ) => void;
   snapshot: CookingWorkspaceSnapshot;
+  savedDraft: BugFormDraft | null;
+  preferredOwnership: BugOwnershipDraft | null;
+  onDraftChange: (draft: BugFormDraft) => void;
+  onDiscard: () => void;
+  onSavingChange: (saving: boolean) => void;
 }) {
+  const [initial] = useState(() =>
+    createBugFormDraft(bug, snapshot, savedDraft, preferredOwnership),
+  );
   const canEditReport = !bug || bug.availableActions.includes('EDIT_REPORT');
   const canAssign = !bug || bug.availableActions.includes('ASSIGN');
   const frontendItems = snapshot.submission.items.filter(
@@ -144,40 +169,87 @@ export function BugForm({
     ({ engineering }) => engineering.type === 'BACKEND',
   );
   const [submissionItemId, setSubmissionItemId] = useState(
-    bug
-      ? (bug.submissionItemId ?? '')
-      : (snapshot.submission.items[0]?.id ?? ''),
+    initial.submissionItemId,
   );
-  const [joint, setJoint] = useState(false);
-  const [frontItemId, setFrontItemId] = useState(
-    frontendItems.find((item) => item.id === bug?.submissionItemId)?.id ??
-      frontendItems[0]?.id ??
-      '',
-  );
-  const [backItemId, setBackItemId] = useState(
-    backendItems.find((item) => item.id === bug?.submissionItemId)?.id ??
-      backendItems[0]?.id ??
-      '',
-  );
-  const [mutationId] = useState(createClientId);
-  const [title, setTitle] = useState(bug?.report.title ?? '');
-  const [operationPath, setOperationPath] = useState(
-    bug?.report.operationPath ?? '',
-  );
-  const [actualResult, setActualResult] = useState(
-    bug?.report.actualResult ?? '',
-  );
-  const [expectedResult, setExpectedResult] = useState(
-    bug?.report.expectedResult ?? '',
-  );
+  const [joint, setJoint] = useState(initial.joint);
+  const [frontItemId, setFrontItemId] = useState(initial.frontItemId);
+  const [backItemId, setBackItemId] = useState(initial.backItemId);
+  const [mutationId, setMutationId] = useState(initial.mutationId);
+  const [title, setTitle] = useState(initial.title);
+  const [operationPath, setOperationPath] = useState(initial.operationPath);
+  const [actualResult, setActualResult] = useState(initial.actualResult);
+  const [expectedResult, setExpectedResult] = useState(initial.expectedResult);
   const [keptActualResultAttachmentIds, setKeptActualResultAttachmentIds] =
-    useState(bug?.report.actualResultAttachments.map(({ id }) => id) ?? []);
+    useState(initial.keptActualResultAttachmentIds);
   const [keptExpectedResultAttachmentIds, setKeptExpectedResultAttachmentIds] =
-    useState(bug?.report.expectedResultAttachments.map(({ id }) => id) ?? []);
-  const [actualResultFiles, setActualResultFiles] = useState<File[]>([]);
-  const [expectedResultFiles, setExpectedResultFiles] = useState<File[]>([]);
+    useState(initial.keptExpectedResultAttachmentIds);
+  const [actualResultFiles, setActualResultFiles] = useState<File[]>(
+    initial.actualResultFiles,
+  );
+  const [expectedResultFiles, setExpectedResultFiles] = useState<File[]>(
+    initial.expectedResultFiles,
+  );
   const [error, setError] = useState<string | null>(null);
   const [saving, startSaving] = useTransition();
+
+  useEffect(() => {
+    onSavingChange(saving);
+    return () => onSavingChange(false);
+  }, [saving, onSavingChange]);
+  useEffect(
+    () =>
+      onDraftChange({
+        mutationId,
+        expectedVersion: initial.expectedVersion,
+        submissionItemId,
+        joint,
+        frontItemId,
+        backItemId,
+        title,
+        operationPath,
+        actualResult,
+        expectedResult,
+        keptActualResultAttachmentIds,
+        keptExpectedResultAttachmentIds,
+        actualResultFiles,
+        expectedResultFiles,
+      }),
+    [
+      onDraftChange,
+      mutationId,
+      initial.expectedVersion,
+      submissionItemId,
+      joint,
+      frontItemId,
+      backItemId,
+      title,
+      operationPath,
+      actualResult,
+      expectedResult,
+      keptActualResultAttachmentIds,
+      keptExpectedResultAttachmentIds,
+      actualResultFiles,
+      expectedResultFiles,
+    ],
+  );
+  const dirty =
+    title !== (bug?.report.title ?? '') ||
+    operationPath !== (bug?.report.operationPath ?? '') ||
+    actualResult !== (bug?.report.actualResult ?? '') ||
+    expectedResult !== (bug?.report.expectedResult ?? '') ||
+    actualResultFiles.length > 0 ||
+    expectedResultFiles.length > 0 ||
+    JSON.stringify(keptActualResultAttachmentIds) !==
+      JSON.stringify(
+        bug?.report.actualResultAttachments.map(({ id }) => id) ?? [],
+      ) ||
+    JSON.stringify(keptExpectedResultAttachmentIds) !==
+      JSON.stringify(
+        bug?.report.expectedResultAttachments.map(({ id }) => id) ?? [],
+      ) ||
+    Boolean(
+      bug && (joint || submissionItemId !== (bug.submissionItemId ?? '')),
+    );
 
   const canCreateAndRepair =
     !bug &&
@@ -185,6 +257,10 @@ export function BugForm({
 
   function submit(event: FormEvent) {
     event.preventDefault();
+    const continueRegistering =
+      !bug &&
+      (event.nativeEvent as SubmitEvent).submitter?.getAttribute('value') ===
+        'continue';
     const startRepair =
       canCreateAndRepair &&
       (event.nativeEvent as SubmitEvent).submitter?.getAttribute('value') ===
@@ -205,7 +281,7 @@ export function BugForm({
         if (bug && !canEditReport) {
           const result = await assignBugAction(bug.id, {
             mutationId,
-            expectedVersion: bug.version,
+            expectedVersion: initial.expectedVersion!,
             submissionItemId: primaryItemId || null,
             additionalSubmissionItemId,
           });
@@ -224,7 +300,8 @@ export function BugForm({
         const formData = new FormData();
         formData.set('mutationId', mutationId);
         formData.set('startRepair', String(startRepair));
-        if (bug) formData.set('expectedVersion', String(bug.version));
+        if (bug)
+          formData.set('expectedVersion', String(initial.expectedVersion));
         formData.set('submissionItemId', primaryItemId);
         if (bug && additionalSubmissionItemId)
           formData.set(
@@ -254,6 +331,18 @@ export function BugForm({
           setError(result.error.message);
           return;
         }
+        if (!bug && continueRegistering) {
+          setTitle('');
+          setOperationPath('');
+          setActualResult('');
+          setExpectedResult('');
+          setActualResultFiles([]);
+          setExpectedResultFiles([]);
+          setKeptActualResultAttachmentIds([]);
+          setKeptExpectedResultAttachmentIds([]);
+          setMutationId(createClientId());
+          setError(null);
+        }
         onChanged(
           result.result.revision,
           bug
@@ -267,6 +356,12 @@ export function BugForm({
               : joint
                 ? '已登记两张前后端关联单。'
                 : '缺陷已登记。',
+          !bug
+            ? {
+                continueRegistering,
+                ownership: { submissionItemId, joint, frontItemId, backItemId },
+              }
+            : undefined,
         );
       } catch (submitError) {
         setError(messageOf(submitError, '无法保存缺陷。'));
@@ -304,63 +399,62 @@ export function BugForm({
           ) : null}
           {joint ? (
             <>
-              <label>
-                <span>前端工程</span>
-                <select
-                  aria-label="前端工程"
-                  value={frontItemId}
-                  onChange={(event) => setFrontItemId(event.target.value)}
-                >
-                  {frontendItems.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.engineering.name}（{item.engineering.identifier}）
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>后端工程</span>
-                <select
-                  aria-label="后端工程"
-                  value={backItemId}
-                  onChange={(event) => setBackItemId(event.target.value)}
-                >
-                  {backendItems.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.engineering.name}（{item.engineering.identifier}）
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <FormChoice
+                label="前端工程"
+                value={frontItemId}
+                onChange={setFrontItemId}
+                options={frontendItems.map((item) => ({
+                  value: item.id,
+                  label: `${item.engineering.name}（${item.engineering.identifier}）`,
+                }))}
+              />
+              <FormChoice
+                label="后端工程"
+                value={backItemId}
+                onChange={setBackItemId}
+                options={backendItems.map((item) => ({
+                  value: item.id,
+                  label: `${item.engineering.name}（${item.engineering.identifier}）`,
+                }))}
+              />
               <p>两张单分别进入待修复，各自更新和验收。</p>
             </>
           ) : (
             <label>
               <span>具体工程</span>
-              <select
-                onChange={(event) => setSubmissionItemId(event.target.value)}
-                value={submissionItemId}
-              >
-                <option value="">暂不确定</option>
-                {frontendItems.length ? (
-                  <optgroup label="前端">
-                    {frontendItems.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.engineering.name}（{item.engineering.identifier}）
-                      </option>
-                    ))}
-                  </optgroup>
-                ) : null}
-                {backendItems.length ? (
-                  <optgroup label="后端">
-                    {backendItems.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.engineering.name}（{item.engineering.identifier}）
-                      </option>
-                    ))}
-                  </optgroup>
-                ) : null}
-              </select>
+              {snapshot.submission.items.length === 1 && submissionItemId ? (
+                <output aria-label="具体工程" className="collab-form__value">
+                  {snapshot.submission.items[0]!.engineering.name}（
+                  {snapshot.submission.items[0]!.engineering.identifier}）
+                </output>
+              ) : (
+                <select
+                  onChange={(event) => setSubmissionItemId(event.target.value)}
+                  value={submissionItemId}
+                >
+                  <option value="">暂不确定</option>
+                  {frontendItems.length ? (
+                    <optgroup label="前端">
+                      {frontendItems.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.engineering.name}（{item.engineering.identifier}
+                          ）
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null}
+                  {backendItems.length ? (
+                    <optgroup label="后端">
+                      {backendItems.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.engineering.name}（{item.engineering.identifier}
+                          ）
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null}
+                </select>
+              )}
             </label>
           )}
         </fieldset>
@@ -434,9 +528,12 @@ export function BugForm({
         ) : null}
       </form>
       <footer className="collab-dialog__actions collab-bug-drawer__actions">
-        <button onClick={onCancel} type="button">
-          取消
+        <button disabled={saving} onClick={onCancel} type="button">
+          暂存并关闭
         </button>
+        {dirty ? (
+          <DiscardDraft disabled={saving} onDiscard={onDiscard} />
+        ) : null}
         <button
           disabled={saving || (!canEditReport && !canAssign)}
           form="collab-bug-form"
@@ -444,6 +541,17 @@ export function BugForm({
         >
           {saving ? '保存中…' : bug ? '保存修改' : '登记缺陷'}
         </button>
+        {!bug ? (
+          <button
+            disabled={saving || !title.trim()}
+            form="collab-bug-form"
+            name="intent"
+            type="submit"
+            value="continue"
+          >
+            {saving ? '保存中…' : '登记并继续'}
+          </button>
+        ) : null}
         {canCreateAndRepair ? (
           <button
             disabled={saving || !title.trim()}
