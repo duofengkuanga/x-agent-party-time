@@ -104,6 +104,7 @@ export function bugLabel(bug: BugView): string {
 }
 
 export function pendingDeliveryFor(bug: BugView, snapshot: CookingWorkspaceSnapshot) {
+  if (bug.stage !== 'WAITING_FOR_UPDATE') return undefined;
   const submissionItemId = bug.assignment?.submissionItemId;
   return submissionItemId
     ? snapshot.pendingDeliveries.find(

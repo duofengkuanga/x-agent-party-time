@@ -4,6 +4,7 @@ import { createCooking } from '@/cooking/runtime/create-cooking';
 import {
   lifecycleFixture,
   createBug,
+  createAndRequestBug,
   completeNextRepair,
   completeUpdate,
   createTakeoverSubmission,
@@ -14,6 +15,51 @@ import { testerBugStatus, latestTesterFeedback } from './tester-detail-model';
 import { BugBoard } from './bug-board';
 
 const setup = lifecycleFixture(testDatabases());
+
+test('同工程下一批待更新倒计时只显示在待更新缺陷卡片上', async () => {
+  const fixture = await setup();
+  const itemId = fixture.items[1]!.id;
+  const updating = createAndRequestBug(fixture, itemId, '正在更新的缺陷');
+  await completeNextRepair(fixture, 'updating-repair', ['a'.repeat(40)]);
+  await completeUpdate(fixture, itemId, {
+    outcome: 'PUSHED',
+    summary: '等待外部部署结果',
+  });
+  const waiting = createAndRequestBug(fixture, itemId, '下一批待更新的缺陷');
+  await completeNextRepair(fixture, 'waiting-repair', ['b'.repeat(40)]);
+  const repairing = createAndRequestBug(fixture, itemId, '仍在修复的缺陷');
+  const workspace = createCooking(fixture.database, {
+    now: fixture.clock.now,
+  }).workspace;
+  const snapshot = workspace.getWorkspace(
+    fixture.users.tester.id,
+    fixture.submission.id,
+  );
+  expect(snapshot.pendingDeliveries).toHaveLength(1);
+  expect(snapshot.bugs.find(({ id }) => id === updating.id)?.stage).toBe(
+    'UPDATING',
+  );
+  expect(snapshot.bugs.find(({ id }) => id === waiting.id)?.stage).toBe(
+    'WAITING_FOR_UPDATE',
+  );
+  expect(snapshot.bugs.find(({ id }) => id === repairing.id)?.stage).toBe(
+    'REPAIRING',
+  );
+  const board = renderToStaticMarkup(
+    <BugBoard snapshot={snapshot} onChanged={() => {}} syncLabel="已同步" />,
+  );
+  const cards = board.match(
+    /<article class="collab-bug-card[^]*?<\/article>/g,
+  )!;
+  for (const title of ['正在更新的缺陷', '仍在修复的缺陷']) {
+    const card = cards.find((card) => card.includes(`<h3>${title}</h3>`));
+    expect(card).toBeDefined();
+    expect(card).not.toContain('collab-bug-card__countdown');
+  }
+  expect(
+    cards.find((card) => card.includes('<h3>下一批待更新的缺陷</h3>')),
+  ).toContain('collab-bug-card__countdown');
+});
 
 test('测试详情全流程区分等待修复、等待更新、更新中、可复测和已验收', async () => {
   const fixture = await setup();
