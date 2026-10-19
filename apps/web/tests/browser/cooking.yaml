@@ -6,6 +6,79 @@ setup:
   - click: '.auth-submit'
   - wait: { load: networkidle }
 cases:
+  - name: project settings keep theme colors and require confirmation before deletion
+    steps:
+      - open: __BASE_URL__/cooking/projects
+      - click: '.project-settings__primary-action'
+      - fill:
+          {
+            sel: '#project-create-form input[name="name"]',
+            text: 删除项目浏览器验收,
+          }
+      - click: '#project-create-form button[type="submit"]'
+      - wait: '.engineering-dialog__close'
+      - click: '.engineering-dialog__close'
+      - click: '[aria-label="设置项目 删除项目浏览器验收"]'
+      - wait: '.project-name-dialog'
+      - eval: >-
+          (()=>{const style=document.createElement('style');style.textContent='*{transition:none!important}';document.head.append(style);
+          document.documentElement.style.colorScheme='dark';const shell=document.querySelector('.collab-shell');
+          const field=document.querySelector('.project-name-dialog input[name=name]'),close=document.querySelector('.engineering-dialog__close'),probe=document.createElement('span');
+          probe.style.cssText='background:var(--panel);color:var(--muted)';shell.append(probe);
+          sessionStorage.setItem('projectSettingsColors',String(['paper','night'].every(theme=>{shell.dataset.theme=theme;
+          return getComputedStyle(field).colorScheme===(theme==='paper'?'light':'dark')&&getComputedStyle(field).backgroundColor===getComputedStyle(probe).backgroundColor
+          &&getComputedStyle(field).color===getComputedStyle(shell).color&&getComputedStyle(close).color===getComputedStyle(probe).color&&getComputedStyle(close).textDecorationLine==='none';})));
+          probe.remove();shell.dataset.theme='paper';return true;})()
+      - click: '.engineering-dialog__close'
+      - click: 'li:has([aria-label="设置项目 删除项目浏览器验收"]) a[href*="panel=collaboration"]'
+      - wait: 'input[aria-label="受邀用户名"]'
+      - eval: >-
+          (()=>{const shell=document.querySelector('.collab-shell'),field=document.querySelector('input[aria-label=受邀用户名]');
+          const style=document.createElement('style');style.textContent='*{transition:none!important}';document.head.append(style);
+          sessionStorage.setItem('projectMemberColors',String(['paper','night'].every(theme=>{shell.dataset.theme=theme;
+          return getComputedStyle(field).colorScheme===(theme==='paper'?'light':'dark')&&getComputedStyle(field).color===getComputedStyle(shell).color&&getComputedStyle(field).backgroundColor!=='rgba(0, 0, 0, 0)';})));
+          shell.dataset.theme='paper';return true;})()
+      - click: '.engineering-dialog__close'
+      - click: '[aria-label="设置项目 删除项目浏览器验收"]'
+      - click: '.project-delete-control > button'
+      - wait: '.project-delete-confirmation'
+      - eval: 'sessionStorage.setItem("projectDeleteInitiallyDisabled",String(document.querySelector(".project-delete-form button[type=submit]").disabled));true'
+      - fill: { sel: 'input[name="confirmationName"]', text: 错误项目名称 }
+      - eval: 'sessionStorage.setItem("projectDeleteWrongNameDisabled",String(document.querySelector(".project-delete-form button[type=submit]").disabled));true'
+      - click: '.project-delete-form button[type="button"]'
+      - eval: 'sessionStorage.setItem("projectDeleteCancelFocus",String(document.activeElement===document.querySelector(".project-delete-control > button")));true'
+      - click: '.project-delete-control > button'
+      - fill:
+          { sel: 'input[name="confirmationName"]', text: 删除项目浏览器验收 }
+      - eval: 'document.querySelector(".project-delete-form input[name=expectedVersion]").value="99";true'
+      - click: '.project-delete-form button[type="submit"]'
+      - wait: '.project-dialog__feedback--error'
+      - eval: 'sessionStorage.setItem("projectDeleteErrorVisible",String(document.querySelector(".project-dialog__feedback--error").textContent.includes("项目已更新")));document.querySelector(".project-delete-control > button")?.click();true'
+      - wait: 'input[name="confirmationName"]'
+      - fill:
+          { sel: 'input[name="confirmationName"]', text: 删除项目浏览器验收 }
+      - eval: >-
+          (()=>{const shell=document.querySelector('.collab-shell'),form=document.querySelector('.project-delete-form');
+          sessionStorage.setItem('projectDeleteFits',String(['paper','night'].every(theme=>{shell.dataset.theme=theme;form.scrollIntoView({block:'center'});
+          const box=form.getBoundingClientRect();return box.top>=0&&box.bottom<=innerHeight&&box.right<=innerWidth;})));shell.dataset.theme='paper';
+          window.projectDeleteFetch=window.fetch;window.fetch=(...args)=>new Headers(args[1]?.headers).has('Next-Action')
+          ?new Promise((resolve,reject)=>{window.releaseProjectDelete=()=>window.projectDeleteFetch(...args).then(resolve,reject);})
+          :window.projectDeleteFetch(...args);return true;})()
+      - click: '.project-delete-form button[type="submit"]'
+      - wait: '.project-delete-confirmation[aria-busy="true"]'
+      - eval: >-
+          sessionStorage.setItem('projectDeletePendingDisabled',String([...document.querySelectorAll('.project-delete-form button,.project-delete-form input[name=confirmationName]')].every(control=>control.disabled)
+          &&document.querySelector('.project-delete-form [role=status]').textContent.includes('正在删除')));
+          window.fetch=window.projectDeleteFetch;window.releaseProjectDelete();true
+      - wait: '.notice-success'
+    assert:
+      - text: { sel: '.notice-success', contains: 项目已删除 }
+      - hidden: '[aria-label="设置项目 删除项目浏览器验收"]'
+      - hidden: '.project-name-dialog'
+      - eval: >-
+          ['projectSettingsColors','projectMemberColors','projectDeleteInitiallyDisabled','projectDeleteWrongNameDisabled',
+          'projectDeleteCancelFocus','projectDeleteErrorVisible','projectDeleteFits','projectDeletePendingDisabled'].every(key=>sessionStorage.getItem(key)==='true')
+
   - name: product defaults follow the current project and only offer valid people
     steps:
       - open: __BASE_URL__/cooking/__SUBMISSION_ID__

@@ -215,6 +215,44 @@
   grid-column: 1 / -1;
 }
 
+.project-delete-control {
+  border-top: 1px solid var(--line);
+  padding: 22px;
+}
+
+.project-delete-control h3 {
+  color: var(--danger);
+  font-size: 13px;
+  margin: 0 0 10px;
+}
+
+.project-delete-control p {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.65;
+  margin: 0 0 12px;
+}
+
+.bug-dialog form.project-delete-form {
+  display: block;
+  padding: 0;
+}
+
+.project-delete-confirmation {
+  display: grid;
+  gap: 14px;
+}
+
+.project-delete-control button {
+  border-radius: 0;
+}
+
+.project-delete-confirmation .dialog-actions {
+  border: 0;
+  flex-wrap: wrap;
+  padding: 0;
+}
+
 @media (max-width: 620px) {
   .project-settings__row-actions:has(.project-settings__row-settings) {
     grid-template-columns: auto auto minmax(0, 1fr) auto;

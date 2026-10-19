@@ -99,6 +99,26 @@ export async function updateProjectAction(formData: FormData): Promise<never> {
   });
 }
 
+export async function deleteProjectAction(formData: FormData): Promise<never> {
+  const projectId = formField(formData, 'projectId');
+  return runRedirectMutation({
+    formData,
+    errorPath: () => projectPanelPath(projectId, 'project'),
+    command: (userId) => {
+      projectService().deleteProject(userId, projectId, {
+        mutationId: formField(formData, 'mutationId'),
+        expectedVersion: integerFormField(formData, 'expectedVersion'),
+        confirmationName: formField(formData, 'confirmationName'),
+      });
+      return {
+        path: PROJECTS_PATH,
+        message: '项目已删除',
+        refreshPaths: [PROJECTS_PATH, '/cooking'],
+      };
+    },
+  });
+}
+
 export async function removeProjectMemberAction(formData: FormData): Promise<never> {
   const projectId = formField(formData, 'projectId');
   return runRedirectMutation({

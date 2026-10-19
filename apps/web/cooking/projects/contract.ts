@@ -5,6 +5,16 @@ import { CookingMutationIdSchema } from '@/cooking/shared/contract';
 export const ProjectIdSchema = z.uuid();
 export const ProjectNameSchema = z.string().trim().min(1).max(120);
 export const MutationIdSchema = CookingMutationIdSchema;
+export const DeleteProjectInputSchema = z.object({
+  mutationId: MutationIdSchema,
+  expectedVersion: z.number().int().positive(),
+  confirmationName: ProjectNameSchema,
+});
+export const DeleteProjectResultSchema = z.object({
+  projectId: ProjectIdSchema,
+  projectName: ProjectNameSchema,
+  deletedAt: z.iso.datetime(),
+});
 export const ProjectRoleSchema = z.enum(['OWNER', 'MEMBER']);
 export const ProjectInvitationDecisionSchema = z.enum(['ACCEPT', 'REJECT']);
 export const ProjectInvitationStatusSchema = z.enum([
@@ -64,6 +74,8 @@ export const ProjectInvitationDetailSchema = z.object({
 });
 
 export type Project = z.infer<typeof ProjectSchema>;
+export type DeleteProjectInput = z.infer<typeof DeleteProjectInputSchema>;
+export type DeleteProjectResult = z.infer<typeof DeleteProjectResultSchema>;
 export type ProjectMembership = z.infer<typeof ProjectMembershipSchema>;
 export type ProjectInvitation = z.infer<typeof ProjectInvitationSchema>;
 export type ProjectSummary = z.infer<typeof ProjectSummarySchema>;

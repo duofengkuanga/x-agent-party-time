@@ -16,6 +16,7 @@
 
 .auth-shell,
 .collab-shell {
+  color-scheme: light;
   --paper: #f1eee5;
   --paper-deep: #e8e3d8;
   --ink: #1a1b1c;

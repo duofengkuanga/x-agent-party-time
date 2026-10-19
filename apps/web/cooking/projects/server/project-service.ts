@@ -6,6 +6,8 @@ import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
 import {
   MutationIdSchema,
+  DeleteProjectInputSchema,
+  DeleteProjectResultSchema,
   ProjectIdSchema,
   ProjectMemberSchema,
   ProjectMembershipSchema,
@@ -16,8 +18,11 @@ import {
   type ProjectMember,
   type ProjectMembership,
   type ProjectSummary,
+  type DeleteProjectInput,
+  type DeleteProjectResult,
 } from '../contract';
 import { ProjectInvitations } from './project-invitations';
+import { deleteProjectRecords } from './project-deletion';
 
 const PROJECT_HIDDEN_MESSAGE = '项目不存在或无权访问';
 type ProjectRow = DatabaseRow<Project>;
@@ -219,6 +224,40 @@ export class ProjectService {
               name,
             },
           },
+        };
+      },
+    });
+  }
+
+  deleteProject(
+    actorUserId: string,
+    projectId: string,
+    input: DeleteProjectInput,
+  ): DeleteProjectResult {
+    const id = ProjectIdSchema.parse(projectId);
+    const parsed = DeleteProjectInputSchema.parse(input);
+    return this.writes.run({
+      mutationId: parsed.mutationId,
+      actorUserId,
+      operation: `PROJECT_DELETE:${id}`,
+      resourceType: 'PROJECT',
+      resultSchema: DeleteProjectResultSchema,
+      perform: () => {
+        const current = this.requireOwner(actorUserId, id);
+        if (current.version !== parsed.expectedVersion)
+          throw new PlatformError('STALE_STATE', '项目已更新，请刷新后重试');
+        if (current.name !== parsed.confirmationName)
+          throw new PlatformError('VALIDATION_FAILED', '请输入正确的项目名称以确认删除');
+        deleteProjectRecords(this.db, id, this.now().toISOString());
+        // Project audit rows cascade on deletion. The mutation receipt retains
+        // the actor, project name and deletion time for audit and idempotent replay.
+        return {
+          result: {
+            projectId: id,
+            projectName: current.name,
+            deletedAt: this.now().toISOString(),
+          },
+          resourceId: id,
         };
       },
     });

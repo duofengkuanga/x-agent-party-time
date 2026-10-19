@@ -13,6 +13,8 @@ import { DialogFeedback, ProjectFields } from './settings-fields';
 
 import { invitationStatus } from './settings-links';
 import { InvitationForm } from './invitation-form';
+import { ProjectDeleteControl } from './project-delete-control';
+import { randomUUID } from 'node:crypto';
 
 export function CollaborationDialog({
   error,
@@ -190,6 +192,10 @@ export function ProjectSettingsDialog({
           </button>
         </div>
       </form>
+      <ProjectDeleteControl
+        mutationId={randomUUID()}
+        project={summary.project}
+      />
     </Dialog>
   );
 }
