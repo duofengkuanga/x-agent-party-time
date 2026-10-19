@@ -5,6 +5,7 @@
 @import './styles/interactions.css';
 @import './styles/board-cards.css';
 @import './styles/board-forms.css';
+@import './styles/choice-select.css';
 @import './styles/submission-sidebar.css';
 @import './styles/workspace-layout.css';
 @import './styles/account-menu.css';

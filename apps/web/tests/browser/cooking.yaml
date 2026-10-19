@@ -14,12 +14,63 @@ cases:
       - wait: '.collab-composer-fields input[maxlength="160"]'
     assert:
       - text: { sel: 'output[aria-label="项目"]', contains: 浏览器验收项目 }
-      - eval: 'document.querySelector("select[aria-label=测试负责人]").selectedOptions[0].textContent === "浏览器测试执行人"'
-      - eval: '[...document.querySelector("select[aria-label=测试负责人]").options].every(option => option.textContent !== "浏览器测试开发者")'
+      - text:
+          {
+            sel: '[role="combobox"][aria-label="测试负责人"]',
+            contains: 浏览器测试执行人,
+          }
+      - eval: '[...document.querySelector("[role=combobox][aria-label=测试负责人]").closest(".collab-choice-field").querySelectorAll("[role=option]")].every(option => option.textContent !== "浏览器测试开发者")'
       - visible: 'output[aria-label="开发负责人"]'
       - visible: 'output[aria-label="Agent"]'
       - hidden: 'select[aria-label="Agent"]'
       - text: { sel: '.collab-create-item', contains: 使用中 }
+      - eval: 'document.querySelector("input[aria-label=目标分支]").value === "feature/browser-test"'
+
+  - name: custom choices keep the popup aligned and use the same type scale
+    steps:
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - click: '.collab-rail__create'
+      - wait: '[role="combobox"][aria-label="工程"]'
+      - click: '[role="combobox"][aria-label="工程"]'
+      - wait: '[role="listbox"][aria-label="工程"]:popover-open'
+    assert:
+      - hidden: 'select[aria-label="工程"]'
+      - eval: >-
+          (()=>{const trigger=document.querySelector('[role=combobox][aria-label=工程]'),
+          menu=document.querySelector('[role=listbox][aria-label=工程]'),box=menu.getBoundingClientRect();
+          return trigger.getAttribute('aria-expanded')==='true' && document.activeElement===trigger &&
+          trigger.getBoundingClientRect().height===40 &&
+          getComputedStyle(menu).fontSize==='13px' &&
+          Math.abs(box.width-trigger.getBoundingClientRect().width)<1 &&
+          box.top>=0 && box.bottom<=innerHeight && box.right<=innerWidth;})()
+      - count:
+          {
+            sel: '[role="listbox"][aria-label="工程"] [aria-selected="true"]',
+            eq: 1,
+          }
+
+  - name: custom choices commit keyboard selection and preserve it on Escape
+    steps:
+      - open: __BASE_URL__/cooking/__SUBMISSION_ID__
+      - click: '.collab-rail__create'
+      - wait: '[role="combobox"][aria-label="工程"]'
+      - click: '[role="combobox"][aria-label="工程"]'
+      - eval: 'window.choiceLastLabel = document.querySelector("[role=listbox][aria-label=工程]").lastElementChild.textContent.trim(); true'
+      - press: End
+      - press: Enter
+      - eval: 'window.choiceCommitted = document.querySelector("[role=combobox][aria-label=工程]").textContent.trim() === window.choiceLastLabel; true'
+      - click: '[role="combobox"][aria-label="工程"]'
+      - press: Home
+      - press: Escape
+      - eval: 'window.choiceCancelled = document.querySelector("[role=combobox][aria-label=工程]").textContent.trim() === window.choiceLastLabel; true'
+      - click: '[role="combobox"][aria-label="工程"]'
+      - press: Home
+      - press: Enter
+    assert:
+      - eval: 'window.choiceCommitted && window.choiceCancelled'
+      - hidden: '[role="listbox"][aria-label="工程"]:popover-open'
+      - visible: '#submission-composer-title'
+      - eval: 'document.activeElement === document.querySelector("[role=combobox][aria-label=工程]")'
       - eval: 'document.querySelector("input[aria-label=目标分支]").value === "feature/browser-test"'
 
   - name: submission draft survives closing and restores the chosen branch
@@ -52,10 +103,10 @@ cases:
 
   - name: changing engineering uses its own branch history and first submission asks for a branch
     steps:
+      - click: '[role="combobox"][aria-label="工程"]'
       - eval: >-
-          (()=>{const select=document.querySelector('select[aria-label=工程]');
-          select.value=[...select.options].find(option=>option.textContent==='浏览器追加工程').value;
-          select.dispatchEvent(new Event('change',{bubbles:true}));return true;})()
+          [...document.querySelectorAll('[role=listbox][aria-label=工程] [role=option]')]
+          .find(option=>option.textContent.trim()==='浏览器追加工程').click(); true
     assert:
       - eval: 'document.querySelector("input[aria-label=目标分支]").value === ""'
       - text: { sel: '.collab-create-item', contains: 首次提测 }

@@ -278,7 +278,11 @@ export function SubmissionComposer({
                   <FormChoice
                     label="项目"
                     value={projectId}
-                    onChange={changeProject}
+                    onChange={(id) => {
+                      setConflicts([]);
+                      setError(null);
+                      changeProject(id);
+                    }}
                     options={catalog.map((candidate) => ({
                       value: candidate.projectId,
                       label: candidate.projectName,
@@ -287,7 +291,11 @@ export function SubmissionComposer({
                   <FormChoice
                     label="测试负责人"
                     value={testerUserId}
-                    onChange={changeTester}
+                    onChange={(id) => {
+                      setConflicts([]);
+                      setError(null);
+                      changeTester(id);
+                    }}
                     options={(project
                       ? availableTesterMembers(project, selectedEngineeringIds)
                       : []
@@ -328,7 +336,11 @@ export function SubmissionComposer({
                         draft={item}
                         index={index}
                         key={item.key}
-                        onChange={(next) => updateItem(item.key, () => next)}
+                        onChange={(next) => {
+                          setConflicts([]);
+                          setError(null);
+                          updateItem(item.key, () => next);
+                        }}
                         onRemove={
                           items.length > 1
                             ? () =>

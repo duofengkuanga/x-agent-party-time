@@ -1,0 +1,104 @@
+.collab-choice-field {
+  align-content: start;
+  display: grid;
+  font-size: 13px;
+  gap: 7px;
+  min-width: 0;
+}
+
+.collab-choice-field__label {
+  color: color-mix(in srgb, var(--muted) 85%, var(--ink));
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.collab-choice-field .choice-select__trigger {
+  align-items: center;
+  border: 1px solid var(--strong-line);
+  border-radius: 0;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  line-height: 1.5;
+  min-height: 40px;
+  min-width: 0;
+  padding: 9px 11px;
+  text-align: left;
+  width: 100%;
+}
+
+.choice-select__trigger[aria-expanded='true'] {
+  background: var(--panel);
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+.collab-choice-field .choice-select__trigger:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  outline-offset: 2px;
+}
+
+.choice-select__value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.choice-select__trigger > svg {
+  flex: 0 0 auto;
+}
+
+.choice-select__trigger[aria-expanded='true'] > svg {
+  transform: rotate(180deg);
+}
+
+.choice-select__menu {
+  background: var(--panel);
+  border: 1px solid var(--strong-line);
+  border-radius: 0;
+  box-shadow: var(--shadow);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13px;
+  inset: auto;
+  line-height: 1.5;
+  margin: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+  position: fixed;
+}
+
+.choice-select__menu::backdrop {
+  background: transparent;
+}
+
+.choice-select__option {
+  align-items: center;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) 14px;
+  min-height: 36px;
+  padding: 8px 9px;
+}
+
+.choice-select__option > span {
+  overflow-wrap: anywhere;
+}
+
+.choice-select__option[aria-selected='true'] {
+  background: color-mix(in srgb, var(--accent) 9%, var(--panel));
+  border-left-color: var(--accent);
+}
+
+.choice-select__option[data-active='true'],
+.choice-select__option:hover {
+  background: color-mix(in srgb, var(--accent) 18%, var(--panel));
+  border-left-color: var(--accent);
+  color: var(--ink);
+}

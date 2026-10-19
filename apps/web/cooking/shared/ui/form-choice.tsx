@@ -1,5 +1,7 @@
 'use client';
 
+import { ChoiceSelect } from './choice-select';
+
 export function FormChoice({
   label,
   value,
@@ -12,27 +14,21 @@ export function FormChoice({
   onChange: (value: string) => void;
 }) {
   return (
-    <label>
-      <span>{label}</span>
+    <div className="collab-choice-field">
+      <span className="collab-choice-field__label">{label}</span>
       {options.length > 1 ? (
-        <select
-          aria-label={label}
+        <ChoiceSelect
+          label={label}
           value={value}
-          onChange={(event) => onChange(event.target.value)}
-          required
-        >
-          {options.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+          options={options}
+          onChange={onChange}
+        />
       ) : (
         <output aria-label={label} className="collab-form__value">
           {options.find((option) => option.value === value)?.label ??
             `暂无可用${label}`}
         </output>
       )}
-    </label>
+    </div>
   );
 }
