@@ -38,6 +38,17 @@
   margin: 0;
 }
 
+.collab-dialog[aria-labelledby='submission-composer-title'] {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.collab-dialog #submission-composer-title {
+  font-family: inherit;
+  font-size: 20px;
+  font-style: normal;
+}
+
 .collab-dialog > header > button {
   border: 0;
   font-size: 24px;
@@ -69,6 +80,16 @@
   font-size: 8px;
   font-weight: 800;
   letter-spacing: 0.04em;
+}
+
+.collab-dialog .collab-form label {
+  align-content: start;
+}
+
+.collab-dialog .collab-form label > span {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
 }
 
 .collab-form input,
@@ -126,10 +147,6 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.collab-form__grid--four {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
 .collab-form__items {
   display: grid;
   gap: 10px;
@@ -137,26 +154,89 @@
 
 .collab-create-item {
   background: var(--panel);
-  border: 1px solid var(--strong-line);
-  padding: 12px;
+  border: 1px solid var(--line);
+  padding: 16px;
 }
 
 .collab-create-item > header {
-  align-items: start;
+  align-items: center;
   display: flex;
   justify-content: space-between;
-  margin-bottom: 11px;
+  margin-bottom: 16px;
+}
+
+.collab-create-item__heading {
+  align-items: center;
+  display: flex;
+  gap: 9px;
 }
 
 .collab-create-item > header b {
   color: var(--accent);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .collab-create-item > header h3 {
-  font-family: Georgia, 'Times New Roman', serif;
-  font-size: 18px;
-  margin: 3px 0 0;
+  font-size: 13px;
+  margin: 0;
+}
+
+.collab-create-item > header button {
+  font-size: 11px;
+  min-height: 28px;
+  padding: 3px 9px;
+}
+
+.collab-create-item__identity,
+.collab-create-item__delivery {
+  align-items: start;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.75fr) minmax(0, 1.15fr);
+}
+
+.collab-create-item__delivery {
+  border-top: 1px solid var(--line);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 16px;
+  padding-top: 16px;
+}
+
+.collab-create-item__branch-hint {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.collab-create-item__notice {
+  align-items: baseline;
+  background: color-mix(in srgb, var(--warning) 7%, transparent);
+  border-left: 2px solid var(--warning);
+  display: flex;
+  font-size: 11px;
+  gap: 12px;
+  line-height: 1.6;
+  margin-top: 16px;
+  padding: 10px 12px;
+}
+
+.collab-create-item__notice > strong {
+  flex: 0 0 auto;
+}
+
+.collab-create-item__notice > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.collab-create-item__notice p {
+  margin: 0;
+}
+
+.collab-create-item__notice p + p {
+  color: var(--muted);
+  margin-top: 2px;
 }
 
 .collab-add-engineering {
@@ -275,12 +355,12 @@
   padding: 0;
 }
 
-.collab-add-items-dialog .collab-form__grid {
+.collab-add-items-dialog .collab-create-item__identity {
   gap: 18px 20px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.collab-add-items-dialog .collab-form__grid > label:first-child {
+.collab-add-items-dialog .collab-create-item__identity > label:first-child {
   grid-column: 1 / -1;
 }
 
@@ -303,7 +383,13 @@
 }
 
 @media (max-width: 480px) {
-  .collab-add-items-dialog .collab-form__grid {
+  .collab-create-item__identity,
+  .collab-create-item__delivery,
+  .collab-add-items-dialog .collab-create-item__identity {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .collab-create-item__notice {
+    display: block;
   }
 }

@@ -54,7 +54,7 @@ export function ItemEditor({
     <article className="collab-create-item">
       {showHeading ? (
         <header>
-          <div>
+          <div className="collab-create-item__heading">
             <b>{String(index + 1).padStart(2, '0')}</b>
             <h3>提测工程</h3>
           </div>
@@ -65,7 +65,7 @@ export function ItemEditor({
           ) : null}
         </header>
       ) : null}
-      <div className="collab-form__grid collab-form__grid--four">
+      <div className="collab-create-item__identity">
         <FormChoice
           label="工程"
           value={draft.engineeringId}
@@ -100,6 +100,8 @@ export function ItemEditor({
             {binding?.runnerName ?? '尚无可用 Agent，请先完成绑定'}
           </output>
         </label>
+      </div>
+      <div className="collab-create-item__delivery">
         <label>
           <span>目标分支</span>
           <input
@@ -112,7 +114,7 @@ export function ItemEditor({
               onChange({ ...draft, targetBranch: event.target.value })
             }
           />
-          <small>
+          <small className="collab-create-item__branch-hint">
             {engineering.targetBranchSuggestion
               ? `最近提测「${engineering.targetBranchSuggestion.submissionTitle}」使用 ${engineering.targetBranchSuggestion.value}`
               : '该工程首次提测，请填写目标分支。'}
@@ -123,18 +125,27 @@ export function ItemEditor({
           value={draft.environmentId}
           options={engineering.environments.map((candidate) => ({
             value: candidate.id,
-            label: `${candidate.name}（${candidate.conflict ? `使用中：${candidate.conflict.submissionTitle}` : '空闲'}）`,
+            label: `${candidate.name}（${candidate.conflict ? '使用中' : '空闲'}）`,
           }))}
           onChange={(environmentId) => onChange({ ...draft, environmentId })}
         />
       </div>
       {environment?.conflict ? (
-        <p className="collab-form__hint" role="status">
-          {environment.name} 正由「{environment.conflict.submissionTitle}
-          」使用，测试负责人：{environment.conflict.testerName}。
-          {environment.conflict.blockedReason ??
-            '使用此环境需要确认切换，原提测项将暂停更新和验证。'}
-        </p>
+        <aside className="collab-create-item__notice" role="status">
+          <strong>
+            {environment.conflict.blockedReason ? '环境暂不可用' : '环境使用中'}
+          </strong>
+          <div>
+            <p>
+              {environment.name} 正由「{environment.conflict.submissionTitle}
+              」使用，测试负责人：{environment.conflict.testerName}。
+            </p>
+            <p>
+              {environment.conflict.blockedReason ??
+                '使用此环境需要确认切换，原提测项将暂停更新和验证。'}
+            </p>
+          </div>
+        </aside>
       ) : null}
     </article>
   );
