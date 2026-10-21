@@ -53,16 +53,7 @@ try {
   await waitForServer(`${baseUrl}/login`, server);
   const browserSession = `agent-party-time-${port}`;
   const viewport = Bun.spawn(
-    [
-      chromeUse,
-      '--launch',
-      '--session',
-      browserSession,
-      'set',
-      'viewport',
-      '1800',
-      '900',
-    ],
+    [chromeUse, '--session', browserSession, 'set', 'viewport', '1800', '900'],
     {
       cwd: repositoryRoot,
       stdout: 'inherit',
@@ -70,18 +61,15 @@ try {
     },
   );
   if ((await viewport.exited) !== 0) throw new Error('无法准备桌面浏览器视口');
-  const browser = Bun.spawn(
-    [chromeUse, '--launch', '--session', browserSession, 'test', suitePath],
-    {
-      cwd: repositoryRoot,
-      env: {
-        ...process.env,
-        AGENT_BROWSER_SCREENSHOT_DIR: join(repositoryRoot, 'cu-test-artifacts'),
-      },
-      stdout: 'inherit',
-      stderr: 'inherit',
+  const browser = Bun.spawn([chromeUse, '--session', browserSession, 'test', suitePath], {
+    cwd: repositoryRoot,
+    env: {
+      ...process.env,
+      AGENT_BROWSER_SCREENSHOT_DIR: join(repositoryRoot, 'cu-test-artifacts'),
     },
-  );
+    stdout: 'inherit',
+    stderr: 'inherit',
+  });
   exitCode = await browser.exited;
 } finally {
   if (server) {

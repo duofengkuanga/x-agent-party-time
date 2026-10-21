@@ -131,6 +131,45 @@ test('当前进程持有的 Execution 状态不占用恢复期零槽保护', asy
   expect(fixture.http.claimCalls).toBe(0);
 });
 
+test('后台执行状态变化立即反映到 Agent 状态，无需等待下一轮心跳', async () => {
+  const execution = {
+    projection: {
+      activeExecutionCount: 0,
+      waitingInteractionCount: 0,
+      recoveryRequired: false,
+    },
+    cycle: async () => true,
+    hasRecoveryRecords: async () => false,
+  } as unknown as ExecutionService;
+  const fixture = await createFixture(null, execution);
+  await fixture.service.cycle();
+
+  Object.assign(execution.projection, {
+    activeExecutionCount: 2,
+    waitingInteractionCount: 1,
+    recoveryRequired: true,
+  });
+  expect(fixture.service.projection).toEqual({
+    bindingActive: false,
+    activeExecutionCount: 2,
+    waitingInteractionCount: 1,
+    recoveryRequired: true,
+  });
+
+  Object.assign(execution.projection, {
+    activeExecutionCount: 0,
+    waitingInteractionCount: 0,
+    recoveryRequired: false,
+  });
+  expect(fixture.service.projection).toEqual({
+    bindingActive: false,
+    activeExecutionCount: 0,
+    waitingInteractionCount: 0,
+    recoveryRequired: false,
+  });
+  expect(fixture.heartbeatSlots).toHaveLength(1);
+});
+
 async function createFixture(
   repositoryPath: string | null,
   executions?: ExecutionService,

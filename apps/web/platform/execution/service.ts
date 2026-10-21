@@ -328,24 +328,6 @@ export class ExecutionService {
     return result;
   }
 
-  cancelQueued(executionId: string, reason: string): Execution {
-    const finishedAt = this.now().toISOString();
-    const outcome: ExecutionOutcome = { kind: 'CANCELLED', reason };
-    const update = this.db.run(
-      `UPDATE platform_execution
-         SET state = 'CANCELLED', outcome_json = ?, finished_at = ?
-         WHERE id = ? AND state = 'QUEUED'`,
-      [JSON.stringify(outcome), finishedAt, executionId],
-    );
-    if (update.changes !== 1)
-      throw new PlatformError('INVALID_TRANSITION', '只有尚未领取的任务可以取消');
-    const execution = this.records.get(executionId);
-    this.records.invalidatePendingInteractions(executionId, finishedAt);
-    this.project({ phase: 'APPLY', kind: 'TERMINAL', execution: execution });
-    this.project({ phase: 'AFTER', kind: 'TERMINAL', execution: execution });
-    return execution;
-  }
-
   requestCancellation(executionId: string): Execution {
     return projectTransaction(this.db, this.project, (emit) => {
       const row = this.records.getRow(executionId);

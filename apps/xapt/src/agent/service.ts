@@ -18,13 +18,18 @@ export interface AgentServiceProjection {
 }
 
 export class AgentService {
-  readonly projection: AgentServiceProjection = {
-    bindingActive: false,
-    activeExecutionCount: 0,
-    waitingInteractionCount: 0,
-    recoveryRequired: false,
-  };
+  private bindingActive = false;
   private stopped = false;
+
+  get projection(): AgentServiceProjection {
+    const execution = this.executions?.projection;
+    return {
+      bindingActive: this.bindingActive,
+      activeExecutionCount: execution?.activeExecutionCount ?? 0,
+      waitingInteractionCount: execution?.waitingInteractionCount ?? 0,
+      recoveryRequired: execution?.recoveryRequired ?? false,
+    };
+  }
 
   constructor(
     private readonly connection: ConnectionCoordinator,
@@ -74,32 +79,19 @@ export class AgentService {
     );
     await this.state.pruneBindings(serverBindings.map(({ bindingId }) => bindingId));
     if (this.executions) {
-      this.projection.activeExecutionCount =
-        this.executions.projection.activeExecutionCount;
-      this.projection.waitingInteractionCount =
-        this.executions.projection.waitingInteractionCount;
-      this.projection.recoveryRequired = this.executions.projection.recoveryRequired;
-      try {
-        const progressed = await this.executions.cycle(session);
-        if (recovering || progressed) return progressed;
-      } finally {
-        this.projection.activeExecutionCount =
-          this.executions.projection.activeExecutionCount;
-        this.projection.waitingInteractionCount =
-          this.executions.projection.waitingInteractionCount;
-        this.projection.recoveryRequired = this.executions.projection.recoveryRequired;
-      }
+      const progressed = await this.executions.cycle(session);
+      if (recovering || progressed) return progressed;
     }
     const request = await this.http.claimBindingWork(
       session.serverOrigin,
       session.credential,
     );
     if (!request) return false;
-    this.projection.bindingActive = true;
+    this.bindingActive = true;
     try {
       await this.process(session, request);
     } finally {
-      this.projection.bindingActive = false;
+      this.bindingActive = false;
     }
     return true;
   }

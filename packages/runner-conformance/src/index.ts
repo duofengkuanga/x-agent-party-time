@@ -59,10 +59,6 @@ export class ProtocolAgent {
     return result;
   }
 
-  useCredential(credential: string | undefined): void {
-    this.credential = credential;
-  }
-
   heartbeat(availableSlots = 3) {
     return this.http.heartbeat(this.serverUrl, this.credential, availableSlots);
   }

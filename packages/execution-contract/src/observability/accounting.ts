@@ -46,24 +46,6 @@ export function intervalLength(input: readonly TimeInterval[]): number {
   return unionIntervals(input).reduce((sum, [start, end]) => sum + end - start, 0);
 }
 
-/** Bounds require explicit lifetime evidence, never an unrelated Turn end. */
-export function activityDurationBounds(
-  start: number,
-  aliveAt?: number,
-  stoppedBy?: number,
-) {
-  if (
-    start < 0 ||
-    (aliveAt !== undefined && aliveAt < start) ||
-    (stoppedBy !== undefined && stoppedBy < (aliveAt ?? start))
-  )
-    throw new Error('时间证据冲突');
-  return {
-    lowerMs: (aliveAt ?? start) - start,
-    upperMs: stoppedBy === undefined ? null : stoppedBy - start,
-  };
-}
-
 function intervalKey(event: ObservationEvent): string | null {
   const c = event.correlation;
   const id = c?.intervalId ?? c?.sourceItemId ?? c?.requestId;

@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import {
-  activityDurationBounds,
   calculateObservationReport,
   intersectIntervals,
   intervalLength,
@@ -163,10 +162,26 @@ describe('可信区间核算', () => {
     expect(result.envelopeQuality).toBe('fragmented');
     expect(result.issues).toContain('recording_gap');
   });
-  test('上下界只能由显式存活/停止证据形成', () => {
-    expect(activityDurationBounds(10)).toEqual({ lowerMs: 0, upperMs: null });
-    expect(activityDurationBounds(10, 30, 100)).toEqual({ lowerMs: 20, upperMs: 90 });
-    expect(() => activityDurationBounds(10, 30, 20)).toThrow();
+  test('缺少工具结束证据时，不用 Turn 或交付结束推断耗时上界', () => {
+    const result = report([
+      event(1, 'execution.received', 0),
+      event(2, 'item.started', 10, {
+        activity: 'build',
+        correlation: { sourceItemId: 'build', turnId: 'turn-1' },
+      }),
+      event(3, 'turn.terminal', 30, { correlation: { turnId: 'turn-1' } }),
+      event(4, 'delivery.accepted', 100),
+    ]);
+    expect(result.incompleteActivities).toEqual([
+      expect.objectContaining({
+        activity: 'build',
+        boundary: 'start_only',
+        lowerMs: 0,
+        upperMs: null,
+      }),
+    ]);
+    expect(result.intervals).toHaveLength(0);
+    expect(result.issues).toContain('missing_boundary');
   });
   test('不同执行的事件不能混入报告', () => {
     expect(() =>
