@@ -1,10 +1,13 @@
 import { BindingService } from '@/cooking/bindings/server/binding-service';
 import { BindingRequestService } from '@/cooking/bindings/server/binding-request-service';
 import { database, type AppDatabase } from '@/platform/database';
-import { executionFileStore } from '@/platform/execution/files';
 import { runnerFetch, type RunnerHttpServices } from '@/platform/runner/router';
 import { runnerService } from '@/platform/runner/server';
-import { cookingExecutionService, prepareDueUpdateExecutions } from './services';
+import {
+  cookingExecutionService,
+  cookingFileStore,
+  prepareDueUpdateExecutions,
+} from './services';
 import { ExecutionObservations } from '@/platform/execution/observations';
 import { handleObservationUpload } from '@/platform/execution/observation-http';
 import { startObservationMaintenance } from '@/platform/execution/observation-maintenance';
@@ -57,7 +60,7 @@ export async function handleRunnerRequest(request: Request): Promise<Response> {
   return cookingRunnerFetch(db, {
     runners: runnerService(),
     executions: cookingExecutionService(),
-    files: executionFileStore(),
+    files: cookingFileStore(),
     prepare: prepareDueUpdateExecutions,
   })(request);
 }

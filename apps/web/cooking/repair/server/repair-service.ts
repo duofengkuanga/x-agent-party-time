@@ -54,9 +54,7 @@ const NOOP_DELIVERY_HOOKS: RepairDeliveryHooks = {
 export class RepairService {
   private readonly writes: TestSubmissionWriteStore;
   private readonly queries: RepairQueries;
-  private readonly projection: RepairProjection;
-  readonly projectExecution: RepairProjection['projectExecution'] = (...args) =>
-    this.projection.projectExecution(...args);
+  readonly projectExecution: RepairProjection['projectExecution'];
   readonly workspace: RepairQueries['workspace'] = (...args) =>
     this.queries.workspace(...args);
   readonly repairView: RepairQueries['repairView'] = (...args) =>
@@ -75,14 +73,14 @@ export class RepairService {
   ) {
     this.queries = new RepairQueries(db, executions);
     this.writes = new TestSubmissionWriteStore(db, now, createId, onInvalidated);
-    this.projection = new RepairProjection(
+    this.projectExecution = new RepairProjection(
       db,
       this.queries,
       this.writes,
       now,
       createId,
       deliveryHooks,
-    );
+    ).projectExecution;
   }
 
   createInitialExecution(bugId: string): string {

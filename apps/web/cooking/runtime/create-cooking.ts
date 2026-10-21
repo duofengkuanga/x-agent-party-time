@@ -1,7 +1,12 @@
+import { randomUUID } from 'node:crypto';
 import { BugService } from '@/cooking/bugs/server/bug-service';
-import { LifecycleService } from '@/cooking/lifecycle/server/lifecycle-service';
+import { BugLifecycleCommands } from '@/cooking/lifecycle/server/bug-lifecycle-commands';
+import { CleanupService } from '@/cooking/lifecycle/server/cleanup-service';
+import { LifecycleQueries } from '@/cooking/lifecycle/server/lifecycle-queries';
+import { SubmissionClosure } from '@/cooking/lifecycle/server/submission-closure';
 import { RepairService } from '@/cooking/repair/server/repair-service';
 import { SubmissionService } from '@/cooking/submissions/server/submission-service';
+import { TestSubmissionWriteStore } from '@/cooking/submissions/server/test-submission-write-store';
 import { UpdateService } from '@/cooking/update/server/update-service';
 import { CookingWorkspaceService } from '@/cooking/workspace/server/workspace-service';
 import type { AppDatabase } from '@/platform/database';
@@ -17,14 +22,48 @@ export function createCooking(
     ids?: { repair?: () => string; update?: () => string };
   } = {},
 ) {
-  const { now, publish, ids } = options;
+  const { now = () => new Date(), publish, ids } = options;
   const commands = new ExecutionService(db, now);
   const updates = new UpdateService(db, commands, now, ids?.update, publish);
   const repairs = new RepairService(db, commands, now, ids?.repair, publish, {
     candidateAvailable: (bugId, at) => updates.recordCandidateAvailable(bugId, at),
     candidateReconsidered: (bugId) => updates.recalculatePendingDeliveryForBug(bugId),
   });
-  const lifecycle = new LifecycleService(db, repairs, commands, now, undefined, publish);
+  const lifecycleQueries = new LifecycleQueries(db);
+  const lifecycleWrites = new TestSubmissionWriteStore(db, now, randomUUID, publish);
+  const bugCommands = new BugLifecycleCommands(
+    db,
+    repairs,
+    lifecycleQueries,
+    lifecycleWrites,
+    now,
+    randomUUID,
+  );
+  const cleanup = new CleanupService(db, commands, lifecycleWrites, now, randomUUID);
+  const closure = new SubmissionClosure(
+    db,
+    lifecycleQueries,
+    cleanup,
+    lifecycleWrites,
+    now,
+  );
+  const lifecycle = {
+    verifyBug: bugCommands.verifyBug.bind(bugCommands),
+    reopenBug: bugCommands.reopenBug.bind(bugCommands),
+    reviewLinkedBugs: bugCommands.reviewLinkedBugs.bind(bugCommands),
+    archiveLinkedBugs: bugCommands.archiveLinkedBugs.bind(bugCommands),
+    unarchiveLinkedBugs: bugCommands.unarchiveLinkedBugs.bind(bugCommands),
+    cancelBug: bugCommands.cancelBug.bind(bugCommands),
+    restoreBug: bugCommands.restoreBug.bind(bugCommands),
+    archiveBug: bugCommands.archiveBug.bind(bugCommands),
+    unarchiveBug: bugCommands.unarchiveBug.bind(bugCommands),
+    retryCleanup: cleanup.retryCleanup.bind(cleanup),
+    resolveCleanupInteraction: cleanup.resolveCleanupInteraction.bind(cleanup),
+    projectExecution: cleanup.projectExecution,
+    workspace: lifecycleQueries.workspace.bind(lifecycleQueries),
+    cleanupInteractions: lifecycleQueries.cleanupInteractions.bind(lifecycleQueries),
+    closeSubmission: closure.closeSubmission.bind(closure),
+  } as const;
   const bugs = new BugService(db, now, undefined, publish, {
     requested: (bugId) => repairs.createInitialExecution(bugId),
   });
@@ -36,9 +75,9 @@ export function createCooking(
     undefined,
     undefined,
     cookingExecutionProjection(db, {
-      BUG_REPAIR: repairs,
-      UPDATE_BATCH: updates,
-      CLEANUP: lifecycle,
+      BUG_REPAIR: repairs.projectExecution,
+      UPDATE_BATCH: updates.projectExecution,
+      CLEANUP: lifecycle.projectExecution,
     }),
   );
   const workspace = new CookingWorkspaceService(

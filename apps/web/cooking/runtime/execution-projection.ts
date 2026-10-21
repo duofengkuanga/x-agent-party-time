@@ -1,18 +1,10 @@
 import type { AppDatabase } from '@/platform/database';
-import type {
-  ExecutionProjector,
-  ExecutionProjectionEvent,
-} from '@/platform/execution/projection';
-
-export type CookingExecutionProjectionEvent = ExecutionProjectionEvent;
-export type CookingExecutionProjector = {
-  projectExecution: ExecutionProjector;
-};
+import type { ExecutionProjector } from '@/platform/execution/projection';
 type CookingExecutionKind = 'BUG_REPAIR' | 'UPDATE_BATCH' | 'CLEANUP';
 
 export function cookingExecutionProjection(
   db: AppDatabase,
-  projectors: Record<CookingExecutionKind, CookingExecutionProjector>,
+  projectors: Record<CookingExecutionKind, ExecutionProjector>,
 ): ExecutionProjector {
   return (event) => {
     const owner =
@@ -47,7 +39,6 @@ export function cookingExecutionProjection(
       if (!sync) return;
       kind = sync.kind;
     }
-    if (Object.hasOwn(projectors, kind))
-      projectors[kind as CookingExecutionKind].projectExecution(event);
+    if (Object.hasOwn(projectors, kind)) projectors[kind as CookingExecutionKind](event);
   };
 }

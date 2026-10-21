@@ -2,7 +2,7 @@ import type { SubmissionService } from '@/cooking/submissions/server/submission-
 import type { BugService } from '@/cooking/bugs/server/bug-service';
 import type { RepairService } from '@/cooking/repair/server/repair-service';
 import type { UpdateService } from '@/cooking/update/server/update-service';
-import type { LifecycleService } from '@/cooking/lifecycle/server/lifecycle-service';
+import type { LifecycleQueries } from '@/cooking/lifecycle/server/lifecycle-queries';
 import type { LifecycleWorkspaceProjection } from '@/cooking/lifecycle/contract';
 import type { BugWorkspaceProjection } from '@/cooking/bugs/contract';
 import type { RepairWorkspaceProjection } from '@/cooking/repair/contract';
@@ -21,7 +21,7 @@ export class CookingWorkspaceService {
     private readonly bugs: BugService,
     private readonly repairs: RepairService,
     private readonly updates: UpdateService,
-    private readonly lifecycle: Pick<LifecycleService, 'workspace'>,
+    private readonly lifecycle: Pick<LifecycleQueries, 'workspace'>,
   ) {}
 
   getWorkspace(userId: string, submissionId: string): CookingWorkspaceSnapshot {

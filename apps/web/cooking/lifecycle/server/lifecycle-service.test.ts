@@ -13,7 +13,7 @@ import {
 
 const setup = lifecycleFixture(testDatabases());
 
-describe('LifecycleService', () => {
+describe('生命周期', () => {
   test('Workspace 将修复、批次、验证和取消恢复投影为同一条旧到新时间线', async () => {
     const fixture = await setup();
     const bug = createAndRequestBug(fixture, fixture.items[0]!.id, '统一时间线缺陷');

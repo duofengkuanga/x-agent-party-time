@@ -19,7 +19,7 @@ import {
 
 const setup = lifecycleFixture(testDatabases());
 
-describe('LifecycleService', () => {
+describe('生命周期', () => {
   test('验证失败自动沿用 Repair Session，再次更新通过后关闭并异步清理', async () => {
     const fixture = await setup();
     const localBug = createAndRequestBug(fixture, fixture.items[0]!.id, '本地缺陷');

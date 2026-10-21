@@ -32,8 +32,7 @@ export class UpdateService {
   private readonly queries: UpdateQueries;
   private readonly projection: UpdateProjection;
   private readonly delivery: UpdateDelivery;
-  readonly projectExecution: UpdateProjection['projectExecution'] = (...args) =>
-    this.projection.projectExecution(...args);
+  readonly projectExecution: UpdateProjection['projectExecution'];
   readonly workspace: UpdateQueries['workspace'] = (...args) =>
     this.queries.workspace(...args);
   readonly batchView: UpdateQueries['batchView'] = (...args) =>
@@ -66,6 +65,7 @@ export class UpdateService {
       createId,
     );
     this.projection = new UpdateProjection(db, this.queries, this.writes, now, createId);
+    this.projectExecution = this.projection.projectExecution;
   }
 
   freezeNow(

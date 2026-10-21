@@ -14,7 +14,7 @@ import {
 
 const setup = lifecycleFixture(testDatabases());
 
-describe('LifecycleService', () => {
+describe('生命周期', () => {
   test('仅测试负责人可取消恢复与归档，且取消只允许待修复', async () => {
     const fixture = await setup();
     const waiting = createBug(fixture, fixture.items[0]!.id, '可取消缺陷');

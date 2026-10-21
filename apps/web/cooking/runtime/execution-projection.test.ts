@@ -1,17 +1,15 @@
 import { expect, test } from 'bun:test';
 import type { Execution } from '@agent-party-time/execution-contract';
 import type { AppDatabase } from '@/platform/database';
-import {
-  cookingExecutionProjection,
-  type CookingExecutionProjectionEvent,
-} from './execution-projection';
+import type { ExecutionProjectionEvent } from '@/platform/execution/projection';
+import { cookingExecutionProjection } from './execution-projection';
 
 test('Cooking execution projection 同时按 namespace 与 kind 路由', () => {
-  const projected: CookingExecutionProjectionEvent[] = [];
+  const projected: ExecutionProjectionEvent[] = [];
   const hooks = cookingExecutionProjection({} as AppDatabase, {
-    BUG_REPAIR: { projectExecution: (event) => projected.push(event) },
-    UPDATE_BATCH: { projectExecution: () => {} },
-    CLEANUP: { projectExecution: () => {} },
+    BUG_REPAIR: (event) => projected.push(event),
+    UPDATE_BATCH: () => {},
+    CLEANUP: () => {},
   });
   const execution = {
     owner: { namespace: 'external', kind: 'BUG_REPAIR', id: 'task-one' },
