@@ -1,5 +1,5 @@
 import { testDirectories } from '../testing/directories';
-import { MemoryKeychain } from '../testing/memory-keychain';
+import { MemoryKeychain } from '../testing/memoryKeychain';
 import { expect, test } from 'bun:test';
 
 import type {
@@ -15,7 +15,7 @@ import { CONNECTION_STATE_SCHEMA_VERSION } from '../state/schemas';
 import { LocalStateStore } from '../state/store';
 import { ConnectionCoordinator } from './connection';
 import { RunnerHttpError } from '@agent-party-time/runner-contract/http-client';
-import type { RunnerAuthorizationHttp } from './server-http';
+import type { RunnerAuthorizationHttp } from './serverHttp';
 
 const createTestDirectory = testDirectories('xapt-connection-');
 const now = new Date('2026-08-03T08:00:00.000Z');

@@ -1,1 +1,1 @@
-export { handleRunnerRequest as GET } from '@/cooking/runtime/runner-http';
+export { handleRunnerRequest as GET } from '@/cooking/runtime/runnerHttp';

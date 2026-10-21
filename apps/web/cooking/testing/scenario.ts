@@ -2,10 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { AuthService } from '@/platform/auth/service';
 import type { AppDatabase } from '@/platform/database';
 import { seedUsers } from '@/testing/users';
-import { BindingService } from '@/cooking/bindings/server/binding-service';
-import { EngineeringService } from '@/cooking/engineering/server/engineering-service';
+import { BindingService } from '@/cooking/bindings/server/bindingService';
+import { EngineeringService } from '@/cooking/engineering/server/engineeringService';
 import type { DeploymentMethod } from '@/cooking/engineering/contract';
-import { ProjectService } from '@/cooking/projects/server/project-service';
+import { ProjectService } from '@/cooking/projects/server/projectService';
 
 /** Creates a real private project; unlisted users remain outside its membership. */
 export async function projectScenario<K extends string>(

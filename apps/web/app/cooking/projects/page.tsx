@@ -1,1 +1,1 @@
-export { default, metadata } from '@/cooking/projects/ui/project-settings-page';
+export { default, metadata } from '@/cooking/projects/ui/projectSettingsPage';

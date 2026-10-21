@@ -1,0 +1,265 @@
+import { parseRow, type DatabaseRow } from '@/platform/database/rowMapper';
+import { randomUUID } from 'node:crypto';
+import type { AppDatabase } from '@/platform/database';
+import { PlatformError, publicError } from '@/platform/errors';
+import {
+  RunnerBindingWorkCompletionSchema,
+  RunnerBindingWorkResponseSchema,
+  type RunnerBindingWork,
+  type RunnerBindingWorkCompletion,
+} from '@agent-party-time/runner-contract';
+import { EngineeringIdSchema } from '@/cooking/engineering/contract';
+import { CookingMutationIdSchema } from '@/cooking/shared/contract';
+import { CookingWriteStore } from '@/cooking/shared/server/writeStore';
+import { requireBindingEngineering } from './engineeringAccess';
+import {
+  BindingRequestIdSchema,
+  BindingRequestSchema,
+  type BindingRequest,
+} from '../contract';
+import { BindingService } from './bindingService';
+
+type BindingRequestRow = DatabaseRow<BindingRequest> & {
+  repository_url: string | null;
+  binding_id: string;
+  claimed_at: string | null;
+};
+
+const DEFAULT_REQUEST_DURATION_MS = 5 * 60 * 1_000;
+const DEFAULT_ONLINE_AFTER_MS = 30 * 1_000;
+const CLAIM_RECOVERY_MS = 60 * 1_000;
+
+export class BindingRequestService {
+  private readonly writes: CookingWriteStore;
+
+  constructor(
+    private readonly db: AppDatabase,
+    private readonly bindings: BindingService = new BindingService(db),
+    private readonly now: () => Date = () => new Date(),
+    private readonly createId: () => string = randomUUID,
+    private readonly onlineAfterMs: number = DEFAULT_ONLINE_AFTER_MS,
+  ) {
+    this.writes = new CookingWriteStore(db, now, createId);
+  }
+
+  createRequest(
+    actorUserId: string,
+    engineeringIdInput: string,
+    runnerId: string,
+    mutationIdInput: string,
+    durationMs: number = DEFAULT_REQUEST_DURATION_MS,
+  ): BindingRequest {
+    const engineeringId = EngineeringIdSchema.parse(engineeringIdInput);
+    const mutationId = CookingMutationIdSchema.parse(mutationIdInput);
+    if (!Number.isSafeInteger(durationMs) || durationMs <= 0)
+      throw new PlatformError('VALIDATION_FAILED', '绑定请求有效期无效');
+    return this.writes.run({
+      mutationId,
+      actorUserId,
+      operation: 'ENGINEERING_BINDING_REQUEST_CREATE',
+      resourceType: 'ENGINEERING_BINDING_REQUEST',
+      resultSchema: BindingRequestSchema,
+      perform: () => {
+        this.failExpired();
+        const engineering = requireBindingEngineering(
+          this.db,
+          actorUserId,
+          engineeringId,
+        );
+        const runner = this.db.get(
+          `SELECT last_seen_at FROM platform_runner
+             WHERE id = ? AND owner_user_id = ? AND revoked_at IS NULL`,
+          runnerId,
+          actorUserId,
+        ) as { last_seen_at: string | null } | undefined;
+        if (
+          !runner?.last_seen_at ||
+          this.now().getTime() - Date.parse(runner.last_seen_at) > this.onlineAfterMs
+        )
+          throw new PlatformError('INVALID_TRANSITION', '所选 Agent 当前不在线');
+        const existingBinding = this.db.get(
+          `SELECT 1 present FROM cooking_engineering_binding
+             WHERE engineering_id = ? AND user_id = ?`,
+          engineeringId,
+          actorUserId,
+        );
+        if (existingBinding)
+          throw new PlatformError('RESOURCE_CONFLICT', '你已经为这个工程建立绑定');
+        const active = this.db.get(
+          `SELECT * FROM cooking_binding_request
+             WHERE engineering_id = ? AND user_id = ?
+               AND state IN ('PENDING', 'PROCESSING')`,
+          engineeringId,
+          actorUserId,
+        ) as BindingRequestRow | undefined;
+        if (active) return { result: mapRequest(active), resourceId: active.id };
+
+        const id = this.createId();
+        const bindingId = this.createId();
+        const createdAt = this.now();
+        const expiresAt = new Date(createdAt.getTime() + durationMs).toISOString();
+        const stored = this.db.get<BindingRequestRow>(
+          `INSERT INTO cooking_binding_request(
+               id, engineering_id, user_id, runner_id, state, error_message,
+               repository_url, binding_id, expires_at, claimed_at,
+               completed_at, created_at
+             ) VALUES (?, ?, ?, ?, 'PENDING', NULL, NULL, ?, ?, NULL, NULL, ?)
+             RETURNING *`,
+          id,
+          engineeringId,
+          actorUserId,
+          runnerId,
+          bindingId,
+          expiresAt,
+          createdAt.toISOString(),
+        );
+        return {
+          result: mapRequest(stored!),
+          resourceId: id,
+          audit: {
+            projectId: engineering.project_id,
+            action: 'ENGINEERING_BINDING_REQUESTED',
+            details: { engineeringId, runnerId },
+          },
+        };
+      },
+    });
+  }
+
+  getRequest(userId: string, requestIdInput: string): BindingRequest {
+    const requestId = BindingRequestIdSchema.parse(requestIdInput);
+    this.failExpired();
+    const row = this.db.get(
+      `SELECT * FROM cooking_binding_request
+         WHERE id = ? AND user_id = ?`,
+      requestId,
+      userId,
+    ) as BindingRequestRow | undefined;
+    if (!row) throw new PlatformError('NOT_FOUND', '绑定请求不存在或无权访问');
+    return mapRequest(row);
+  }
+
+  claimNext(runnerId: string): RunnerBindingWork | null {
+    this.failExpired();
+    const reclaimBefore = new Date(
+      this.now().getTime() - CLAIM_RECOVERY_MS,
+    ).toISOString();
+    return this.db.transaction(() => {
+      const row = this.db.get(
+        `SELECT * FROM cooking_binding_request
+           WHERE runner_id = ? AND expires_at > ?
+             AND (
+               state = 'PENDING' OR
+               (state = 'PROCESSING' AND claimed_at < ?)
+             )
+           ORDER BY created_at, id
+           LIMIT 1`,
+        runnerId,
+        this.now().toISOString(),
+        reclaimBefore,
+      ) as BindingRequestRow | undefined;
+      if (!row) return null;
+      const claimedAt = this.now().toISOString();
+      const claimed = this.db.run(
+        `UPDATE cooking_binding_request
+           SET state = 'PROCESSING', claimed_at = ?
+           WHERE id = ? AND (
+             state = 'PENDING' OR
+             (state = 'PROCESSING' AND claimed_at < ?)
+           )`,
+        [claimedAt, row.id, reclaimBefore],
+      );
+      if (claimed.changes !== 1) return null;
+      return RunnerBindingWorkResponseSchema.shape.request.unwrap().parse({
+        requestId: row.id,
+        bindingId: row.binding_id,
+        expiresAt: row.expires_at,
+      });
+    })();
+  }
+
+  complete(
+    runnerId: string,
+    requestIdInput: string,
+    completionInput: RunnerBindingWorkCompletion,
+  ): 'SUCCEEDED' | 'FAILED' {
+    const requestId = BindingRequestIdSchema.parse(requestIdInput);
+    const completion = RunnerBindingWorkCompletionSchema.parse(completionInput);
+    const row = this.requestForRunner(runnerId, requestId);
+    if (row.state === 'SUCCEEDED') return 'SUCCEEDED';
+    if (row.state === 'FAILED' || row.state === 'CANCELLED') return 'FAILED';
+    if (row.state !== 'PROCESSING')
+      throw new PlatformError('INVALID_TRANSITION', '绑定请求当前不能完成');
+    if (completion.outcome === 'FAILED') {
+      this.failRequest(row.id, completion.message);
+      return 'FAILED';
+    }
+
+    try {
+      this.db.transaction(() => {
+        this.bindings.createReservedBinding(
+          row.user_id,
+          row.engineering_id,
+          row.runner_id,
+          row.binding_id,
+          row.id,
+        );
+        const repositoryUrl = this.bindings.confirmRepository(
+          row.runner_id,
+          row.binding_id,
+          completion.repositoryUrl,
+        );
+        const completedAt = this.now().toISOString();
+        const update = this.db.run(
+          `UPDATE cooking_binding_request
+             SET state = 'SUCCEEDED', repository_url = ?, completed_at = ?,
+                 error_message = NULL
+             WHERE id = ? AND state = 'PROCESSING'`,
+          [repositoryUrl, completedAt, row.id],
+        );
+        if (update.changes !== 1)
+          throw new PlatformError('STALE_STATE', '绑定请求已更新');
+      })();
+      return 'SUCCEEDED';
+    } catch (error) {
+      this.failRequest(row.id, publicError(error).message);
+      return 'FAILED';
+    }
+  }
+
+  private requestForRunner(runnerId: string, requestId: string): BindingRequestRow {
+    this.failExpired();
+    const row = this.db.get(
+      `SELECT * FROM cooking_binding_request
+         WHERE id = ? AND runner_id = ?`,
+      requestId,
+      runnerId,
+    ) as BindingRequestRow | undefined;
+    if (!row) throw new PlatformError('NOT_FOUND', '绑定请求不存在或不属于当前 Agent');
+    return row;
+  }
+
+  private failRequest(requestId: string, message: string): void {
+    this.db.run(
+      `UPDATE cooking_binding_request
+         SET state = 'FAILED', error_message = ?, completed_at = ?
+         WHERE id = ? AND state IN ('PENDING', 'PROCESSING')`,
+      [message.slice(0, 240), this.now().toISOString(), requestId],
+    );
+  }
+
+  private failExpired(): void {
+    const now = this.now().toISOString();
+    this.db.run(
+      `UPDATE cooking_binding_request
+         SET state = 'FAILED', error_message = '绑定请求已过期',
+             completed_at = ?
+         WHERE state IN ('PENDING', 'PROCESSING') AND expires_at <= ?`,
+      [now, now],
+    );
+  }
+}
+
+function mapRequest(row: BindingRequestRow): BindingRequest {
+  return parseRow(BindingRequestSchema, row);
+}

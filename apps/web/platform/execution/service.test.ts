@@ -1,14 +1,14 @@
 import { AuthService } from '@/platform/auth/service';
-import { LocalFileStore } from '@/platform/files/local-file-store';
+import { LocalFileStore } from '@/platform/files/localFileStore';
 import { RunnerService } from '@/platform/runner/service';
 import { testDatabases } from '@/testing/database';
 import { seedTestUser } from '@/testing/users';
 import type { ClaimedExecution } from '@agent-party-time/execution-contract';
 import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
-import { createInitialCodexTurn } from './codex-turn';
+import { createInitialCodexTurn } from './codexTurn';
 import { ExecutionService } from './service';
-import { bindingId, input } from './test-fixture';
+import { bindingId, input } from './testFixture';
 
 const createDatabase = testDatabases();
 

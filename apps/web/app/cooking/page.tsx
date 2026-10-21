@@ -5,8 +5,8 @@ import { submissionService } from '@/cooking/runtime/services';
 import {
   SIDEBAR_COOKIE_NAME,
   readSidebarWidth,
-} from '@/cooking/shared/ui/sidebar-width';
-import { SubmissionWorkspace } from '@/cooking/submissions/ui/submission-workspace';
+} from '@/cooking/shared/ui/sidebarWidth';
+import { SubmissionWorkspace } from '@/cooking/submissions/ui/submissionWorkspace';
 
 export default async function CookingHomePage() {
   const user = await requireCurrentUser();

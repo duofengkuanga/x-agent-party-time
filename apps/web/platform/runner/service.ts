@@ -15,7 +15,7 @@ import {
   type RunnerStatus,
 } from './contract';
 import { RunnerAuthorizationRequests } from './authorization';
-import { hashSecret, mapRunner, type RunnerRow } from './runner-storage';
+import { hashSecret, mapRunner, type RunnerRow } from './runnerStorage';
 
 type PairingCodeRow = {
   id: string;

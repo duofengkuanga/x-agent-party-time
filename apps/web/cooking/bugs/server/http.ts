@@ -1,7 +1,7 @@
 import { jsonOperation } from '@/platform/http/responses';
 import { bearerCredential } from '@/platform/runner/http';
 import type { RunnerService } from '@/platform/runner/service';
-import type { BugService } from './bug-service';
+import type { BugService } from './bugService';
 import { BugDeleteRequestSchema, BugDeleteResponseSchema } from '../contract';
 
 export async function handleBugDelete(

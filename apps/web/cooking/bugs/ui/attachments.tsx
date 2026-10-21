@@ -9,7 +9,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import type { BugView } from '../contract';
-import { formatBytes } from './board-model';
+import { formatBytes } from './boardModel';
 import { MAX_FILE_BYTES } from '@/platform/files/limits';
 
 const ATTACHMENT_ACCEPT =

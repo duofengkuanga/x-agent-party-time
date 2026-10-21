@@ -3,11 +3,11 @@ import type {
   RunnerBindingWorkCompletion,
 } from '@agent-party-time/runner-contract';
 import type { Clock } from '../platform/contracts';
-import type { DirectorySelector } from '../platform/macos/directory-selector';
+import type { DirectorySelector } from '../platform/macos/directorySelector';
 import { RepositoryError, type LocalRepositoryInspector } from '../platform/repository';
 import type { LocalStateStore } from '../state/store';
 import type { AuthenticatedRunnerSession, ConnectionCoordinator } from './connection';
-import type { RunnerBindingHttp } from './server-http';
+import type { RunnerBindingHttp } from './serverHttp';
 import type { ExecutionService } from '../execution/service';
 
 export interface AgentServiceProjection {

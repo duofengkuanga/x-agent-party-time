@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ProjectDialogEffects } from './project-dialog-effects';
+import { ProjectDialogEffects } from './projectDialogEffects';
 
 export function Dialog({
   children,

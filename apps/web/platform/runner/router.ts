@@ -8,7 +8,7 @@ import {
   handleWaitInteraction,
 } from '@/platform/execution/http';
 import type { ExecutionService } from '@/platform/execution/service';
-import type { LocalFileStore } from '@/platform/files/local-file-store';
+import type { LocalFileStore } from '@/platform/files/localFileStore';
 import {
   handleRunnerAuthorizationClaim,
   handleRunnerAuthorizationCreate,

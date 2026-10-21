@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { PlatformError } from '@/platform/errors';
-import { WorkspaceEventBus } from './workspace-events';
+import { WorkspaceEventBus } from './workspaceEvents';
 import { handleWorkspaceEvents, handleWorkspaceSnapshot } from './http';
 
 const submissionId = '00000000-0000-4000-8000-000000000501';

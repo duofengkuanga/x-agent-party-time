@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { CommandResult, CommandRunner } from '../contracts';
-import { MemoryKeychain } from '../../testing/memory-keychain';
+import { MemoryKeychain } from '../../testing/memoryKeychain';
 import { MacOsKeychain, XAPT_KEYCHAIN_SERVICE, keychainAccount } from './keychain';
 
 class FakeCommandRunner implements CommandRunner {

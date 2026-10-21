@@ -1,6 +1,6 @@
 import { currentUser } from '@/platform/auth/server';
 import { workspaceService } from '@/cooking/runtime/services';
-import { workspaceEvents } from '@/cooking/submissions/server/workspace-events';
+import { workspaceEvents } from '@/cooking/submissions/server/workspaceEvents';
 import { handleWorkspaceEvents } from '@/cooking/submissions/server/http';
 
 export async function GET(request: Request): Promise<Response> {

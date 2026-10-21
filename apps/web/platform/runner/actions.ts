@@ -7,7 +7,7 @@ import { publicError } from '@/platform/errors';
 import {
   messageRedirectPath,
   rethrowRedirectError,
-} from '@/platform/http/message-redirect';
+} from '@/platform/http/messageRedirect';
 import { runnerService } from './server';
 
 export async function revokeRunnerAction(formData: FormData): Promise<never> {

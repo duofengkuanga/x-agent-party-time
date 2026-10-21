@@ -1,0 +1,359 @@
+import { parseRow, type DatabaseRow } from '@/platform/database/rowMapper';
+import { insertAuditEvent } from '@/cooking/shared/server/auditEvent';
+import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
+import type { AppDatabase } from '@/platform/database';
+import { PlatformError } from '@/platform/errors';
+import { RunnerSchema } from '@/platform/runner/contract';
+import { EngineeringIdSchema, RepositoryUrlSchema } from '@/cooking/engineering/contract';
+import { CookingWriteStore } from '@/cooking/shared/server/writeStore';
+import { requireBindingEngineering } from './engineeringAccess';
+import {
+  EngineeringBindingSchema,
+  EngineeringBindingSummarySchema,
+  type EngineeringBinding,
+  type EngineeringBindingSummary,
+} from '../contract';
+
+type BindingRow = DatabaseRow<EngineeringBinding>;
+
+const DeleteBindingResultSchema = z.object({
+  deleted: z.boolean(),
+  bindingId: z.uuid(),
+});
+
+export class BindingService {
+  private readonly writes: CookingWriteStore;
+
+  constructor(
+    private readonly db: AppDatabase,
+    private readonly now: () => Date = () => new Date(),
+    private readonly createId: () => string = randomUUID,
+  ) {
+    this.writes = new CookingWriteStore(db, now, createId);
+  }
+
+  createBinding(
+    actorUserId: string,
+    engineeringId: string,
+    runnerId: string,
+    mutationId: string,
+  ): EngineeringBinding {
+    EngineeringIdSchema.parse(engineeringId);
+    return this.createBindingForRunner(
+      actorUserId,
+      engineeringId,
+      runnerId,
+      mutationId,
+      null,
+    );
+  }
+
+  createReservedBinding(
+    actorUserId: string,
+    engineeringId: string,
+    runnerId: string,
+    bindingId: string,
+    mutationId: string,
+  ): EngineeringBinding {
+    EngineeringIdSchema.parse(engineeringId);
+    const id = z.uuid().parse(bindingId);
+    return this.createBindingForRunner(
+      actorUserId,
+      engineeringId,
+      runnerId,
+      mutationId,
+      id,
+    );
+  }
+
+  private createBindingForRunner(
+    actorUserId: string,
+    engineeringId: string,
+    runnerId: string,
+    mutationId: string,
+    reservedId: string | null,
+  ): EngineeringBinding {
+    return this.writes.run({
+      mutationId,
+      actorUserId,
+      operation: 'ENGINEERING_BINDING_CREATE',
+      resourceType: 'ENGINEERING_BINDING',
+      resultSchema: EngineeringBindingSchema,
+      perform: () => {
+        const engineering = requireBindingEngineering(
+          this.db,
+          actorUserId,
+          engineeringId,
+        );
+        const runner = this.db.get(
+          `SELECT id FROM platform_runner
+             WHERE id = ? AND owner_user_id = ? AND revoked_at IS NULL`,
+          runnerId,
+          actorUserId,
+        );
+        if (!runner)
+          throw new PlatformError('NOT_FOUND', 'Agent 不存在、已停用或不属于当前用户');
+        const existing = this.db.get(
+          `SELECT id, engineering_id, user_id, runner_id, created_at
+             FROM cooking_engineering_binding
+             WHERE engineering_id = ? AND user_id = ?`,
+          engineeringId,
+          actorUserId,
+        ) as BindingRow | undefined;
+        if (!reservedId && existing?.runner_id === runnerId)
+          return { result: mapBinding(existing), resourceId: existing.id };
+        if (existing)
+          throw new PlatformError(
+            'RESOURCE_CONFLICT',
+            reservedId
+              ? '当前用户已经为这个工程建立绑定'
+              : '当前用户已经为这个工程建立绑定；请先删除原绑定',
+          );
+        const id = reservedId ?? this.createId();
+        const createdAt = this.now().toISOString();
+        const stored = this.db.get<BindingRow>(
+          `INSERT INTO cooking_engineering_binding(
+               id, engineering_id, user_id, runner_id, created_at
+             ) VALUES (?, ?, ?, ?, ?) RETURNING *`,
+          id,
+          engineeringId,
+          actorUserId,
+          runnerId,
+          createdAt,
+        );
+        return {
+          result: mapBinding(stored!),
+          resourceId: id,
+          audit: {
+            projectId: engineering.project_id,
+            action: 'ENGINEERING_BINDING_CREATED',
+            details: { engineeringId, runnerId },
+          },
+        };
+      },
+    });
+  }
+
+  deleteBinding(
+    actorUserId: string,
+    bindingId: string,
+    mutationId: string,
+  ): { deleted: boolean; bindingId: string } {
+    const id = z.uuid().parse(bindingId);
+    return this.writes.run({
+      mutationId,
+      actorUserId,
+      operation: 'ENGINEERING_BINDING_DELETE',
+      resourceType: 'ENGINEERING_BINDING',
+      resultSchema: DeleteBindingResultSchema,
+      perform: () => {
+        const row = this.db.get(
+          `SELECT binding.id, binding.engineering_id, binding.user_id,
+                    binding.runner_id, binding.created_at,
+                    engineering.project_id
+             FROM cooking_engineering_binding binding
+             JOIN cooking_engineering engineering
+               ON engineering.id = binding.engineering_id
+             WHERE binding.id = ? AND binding.user_id = ?`,
+          id,
+          actorUserId,
+        ) as (BindingRow & { project_id: string }) | undefined;
+        if (!row)
+          return {
+            result: { deleted: false, bindingId: id },
+            resourceId: id,
+          };
+        const submissionReference = this.db.get(
+          `SELECT 1 present FROM cooking_submission_item
+             WHERE binding_id = ? LIMIT 1`,
+          id,
+        );
+        const executionReference = this.db.get(
+          `SELECT 1 present FROM platform_execution
+             WHERE binding_id = ? LIMIT 1`,
+          id,
+        );
+        if (submissionReference || executionReference)
+          throw new PlatformError(
+            'RESOURCE_CONFLICT',
+            '这个绑定已经用于提测或任务，不能删除',
+          );
+        const deleted = this.db.run(
+          `DELETE FROM cooking_engineering_binding
+             WHERE id = ? AND user_id = ?`,
+          [id, actorUserId],
+        );
+        if (deleted.changes !== 1)
+          throw new PlatformError('STALE_STATE', '工程绑定已更新');
+        return {
+          result: { deleted: true, bindingId: id },
+          resourceId: id,
+          audit: {
+            projectId: row.project_id,
+            action: 'ENGINEERING_BINDING_DELETED',
+          },
+        };
+      },
+    });
+  }
+
+  confirmRepository(
+    runnerId: string,
+    bindingId: string,
+    repositoryUrlInput: string,
+  ): string {
+    const repositoryUrl = RepositoryUrlSchema.parse(repositoryUrlInput);
+    return this.db.transaction(() => {
+      const row = this.repositoryConfirmationTarget(runnerId, bindingId);
+      if (row.archived_at)
+        throw new PlatformError('INVALID_TRANSITION', '已归档工程不能确认仓库');
+      if (row.repository_state === 'CONFIRMED')
+        return requireMatchingRepository(row.repository_url, repositoryUrl);
+
+      const confirmedAt = this.now().toISOString();
+      const update = this.db.run(
+        `UPDATE cooking_engineering
+           SET repository_state = 'CONFIRMED', repository_url = ?,
+               version = version + 1, updated_at = ?
+           WHERE id = ? AND repository_state = 'PENDING'`,
+        [repositoryUrl, confirmedAt, row.engineering_id],
+      );
+      if (update.changes !== 1) {
+        const current = this.repositoryConfirmationTarget(runnerId, bindingId);
+        return requireMatchingRepository(current.repository_url, repositoryUrl);
+      }
+      insertAuditEvent(this.db, {
+        id: this.createId(),
+        projectId: row.project_id,
+        actorUserId: row.user_id,
+        action: 'ENGINEERING_REPOSITORY_CONFIRMED',
+        targetType: 'ENGINEERING',
+        targetId: row.engineering_id,
+        details: { repositoryUrl },
+        createdAt: confirmedAt,
+      });
+      return repositoryUrl;
+    })();
+  }
+
+  listBindings(userId: string, engineeringId: string): EngineeringBindingSummary[] {
+    this.requireEngineeringProjectMember(userId, engineeringId);
+    return this.db
+      .all(
+        `SELECT binding.id, binding.engineering_id, binding.user_id,
+                binding.runner_id, binding.created_at,
+                user.username, user.display_name,
+                user.created_at user_created_at,
+                runner.name runner_name, runner.version runner_version,
+                runner.last_seen_at, runner.revoked_at,
+                runner.created_at runner_created_at
+         FROM cooking_engineering_binding binding
+         JOIN platform_user user ON user.id = binding.user_id
+         JOIN platform_runner runner ON runner.id = binding.runner_id
+         WHERE binding.engineering_id = ?
+         ORDER BY binding.created_at, binding.id`,
+        engineeringId,
+      )
+      .map((row) => mapSummary(row as BindingSummaryRow));
+  }
+
+  listBindingsForRunner(runnerId: string): EngineeringBinding[] {
+    return this.db
+      .all(
+        `SELECT id, engineering_id, user_id, runner_id, created_at
+         FROM cooking_engineering_binding
+         WHERE runner_id = ?
+         ORDER BY created_at, id`,
+        runnerId,
+      )
+      .map((row) => mapBinding(row as BindingRow));
+  }
+
+  private requireEngineeringProjectMember(userId: string, engineeringId: string): void {
+    const membership = this.db.get(
+      `SELECT 1 present
+         FROM cooking_engineering engineering
+         JOIN cooking_project_membership membership
+           ON membership.project_id = engineering.project_id
+          AND membership.user_id = ?
+         WHERE engineering.id = ?`,
+      userId,
+      engineeringId,
+    );
+    if (!membership) throw new PlatformError('NOT_FOUND', '工程不存在或无权访问');
+  }
+
+  private repositoryConfirmationTarget(
+    runnerId: string,
+    bindingId: string,
+  ): RepositoryConfirmationRow {
+    const row = this.db.get(
+      `SELECT engineering.id engineering_id, engineering.project_id,
+                engineering.repository_state, engineering.repository_url,
+                engineering.archived_at, binding.user_id
+         FROM cooking_engineering_binding binding
+         JOIN cooking_engineering engineering ON engineering.id = binding.engineering_id
+         WHERE binding.id = ? AND binding.runner_id = ?`,
+      bindingId,
+      runnerId,
+    ) as RepositoryConfirmationRow | undefined;
+    if (!row)
+      throw new PlatformError('NOT_FOUND', '本机 Agent 关联不存在或不属于当前 Agent');
+    return row;
+  }
+}
+
+type RepositoryConfirmationRow = {
+  engineering_id: string;
+  project_id: string;
+  user_id: string;
+  repository_state: 'PENDING' | 'CONFIRMED';
+  repository_url: string | null;
+  archived_at: string | null;
+};
+
+function requireMatchingRepository(
+  confirmedRepositoryUrl: string | null,
+  repositoryUrl: string,
+): string {
+  if (confirmedRepositoryUrl !== repositoryUrl)
+    throw new PlatformError('RESOURCE_CONFLICT', '本机仓库与工程仓库身份不一致');
+  return repositoryUrl;
+}
+
+type BindingSummaryRow = BindingRow & {
+  username: string;
+  display_name: string;
+  user_created_at: string;
+  runner_name: string;
+  runner_version: number;
+  last_seen_at: string | null;
+  revoked_at: string | null;
+  runner_created_at: string;
+};
+
+function mapBinding(row: BindingRow): EngineeringBinding {
+  return parseRow(EngineeringBindingSchema, row);
+}
+
+function mapSummary(row: BindingSummaryRow): EngineeringBindingSummary {
+  return EngineeringBindingSummarySchema.parse({
+    binding: mapBinding(row),
+    user: {
+      id: row.user_id,
+      username: row.username,
+      displayName: row.display_name,
+      createdAt: row.user_created_at,
+    },
+    runner: RunnerSchema.parse({
+      id: row.runner_id,
+      ownerUserId: row.user_id,
+      name: row.runner_name,
+      version: row.runner_version,
+      lastSeenAt: row.last_seen_at,
+      revokedAt: row.revoked_at,
+      createdAt: row.runner_created_at,
+    }),
+  });
+}

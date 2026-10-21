@@ -6,7 +6,7 @@ import {
   CookingValidationSchema,
   CookingVisualPresentationSchema,
 } from '@/cooking/shared/contract';
-import { outputJsonSchema } from '@/cooking/shared/output-schema';
+import { outputJsonSchema } from '@/cooking/shared/outputSchema';
 import { ExecutionStateSchema } from '@agent-party-time/execution-contract';
 import { z } from 'zod';
 import { RepairHandoffSchema } from './handoff';

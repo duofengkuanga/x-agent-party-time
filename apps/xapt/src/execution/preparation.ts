@@ -25,9 +25,9 @@ import {
   verifyResultContent,
   type ExecutionResultBaseline,
   type ExecutionResultVerifier,
-} from './result-verification';
+} from './resultVerification';
 import type { ExecutionWorkspaceManager } from './workspaces';
-import { failureMessage } from './failure-message';
+import { failureMessage } from './failureMessage';
 import type { ExecutionObservation } from '../observability/recorder';
 import { protocolObserver } from '../observability/protocol';
 

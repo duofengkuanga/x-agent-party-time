@@ -4,8 +4,8 @@ import { requireCurrentUser } from '@/platform/auth/server';
 import { executionService } from '@/platform/execution/server';
 import { runnerService } from '@/platform/runner/server';
 import { bindingService } from '@/cooking/runtime/services';
-import { AgentRevokeForm } from './agent-revoke-form';
-import { AutoRefresh } from '@/cooking/shared/ui/auto-refresh';
+import { AgentRevokeForm } from './agentRevokeForm';
+import { AutoRefresh } from '@/cooking/shared/ui/autoRefresh';
 
 export const metadata: Metadata = {
   title: '我的 Agent — Agent Party Time',

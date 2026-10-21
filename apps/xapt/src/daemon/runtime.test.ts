@@ -1,5 +1,5 @@
 import { testDirectories } from '../testing/directories';
-import { MemoryKeychain } from '../testing/memory-keychain';
+import { MemoryKeychain } from '../testing/memoryKeychain';
 import { expect, test } from 'bun:test';
 
 import type {
@@ -16,7 +16,7 @@ import { CONNECTION_STATE_SCHEMA_VERSION } from '../state/schemas';
 import { LocalStateStore } from '../state/store';
 import { ConnectionCoordinator } from '../agent/connection';
 import { DaemonControlClient } from './control';
-import type { RunnerAuthorizationHttp } from '../agent/server-http';
+import type { RunnerAuthorizationHttp } from '../agent/serverHttp';
 import { DaemonRuntime } from './runtime';
 
 const createTestDirectory = testDirectories('xapt-runtime-');

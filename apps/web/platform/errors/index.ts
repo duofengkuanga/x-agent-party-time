@@ -1,7 +1,7 @@
 import { logger } from '@/platform/logging';
-import { PlatformError, type PlatformErrorCode } from './platform-error';
+import { PlatformError, type PlatformErrorCode } from './platformError';
 
-export { PlatformError, type PlatformErrorCode } from './platform-error';
+export { PlatformError, type PlatformErrorCode } from './platformError';
 
 export function publicError(
   error: unknown,

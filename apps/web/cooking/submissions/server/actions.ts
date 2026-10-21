@@ -5,7 +5,7 @@ import { publicError, type PlatformErrorCode } from '@/platform/errors';
 import {
   runInteractiveMutation,
   type InteractiveActionResult,
-} from '@/cooking/shared/server/action-transport';
+} from '@/cooking/shared/server/actionTransport';
 import { submissionCreationCatalog, submissionService } from '@/cooking/runtime/services';
 import type {
   CreateSubmissionInput,

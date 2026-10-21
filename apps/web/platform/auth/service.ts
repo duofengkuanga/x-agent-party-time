@@ -1,4 +1,4 @@
-import { parseRow, type DatabaseRow } from '@/platform/database/row-mapper';
+import { parseRow, type DatabaseRow } from '@/platform/database/rowMapper';
 import { createHash, randomBytes } from 'node:crypto';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';

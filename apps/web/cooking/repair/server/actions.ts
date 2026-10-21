@@ -3,7 +3,7 @@
 import {
   cookingMutationAction,
   type InteractiveActionResult,
-} from '@/cooking/shared/server/action-transport';
+} from '@/cooking/shared/server/actionTransport';
 import { repairService } from '../../runtime/services';
 import type {
   ContinueRepairInput,

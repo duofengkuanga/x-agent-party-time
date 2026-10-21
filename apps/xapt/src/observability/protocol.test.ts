@@ -4,7 +4,7 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ObservationEvent } from '@agent-party-time/execution-contract/observability';
 import { testDirectories } from '../testing/directories';
-import { CodexAppServerExecutor } from '../codex/app-server';
+import { CodexAppServerExecutor } from '../codex/appServer';
 import { ExecutionObservation } from './recorder';
 import { protocolObserver } from './protocol';
 

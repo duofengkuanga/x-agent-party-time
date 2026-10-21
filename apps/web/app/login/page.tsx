@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { currentUser, safeRedirectPath } from '@/platform/auth/server';
-import { LoginForm } from './login-form';
+import { LoginForm } from './loginForm';
 
 export const metadata: Metadata = {
   title: '入场 — Agent Party Time',

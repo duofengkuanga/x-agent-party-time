@@ -48,6 +48,12 @@ This project is indexed by GitNexus as **x-agent-party-time** (2039 symbols, 674
 
 - 不创建、不维护 `CLAUDE.md`、`.claude/` 或其他 Claude Code 兼容副本。
 
+## 文件命名
+
+- 自定义文件名使用小驼峰，保留 `.test.ts`、`.test.tsx`、`.d.ts` 等用途后缀；ADR 使用 `adr0001Description.md` 形式保留编号。
+- 工具约定名称和已发布安装入口的例外清单维护在 `scripts/fileNaming.test.ts`。
+- 新增或重命名文件时同步更新引用，并运行 `bun test scripts/fileNaming.test.ts`；该检查也随全量 `bun test` 执行。
+
 ## Git 交付
 
 - 本项目默认直接在 `main` 开发、Commit 并 Push 到 `origin/main`，无需另开分支。用户已授权此流程，覆盖用户级工程边界中仅因处于 `main` 而暂停交付的默认规则；其他工程边界继续适用。
@@ -63,7 +69,7 @@ This project is indexed by GitNexus as **x-agent-party-time** (2039 symbols, 674
 
 ### Issue tracker
 
-Issues and specs live in GitHub Issues. Before reading or publishing tickets, read `docs/agents/issue-tracker.md`.
+Issues and specs live in GitHub Issues. Before reading or publishing tickets, read `docs/agents/issueTracker.md`.
 
 ### Domain docs
 

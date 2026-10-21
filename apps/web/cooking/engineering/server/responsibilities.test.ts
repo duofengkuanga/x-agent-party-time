@@ -1,11 +1,11 @@
 import { mutation } from '@/cooking/testing/project';
-import { ProjectService } from '@/cooking/projects/server/project-service';
+import { ProjectService } from '@/cooking/projects/server/projectService';
 import { AuthService } from '@/platform/auth/service';
 import { testDatabases } from '@/testing/database';
 import { seedUsers } from '@/testing/users';
 import { expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
-import { EngineeringService } from './engineering-service';
+import { EngineeringService } from './engineeringService';
 import { projectMemberHasEngineeringResponsibilities } from './responsibilities';
 
 const createDatabase = testDatabases();

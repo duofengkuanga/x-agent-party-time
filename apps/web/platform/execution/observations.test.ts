@@ -12,11 +12,11 @@ import {
   repairFixture,
   startLatest,
   repairProtocolFetch,
-} from '@/cooking/repair/server/repair-fixture';
+} from '@/cooking/repair/server/repairFixture';
 import { completeClaimedExecution } from '@/cooking/testing/execution';
-import { cookingObservationAccess } from '@/cooking/runtime/observation-access';
+import { cookingObservationAccess } from '@/cooking/runtime/observationAccess';
 import { ExecutionObservations } from './observations';
-import { handleObservationRead } from '@/cooking/runtime/observation-read';
+import { handleObservationRead } from '@/cooking/runtime/observationRead';
 
 const setup = repairFixture(testDatabases());
 async function fixture() {

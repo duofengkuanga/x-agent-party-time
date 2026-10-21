@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import type { CommandRunner, UserEnvironment } from '../platform/contracts';
 import type { LocalFileSystem } from '../platform/files';
 import { MINIMUM_CODEX_VERSION } from '../version';
-import { CodexAppServerExecutor } from './app-server';
+import { CodexAppServerExecutor } from './appServer';
 
 export interface CodexInstallation {
   executable: string;

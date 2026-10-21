@@ -19,7 +19,7 @@ export async function prepareBuildCase(
   await mkdir(join(source, 'tests'));
   await writeFile(
     join(source, 'tools/delivery.ts'),
-    await readFile(join(import.meta.dir, 'fixture-tool.ts')),
+    await readFile(join(import.meta.dir, 'fixtureTool.ts')),
   );
   await writeFile(join(source, '.gitignore'), '.agents/\n.case/\n');
   await writeFile(

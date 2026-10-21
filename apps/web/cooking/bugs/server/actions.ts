@@ -8,7 +8,7 @@ import {
   optionalFormField,
   runInteractiveMutation,
   type InteractiveActionResult,
-} from '@/cooking/shared/server/action-transport';
+} from '@/cooking/shared/server/actionTransport';
 import { bugService } from '@/cooking/runtime/services';
 import type {
   AssignBugInput,

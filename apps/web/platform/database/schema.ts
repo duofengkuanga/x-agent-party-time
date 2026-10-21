@@ -1,9 +1,9 @@
 import type { Database } from 'bun:sqlite';
 import { PlatformError } from '@/platform/errors';
-import { PLATFORM_SCHEMA } from './platform-schema';
-import { COOKING_SCHEMA } from './cooking-schema';
-import { BUG_DEPLOYMENT_SCHEMA } from './bug-deployment-schema';
-import { OBSERVATION_SCHEMA } from './observation-schema';
+import { PLATFORM_SCHEMA } from './platformSchema';
+import { COOKING_SCHEMA } from './cookingSchema';
+import { BUG_DEPLOYMENT_SCHEMA } from './bugDeploymentSchema';
+import { OBSERVATION_SCHEMA } from './observationSchema';
 
 export const SERVER_SCHEMA_VERSION = 30;
 

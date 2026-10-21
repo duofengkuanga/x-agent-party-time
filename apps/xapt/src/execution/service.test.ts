@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { EXECUTION_STATE_SCHEMA_VERSION } from '../state/schemas';
 import { CodexAppServerError } from '../codex/errors';
 import { ExecutionRecovery } from './recovery';
-import { ExecutionResultVerificationError } from './result-verification';
+import { ExecutionResultVerificationError } from './resultVerification';
 import {
   bindingId,
   claimedExecution,
@@ -12,7 +12,7 @@ import {
   leaseToken,
   session,
   skillBinding,
-} from './service-fixture';
+} from './serviceFixture';
 
 const branchWorkspace = {
   key: 'bug-repair:bug-1',

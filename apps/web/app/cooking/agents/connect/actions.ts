@@ -6,7 +6,7 @@ import { publicError } from '@/platform/errors';
 import {
   messageRedirectPath,
   rethrowRedirectError,
-} from '@/platform/http/message-redirect';
+} from '@/platform/http/messageRedirect';
 import { runnerService } from '@/platform/runner/server';
 
 export async function approveAgentAuthorizationAction(

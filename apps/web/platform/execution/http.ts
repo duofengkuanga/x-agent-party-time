@@ -1,5 +1,5 @@
 import { PlatformError } from '@/platform/errors';
-import type { LocalFileStore } from '@/platform/files/local-file-store';
+import type { LocalFileStore } from '@/platform/files/localFileStore';
 import {
   errorResponse,
   jsonOperation,

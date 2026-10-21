@@ -1,8 +1,8 @@
 import { currentUser } from '@/platform/auth/server';
 import { database } from '@/platform/database';
 import { ExecutionObservations } from '@/platform/execution/observations';
-import { cookingObservationAccess } from '@/cooking/runtime/observation-access';
-import { handleObservationRead } from '@/cooking/runtime/observation-read';
+import { cookingObservationAccess } from '@/cooking/runtime/observationAccess';
+import { handleObservationRead } from '@/cooking/runtime/observationRead';
 
 export async function GET(
   request: Request,

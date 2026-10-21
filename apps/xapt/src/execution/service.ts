@@ -10,7 +10,7 @@ import { sanitizeExecutionInteractionPayload } from '@agent-party-time/execution
 import type { OutboxEntry } from '../state/schemas';
 import { randomUUID } from 'node:crypto';
 import type { AuthenticatedRunnerSession } from '../agent/connection';
-import type { RunnerExecutionHttp } from '../agent/server-http';
+import type { RunnerExecutionHttp } from '../agent/serverHttp';
 import { RunnerHttpError } from '@agent-party-time/runner-contract/http-client';
 import { type CodexExecutor, type StartedCodexExecution } from '../codex/contract';
 import { CodexAppServerError } from '../codex/errors';
@@ -21,17 +21,17 @@ import type { AttachmentMaterializer } from './attachments';
 import { ExecutionOutbox } from './outbox';
 import { ExecutionPreparation } from './preparation';
 import { ExecutionRecovery } from './recovery';
-import { failureMessage } from './failure-message';
+import { failureMessage } from './failureMessage';
 import {
   ExecutionResultVerificationError,
   type ExecutionResultVerifier,
-} from './result-verification';
+} from './resultVerification';
 import type { ExecutionWorkspaceManager } from './workspaces';
 import type { ObservationService } from '../observability/service';
 import type { ExecutionObservation } from '../observability/recorder';
 import { protocolObserver } from '../observability/protocol';
 import { XAPT_VERSION } from '../version';
-import { createCommandClassifier } from '../observability/command-context';
+import { createCommandClassifier } from '../observability/commandContext';
 
 export interface ExecutionProjection {
   activeExecutionCount: number;

@@ -1,11 +1,11 @@
 import type { Execution } from '@agent-party-time/execution-contract';
 import { PlatformError } from '@/platform/errors';
-import { parseStoredManualOperations } from '@/cooking/shared/server/result-data';
+import { parseStoredManualOperations } from '@/cooking/shared/server/resultData';
 import type {
   CookingInteractionView,
   CookingVisualPresentation,
 } from '@/cooking/shared/contract';
-import { interactionVisual, queueVisual } from '@/cooking/shared/server/execution-visual';
+import { interactionVisual, queueVisual } from '@/cooking/shared/server/executionVisual';
 import type { BatchRow, AttemptRow } from './records';
 import { UpdateHandoffUseSchema } from '../contract';
 

@@ -5,9 +5,9 @@ import {
   formField,
   integerFormField,
   runRedirectMutation,
-} from '@/cooking/shared/server/action-transport';
+} from '@/cooking/shared/server/actionTransport';
 import { ProjectInvitationDecisionSchema } from '../contract';
-import { projectPanelPath } from '../ui/route-state';
+import { projectPanelPath } from '../ui/routeState';
 
 const PROJECTS_PATH = '/cooking/projects';
 

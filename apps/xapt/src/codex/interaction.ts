@@ -3,7 +3,7 @@ import {
   sanitizeExecutionInteractionPayload,
   type JsonValue,
 } from '@agent-party-time/execution-contract';
-import { asRecord } from './wire-values';
+import { asRecord } from './wireValues';
 
 export function isInteractionMethod(method: string): boolean {
   return [

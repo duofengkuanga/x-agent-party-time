@@ -7,7 +7,7 @@ import {
   requiredFormField,
   runInteractiveMutation,
   type InteractiveActionResult,
-} from '@/cooking/shared/server/action-transport';
+} from '@/cooking/shared/server/actionTransport';
 import { lifecycleService } from '../../runtime/services';
 import type {
   BugLifecycleMutationResult,

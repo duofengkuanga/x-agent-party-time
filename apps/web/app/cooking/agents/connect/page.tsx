@@ -8,7 +8,7 @@ import {
   approveAgentAuthorizationAction,
   rejectAgentAuthorizationAction,
 } from './actions';
-import { AutoRefresh } from '@/cooking/shared/ui/auto-refresh';
+import { AutoRefresh } from '@/cooking/shared/ui/autoRefresh';
 
 export const metadata: Metadata = {
   title: '连接 Agent — Agent Party Time',

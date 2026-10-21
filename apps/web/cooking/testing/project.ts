@@ -2,9 +2,9 @@ import { projectScenario, engineeringScenario } from './scenario';
 import { randomUUID } from 'node:crypto';
 import type { AppDatabase } from '@/platform/database';
 import { RunnerService } from '@/platform/runner/service';
-import { EngineeringService } from '@/cooking/engineering/server/engineering-service';
+import { EngineeringService } from '@/cooking/engineering/server/engineeringService';
 import type { DeploymentMethod } from '@/cooking/engineering/contract';
-import { SubmissionService } from '@/cooking/submissions/server/submission-service';
+import { SubmissionService } from '@/cooking/submissions/server/submissionService';
 
 export function mutation(expectedVersion: number) {
   return { mutationId: randomUUID(), expectedVersion };

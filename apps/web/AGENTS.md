@@ -4,7 +4,7 @@
 
 ## 用户界面
 
-- 新增或修改用户界面前读取并遵守 `docs/product/web-design-system.md`。
+- 新增或修改用户界面前读取并遵守 `docs/product/webDesignSystem.md`。
 - 除品牌名称、品牌标语和登录页固定文案 `the agents is having a party` 外，面向用户的文案使用中文。
 - 状态、操作、提示和错误不得直接展示内部英文枚举、数据库术语或不必要英文。
 - 用户页面、导航、按钮、提示、状态和用户路由使用 `Agent`；内部代码、数据库、HTTP 协议、包名和领域类型继续使用 `Runner`。
@@ -20,10 +20,10 @@
 
 ## Cooking 页面框架
 
-- `app/cooking/layout.tsx` 统一挂载 `cooking/ui/cooking-shell.tsx`；所有顶层 Cooking 页面必须继承该共享品牌区、主题切换、账号菜单、尺寸和间距。
+- `app/cooking/layout.tsx` 统一挂载 `cooking/ui/cookingShell.tsx`；所有顶层 Cooking 页面必须继承该共享品牌区、主题切换、账号菜单、尺寸和间距。
 - 页面或业务组件不得再次引用 `CookingShell` 或复制 `.collab-topbar`；头部需求只修改共享 Shell。
 - 修改 Cooking 框架或头部后，在桌面视口对照验证 `/cooking`、`/cooking/projects` 和 `/cooking/agents`。
-- `cooking/ui/cooking-shell.test.ts` 是架构回归测试，不得删除或绕过；新增顶层 Cooking 页面时加入消费者断言。
+- `cooking/ui/cookingShell.test.ts` 是架构回归测试，不得删除或绕过；新增顶层 Cooking 页面时加入消费者断言。
 
 ## 状态与可达性
 

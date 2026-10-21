@@ -8,7 +8,7 @@ import type {
 } from '@agent-party-time/runner-contract';
 import type { Clock } from '../platform/contracts';
 import { NodeLocalFileSystem } from '../platform/files';
-import type { DirectorySelector } from '../platform/macos/directory-selector';
+import type { DirectorySelector } from '../platform/macos/directorySelector';
 import { xaptPaths } from '../platform/paths';
 import type { LocalRepositoryInspector } from '../platform/repository';
 import { LocalStateStore } from '../state/store';
@@ -16,7 +16,7 @@ import { OUTBOX_STATE_SCHEMA_VERSION } from '../state/schemas';
 import type { ExecutionService } from '../execution/service';
 import { AgentService } from './service';
 import type { AuthenticatedRunnerSession, ConnectionCoordinator } from './connection';
-import type { RunnerBindingHttp } from './server-http';
+import type { RunnerBindingHttp } from './serverHttp';
 
 const createTestDirectory = testDirectories('xapt-agent-service-');
 const bindingId = '00000000-0000-4000-8000-000000000201';

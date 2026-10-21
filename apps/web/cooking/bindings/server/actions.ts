@@ -2,8 +2,8 @@
 
 import { PlatformError } from '@/platform/errors';
 import { bindingRequestService, bindingService } from '@/cooking/runtime/services';
-import { formField, runRedirectMutation } from '@/cooking/shared/server/action-transport';
-import { bindingSettingsPath } from '@/cooking/projects/ui/route-state';
+import { formField, runRedirectMutation } from '@/cooking/shared/server/actionTransport';
+import { bindingSettingsPath } from '@/cooking/projects/ui/routeState';
 
 export async function createEngineeringBindingAction(formData: FormData): Promise<never> {
   const projectId = formField(formData, 'projectId');

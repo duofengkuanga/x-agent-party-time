@@ -251,7 +251,7 @@ XAPT_OBSERVATION_V1 {"version":1,"activityId":"<随机UUID>","activity":"build",
 只提取严格字段；最多读取末尾64 KiB、16条回执、单行8 KiB。`workId` 是不透明的本机范围身份，不能放敏感输入/命令/路径的哈希。回执可靠关联到实际命令 Item，但其内容仍是“来源报告”，不等于独立子进程追踪；没有 duration 就保持未知。普通日志、模型终态文字、静态分支不证明实际内部构建。
 
 ```bash
-bun test scripts/observation-contract.test.ts scripts/observability apps/xapt/src/observability apps/web/platform/execution/observations.test.ts
+bun test scripts/observationContract.test.ts scripts/observability apps/xapt/src/observability apps/web/platform/execution/observations.test.ts
 bun run eval:observability --skills-root /path/to/x-skills --runs 2
 bun run eval:observability-overhead
 ```
@@ -299,19 +299,19 @@ packages/runner-conformance/  协议验收 Adapter
 
 `runtime/` 是跨业务装配的集中入口，负责把修复候选、更新、善后与执行投影连接起来。通用 `platform/` 不引用 Cooking；路由在两者之间选择并装配所需能力。缺陷删除 HTTP 处理属于 `cooking/bugs/server/http.ts`，共享响应转换属于 `platform/http/responses.ts`。
 
-大文件按职责拆分：缺陷看板协调状态，附件、报告编辑、修复时间线、更新详情与交互记录分别实现；提测工作区把同步状态、侧栏偏好、详情和清理交互分开。时间线通过 `bugs/ui/progress-timeline.tsx` 统一列表结构、标题、时间与摘要显示，Repair 执行状态文案由 `shared/execution-labels.ts` 同时供 Server 与 UI 使用，各业务记录只定义内容。
+大文件按职责拆分：缺陷看板协调状态，附件、报告编辑、修复时间线、更新详情与交互记录分别实现；提测工作区把同步状态、侧栏偏好、详情和清理交互分开。时间线通过 `bugs/ui/progressTimeline.tsx` 统一列表结构、标题、时间与摘要显示，Repair 执行状态文案由 `shared/executionLabels.ts` 同时供 Server 与 UI 使用，各业务记录只定义内容。
 
-修复与更新的命令、执行投影、查询分别位于 `server/*-service.ts`、`server/*-projection.ts`、`server/*-queries.ts`；更新候选计时、Batch 冻结与交付 Execution 准备集中在 `update-delivery.ts`，只读 Session Synchronization 请求由 `UpdateService` 处理。生命周期的缺陷状态命令集中在 `bug-lifecycle-commands.ts`，Cleanup 位于 `cleanup-service.ts`，提测关闭及后续 Cleanup 编排集中在 `submission-closure.ts`；`runtime/create-cooking.ts` 将这些实现的方法直接绑定为统一的 `lifecycle` 调用入口。工程服务保留统一调用入口，内部由 `engineering-queries.ts` 集中读取与权限检查、`environment-service.ts` 管理环境写入，写入结果复用查询侧的记录映射。结果解释与行类型仍位于 `results.ts`、`records.ts`。
+修复与更新的命令、执行投影、查询分别位于 `server/*Service.ts`、`server/*Projection.ts`、`server/*Queries.ts`；更新候选计时、Batch 冻结与交付 Execution 准备集中在 `updateDelivery.ts`，只读 Session Synchronization 请求由 `UpdateService` 处理。生命周期的缺陷状态命令集中在 `bugLifecycleCommands.ts`，Cleanup 位于 `cleanupService.ts`，提测关闭及后续 Cleanup 编排集中在 `submissionClosure.ts`；`runtime/createCooking.ts` 将这些实现的方法直接绑定为统一的 `lifecycle` 调用入口。工程服务保留统一调用入口，内部由 `engineeringQueries.ts` 集中读取与权限检查、`environmentService.ts` 管理环境写入，写入结果复用查询侧的记录映射。结果解释与行类型仍位于 `results.ts`、`records.ts`。
 
-提测服务保留 `submission-service.ts` 作为调用入口，由 `submission-queries.ts` 集中有权限的读取和工作区投影；环境使用权由 `environment-access.ts` 判断。
+提测服务保留 `submissionService.ts` 作为调用入口，由 `submissionQueries.ts` 集中有权限的读取和工作区投影；环境使用权由 `environmentAccess.ts` 判断。
 
-`platform/runner/service.ts` 保留 Agent 配对、在线状态与停用的统一入口；浏览器授权请求及凭据领取由 `authorization.ts` 处理，持久行映射与密钥哈希由 `runner-storage.ts` 共用。
+`platform/runner/service.ts` 保留 Agent 配对、在线状态与停用的统一入口；浏览器授权请求及凭据领取由 `authorization.ts` 处理，持久行映射与密钥哈希由 `runnerStorage.ts` 共用。
 
-`runtime/create-cooking.ts` 是生产和集成测试共同使用的执行链装配入口。Platform 以同一个带类型的事件通知事务内的 APPLY 和提交后的 AFTER；会话同步先按记录归属选择 Repair 或 Update，避免跨领域解释结果。修复和更新的 Codex JSON Schema 从服务器 Zod 定义派生。共享权限检查、附件归属校验和幂等写入集中在 `shared/server/`；写入 Store 集中验证结果并从 Mutation 资源填充 Audit 目标，仅目标 ID 不同的命令显式覆盖。平坦实体及先解码 JSON 字段的 SQL 行映射集中在 `platform/database/row-mapper.ts`，由已有 Zod Schema 限定读取字段；数据库建表 SQL 按 Platform 与 Cooking 分别保存在 `platform-schema.ts`、`cooking-schema.ts`，初始化仍一次执行完整 Schema。Runner 与 Execution HTTP 处理器通过 `platform/http/responses.ts` 统一结果校验和公开错误响应，认证与业务执行顺序由各处理器保留。
+`runtime/createCooking.ts` 是生产和集成测试共同使用的执行链装配入口。Platform 以同一个带类型的事件通知事务内的 APPLY 和提交后的 AFTER；会话同步先按记录归属选择 Repair 或 Update，避免跨领域解释结果。修复和更新的 Codex JSON Schema 从服务器 Zod 定义派生。共享权限检查、附件归属校验和幂等写入集中在 `shared/server/`；写入 Store 集中验证结果并从 Mutation 资源填充 Audit 目标，仅目标 ID 不同的命令显式覆盖。平坦实体及先解码 JSON 字段的 SQL 行映射集中在 `platform/database/rowMapper.ts`，由已有 Zod Schema 限定读取字段；数据库建表 SQL 按 Platform 与 Cooking 分别保存在 `platformSchema.ts`、`cookingSchema.ts`，初始化仍一次执行完整 Schema。Runner 与 Execution HTTP 处理器通过 `platform/http/responses.ts` 统一结果校验和公开错误响应，认证与业务执行顺序由各处理器保留。
 
-Execution 的领域无关状态转换在 `platform/execution/service.ts`；`queue.ts` 管领取、恢复及 Lease 到期，`interactions.ts` 管操作请求的打开、等待与处理，`records.ts` 读取并映射持久记录，`lease.ts` 集中 Lease 状态与校验，`polling.ts` 统一有界等待。xapt 的 `execution/service.ts` 驱动本机 Codex，`preparation.ts` 负责工作区、附件、规则包与结果校验准备，`recovery.ts` 维护执行阶段和 Lease，`outbox.ts` 持久化待上报结果并负责恢复后重放。两侧通过 Runner HTTP 协议连接，Cooking 只接收归属明确的 Execution 投影事件。`platform/runner/router.ts` 是生产与协议测试共用的路由表，`cooking/runtime/runner-http.ts` 装配绑定操作和带业务投影的执行服务；Next 路由文件只声明允许的 HTTP 方法。`runner-contract/http-client` 统一通用客户端的请求校验、认证、响应解析及错误类型；xapt 只扩展缺陷删除命令，协议验收客户端只补充场景驱动。
+Execution 的领域无关状态转换在 `platform/execution/service.ts`；`queue.ts` 管领取、恢复及 Lease 到期，`interactions.ts` 管操作请求的打开、等待与处理，`records.ts` 读取并映射持久记录，`lease.ts` 集中 Lease 状态与校验，`polling.ts` 统一有界等待。xapt 的 `execution/service.ts` 驱动本机 Codex，`preparation.ts` 负责工作区、附件、规则包与结果校验准备，`recovery.ts` 维护执行阶段和 Lease，`outbox.ts` 持久化待上报结果并负责恢复后重放。两侧通过 Runner HTTP 协议连接，Cooking 只接收归属明确的 Execution 投影事件。`platform/runner/router.ts` 是生产与协议测试共用的路由表，`cooking/runtime/runnerHttp.ts` 装配绑定操作和带业务投影的执行服务；Next 路由文件只声明允许的 HTTP 方法。`runner-contract/http-client` 统一通用客户端的请求校验、认证、响应解析及错误类型；xapt 只扩展缺陷删除命令，协议验收客户端只补充场景驱动。
 
-Cooking 样式入口 `app/cooking/cooking.css` 只声明有序导入；`styles/` 按页面和职责维护样式，导入顺序保留共享控件与布局的层叠规则。看板卡片与表单、工程目录与工程管理分别维护在相邻的样式文件中，附件选择与展示集中在 `styles/attachments.css`，Agent 台账与连接页分别由 `styles/agents.css` 和 `styles/agent-connect.css` 承担；跨页面的 accent 悬停与焦点规则由最后导入的 `styles/accent-interactions.css` 统一管理。集成测试通过 `testing/database.ts` 管理隔离数据库，通过 `cooking/testing/scenario.ts` 装配真实用户、成员、工程与绑定，再由 `cooking/testing/project.ts` 建立完整提测场景；协议级 Agent 测试通过 `cooking/testing/runner-http.ts` 装配本地 Runner HTTP 处理器。
+Cooking 样式入口 `app/cooking/cooking.css` 只声明有序导入；`styles/` 按页面和职责维护样式，导入顺序保留共享控件与布局的层叠规则。看板卡片与表单、工程目录与工程管理分别维护在相邻的样式文件中，附件选择与展示集中在 `styles/attachments.css`，Agent 台账与连接页分别由 `styles/agents.css` 和 `styles/agentConnect.css` 承担；跨页面的 accent 悬停与焦点规则由最后导入的 `styles/accentInteractions.css` 统一管理。集成测试通过 `testing/database.ts` 管理隔离数据库，通过 `cooking/testing/scenario.ts` 装配真实用户、成员、工程与绑定，再由 `cooking/testing/project.ts` 建立完整提测场景；协议级 Agent 测试通过 `cooking/testing/runnerHttp.ts` 装配本地 Runner HTTP 处理器。
 
 `BugService` 保留缺陷命令入口，`BugQueries` 集中有权限的读取、附件访问与工作区投影。`BugService.deleteBugs()` 提供维护命令的删除 Interface；`deleteUnassignedBug()` 提供网页删除入口，仅允许活动提测单的测试负责人或提测项开发负责人删除尚未分配、未开始修复的缺陷。网页删除需确认，并校验版本、记录审计及支持幂等重试。内部 `BugDeletion` 集中处理权限与状态校验、关联执行收集、活动检查、事务删除、依赖校验与提测版本推进。测试继续通过 `BugService` 验证完整行为，不依赖私有步骤。
 

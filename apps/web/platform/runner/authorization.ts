@@ -12,7 +12,7 @@ import {
   type RunnerAuthorizationClaimResponse,
   type RunnerAuthorizationIssue,
 } from './contract';
-import { hashSecret, mapRunner, type RunnerRow } from './runner-storage';
+import { hashSecret, mapRunner, type RunnerRow } from './runnerStorage';
 
 type AuthorizationRequestRow = {
   id: string;

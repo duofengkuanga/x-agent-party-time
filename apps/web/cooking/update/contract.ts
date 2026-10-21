@@ -10,7 +10,7 @@ import {
   CookingValidationSchema,
   CookingVisualPresentationSchema,
 } from '@/cooking/shared/contract';
-import { outputJsonSchema } from '@/cooking/shared/output-schema';
+import { outputJsonSchema } from '@/cooking/shared/outputSchema';
 import {
   SubmissionIdSchema,
   SubmissionItemIdSchema,

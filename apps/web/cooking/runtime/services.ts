@@ -1,21 +1,21 @@
-import { BindingRequestService } from '@/cooking/bindings/server/binding-request-service';
-import { BindingService } from '@/cooking/bindings/server/binding-service';
-import { EngineeringService } from '@/cooking/engineering/server/engineering-service';
+import { BindingRequestService } from '@/cooking/bindings/server/bindingRequestService';
+import { BindingService } from '@/cooking/bindings/server/bindingService';
+import { EngineeringService } from '@/cooking/engineering/server/engineeringService';
 import { projectMemberHasEngineeringResponsibilities } from '@/cooking/engineering/server/responsibilities';
-import { ProjectService } from '@/cooking/projects/server/project-service';
+import { ProjectService } from '@/cooking/projects/server/projectService';
 import type { SubmissionCreationCatalog } from '@/cooking/submissions/contract';
-import { readSubmissionCreationCatalog } from '@/cooking/submissions/server/creation-catalog';
+import { readSubmissionCreationCatalog } from '@/cooking/submissions/server/creationCatalog';
 import {
   engineeringMemberHasSubmissionResponsibilities,
   projectMemberHasSubmissionResponsibilities,
   submissionReferencesEngineering,
   submissionReferencesEnvironment,
 } from '@/cooking/submissions/server/references';
-import { workspaceEvents } from '@/cooking/submissions/server/workspace-events';
+import { workspaceEvents } from '@/cooking/submissions/server/workspaceEvents';
 import { serverPaths } from '@/platform/config';
 import { database } from '@/platform/database';
-import { LocalFileStore } from '@/platform/files/local-file-store';
-import { createCooking } from './create-cooking';
+import { LocalFileStore } from '@/platform/files/localFileStore';
+import { createCooking } from './createCooking';
 
 export function projectService(): ProjectService {
   const appDatabase = database();

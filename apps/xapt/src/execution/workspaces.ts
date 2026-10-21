@@ -10,9 +10,9 @@ import {
   requireDirectory,
   WorkspaceRecordSchema,
   type WorkspaceRecord,
-} from './worktree-identity';
-import { mirrorIgnoredRepositoryContents } from './worktree-local-contents';
-import { git, gitSucceeds } from './worktree-git';
+} from './worktreeIdentity';
+import { mirrorIgnoredRepositoryContents } from './worktreeLocalContents';
+import { git, gitSucceeds } from './worktreeGit';
 
 const WorkspaceStateSchema = z.strictObject({
   workspaces: z.record(z.string(), WorkspaceRecordSchema),

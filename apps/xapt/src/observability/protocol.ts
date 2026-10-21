@@ -5,8 +5,8 @@ import {
   type ObservationEvent,
 } from '@agent-party-time/execution-contract/observability';
 import type { ExecutionObservation } from './recorder';
-import { extractSourceReceipts } from './source-receipts';
-import type { CommandClassifier } from './command-context';
+import { extractSourceReceipts } from './sourceReceipts';
+import type { CommandClassifier } from './commandContext';
 
 export type CodexObservationNotice =
   | { type: 'spawn' }

@@ -7,9 +7,9 @@ import { DaemonManager } from './daemon/manager';
 import { DaemonRuntime } from './daemon/runtime';
 import { NodeLocalFileSystem } from './platform/files';
 import { MacOsBrowser } from './platform/macos/browser';
-import { MacOsDirectorySelector } from './platform/macos/directory-selector';
+import { MacOsDirectorySelector } from './platform/macos/directorySelector';
 import { MacOsKeychain, keychainAccount } from './platform/macos/keychain';
-import { MacOsLaunchAgent } from './platform/macos/launch-agent';
+import { MacOsLaunchAgent } from './platform/macos/launchAgent';
 import { xaptPaths } from './platform/paths';
 import {
   CurrentUserEnvironment,
@@ -17,13 +17,13 @@ import {
   SystemClock,
 } from './platform/system';
 import { LocalStateStore } from './state/store';
-import { RunnerHttpClient } from './agent/server-http';
+import { RunnerHttpClient } from './agent/serverHttp';
 import { LocalRepositoryInspector } from './platform/repository';
 import { TerminalForceConfirmation } from './platform/terminal';
 import { AttachmentMaterializer } from './execution/attachments';
-import { CodexAppServerExecutor } from './codex/app-server';
+import { CodexAppServerExecutor } from './codex/appServer';
 import { ExecutionService } from './execution/service';
-import { GitExecutionResultVerifier } from './execution/result-verification';
+import { GitExecutionResultVerifier } from './execution/resultVerification';
 import { GitExecutionWorkspaceManager } from './execution/workspaces';
 import { DEFAULT_UPDATE_SOURCE, UpdateManager } from './install/update';
 import { UninstallManager } from './install/uninstall';

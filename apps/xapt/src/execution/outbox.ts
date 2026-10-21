@@ -3,7 +3,7 @@ import type {
   ExecutionStartRequest,
 } from '@agent-party-time/execution-contract';
 import type { AuthenticatedRunnerSession } from '../agent/connection';
-import type { RunnerExecutionHttp } from '../agent/server-http';
+import type { RunnerExecutionHttp } from '../agent/serverHttp';
 import { RunnerHttpError } from '@agent-party-time/runner-contract/http-client';
 import { OUTBOX_STATE_SCHEMA_VERSION, type OutboxEntry } from '../state/schemas';
 import type { LocalStateStore } from '../state/store';

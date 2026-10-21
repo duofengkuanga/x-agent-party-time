@@ -1,6 +1,6 @@
 import type { ClaimedExecution } from '@agent-party-time/execution-contract';
 import type { AuthenticatedRunnerSession } from '../agent/connection';
-import type { RunnerExecutionHttp } from '../agent/server-http';
+import type { RunnerExecutionHttp } from '../agent/serverHttp';
 import {
   EXECUTION_STATE_SCHEMA_VERSION,
   type ExecutionRecoveryState,
