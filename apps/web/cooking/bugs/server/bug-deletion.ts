@@ -1,7 +1,7 @@
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
 import type { TestSubmissionWriteStore } from '@/cooking/submissions/server/test-submission-write-store';
-import { BugQueries } from './bug-queries';
+import type { BugQueries } from './bug-queries';
 import { canDeleteUnassignedBug } from './bug-deletion-policy';
 import {
   DeleteUnassignedBugInputSchema,
@@ -17,7 +17,7 @@ import {
 export class BugDeletion {
   constructor(
     private readonly db: AppDatabase,
-    private readonly requireBug: (bugId: string) => Bug,
+    private readonly queries: BugQueries,
     private readonly writes: TestSubmissionWriteStore,
     private readonly now: () => Date,
   ) {}
@@ -36,10 +36,12 @@ export class BugDeletion {
       resultSchema: DeleteUnassignedBugResultSchema,
       submissionId: (result) => result.submissionId,
       perform: () => {
-        const bug = this.requireBug(bugId);
-        const queries = new BugQueries(this.db);
-        const access = queries.requireAccess(actorUserId, bug.submissionId);
-        const anyResponsible = queries.isAnyResponsible(actorUserId, bug.submissionId);
+        const bug = this.queries.requireBug(bugId);
+        const access = this.queries.requireAccess(actorUserId, bug.submissionId);
+        const anyResponsible = this.queries.isAnyResponsible(
+          actorUserId,
+          bug.submissionId,
+        );
         if (actorUserId !== access.tester_user_id && !anyResponsible)
           throw new PlatformError(
             'PERMISSION_DENIED',
@@ -87,7 +89,7 @@ export class BugDeletion {
           .map(({ id }) => id)
       : [...new Set(parsed.bugIds!)];
     if (bugIds.length === 0) throw new PlatformError('NOT_FOUND', '没有可删除的缺陷');
-    const bugs = bugIds.map((bugId) => this.requireBug(bugId));
+    const bugs = bugIds.map((bugId) => this.queries.requireBug(bugId));
     const batchIds = this.updateBatchIds(bugIds);
     const executionIds = this.bugExecutionIds(bugIds, batchIds);
     if (!parsed.force && executionIds.length > 0) {

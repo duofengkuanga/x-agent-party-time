@@ -44,7 +44,6 @@ export class SubmissionService {
   readonly listSubmissions: SubmissionQueries['listSubmissions'];
   readonly getWorkspace: SubmissionQueries['getWorkspace'];
   readonly canAccessSubmission: SubmissionQueries['canAccessSubmission'];
-  private readonly requireSubmissionAccess: SubmissionQueries['requireSubmissionAccess'];
   private readonly writes: TestSubmissionWriteStore;
 
   constructor(
@@ -58,9 +57,6 @@ export class SubmissionService {
     this.listSubmissions = this.queries.listSubmissions.bind(this.queries);
     this.getWorkspace = this.queries.getWorkspace.bind(this.queries);
     this.canAccessSubmission = this.queries.canAccessSubmission.bind(this.queries);
-    this.requireSubmissionAccess = this.queries.requireSubmissionAccess.bind(
-      this.queries,
-    );
   }
 
   createSubmission(
@@ -212,7 +208,7 @@ export class SubmissionService {
       resultSchema: TestSubmissionSchema,
       submissionId: (result) => result.id,
       perform: () => {
-        const current = this.requireSubmissionAccess(actorUserId, submissionId);
+        const current = this.queries.requireSubmissionAccess(actorUserId, submissionId);
         const existing = this.db.all<SubmissionItemRow & { position: number }>(
           'SELECT * FROM cooking_submission_item WHERE submission_id = ? ORDER BY position',
           submissionId,
@@ -323,7 +319,7 @@ export class SubmissionService {
     submissionId: string,
     input: AddSubmissionItemsInput,
   ): EnvironmentConflict[] {
-    const current = this.requireSubmissionAccess(actorUserId, submissionId);
+    const current = this.queries.requireSubmissionAccess(actorUserId, submissionId);
     const parsed = AddSubmissionItemsInputSchema.parse(input);
     return environmentConflictsForSubmission(this.db, actorUserId, current.project_id, {
       ...parsed,
@@ -353,7 +349,10 @@ export class SubmissionService {
           itemId,
         ) as SubmissionItemRow | undefined;
         if (!item) throw new PlatformError('NOT_FOUND', SUBMISSION_HIDDEN_MESSAGE);
-        const submission = this.requireSubmissionAccess(actorUserId, item.submission_id);
+        const submission = this.queries.requireSubmissionAccess(
+          actorUserId,
+          item.submission_id,
+        );
         if (submission.status !== 'ACTIVE')
           throw new PlatformError('INVALID_TRANSITION', '已关闭提测单不能切换环境');
         if (submission.workspace_revision !== input.expectedRevision)
@@ -460,7 +459,7 @@ export class SubmissionService {
       resultSchema: TestSubmissionSchema,
       submissionId: (submission) => submission.id,
       perform: () => {
-        const current = this.requireSubmissionAccess(actorUserId, submissionId);
+        const current = this.queries.requireSubmissionAccess(actorUserId, submissionId);
         const canEditDetails =
           current.created_by_user_id === actorUserId ||
           current.membership_role === 'OWNER';

@@ -30,13 +30,8 @@ import {
   type AssignBugInput,
   type Bug,
   type BugMutationResult,
-  type BugWorkspaceProjection,
-  type BugDeleteRequest,
-  type BugDeleteResponse,
   type CreateBugInput,
   type RequestRepairInput,
-  type DeleteUnassignedBugInput,
-  type DeleteUnassignedBugResult,
   type UpdateBugReportInput,
 } from '../contract';
 
@@ -51,6 +46,10 @@ const NOOP_REPAIR_HOOKS: BugRepairHooks = {
 export class BugService {
   private readonly writes: TestSubmissionWriteStore;
   private readonly queries: BugQueries;
+  readonly workspace: BugQueries['workspace'];
+  readonly requireAttachmentAccess: BugQueries['requireAttachmentAccess'];
+  readonly deleteUnassignedBug: BugDeletion['deleteUnassignedBug'];
+  readonly deleteBugs: BugDeletion['deleteBugs'];
 
   constructor(
     private readonly db: AppDatabase,
@@ -61,6 +60,13 @@ export class BugService {
   ) {
     this.writes = new TestSubmissionWriteStore(db, now, createId, onInvalidated);
     this.queries = new BugQueries(db);
+    const deletion = new BugDeletion(db, this.queries, this.writes, now);
+    this.workspace = this.queries.workspace.bind(this.queries);
+    this.requireAttachmentAccess = this.queries.requireAttachmentAccess.bind(
+      this.queries,
+    );
+    this.deleteUnassignedBug = deletion.deleteUnassignedBug.bind(deletion);
+    this.deleteBugs = deletion.deleteBugs.bind(deletion);
   }
 
   createBug(
@@ -551,14 +557,6 @@ export class BugService {
     this.repairHooks.requested(bug.id);
   }
 
-  workspace(userId: string, submissionId: string): BugWorkspaceProjection {
-    return this.queries.workspace(userId, submissionId);
-  }
-
-  requireAttachmentAccess(userId: string, fileId: string): void {
-    this.queries.requireAttachmentAccess(userId, fileId);
-  }
-
   private updateBug(
     actorUserId: string,
     bugId: string,
@@ -653,28 +651,6 @@ export class BugService {
   ): void {
     this.db.run(`DELETE FROM cooking_bug_attachment WHERE bug_id = ?`, [bugId]);
     this.bindReportAttachments(bugId, attachmentIds, now);
-  }
-
-  deleteUnassignedBug(
-    actorUserId: string,
-    bugId: string,
-    input: DeleteUnassignedBugInput,
-  ): DeleteUnassignedBugResult {
-    return new BugDeletion(
-      this.db,
-      (id) => this.queries.requireBug(id),
-      this.writes,
-      () => this.now(),
-    ).deleteUnassignedBug(actorUserId, bugId, input);
-  }
-
-  deleteBugs(input: BugDeleteRequest): BugDeleteResponse {
-    return new BugDeletion(
-      this.db,
-      (bugId) => this.queries.requireBug(bugId),
-      this.writes,
-      () => this.now(),
-    ).deleteBugs(input);
   }
 }
 

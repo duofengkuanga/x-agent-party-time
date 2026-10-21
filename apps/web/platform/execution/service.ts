@@ -9,7 +9,6 @@ import {
   type Execution,
   type ExecutionOutcome,
   type ExecutionStartRequest,
-  type RunnerActivity,
   type TaskSkillBinding,
 } from '@agent-party-time/execution-contract';
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -30,25 +29,13 @@ const DEFAULT_LEASE_DURATION_MS = 15_000;
 export class ExecutionService {
   private readonly records: ExecutionRecords;
   private readonly queue: ExecutionQueue;
-  private readonly interactions: ExecutionInteractions;
-  readonly openInteraction: ExecutionInteractions['openInteraction'] = (...args) =>
-    this.interactions.openInteraction(...args);
-  readonly waitInteraction: ExecutionInteractions['waitInteraction'] = (...args) =>
-    this.interactions.waitInteraction(...args);
-  readonly resolveInteraction: ExecutionInteractions['resolveInteraction'] = (...args) =>
-    this.interactions.resolveInteraction(...args);
-  get(executionId: string): Execution {
-    return this.records.get(executionId);
-  }
-  activityForRunner(runnerId: string): RunnerActivity {
-    return this.queue.activityForRunner(runnerId);
-  }
-  hasActiveExecutions(runnerId: string): boolean {
-    return this.queue.hasActiveExecutions(runnerId);
-  }
-  queueStatus(executionId: string) {
-    return this.queue.queueStatus(executionId);
-  }
+  readonly openInteraction: ExecutionInteractions['openInteraction'];
+  readonly waitInteraction: ExecutionInteractions['waitInteraction'];
+  readonly resolveInteraction: ExecutionInteractions['resolveInteraction'];
+  readonly get: ExecutionRecords['get'];
+  readonly activityForRunner: ExecutionQueue['activityForRunner'];
+  readonly hasActiveExecutions: ExecutionQueue['hasActiveExecutions'];
+  readonly queueStatus: ExecutionQueue['queueStatus'];
 
   constructor(
     private readonly db: AppDatabase,
@@ -67,7 +54,7 @@ export class ExecutionService {
       leaseDurationMs,
       project,
     );
-    this.interactions = new ExecutionInteractions(
+    const interactions = new ExecutionInteractions(
       db,
       this.records,
       this.queue,
@@ -75,6 +62,13 @@ export class ExecutionService {
       createId,
       project,
     );
+    this.openInteraction = interactions.openInteraction.bind(interactions);
+    this.waitInteraction = interactions.waitInteraction.bind(interactions);
+    this.resolveInteraction = interactions.resolveInteraction.bind(interactions);
+    this.get = this.records.get.bind(this.records);
+    this.activityForRunner = this.queue.activityForRunner.bind(this.queue);
+    this.hasActiveExecutions = this.queue.hasActiveExecutions.bind(this.queue);
+    this.queueStatus = this.queue.queueStatus.bind(this.queue);
   }
 
   enqueue(inputValue: EnqueueExecutionInput): Execution {

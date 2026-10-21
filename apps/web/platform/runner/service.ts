@@ -43,20 +43,11 @@ const DEFAULT_SECRETS: RunnerSecrets = {
 };
 
 export class RunnerService {
-  private readonly authorizations: RunnerAuthorizationRequests;
-  readonly createAuthorizationRequest: RunnerAuthorizationRequests['createAuthorizationRequest'] =
-    (...args) => this.authorizations.createAuthorizationRequest(...args);
-  readonly prepareAuthorizationApproval: RunnerAuthorizationRequests['prepareAuthorizationApproval'] =
-    (...args) => this.authorizations.prepareAuthorizationApproval(...args);
-  readonly approveAuthorization: RunnerAuthorizationRequests['approveAuthorization'] = (
-    ...args
-  ) => this.authorizations.approveAuthorization(...args);
-  readonly rejectAuthorization: RunnerAuthorizationRequests['rejectAuthorization'] = (
-    ...args
-  ) => this.authorizations.rejectAuthorization(...args);
-  readonly claimAuthorization: RunnerAuthorizationRequests['claimAuthorization'] = (
-    ...args
-  ) => this.authorizations.claimAuthorization(...args);
+  readonly createAuthorizationRequest: RunnerAuthorizationRequests['createAuthorizationRequest'];
+  readonly prepareAuthorizationApproval: RunnerAuthorizationRequests['prepareAuthorizationApproval'];
+  readonly approveAuthorization: RunnerAuthorizationRequests['approveAuthorization'];
+  readonly rejectAuthorization: RunnerAuthorizationRequests['rejectAuthorization'];
+  readonly claimAuthorization: RunnerAuthorizationRequests['claimAuthorization'];
 
   constructor(
     private readonly db: AppDatabase,
@@ -66,9 +57,16 @@ export class RunnerService {
     private readonly offlineAfterMs: number = DEFAULT_OFFLINE_AFTER_MS,
     private readonly hasActiveExecutions: (runnerId: string) => boolean = () => false,
   ) {
-    this.authorizations = new RunnerAuthorizationRequests(db, now, createId, () =>
+    const authorizations = new RunnerAuthorizationRequests(db, now, createId, () =>
       secrets.credential(),
     );
+    this.createAuthorizationRequest =
+      authorizations.createAuthorizationRequest.bind(authorizations);
+    this.prepareAuthorizationApproval =
+      authorizations.prepareAuthorizationApproval.bind(authorizations);
+    this.approveAuthorization = authorizations.approveAuthorization.bind(authorizations);
+    this.rejectAuthorization = authorizations.rejectAuthorization.bind(authorizations);
+    this.claimAuthorization = authorizations.claimAuthorization.bind(authorizations);
   }
 
   issuePairingCode(
