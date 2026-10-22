@@ -11,6 +11,6 @@ export function runnerService(): RunnerService {
     undefined,
     undefined,
     undefined,
-    (runnerId) => executions.hasActiveExecutions(runnerId),
+    executions.hasActiveExecutions,
   );
 }

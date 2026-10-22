@@ -21,10 +21,6 @@ export function defaultDecline(method: string): JsonValue {
   return { decision: 'decline' };
 }
 
-export function publicInteractionPayload(method: string, value: unknown): JsonValue {
-  return sanitizeExecutionInteractionPayload(method, value);
-}
-
 export function restorePrivateInteractionResolution(
   method: string,
   resolution: JsonValue,
@@ -39,7 +35,7 @@ export function restorePrivateInteractionResolution(
     return resolution;
   const privatePermissions = asRecord(privatePayload).permissions;
   const publicPermissions = asRecord(
-    publicInteractionPayload(method, privatePayload),
+    sanitizeExecutionInteractionPayload(method, privatePayload),
   ).permissions;
   return {
     ...response,

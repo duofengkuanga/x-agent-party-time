@@ -16,13 +16,17 @@ import {
 } from '../workspace';
 
 export class CookingWorkspaceService {
+  readonly canAccessSubmission: SubmissionService['canAccessSubmission'];
+
   constructor(
     private readonly submissions: SubmissionService,
     private readonly bugs: BugService,
     private readonly repairs: RepairService,
     private readonly updates: UpdateService,
     private readonly lifecycle: Pick<LifecycleQueries, 'workspace'>,
-  ) {}
+  ) {
+    this.canAccessSubmission = submissions.canAccessSubmission;
+  }
 
   getWorkspace(userId: string, submissionId: string): CookingWorkspaceSnapshot {
     if (!this.submissions.canAccessSubmission(userId, submissionId))
@@ -42,10 +46,6 @@ export class CookingWorkspaceService {
       visualByBug: deriveBugVisuals(bugs, repairs, updates),
       progressByBug: deriveBugProgress(bugs, repairs, updates, lifecycle),
     });
-  }
-
-  canAccessSubmission(userId: string, submissionId: string): boolean {
-    return this.submissions.canAccessSubmission(userId, submissionId);
   }
 }
 

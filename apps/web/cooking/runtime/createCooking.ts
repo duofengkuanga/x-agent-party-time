@@ -26,8 +26,8 @@ export function createCooking(
   const commands = new ExecutionService(db, now);
   const updates = new UpdateService(db, commands, now, ids?.update, publish);
   const repairs = new RepairService(db, commands, now, ids?.repair, publish, {
-    candidateAvailable: (bugId, at) => updates.recordCandidateAvailable(bugId, at),
-    candidateReconsidered: (bugId) => updates.recalculatePendingDeliveryForBug(bugId),
+    candidateAvailable: updates.recordCandidateAvailable,
+    candidateReconsidered: updates.recalculatePendingDeliveryForBug,
   });
   const lifecycleQueries = new LifecycleQueries(db);
   const lifecycleWrites = new TestSubmissionWriteStore(db, now, randomUUID, publish);
@@ -66,7 +66,7 @@ export function createCooking(
     closeSubmission: closure.closeSubmission.bind(closure),
   } as const;
   const bugs = new BugService(db, now, undefined, publish, {
-    requested: (bugId) => repairs.createInitialExecution(bugId),
+    requested: repairs.createInitialExecution.bind(repairs),
   });
   const submissions = new SubmissionService(db, now, undefined, publish);
   const executions = new ExecutionService(

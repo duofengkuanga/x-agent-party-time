@@ -1,5 +1,8 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { type JsonValue } from '@agent-party-time/execution-contract';
+import {
+  sanitizeExecutionInteractionPayload,
+  type JsonValue,
+} from '@agent-party-time/execution-contract';
 import { XAPT_VERSION } from '../version';
 import type {
   CodexExecutionInput,
@@ -25,7 +28,6 @@ import { asyncQuestions, CodexManualHandoff } from './manualHandoff';
 import {
   isInteractionMethod,
   defaultDecline,
-  publicInteractionPayload,
   restorePrivateInteractionResolution,
 } from './interaction';
 
@@ -412,7 +414,7 @@ export class CodexAppServerExecutor implements CodexExecutor {
     try {
       const result = await active.input.onInteraction({
         method: request.method,
-        payload: publicInteractionPayload(request.method, request.params),
+        payload: sanitizeExecutionInteractionPayload(request.method, request.params),
       });
       this.respond(
         request.id,

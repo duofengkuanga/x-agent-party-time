@@ -6,10 +6,8 @@ import { join } from 'node:path';
 import { XAPT_VERSION } from '../version';
 import { CodexAppServerExecutor } from './appServer';
 import { AppServerInitializer } from './preflight';
-import {
-  publicInteractionPayload,
-  restorePrivateInteractionResolution,
-} from './interaction';
+import { sanitizeExecutionInteractionPayload } from '@agent-party-time/execution-contract';
+import { restorePrivateInteractionResolution } from './interaction';
 
 const createTestDirectory = testDirectories('xapt-fake-codex-');
 
@@ -181,13 +179,16 @@ describe('Codex Interaction 安全投影', () => {
   };
 
   test('命令审批不上传 cwd、线程标识或命令中的绝对路径', () => {
-    const payload = publicInteractionPayload('item/commandExecution/requestApproval', {
-      threadId: 'thread-private',
-      turnId: 'turn-private',
-      cwd: '/Users/example/private-repository',
-      command: 'cat /Users/example/private-repository/secret.txt',
-      reason: '检查 /private/tmp/repair.log',
-    });
+    const payload = sanitizeExecutionInteractionPayload(
+      'item/commandExecution/requestApproval',
+      {
+        threadId: 'thread-private',
+        turnId: 'turn-private',
+        cwd: '/Users/example/private-repository',
+        command: 'cat /Users/example/private-repository/secret.txt',
+        reason: '检查 /private/tmp/repair.log',
+      },
+    );
     expect(payload).toEqual({
       command: 'cat 本机路径已隐藏',
       reason: '检查 本机路径已隐藏',
@@ -198,13 +199,13 @@ describe('Codex Interaction 安全投影', () => {
 
   test('文件与权限审批只保留网页需要的脱敏信息', () => {
     expect(
-      publicInteractionPayload('item/fileChange/requestApproval', {
+      sanitizeExecutionInteractionPayload('item/fileChange/requestApproval', {
         grantRoot: '/Users/example/private-repository',
         reason: '需要修改工作区文件',
       }),
     ).toEqual({ reason: '需要修改工作区文件' });
     expect(
-      publicInteractionPayload('item/permissions/requestApproval', {
+      sanitizeExecutionInteractionPayload('item/permissions/requestApproval', {
         permissions: privatePermissions,
         reason: '运行验证',
       }),
