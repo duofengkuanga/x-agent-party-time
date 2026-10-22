@@ -9,7 +9,6 @@ import {
   type LinkedBugReviewActionResult,
 } from '@/cooking/lifecycle/server/actions';
 import { type RepairActionResult } from '@/cooking/repair/server/actions';
-import type { UpdateBatchView } from '@/cooking/update/contract';
 import { type UpdateActionResult } from '@/cooking/update/server/actions';
 import type { BugView } from '../contract';
 import {
@@ -137,29 +136,11 @@ export function formatDateTime(value: string): string {
   }).format(new Date(value));
 }
 
-export function deploymentLabel(kind: UpdateBatchView['deploymentKind']): string {
-  return kind === 'LOCAL_SCRIPT' ? '本地脚本部署' : '持续集成部署';
-}
-
 export function engineeringTypeLabel(
   engineeringType?: NonNullable<BugView['assignment']>['engineeringType'],
 ): string {
   if (!engineeringType) return '待分配';
   return engineeringType === 'FRONTEND' ? '前端' : '后端';
-}
-
-export function updateAttemptLabel(
-  attempt: Extract<UpdateBatchView['timeline'][number], { kind: 'UPDATE_ATTEMPT' }>,
-): string {
-  if (attempt.result?.outcome === 'COMPLETED')
-    return `第 ${attempt.attempt} 轮统一更新已完成`;
-  if (attempt.result?.outcome === 'PUSHED')
-    return `第 ${attempt.attempt} 轮已 Push，等待外部结果`;
-  if (attempt.result?.outcome === 'FAILED')
-    return `第 ${attempt.attempt} 轮统一更新未完成`;
-  if (attempt.result?.outcome === 'HANDED_OFF')
-    return `第 ${attempt.attempt} 轮统一更新等待人工确认`;
-  return `第 ${attempt.attempt} 轮统一更新进行中`;
 }
 
 export function validationLabel(status: 'PASSED' | 'FAILED' | 'SKIPPED'): string {

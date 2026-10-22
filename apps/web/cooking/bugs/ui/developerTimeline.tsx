@@ -6,7 +6,7 @@ import {
   type RunWorkspaceAction,
 } from './repairTimeline';
 import { ExternalUpdateReport, UpdateAttemptDetails } from './updateDetails';
-import { ProgressAttachments } from './progressTimeline';
+import { ProgressAttachments } from './attachments';
 import { formatDateTime } from './boardModel';
 import { ExecutionRoundTabs } from './executionRound';
 

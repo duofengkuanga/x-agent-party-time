@@ -19,11 +19,6 @@
   padding-bottom: 0;
 }
 
-.collab-update-batch-progress > header p {
-  color: var(--muted);
-  margin-top: 5px;
-}
-
 .collab-update-scope {
   margin-top: 1px;
 }
@@ -43,65 +38,6 @@
 .collab-update-scope__entries > li {
   font-size: 9px;
   line-height: 1.55;
-}
-
-.collab-update-timeline
-  > li[data-node-kind='BATCH_FORMED']
-  > .collab-repair-timeline__mark {
-  border-color: var(--blue);
-}
-
-.collab-update-timeline
-  > li[data-node-kind='UPDATE_ATTEMPT']
-  > .collab-repair-timeline__mark {
-  border-color: var(--accent);
-}
-
-.collab-update-timeline
-  .collab-repair-timeline__mark[data-outcome='SUCCEEDED'] {
-  border-color: var(--success);
-}
-
-.collab-update-timeline .collab-repair-timeline__mark[data-outcome='FAILED'] {
-  border-color: var(--danger);
-}
-
-.collab-update-timeline .collab-structured-failure {
-  background: color-mix(in srgb, var(--paper), var(--danger) 4%);
-  border: 1px solid color-mix(in srgb, var(--danger), var(--line) 42%);
-  border-left: 3px solid var(--danger);
-  display: grid;
-  gap: 7px;
-  margin-top: 2px;
-  padding: 10px 12px;
-}
-
-.collab-update-timeline .collab-structured-failure > header {
-  align-items: baseline;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px 10px;
-  justify-content: flex-start;
-}
-
-.collab-update-timeline .collab-structured-failure > header > span,
-.collab-update-timeline .collab-structured-failure > p > span {
-  color: var(--danger);
-  font-size: 8px;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-}
-
-.collab-update-timeline .collab-structured-failure > header > strong {
-  color: var(--ink);
-  font-size: 10px;
-}
-
-.collab-update-timeline .collab-structured-failure > p {
-  align-items: baseline;
-  display: grid;
-  gap: 6px;
-  grid-template-columns: auto minmax(0, 1fr);
 }
 
 .collab-update-attempt-results {
@@ -150,29 +86,6 @@
   border-left: 1px solid var(--strong-line);
   gap: 7px;
   padding-left: 17px;
-}
-
-.collab-update-result-list {
-  display: grid;
-  gap: 7px;
-}
-
-.collab-update-result-list h4 {
-  color: var(--muted);
-  font-size: 9px;
-  margin: 0;
-}
-
-.collab-update-result-list ul {
-  display: grid;
-  gap: 6px;
-  margin: 0;
-  padding-left: 18px;
-}
-
-.collab-update-result-list li {
-  font-size: 9px;
-  line-height: 1.6;
 }
 
 .collab-technical-details {

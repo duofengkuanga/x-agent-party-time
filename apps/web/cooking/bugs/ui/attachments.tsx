@@ -366,3 +366,20 @@ export function AttachmentLink({
     />
   );
 }
+
+export function ProgressAttachments({
+  attachments,
+}: {
+  attachments: StoredAttachment[];
+}) {
+  if (!attachments.length) return null;
+  return (
+    <ul className="collab-attachments collab-bug-attachments">
+      {attachments.map((attachment) => (
+        <li key={attachment.id}>
+          <AttachmentLink attachment={attachment} />
+        </li>
+      ))}
+    </ul>
+  );
+}

@@ -337,82 +337,8 @@
   gap: 4px;
 }
 
-.collab-repair-timeline {
-  display: grid;
-  list-style: none;
-  margin: 0;
-  padding: 0 0 0 22px;
-}
-
-.collab-repair-timeline > li {
-  border-left: 1px solid var(--strong-line);
-  padding: 0 0 24px 22px;
-  position: relative;
-}
-
-.collab-repair-timeline > li:last-child {
-  border-left-color: transparent;
-  padding-bottom: 0;
-}
-
-.collab-repair-timeline__mark {
-  background: var(--paper);
-  border: 2px solid var(--ink);
-  height: 11px;
-  left: -6px;
-  position: absolute;
-  top: 3px;
-  transform: rotate(45deg);
-  width: 11px;
-}
-
-.collab-repair-timeline
-  > li[data-node-kind='REPAIR_ATTEMPT']
-  .collab-repair-timeline__mark {
-  border-color: var(--accent);
-}
-
-.collab-repair-timeline
-  > li[data-node-kind='UPDATE_BATCH']
-  .collab-repair-timeline__mark {
-  border-color: var(--blue);
-}
-
-.collab-repair-timeline
-  > li[data-node-kind='VERIFICATION']
-  .collab-repair-timeline__mark {
-  border-color: var(--warning);
-}
-
-.collab-repair-timeline
-  > li[data-node-kind='REOPEN']
-  .collab-repair-timeline__mark {
-  border-color: var(--accent);
-}
-
-.collab-repair-timeline
-  > li[data-node-kind='CANCELLED']
-  .collab-repair-timeline__mark {
-  border-color: var(--danger);
-}
-
-.collab-repair-timeline
-  > li[data-node-kind='RESTORED']
-  .collab-repair-timeline__mark {
-  border-color: var(--success);
-}
-
 .collab-progress-visual {
   justify-self: start;
-}
-
-.collab-repair-timeline article {
-  display: grid;
-  gap: 13px;
-}
-
-.collab-progress-timeline[data-summary-only='true'] .collab-progress-summary {
-  gap: 13px;
 }
 
 .collab-form .collab-joint-choice {
@@ -437,30 +363,6 @@
   overflow-wrap: anywhere;
 }
 
-.collab-progress-timeline[data-summary-only='true']
-  .collab-repair-timeline
-  > li {
-  padding-bottom: 18px;
-}
-
-.collab-repair-timeline article > header {
-  align-items: baseline;
-  display: flex;
-  gap: 18px;
-  justify-content: space-between;
-}
-
-.collab-repair-timeline article > header strong {
-  font-size: 11px;
-}
-
-.collab-repair-timeline time {
-  color: var(--faint);
-  flex: 0 0 auto;
-  font-size: 8px;
-}
-
-.collab-repair-result-list,
 .collab-repair-validations {
   border-left: 2px solid var(--line);
   display: grid;
@@ -486,16 +388,13 @@
   white-space: pre-wrap;
 }
 
-.collab-repair-result-list ul,
-.collab-repair-validations ul,
-.collab-repair-timeline details ol {
+.collab-repair-validations ul {
   display: grid;
   gap: 6px;
   margin: 0;
   padding-left: 18px;
 }
 
-.collab-repair-result-list li,
 .collab-repair-validations li {
   font-size: 9px;
   line-height: 1.6;
@@ -534,23 +433,6 @@
 .collab-repair-commit-count {
   color: var(--accent-dark);
   font-weight: 900;
-}
-
-.collab-repair-timeline details {
-  border-top: 1px dashed var(--line);
-  padding-top: 10px;
-}
-
-.collab-repair-timeline summary {
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 9px;
-}
-
-.collab-repair-timeline details p,
-.collab-repair-timeline details code,
-.collab-repair-timeline details ol {
-  margin-top: 9px;
 }
 
 .collab-session-overview {

@@ -8,11 +8,11 @@ import {
   synchronizeUpdateSessionAction,
 } from '@/cooking/update/server/actions';
 import { createClientId } from '@/cooking/shared/ui/clientId';
-import { AttachmentPicker } from './attachments';
+import { AttachmentPicker, ProgressAttachments } from './attachments';
 import { useWorkspaceMutation } from './useWorkspaceMutation';
 import { ManualHandoff } from './manualHandoff';
 import { CookingInteractionRecord } from './interactionRecord';
-import { ProgressAttachments } from './progressTimeline';
+
 import {
   ExecutionIdentity,
   ExecutionRound,
