@@ -13,28 +13,20 @@ import {
   type CleanupMutationResult,
   type LifecycleCommandInput,
   type ResolveCleanupInteractionInput,
+  CleanupExecutionResultSchema,
 } from '../contract';
-import { LifecycleQueries } from './lifecycleQueries';
-import type { CleanupSourceRow } from './lifecycleQueries';
+import { type LifecycleQueries, type CleanupSourceRow } from './lifecycleQueries';
 import { isTerminal } from '@/cooking/shared/server/executionState';
-import {
-  interpretCleanup,
-  isCleanupExecution,
-  parseWorkspaceKeys,
-  staleLifecycle,
-} from './results';
 
 export class CleanupService {
-  private readonly queries: LifecycleQueries;
   constructor(
     private readonly db: AppDatabase,
     private readonly executions: ExecutionService,
+    private readonly queries: LifecycleQueries,
     private readonly writes: TestSubmissionWriteStore,
     private readonly now: () => Date,
     private readonly createId: () => string,
-  ) {
-    this.queries = new LifecycleQueries(db);
-  }
+  ) {}
   retryCleanup(
     actorUserId: string,
     cleanupId: string,
@@ -50,7 +42,8 @@ export class CleanupService {
       submissionId: () => this.queries.cleanupSource(cleanupId).submission_id,
       perform: () => {
         const cleanup = this.requireCleanupResponsible(actorUserId, cleanupId);
-        if (cleanup.version !== input.expectedVersion) throw staleLifecycle('清理任务');
+        if (cleanup.version !== input.expectedVersion)
+          throw new PlatformError('STALE_STATE', '清理任务已变化，请刷新后重试');
         if (cleanup.state !== 'FAILED')
           throw new PlatformError('INVALID_TRANSITION', '只有失败清理可以重试');
         const latest = this.queries.latestCleanupAttempt(cleanupId);
@@ -92,7 +85,8 @@ export class CleanupService {
              WHERE id = ? AND state = 'FAILED' AND version = ?`,
           [execution.id, now, cleanupId, input.expectedVersion],
         );
-        if (update.changes !== 1) throw staleLifecycle('清理任务');
+        if (update.changes !== 1)
+          throw new PlatformError('STALE_STATE', '清理任务已变化，请刷新后重试');
         const revision = this.writes.bumpRevision(cleanup.submission_id, now);
         return {
           result: {
@@ -131,7 +125,8 @@ export class CleanupService {
       submissionId: () => this.queries.cleanupSource(source.cleanup_id).submission_id,
       perform: () => {
         const cleanup = this.requireCleanupResponsible(actorUserId, source.cleanup_id);
-        if (cleanup.version !== input.expectedVersion) throw staleLifecycle('清理任务');
+        if (cleanup.version !== input.expectedVersion)
+          throw new PlatformError('STALE_STATE', '清理任务已变化，请刷新后重试');
         if (
           cleanup.state !== 'RUNNING' ||
           cleanup.active_execution_id !== source.execution_id
@@ -146,7 +141,8 @@ export class CleanupService {
                AND active_execution_id = ?`,
           [now, cleanup.id, input.expectedVersion, source.execution_id],
         );
-        if (update.changes !== 1) throw staleLifecycle('清理任务');
+        if (update.changes !== 1)
+          throw new PlatformError('STALE_STATE', '清理任务已变化，请刷新后重试');
         const revision = this.writes.bumpRevision(cleanup.submission_id, now);
         return {
           result: {
@@ -271,7 +267,31 @@ export class CleanupService {
     if (isCleanupExecution(execution)) this.publishExecution(execution.id);
   }
 
-  createCleanup(input: {
+  /** Runs inside the submission closure transaction. */
+  createForClosedSubmission(submissionId: string, now: string): string[] {
+    const items = this.db.all<{ id: string }>(
+      `SELECT id FROM cooking_submission_item
+         WHERE submission_id = ? ORDER BY position`,
+      submissionId,
+    );
+    const executionIds: string[] = [];
+    for (const item of items) {
+      const workspaceKeys = this.queries.cleanupScopeForItem(item.id);
+      if (!workspaceKeys.length) continue;
+      const cleanup = this.createCleanup({
+        reason: 'SUBMISSION_CLOSED',
+        subjectId: submissionId,
+        submissionId,
+        submissionItemId: item.id,
+        workspaceKeys,
+        now,
+      });
+      executionIds.push(cleanup.executionId);
+    }
+    return executionIds;
+  }
+
+  private createCleanup(input: {
     reason: 'SUBMISSION_CLOSED';
     subjectId: string;
     submissionId: string;
@@ -352,4 +372,55 @@ export class CleanupService {
     ) as { submission_id: string; workspace_revision: number } | undefined;
     if (row) this.writes.publishInvalidation(row.submission_id, row.workspace_revision);
   }
+}
+
+function isCleanupExecution(execution: Execution): boolean {
+  return execution.owner.namespace === 'cooking' && execution.owner.kind === 'CLEANUP';
+}
+
+function parseWorkspaceKeys(value: string): string[] {
+  const parsed: unknown = JSON.parse(value);
+  if (
+    !Array.isArray(parsed) ||
+    parsed.length === 0 ||
+    parsed.some((item) => typeof item !== 'string' || !item.trim())
+  )
+    throw new PlatformError('INVALID_TRANSITION', '清理任务缺少有效的逻辑工作区范围');
+  return [...new Set(parsed)];
+}
+
+function interpretCleanup(execution: Execution): {
+  kind: 'COMPLETED' | 'FAILED';
+  outcome: unknown;
+} {
+  if (execution.outcome?.kind === 'SUCCEEDED') {
+    const parsed = CleanupExecutionResultSchema.safeParse(execution.outcome.result);
+    if (parsed.success)
+      return {
+        kind: parsed.data.outcome,
+        outcome: parsed.data,
+      };
+    return {
+      kind: 'FAILED',
+      outcome: {
+        outcome: 'FAILED',
+        summary: '清理结果格式无效',
+        technicalFailure: 'RESULT_SCHEMA_INVALID',
+      },
+    };
+  }
+  return {
+    kind: 'FAILED',
+    outcome: {
+      outcome: 'FAILED',
+      summary:
+        execution.outcome?.kind === 'CANCELLED'
+          ? '清理执行已停止，可由工程负责人重试。'
+          : '清理执行未完成，可由工程负责人重试。',
+      technicalFailure:
+        execution.outcome?.kind === 'FAILED'
+          ? execution.outcome.failure.code
+          : execution.outcome?.kind,
+    },
+  };
 }

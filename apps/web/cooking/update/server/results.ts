@@ -1,6 +1,5 @@
 import type { Execution } from '@agent-party-time/execution-contract';
 import { PlatformError } from '@/platform/errors';
-import { parseStoredManualOperations } from '@/cooking/shared/server/resultData';
 import type {
   CookingInteractionView,
   CookingVisualPresentation,
@@ -8,10 +7,6 @@ import type {
 import { interactionVisual, queueVisual } from '@/cooking/shared/server/executionVisual';
 import type { BatchRow, AttemptRow } from './updateQueries';
 import { UpdateHandoffUseSchema } from '../contract';
-
-export function parseManualOperations(value: string) {
-  return parseStoredManualOperations(value, '更新批次的人工操作记录无效');
-}
 
 export function projectUpdateAttemptResult(outcomeJson: string, technical: boolean) {
   const outcome = JSON.parse(outcomeJson) as Record<string, unknown>;

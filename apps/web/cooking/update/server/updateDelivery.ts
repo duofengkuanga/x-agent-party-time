@@ -22,7 +22,7 @@ import {
   LocalScriptUpdateOutputJsonSchema,
 } from '../contract';
 import type { BatchRow, ItemSourceRow, UpdateQueries } from './updateQueries';
-import { parseCommits } from '@/cooking/shared/server/resultData';
+import { parseCommits } from '@/cooking/repair/server/results';
 
 import { staleBatch } from './results';
 import { freezeRepairHandoffs } from './repairHandoffs';

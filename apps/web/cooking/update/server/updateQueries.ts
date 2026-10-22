@@ -1,6 +1,9 @@
 import { DeploymentMethodSchema } from '@/cooking/engineering/contract';
 import { requireSubmissionAccess } from '@/cooking/shared/server/access';
-import { parseCommits } from '@/cooking/shared/server/resultData';
+import {
+  parseCommits,
+  parseStoredManualOperations,
+} from '@/cooking/repair/server/results';
 import {
   projectCookingInteraction,
   type CookingInteractionRow,
@@ -17,12 +20,7 @@ import {
   type UpdateBatchView,
   type UpdateWorkspaceProjection,
 } from '../contract';
-import {
-  batchStateLabel,
-  parseManualOperations,
-  projectUpdateAttemptResult,
-  updateVisual,
-} from './results';
+import { batchStateLabel, projectUpdateAttemptResult, updateVisual } from './results';
 import type { Execution } from '@agent-party-time/execution-contract';
 
 export class UpdateQueries {
@@ -87,9 +85,10 @@ export class UpdateQueries {
     const entries = this.batchEntries(batchId);
     const deployment = DeploymentMethodSchema.parse(JSON.parse(batch.deployment_json));
     const hasManualDatabaseOperation = entries.some((entry) =>
-      parseManualOperations(entry.manual_operations_json).some(
-        (operation) => operation.kind === 'DATABASE_SQL',
-      ),
+      parseStoredManualOperations(
+        entry.manual_operations_json,
+        '更新批次的人工操作记录无效',
+      ).some((operation) => operation.kind === 'DATABASE_SQL'),
     );
     const projectedInteractions = this.interactionsForBatch(batchId).map((row) => ({
       executionId: row.execution_id,

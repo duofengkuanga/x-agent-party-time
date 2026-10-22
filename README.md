@@ -299,7 +299,11 @@ Cooking 的职责归属：
 
 修复、更新和生命周期的 SQL 行类型分别与查询放在 `repairQueries.ts`、`updateQueries.ts` 和 `lifecycleQueries.ts`；`updateDelivery.ts` 保存批次冻结和执行准备，以及它返回的 `FrozenBatch`。读取、状态变更和 Execution 投影各自保留明确职责，避免把整个业务堆进一个文件。
 
-`shared/server/writeStore.ts` 负责事务、幂等结果校验和审计编排；`auditEvent.ts` 保留仅依赖数据库的审计落库函数，供执行投影等调用方使用。将二者合并会让这些调用方提前加载业务 Schema，已在生产构建中触发初始化错误，因此保留这个低依赖 Interface。`executionState.ts` 处理执行状态、Task Skill Binding、执行事件详情和无效结果标记；`resultData.ts` 解码已保存的提交与手动操作。只有被多个业务实际复用的行为才进入 `shared/`。
+`lifecycle/server/submissionClosure.ts` 负责关闭前的业务校验、关闭状态、环境释放和通知；`cleanupService.ts` 负责选择清理范围、创建任务、重试及执行结果投影。关闭事务调用 `createForClosedSubmission`，只传入提测单与时间，不拼装各工程的工作区范围；无资源的提测项不创建清理任务。清理结果解析是 Cleanup 的内部实现，清理展示标签与 `lifecycleQueries.ts` 的视图读取放在一起；装配入口向命令与清理共用同一份查询实例。
+
+`repair/server/results.ts` 拥有修复状态标签、结果投影及已保存候选提交和手动操作的解析。Update 冻结、读取 Repair 产生的数据时直接复用这些解析，不经 `shared/` 转接或再包装一层函数。跨业务使用并不改变数据的拥有者。
+
+`shared/server/writeStore.ts` 负责事务、幂等结果校验和审计编排；`auditEvent.ts` 保留仅依赖数据库的审计落库函数，供执行投影等调用方使用。将二者合并会让这些调用方提前加载业务 Schema，已在生产构建中触发初始化错误，因此保留这个低依赖 Interface。`executionState.ts` 处理执行状态、Task Skill Binding、执行事件详情和无效结果标记；交互脱敏与角色投影、通用执行展示和 Server Action 传输也由多个业务共用。`shared/` 只保存含义一致且没有单一业务拥有者的共用能力。
 
 `runtime/createCooking.ts` 是生产和集成测试共同使用的执行链装配入口，统一连接修复、更新、生命周期和工作区读取。Platform 发出事务内 APPLY 与提交后 AFTER 事件，Cooking 根据归属选择投影；Session Synchronization 先确认 Repair 或 Update 归属。HTTP 路由和协议测试共用 `platform/runner/router.ts`，业务装配在 `runtime/runnerHttp.ts`。
 

@@ -1,6 +1,12 @@
 import { requireSubmissionAccess } from '@/cooking/shared/server/access';
-import { repairStateLabel } from '@/cooking/shared/executionLabels';
-import { parseCommits } from '@/cooking/shared/server/resultData';
+import {
+  repairStateLabel,
+  parseCommits,
+  isSynchronizableAttempt,
+  projectAttemptResult,
+  repairVisual,
+} from './results';
+
 import {
   projectCookingInteraction,
   type CookingInteractionRow,
@@ -14,7 +20,6 @@ import {
   type BugRepairView,
   type RepairWorkspaceProjection,
 } from '../contract';
-import { isSynchronizableAttempt, projectAttemptResult, repairVisual } from './results';
 import type { Execution } from '@agent-party-time/execution-contract';
 import type { Bug } from '@/cooking/bugs/contract';
 

@@ -11,13 +11,10 @@ import {
   type LifecycleCommandInput,
 } from '../contract';
 import type { CleanupService } from './cleanupService';
-import type { LifecycleQueries } from './lifecycleQueries';
-import { staleLifecycle } from './results';
 
 export class SubmissionClosure {
   constructor(
     private readonly db: AppDatabase,
-    private readonly queries: LifecycleQueries,
     private readonly cleanup: CleanupService,
     private readonly writes: TestSubmissionWriteStore,
     private readonly now: () => Date,
@@ -39,7 +36,8 @@ export class SubmissionClosure {
       submissionId: (mutation) => mutation.submissionId,
       perform: () => {
         const submission = this.requireSubmissionTester(actorUserId, submissionId);
-        if (submission.version !== input.expectedVersion) throw staleLifecycle('提测单');
+        if (submission.version !== input.expectedVersion)
+          throw new PlatformError('STALE_STATE', '提测单已变化，请刷新后重试');
         const nonTerminal = this.db.get(
           `SELECT COUNT(*) count FROM cooking_bug
              WHERE submission_id = ? AND stage NOT IN ('DONE', 'CANCELLED')`,
@@ -72,7 +70,8 @@ export class SubmissionClosure {
             `,
           [now, now, submissionId, input.expectedVersion],
         );
-        if (update.changes !== 1) throw staleLifecycle('提测单');
+        if (update.changes !== 1)
+          throw new PlatformError('STALE_STATE', '提测单已变化，请刷新后重试');
         const revision = this.writes.bumpRevision(submissionId, now);
         const heldEnvironments = this.db.all<{ environment_id: string }>(
           'SELECT environment_id FROM cooking_submission_environment_lock WHERE submission_id = ?',
@@ -91,25 +90,10 @@ export class SubmissionClosure {
           'DELETE FROM cooking_submission_environment_lock WHERE submission_id = ?',
           [submissionId],
         );
-        const items = this.db.all<{ id: string }>(
-          `SELECT id FROM cooking_submission_item
-             WHERE submission_id = ? ORDER BY position`,
+        const cleanupExecutionIds = this.cleanup.createForClosedSubmission(
           submissionId,
+          now,
         );
-        const cleanupExecutionIds: string[] = [];
-        for (const item of items) {
-          const workspaceKeys = this.queries.cleanupScopeForItem(item.id);
-          if (!workspaceKeys.length) continue;
-          const cleanup = this.cleanup.createCleanup({
-            reason: 'SUBMISSION_CLOSED',
-            subjectId: submissionId,
-            submissionId,
-            submissionItemId: item.id,
-            workspaceKeys,
-            now,
-          });
-          cleanupExecutionIds.push(cleanup.executionId);
-        }
         return {
           result: {
             submissionId,

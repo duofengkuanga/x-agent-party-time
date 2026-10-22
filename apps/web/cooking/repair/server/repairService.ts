@@ -26,11 +26,14 @@ import {
   type ResolveRepairInteractionInput,
   type SynchronizeRepairSessionInput,
 } from '../contract';
-import type { RepairSourceRow } from './repairQueries';
+import { type RepairSourceRow, RepairQueries } from './repairQueries';
 import { RepairProjection } from './repairProjection';
-import { RepairQueries } from './repairQueries';
-import { parseCommits } from '@/cooking/shared/server/resultData';
-import { isFailedAttemptOutcome, isSynchronizableAttempt, staleRepair } from './results';
+import {
+  parseCommits,
+  isFailedAttemptOutcome,
+  isSynchronizableAttempt,
+  staleRepair,
+} from './results';
 import { REPAIR_HANDOFF_TEXT_ASSERTION } from '../handoff';
 
 const REPAIR_RESULT_ASSERTIONS: ExecutionResultAssertion[] = [

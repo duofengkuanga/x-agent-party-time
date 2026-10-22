@@ -39,14 +39,15 @@ export function createCooking(
     now,
     randomUUID,
   );
-  const cleanup = new CleanupService(db, commands, lifecycleWrites, now, randomUUID);
-  const closure = new SubmissionClosure(
+  const cleanup = new CleanupService(
     db,
+    commands,
     lifecycleQueries,
-    cleanup,
     lifecycleWrites,
     now,
+    randomUUID,
   );
+  const closure = new SubmissionClosure(db, cleanup, lifecycleWrites, now);
   const lifecycle = {
     verifyBug: bugCommands.verifyBug.bind(bugCommands),
     reopenBug: bugCommands.reopenBug.bind(bugCommands),

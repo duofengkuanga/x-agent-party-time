@@ -26,7 +26,6 @@ import {
 } from '../contract';
 import { LifecycleQueries } from './lifecycleQueries';
 import type { BugSourceRow } from './lifecycleQueries';
-import { staleLifecycle } from './results';
 
 const STORED_BUG_TRANSITIONS = {
   cancel: {
@@ -278,7 +277,8 @@ export class BugLifecycleCommands {
               bug.version,
             ],
           );
-          if (update.changes !== 1) throw staleLifecycle('缺陷');
+          if (update.changes !== 1)
+            throw new PlatformError('STALE_STATE', '缺陷已变化，请刷新后重试');
           insertAuditEvent(this.db, {
             id: this.createId(),
             projectId: bug.project_id,
@@ -537,7 +537,8 @@ export class BugLifecycleCommands {
           [transition.to, now, bugId, input.expectedVersion, transition.from],
         );
         if (update.changes !== 1) {
-          if (kind === 'cancel') throw staleLifecycle('缺陷');
+          if (kind === 'cancel')
+            throw new PlatformError('STALE_STATE', '缺陷已变化，请刷新后重试');
           throw new PlatformError('INVALID_TRANSITION', '当前缺陷不能恢复到待修复');
         }
         this.recordBugTransition(bugId, transition.event, actorUserId, now);
@@ -583,7 +584,8 @@ export class BugLifecycleCommands {
             input.expectedVersion,
           ],
         );
-        if (update.changes !== 1) throw staleLifecycle('缺陷');
+        if (update.changes !== 1)
+          throw new PlatformError('STALE_STATE', '缺陷已变化，请刷新后重试');
         const revision = this.writes.bumpRevision(source.submission_id, now);
         return {
           revision: revision,
@@ -659,7 +661,8 @@ export class BugLifecycleCommands {
          WHERE id = ? AND version = ? AND stage = ?`,
       [now, source.id, source.version, fromStage],
     );
-    if (update.changes !== 1) throw staleLifecycle('缺陷');
+    if (update.changes !== 1)
+      throw new PlatformError('STALE_STATE', '缺陷已变化，请刷新后重试');
     const executionId = this.repairs.createContinuationExecution(
       source.id,
       context,
@@ -696,7 +699,8 @@ export class BugLifecycleCommands {
   }
 
   private requireBugVersion(source: BugSourceRow, expectedVersion: number): void {
-    if (source.version !== expectedVersion) throw staleLifecycle('缺陷');
+    if (source.version !== expectedVersion)
+      throw new PlatformError('STALE_STATE', '缺陷已变化，请刷新后重试');
   }
 
   private updateBugStage(bugId: string, from: string, to: string, now: string): void {
@@ -706,7 +710,8 @@ export class BugLifecycleCommands {
          WHERE id = ? AND stage = ?`,
       [to, now, bugId, from],
     );
-    if (update.changes !== 1) throw staleLifecycle('缺陷');
+    if (update.changes !== 1)
+      throw new PlatformError('STALE_STATE', '缺陷已变化，请刷新后重试');
   }
 
   private nextVerificationRound(bugId: string): number {

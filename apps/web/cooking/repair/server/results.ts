@@ -1,12 +1,11 @@
-import type { Execution } from '@agent-party-time/execution-contract';
+import type { Execution, ExecutionState } from '@agent-party-time/execution-contract';
 import { PlatformError } from '@/platform/errors';
-import { parseStoredManualOperations } from '@/cooking/shared/server/resultData';
 import type {
   CookingInteractionView,
   CookingVisualPresentation,
 } from '@/cooking/shared/contract';
 import { interactionVisual, queueVisual } from '@/cooking/shared/server/executionVisual';
-import { RepairExecutionResultSchema } from '../contract';
+import { RepairExecutionResultSchema, ManualOperationsSchema } from '../contract';
 import type { AttemptRow } from './repairQueries';
 
 export function formatRepairContractIssues(
@@ -101,17 +100,42 @@ export function isSynchronizableAttempt(outcomeJson: string | null): boolean {
   return outcome === 'FAILED' || outcome === 'HANDED_OFF';
 }
 
-export function parseManualOperations(value: string): Array<{
-  kind: 'DATABASE_SQL';
-  paths: string[];
-}> {
-  return parseStoredManualOperations(value, '待执行的人工操作记录无效');
-}
-
 export function isRepairExecution(execution: Execution): boolean {
   return execution.owner.namespace === 'cooking' && execution.owner.kind === 'BUG_REPAIR';
 }
 
 export function staleRepair(): PlatformError {
   return new PlatformError('STALE_STATE', '缺陷已更新，请刷新后重试');
+}
+
+const REPAIR_STATE_LABELS: Record<ExecutionState, string> = {
+  QUEUED: '等待 Agent',
+  CLAIMED: '正在准备修复',
+  RUNNING: '正在修复',
+  WAITING_FOR_INTERACTION: '等待工程负责人处理',
+  WAITING_TO_RESUME: '等待继续',
+  CANCEL_REQUESTED: '正在停止',
+  SUCCEEDED: '修复已完成',
+  FAILED: '修复未完成',
+  CANCELLED: '修复已停止',
+  HANDED_OFF: '等待人工确认',
+};
+
+export function repairStateLabel(state: ExecutionState): string {
+  return REPAIR_STATE_LABELS[state];
+}
+
+export function parseCommits(value: string): string[] {
+  const parsed = JSON.parse(value);
+  if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== 'string'))
+    throw new PlatformError('INTERNAL_ERROR', '待提交记录无效');
+  return parsed;
+}
+
+export function parseStoredManualOperations(value: string, message: string) {
+  try {
+    return ManualOperationsSchema.parse(JSON.parse(value));
+  } catch {
+    throw new PlatformError('INTERNAL_ERROR', message);
+  }
 }

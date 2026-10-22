@@ -14,7 +14,6 @@ import {
   type CleanupInteractionView,
   type LifecycleWorkspaceProjection,
 } from '../contract';
-import { cleanupStateLabel } from './results';
 
 export class LifecycleQueries {
   constructor(private readonly db: AppDatabase) {}
@@ -539,3 +538,12 @@ export type CleanupAttemptRow = {
   state: Execution['state'];
   session_id: string | null;
 };
+
+function cleanupStateLabel(state: CleanupSourceRow['state']): string {
+  return {
+    READY: '等待 Agent 清理',
+    RUNNING: '正在清理本机临时资源',
+    FAILED: '资源清理未完成，不影响业务终态',
+    COMPLETED: '本机临时资源已清理',
+  }[state];
+}

@@ -26,7 +26,7 @@ describe('生命周期', () => {
     await completeNextRepair(fixture, 'repair-local', [
       '1111111111111111111111111111111111111111',
     ]);
-    await completeUpdate(fixture, fixture.items[0]!.id, {
+    const firstLocalBatch = await completeUpdate(fixture, fixture.items[0]!.id, {
       outcome: 'COMPLETED',
       summary: '本地部署完成',
     });
@@ -104,7 +104,7 @@ describe('生命周期', () => {
     await completeClaimedRepair(fixture, failed.executionId!, 'repair-local', [
       '3333333333333333333333333333333333333333',
     ]);
-    await completeUpdate(fixture, fixture.items[0]!.id, {
+    const secondLocalBatch = await completeUpdate(fixture, fixture.items[0]!.id, {
       outcome: 'COMPLETED',
       summary: '再次部署完成',
     });
@@ -124,16 +124,42 @@ describe('生命周期', () => {
     expect(currentBug(fixture.database, ciBug.id).stage).toBe('DONE');
 
     const beforeClose = submissionRow(fixture.database, fixture.submission.id);
+    const closeInput = mutation(beforeClose.version);
     const closed = fixture.lifecycle.closeSubmission(
       fixture.users.tester.id,
       fixture.submission.id,
-      {
-        ...mutation(beforeClose.version),
-      },
+      closeInput,
     );
     expect(closed.cleanupExecutionIds).toHaveLength(2);
     for (const executionId of closed.cleanupExecutionIds)
       expect(fixture.executions.get(executionId).approvalPolicy).toBe('never');
+    const expectedScopes = [
+      [
+        `bug-repair:${localBug.id}`,
+        `update-batch:${firstLocalBatch.id}`,
+        `update-batch:${secondLocalBatch.id}`,
+      ],
+      [`bug-repair:${ciBug.id}`, `update-batch:${ciBatch.id}`],
+    ];
+    closed.cleanupExecutionIds.forEach((executionId, index) => {
+      const workspace = fixture.executions.get(executionId).workspace;
+      if (workspace.isolation !== 'CLEANUP_WORKTREES')
+        throw new Error('关闭提测应创建工作区清理执行');
+      expect([...workspace.workspaceKeys].sort()).toEqual(expectedScopes[index]!.sort());
+    });
+    const eventsAfterClose = fixture.events.length;
+    expect(
+      fixture.lifecycle.closeSubmission(
+        fixture.users.tester.id,
+        fixture.submission.id,
+        closeInput,
+      ),
+    ).toEqual(closed);
+    expect(fixture.events).toHaveLength(eventsAfterClose);
+    expect(
+      fixture.lifecycle.workspace(fixture.users.developer.id, fixture.submission.id)
+        .cleanups,
+    ).toHaveLength(2);
     expect(submissionRow(fixture.database, fixture.submission.id)).toMatchObject({
       status: 'CLOSED',
       version: beforeClose.version + 1,
@@ -296,6 +322,7 @@ describe('生命周期', () => {
     expect(fixture.executions.get(retried.executionId)).toMatchObject({
       approvalPolicy: 'never',
       codexTurn: null,
+      workspace: claimedCleanup.workspace,
     });
     await completeCleanup(fixture, retried.executionId, 'cleanup-session', {
       outcome: 'COMPLETED',
@@ -316,5 +343,23 @@ describe('生命周期', () => {
         expect.objectContaining({ kind: 'EXTERNAL_DEPLOYMENT' }),
       ]),
     );
+  });
+
+  test('没有修复或更新资源的提测项关闭时不创建清理任务', async () => {
+    const fixture = await setup();
+    const closed = fixture.lifecycle.closeSubmission(
+      fixture.users.tester.id,
+      fixture.submission.id,
+      mutation(fixture.submission.version),
+    );
+    expect(closed.cleanupExecutionIds).toEqual([]);
+    expect(
+      fixture.lifecycle.workspace(fixture.users.developer.id, fixture.submission.id)
+        .cleanups,
+    ).toEqual([]);
+    expect(
+      fixture.submissions.getWorkspace(fixture.users.tester.id, fixture.submission.id)
+        .submission.submission.status,
+    ).toBe('CLOSED');
   });
 });

@@ -3,22 +3,21 @@ import {
   asDetails,
   markInvalidExecutionResult,
 } from '@/cooking/shared/server/executionState';
-import { parseCommits } from '@/cooking/shared/server/resultData';
+import {
+  parseCommits,
+  formatRepairContractIssues,
+  isSynchronizableAttempt,
+  isRepairExecution,
+  parseStoredManualOperations,
+} from './results';
 import { insertAuditEvent } from '@/cooking/shared/server/auditEvent';
 
 import type { AppDatabase } from '@/platform/database';
 import { executionProjector } from '@/platform/execution/projection';
 import type { Execution, JsonValue } from '@agent-party-time/execution-contract';
 import { RepairExecutionResultSchema } from '../contract';
-import type { ContextRow } from './repairQueries';
-import { RepairQueries } from './repairQueries';
+import { type ContextRow, RepairQueries } from './repairQueries';
 import type { RepairDeliveryHooks } from './repairService';
-import {
-  formatRepairContractIssues,
-  isSynchronizableAttempt,
-  isRepairExecution,
-  parseManualOperations,
-} from './results';
 const INVALID_RESULT_MESSAGE = 'Codex 返回的结构化结果无效';
 export class RepairProjection {
   constructor(
@@ -270,8 +269,9 @@ export class RepairProjection {
       const result = parsed.success ? parsed.data.result : null;
       if (result?.outcome === 'COMPLETED') {
         const current = parseCommits(context.pending_commits_json);
-        const currentManualOperations = parseManualOperations(
+        const currentManualOperations = parseStoredManualOperations(
           context.pending_manual_operations_json,
+          '待执行的人工操作记录无效',
         );
         if (
           new Set(result.commits).size === result.commits.length &&
