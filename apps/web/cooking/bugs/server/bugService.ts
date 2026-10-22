@@ -1,14 +1,15 @@
 import { BugRelations } from './bugRelations';
-import { bugRoutingPolicy } from './bugRoutingPolicy';
-import { projectAttemptResult } from '@/cooking/repair/server/results';
-import { requireBindableFiles } from '@/cooking/shared/server/attachments';
-import { BugDeletion } from './bugDeletion';
 import {
+  bugRoutingPolicy,
   BugQueries,
   type AccessRow,
   type BugAttachmentRole,
   type ReportAttachmentIds,
 } from './bugQueries';
+import { projectAttemptResult } from '@/cooking/repair/server/results';
+import { requireBindableFiles } from '@/cooking/shared/server/attachments';
+import { BugDeletion } from './bugDeletion';
+
 import { randomUUID } from 'node:crypto';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
@@ -93,7 +94,6 @@ export class BugService {
         const now = this.now().toISOString();
         const bugId = this.insertBug(actorUserId, submissionId, parsed, now);
         if (parsed.startRepair) this.startRepair(this.queries.requireBug(bugId), now);
-        const shortId = this.queries.requireBug(bugId).shortId;
         const revision = this.writes.bumpRevision(submissionId, now);
         const bug = this.queries.requireBug(bugId);
         return {
@@ -108,7 +108,7 @@ export class BugService {
             projectId: access.project_id,
             action: 'BUG_CREATED',
             details: {
-              shortId,
+              shortId: bug.shortId,
               submissionItemId: parsed.submissionItemId,
               attachmentCount: attachmentIds.length,
               repairRequested: parsed.startRepair === true,

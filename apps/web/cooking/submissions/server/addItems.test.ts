@@ -103,18 +103,25 @@ test('追加时环境冲突原子回滚，确认后转移环境并保留原单�
     expectedVersion: second.version,
     items: [item(f, 'back', 'developerB', 'backB', 'main')],
   };
+  const eventsBeforeFailure = f.events.length;
   expect(() => f.service.addItems(f.users.owner.id, second.id, input)).toThrow(
     '已被其他活动提测单占用',
   );
+  expect(f.events).toHaveLength(eventsBeforeFailure);
   expect(
     f.service.getWorkspace(f.users.owner.id, second.id).submission.items,
   ).toHaveLength(1);
   const conflicts = f.service.addedItemConflicts(f.users.owner.id, second.id, input);
   expect(conflicts).toHaveLength(1);
-  f.service.addItems(f.users.owner.id, second.id, {
-    ...input,
-    environmentTakeovers: conflicts,
-  });
+  const confirmed = { ...input, environmentTakeovers: conflicts };
+  f.events.length = 0;
+  const result = f.service.addItems(f.users.owner.id, second.id, confirmed);
+  expect(f.events.map(({ submissionId }) => submissionId).sort()).toEqual(
+    [first.id, second.id].sort(),
+  );
+  const eventsAfterSuccess = [...f.events];
+  expect(f.service.addItems(f.users.owner.id, second.id, confirmed)).toEqual(result);
+  expect(f.events).toEqual(eventsAfterSuccess);
   expect(
     f.service.getWorkspace(f.users.owner.id, first.id).submission.items[0]
       ?.environmentAccess.owned,

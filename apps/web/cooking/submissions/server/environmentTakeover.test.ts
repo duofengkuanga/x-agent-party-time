@@ -141,7 +141,7 @@ describe('环境使用权切换', () => {
   test('普通成员不能抢占，项目外用户不能读取占用详情', async () => {
     const fixture = await setup();
     const items = [item(fixture, 'front', 'developerA', 'frontA', 'main')];
-    createSubmission(fixture, items);
+    const original = createSubmission(fixture, items);
     const input = {
       mutationId: randomUUID(),
       title: '无权抢占',
@@ -168,6 +168,31 @@ describe('环境使用权切换', () => {
         input,
       ),
     ).toThrow('项目不存在或无权访问');
+    const addedInput = {
+      mutationId: randomUUID(),
+      expectedVersion: original.version,
+      items,
+    };
+    expect(() =>
+      fixture.service.addedItemConflicts(
+        fixture.users.outsider.id,
+        original.id,
+        addedInput,
+      ),
+    ).toThrow('提测单不存在或无权访问');
+    const invalidItems = [{ ...items[0]!, bindingId: randomUUID() }];
+    expect(() =>
+      fixture.service.environmentConflicts(fixture.users.owner.id, fixture.project.id, {
+        ...input,
+        items: invalidItems,
+      }),
+    ).toThrow('配置无效');
+    expect(() =>
+      fixture.service.addedItemConflicts(fixture.users.owner.id, original.id, {
+        ...addedInput,
+        items: invalidItems,
+      }),
+    ).toThrow('配置无效');
     expectRowCount(fixture.database, 'cooking_test_submission').toBe(1);
   });
 });

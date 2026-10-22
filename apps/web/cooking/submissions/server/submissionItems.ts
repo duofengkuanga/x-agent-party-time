@@ -1,13 +1,15 @@
-import { requireProjectMember } from '@/cooking/shared/server/access';
-import { ProjectIdSchema } from '@/cooking/projects/contract';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
-import {
-  CreateSubmissionInputSchema,
-  type CreateSubmissionInput,
-  type EnvironmentConflict,
+import type {
+  CreateSubmissionInput,
+  EnvironmentConflict,
+  EnvironmentTakeover,
 } from '../contract';
-import { environmentConflict } from './environmentAccess';
+import {
+  environmentConflict,
+  environmentObservers,
+  releaseEnvironmentForTakeover,
+} from './environmentAccess';
 import type { SubmissionItemRow } from './submissionQueries';
 
 type ItemSnapshotSource = Omit<
@@ -19,11 +21,9 @@ export function environmentConflictsForSubmission(
   db: AppDatabase,
   actorUserId: string,
   projectId: string,
-  input: CreateSubmissionInput,
+  items: CreateSubmissionInput['items'],
 ): EnvironmentConflict[] {
-  requireProjectMember(db, actorUserId, ProjectIdSchema.parse(projectId));
-  const parsed = CreateSubmissionInputSchema.parse(input);
-  return parsed.items.flatMap((item) => {
+  return items.flatMap((item) => {
     snapshotItemSource(db, projectId, item);
     const conflict = environmentConflict(db, actorUserId, item.environmentId);
     return conflict ? [conflict] : [];
@@ -101,15 +101,21 @@ export function snapshotItemSource(
   return source;
 }
 
+/** Caller owns the transaction; an item and its environment use are installed together. */
 export function insertItem(
   db: AppDatabase,
-  submissionId: string,
-  itemId: string,
-  position: number,
-  source: ItemSnapshotSource,
-  targetBranch: string,
-  createdAt: string,
-): void {
+  input: {
+    actorUserId: string;
+    submissionId: string;
+    itemId: string;
+    position: number;
+    source: ItemSnapshotSource;
+    targetBranch: string;
+    createdAt: string;
+    takeover: EnvironmentTakeover | undefined;
+  },
+): string[] {
+  const { submissionId, itemId, position, source, targetBranch, createdAt } = input;
   db.run(
     `INSERT INTO cooking_submission_item(
          id, submission_id, position, engineering_id, engineering_name,
@@ -140,4 +146,24 @@ export function insertItem(
       createdAt,
     ],
   );
+  const previous = releaseEnvironmentForTakeover(
+    db,
+    input.actorUserId,
+    source.environment_id,
+    input.takeover,
+  );
+  db.run(
+    `INSERT INTO cooking_submission_environment_lock(
+       environment_id, engineering_id, submission_id, submission_item_id, created_at, deployment_confirmed
+     ) VALUES (?, ?, ?, ?, ?, ?)`,
+    [
+      source.environment_id,
+      source.engineering_id,
+      submissionId,
+      itemId,
+      createdAt,
+      previous ? 0 : 1,
+    ],
+  );
+  return environmentObservers(db, source.environment_id, submissionId);
 }

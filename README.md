@@ -297,6 +297,10 @@ Cooking 的职责归属：
 
 提测工作区是聚合视图。`submissions/contract.ts` 定义提测基础数据；`submissions/workspace.ts` 定义包含缺陷、修复、更新和生命周期投影的快照；`submissions/server/workspaceService.ts` 在访问权限通过后准备到期更新，再读取并组合这些投影。聚合快照与基础契约分开，避免基础实体相互引用，同时让界面能直接使用纯数据 Schema。
 
+`bugs/server/bugQueries.ts` 集中缺陷读取与可操作条件；删除、转交命令和工作区操作展示共用其中的规则。一次工作区读取只计算一次当前用户是否为提测项负责人。关联记录与删除事务仍分别由 `bugRelations.ts`、`bugDeletion.ts` 负责。
+
+`submissions/server/submissionItems.ts` 负责提测项配置校验、快照写入和环境接管，并返回需要通知的提测单。创建和追加工程共用这段实现，调用方统一拥有事务、版本递增与提交后通知。冲突预检由业务入口完成权限和输入校验后，只传项目与提测项列表；追加预检不再转换为创建提测输入。`environmentAccess.ts` 保留跨业务的环境占用、确认和接管规则；`references.ts` 保留供项目、工程配置检查使用的低依赖查询。
+
 修复、更新和生命周期的 SQL 行类型分别与查询放在 `repairQueries.ts`、`updateQueries.ts` 和 `lifecycleQueries.ts`。`repairService.ts` 创建修复执行时直接组装 Execution Brief 和继续执行所需的新事实；`updateDelivery.ts` 同样就近组装更新与外部部署失败反馈，不再经过单一调用方的 Brief 转换文件。两个业务入口直接绑定查询和交付方法，保留调用 Interface，省去纯转发函数。
 
 `updateDelivery.ts` 负责候选调度、批次冻结、执行准备和交付完成后的缺陷推进、候选清空，并拥有 `FrozenBatch`。Agent 更新成功与人工确认外部部署成功都调用同一完成逻辑；`updateProjection.ts` 专注 Execution 事件和会话同步结果的解释，两条结果回写路径共用按冻结部署配置选择的校验。`repairHandoffs.ts` 同时供批次冻结和离线迁移使用，保留独立的交接一致性校验。读取、业务状态变更和 Execution 投影各自保留明确职责，避免把整个业务堆进一个文件。

@@ -2,7 +2,7 @@ import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
 import type { TestSubmissionWriteStore } from '@/cooking/submissions/server/testSubmissionWriteStore';
 import type { BugQueries } from './bugQueries';
-import { canDeleteUnassignedBug } from './bugDeletionPolicy';
+import { canDeleteUnassignedBug } from './bugQueries';
 import {
   DeleteUnassignedBugInputSchema,
   DeleteUnassignedBugResultSchema,

@@ -118,40 +118,19 @@ export class SubmissionService {
           createdAt,
         )!;
         for (const item of itemSnapshots) {
-          insertItem(
-            this.db,
-            submissionId,
-            item.id,
-            item.position,
-            item.source,
-            item.targetBranch,
-            createdAt,
-          );
-          const previous = releaseEnvironmentForTakeover(
-            this.db,
+          const observers = insertItem(this.db, {
             actorUserId,
-            item.source.environment_id,
-            takeovers.find((value) => value.environmentId === item.source.environment_id),
-          );
-          this.db.run(
-            `INSERT INTO cooking_submission_environment_lock(
-            environment_id, engineering_id, submission_id, submission_item_id, created_at, deployment_confirmed
-          ) VALUES (?, ?, ?, ?, ?, ?)`,
-            [
-              item.source.environment_id,
-              item.source.engineering_id,
-              submissionId,
-              item.id,
-              createdAt,
-              previous ? 0 : 1,
-            ],
-          );
-          for (const observer of environmentObservers(
-            this.db,
-            item.source.environment_id,
             submissionId,
-          ))
-            invalidations.set(observer, 0);
+            itemId: item.id,
+            position: item.position,
+            source: item.source,
+            targetBranch: item.targetBranch,
+            createdAt,
+            takeover: takeovers.find(
+              (value) => value.environmentId === item.source.environment_id,
+            ),
+          });
+          for (const observer of observers) invalidations.set(observer, 0);
         }
         for (const previousId of invalidations.keys())
           invalidations.set(previousId, this.writes.bumpRevision(previousId, createdAt));
@@ -181,7 +160,14 @@ export class SubmissionService {
     projectId: string,
     input: CreateSubmissionInput,
   ): EnvironmentConflict[] {
-    return environmentConflictsForSubmission(this.db, actorUserId, projectId, input);
+    requireProjectMember(this.db, actorUserId, ProjectIdSchema.parse(projectId));
+    const parsed = CreateSubmissionInputSchema.parse(input);
+    return environmentConflictsForSubmission(
+      this.db,
+      actorUserId,
+      projectId,
+      parsed.items,
+    );
   }
 
   addItems(
@@ -251,40 +237,19 @@ export class SubmissionService {
             );
           const source = snapshotItemSource(this.db, current.project_id, item);
           const itemId = this.createId();
-          insertItem(
-            this.db,
+          const observers = insertItem(this.db, {
+            actorUserId,
             submissionId,
             itemId,
-            (existing.at(-1)?.position ?? -1) + index + 1,
+            position: (existing.at(-1)?.position ?? -1) + index + 1,
             source,
-            item.targetBranch,
-            now,
-          );
-          const previous = releaseEnvironmentForTakeover(
-            this.db,
-            actorUserId,
-            item.environmentId,
-            takeovers.find((value) => value.environmentId === item.environmentId),
-          );
-          this.db.run(
-            `INSERT INTO cooking_submission_environment_lock(
-            environment_id, engineering_id, submission_id, submission_item_id, created_at, deployment_confirmed
-          ) VALUES (?, ?, ?, ?, ?, ?)`,
-            [
-              item.environmentId,
-              item.engineeringId,
-              submissionId,
-              itemId,
-              now,
-              previous ? 0 : 1,
-            ],
-          );
-          for (const observer of environmentObservers(
-            this.db,
-            item.environmentId,
-            submissionId,
-          ))
-            invalidations.set(observer, 0);
+            targetBranch: item.targetBranch,
+            createdAt: now,
+            takeover: takeovers.find(
+              (value) => value.environmentId === item.environmentId,
+            ),
+          });
+          for (const observer of observers) invalidations.set(observer, 0);
           itemIds.push(itemId);
         }
         for (const observer of invalidations.keys())
@@ -321,12 +286,12 @@ export class SubmissionService {
   ): EnvironmentConflict[] {
     const current = this.queries.requireSubmissionAccess(actorUserId, submissionId);
     const parsed = AddSubmissionItemsInputSchema.parse(input);
-    return environmentConflictsForSubmission(this.db, actorUserId, current.project_id, {
-      ...parsed,
-      title: current.title,
-      requirementDescription: current.requirement_description,
-      testerUserId: current.tester_user_id,
-    });
+    return environmentConflictsForSubmission(
+      this.db,
+      actorUserId,
+      current.project_id,
+      parsed.items,
+    );
   }
 
   changeEnvironment(
