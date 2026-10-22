@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { parseRow, type DatabaseRow } from '@/platform/database/rowMapper';
-import { RunnerSchema, type Runner } from './contract';
+import { RunnerSchema, type Runner } from '@agent-party-time/runner-contract';
 
 export type RunnerRow = DatabaseRow<Runner> & { credential_hash: string };
 

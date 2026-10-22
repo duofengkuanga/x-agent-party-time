@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
-import { RunnerSchema } from '@/platform/runner/contract';
+import { RunnerSchema } from '@agent-party-time/runner-contract';
 import { EngineeringIdSchema, RepositoryUrlSchema } from '@/cooking/engineering/contract';
 import { CookingWriteStore } from '@/cooking/shared/server/writeStore';
 import { requireBindingEngineering } from './engineeringQueries';

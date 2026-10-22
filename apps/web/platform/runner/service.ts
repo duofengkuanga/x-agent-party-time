@@ -13,7 +13,7 @@ import {
   type Runner,
   type RunnerPairingResult,
   type RunnerStatus,
-} from './contract';
+} from '@agent-party-time/runner-contract';
 import { RunnerAuthorizationRequests } from './authorization';
 import { hashSecret, mapRunner, type RunnerRow } from './runnerStorage';
 

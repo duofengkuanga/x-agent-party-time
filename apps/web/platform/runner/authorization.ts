@@ -11,7 +11,7 @@ import {
   RunnerNameSchema,
   type RunnerAuthorizationClaimResponse,
   type RunnerAuthorizationIssue,
-} from './contract';
+} from '@agent-party-time/runner-contract';
 import { hashSecret, mapRunner, type RunnerRow } from './runnerStorage';
 
 type AuthorizationRequestRow = {
