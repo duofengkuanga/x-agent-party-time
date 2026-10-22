@@ -319,6 +319,8 @@ Cooking 的职责归属：
 
 xapt 按本机职责分为 `cli/`、`daemon/`、`agent/`、`codex/`、`execution/`、`state/`、`install/`、`skills/`、`observability/`、`platform/` 和 `testing/`。操作系统与外部 Codex、HTTP 通信有真实的生产和测试 Adapter，继续通过这些 Interface 验证。Server 不接收本机仓库绝对路径，xapt 不导入 Cooking。
 
+`execution/workspaces.ts` 统一保存本机工作区状态、Git 身份校验、忽略内容镜像与创建、复用、清理流程。仅供该实现使用的 Git 调用和路径校验保持文件内私有；调用方继续通过 `ExecutionWorkspaceManager` 使用工作区能力，测试通过真实隔离 Git 仓库验证身份与清理保护。
+
 依赖方向：
 
 ```text
