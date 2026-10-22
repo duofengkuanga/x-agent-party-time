@@ -31,27 +31,6 @@
   white-space: normal;
 }
 
-.collab-bug-identity {
-  align-items: center;
-  color: var(--muted);
-  display: flex;
-  flex-wrap: wrap;
-  font-size: 10px;
-  gap: 6px 10px;
-}
-
-.collab-bug-identity code {
-  font: inherit;
-  overflow-wrap: anywhere;
-}
-
-.collab-bug-identity button {
-  font-size: 10px;
-  min-height: 24px;
-  padding: 2px 7px;
-  white-space: nowrap;
-}
-
 .collab-bug-drawer--split > .collab-bug-drawer__body {
   display: grid;
   grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.7fr);
