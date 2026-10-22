@@ -13,9 +13,11 @@ import {
   createInitialCodexTurn,
 } from '@/platform/execution/codexTurn';
 import { ExecutionService } from '@/platform/execution/service';
-import type { ExecutionResultAssertion } from '@agent-party-time/execution-contract';
+import type {
+  ExecutionResultAssertion,
+  JsonObject,
+} from '@agent-party-time/execution-contract';
 import { randomUUID } from 'node:crypto';
-import { buildInitialRepairBrief, buildRepairContinuationInput } from '../brief';
 import {
   ContinueRepairInputSchema,
   RepairMutationResultSchema,
@@ -58,10 +60,8 @@ export class RepairService {
   private readonly writes: TestSubmissionWriteStore;
   private readonly queries: RepairQueries;
   readonly projectExecution: RepairProjection['projectExecution'];
-  readonly workspace: RepairQueries['workspace'] = (...args) =>
-    this.queries.workspace(...args);
-  readonly repairView: RepairQueries['repairView'] = (...args) =>
-    this.queries.repairView(...args);
+  readonly workspace: RepairQueries['workspace'];
+  readonly repairView: RepairQueries['repairView'];
 
   constructor(
     private readonly db: AppDatabase,
@@ -75,6 +75,8 @@ export class RepairService {
     ),
   ) {
     this.queries = new RepairQueries(db, executions);
+    this.workspace = this.queries.workspace.bind(this.queries);
+    this.repairView = this.queries.repairView.bind(this.queries);
     this.writes = new TestSubmissionWriteStore(db, now, createId, onInvalidated);
     this.projectExecution = new RepairProjection(
       db,
@@ -123,31 +125,34 @@ export class RepairService {
         [bugId, workspaceKey, now, now],
       );
     const attempt = (latest?.attempt ?? 0) + 1;
-    const executionBrief = buildInitialRepairBrief({
+    const report = repairContext.report;
+    const attachmentReferences = [
+      ...report.attachments.actualResult.map(({ id, originalName }) => ({
+        fileId: id,
+        originalName,
+        role: 'ACTUAL_RESULT',
+      })),
+      ...report.attachments.expectedResult.map(({ id, originalName }) => ({
+        fileId: id,
+        originalName,
+        role: 'EXPECTED_RESULT',
+      })),
+    ];
+    const pendingCommits = existingContext
+      ? parseCommits(existingContext.pending_commits_json)
+      : [];
+    const executionBrief: JsonObject = {
       targetBranch: repairContext.targetBranch,
-      bugTitle: repairContext.report.title,
-      operationPath: repairContext.report.operationPath,
-      actualResult: repairContext.report.actualResult,
-      expectedResult: repairContext.report.expectedResult,
-      attachments: [
-        ...repairContext.report.attachments.actualResult.map(({ id, originalName }) => ({
-          fileId: id,
-          originalName,
-          role: 'ACTUAL_RESULT' as const,
-        })),
-        ...repairContext.report.attachments.expectedResult.map(
-          ({ id, originalName }) => ({
-            fileId: id,
-            originalName,
-            role: 'EXPECTED_RESULT' as const,
-          }),
-        ),
-      ],
-      feedback: repairContext.feedback,
-      pendingCommits: existingContext
-        ? parseCommits(existingContext.pending_commits_json)
-        : [],
-    });
+      bug: {
+        title: report.title,
+        ...(report.operationPath ? { operationPath: report.operationPath } : {}),
+        ...(report.actualResult ? { actualResult: report.actualResult } : {}),
+        ...(report.expectedResult ? { expectedResult: report.expectedResult } : {}),
+      },
+      ...(attachmentReferences.length ? { attachmentReferences } : {}),
+      ...(repairContext.feedback.length ? { feedback: repairContext.feedback } : {}),
+      ...(pendingCommits.length ? { pendingCommits } : {}),
+    };
     const execution = this.executions.enqueue({
       id: executionId,
       owner: { namespace: 'cooking', kind: 'BUG_REPAIR', id: attemptId },
@@ -204,9 +209,9 @@ export class RepairService {
       manualHandoff: 'EXTERNAL_SESSION',
       taskId: context.session_id,
       taskSkillBinding: requireTaskSkillBinding(previousExecution, '修复'),
-      text: buildRepairContinuationInput({
-        lifecycleContext: lifecycleContext || undefined,
-      }),
+      text: lifecycleContext
+        ? `继续完成上次未完成的任务。新增事实：${JSON.stringify({ lifecycleContext })}`
+        : '继续完成上次未完成的任务。',
       outputJsonSchema: RepairOutputJsonSchema,
       resultAssertions: REPAIR_RESULT_ASSERTIONS,
     });
@@ -329,6 +334,7 @@ export class RepairService {
             '原修复任务缺少结果约束，不能同步',
           );
         const resultAssertions = previousExecution.codexTurn?.resultAssertions;
+        const repairContext = this.bugContexts.get(bugId);
         const syncId = this.createId();
         const executionId = this.createId();
         const execution = this.executions.enqueue({
@@ -336,8 +342,8 @@ export class RepairService {
           owner: { namespace: 'cooking', kind: 'SESSION_SYNC', id: syncId },
           attempt: 1,
           previousExecutionId: latest.execution_id,
-          runnerId: this.bugContexts.get(bugId).runnerId,
-          bindingId: this.bugContexts.get(bugId).bindingId,
+          runnerId: repairContext.runnerId,
+          bindingId: repairContext.bindingId,
           priority: 0,
           approvalPolicy: 'never',
           codexTurn: {

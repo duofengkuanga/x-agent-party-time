@@ -30,22 +30,14 @@ import { staleBatch } from './results';
 export class UpdateService {
   private readonly writes: TestSubmissionWriteStore;
   private readonly queries: UpdateQueries;
-  private readonly projection: UpdateProjection;
   private readonly delivery: UpdateDelivery;
   readonly projectExecution: UpdateProjection['projectExecution'];
-  readonly workspace: UpdateQueries['workspace'] = (...args) =>
-    this.queries.workspace(...args);
-  readonly batchView: UpdateQueries['batchView'] = (...args) =>
-    this.queries.batchView(...args);
-  readonly requireExternalAttachmentAccess: UpdateQueries['requireExternalAttachmentAccess'] =
-    (...args) => this.queries.requireExternalAttachmentAccess(...args);
-  readonly recordCandidateAvailable: UpdateDelivery['recordCandidateAvailable'] = (
-    ...args
-  ) => this.delivery.recordCandidateAvailable(...args);
-  readonly recalculatePendingDeliveryForBug: UpdateDelivery['recalculatePendingDeliveryForBug'] =
-    (...args) => this.delivery.recalculatePendingDeliveryForBug(...args);
-  readonly prepareDueExecutions: UpdateDelivery['prepareDueExecutions'] = (...args) =>
-    this.delivery.prepareDueExecutions(...args);
+  readonly workspace: UpdateQueries['workspace'];
+  readonly batchView: UpdateQueries['batchView'];
+  readonly requireExternalAttachmentAccess: UpdateQueries['requireExternalAttachmentAccess'];
+  readonly recordCandidateAvailable: UpdateDelivery['recordCandidateAvailable'];
+  readonly recalculatePendingDeliveryForBug: UpdateDelivery['recalculatePendingDeliveryForBug'];
+  readonly prepareDueExecutions: UpdateDelivery['prepareDueExecutions'];
 
   constructor(
     private readonly db: AppDatabase,
@@ -55,6 +47,10 @@ export class UpdateService {
     onInvalidated: (submissionId: string, revision: number) => void = () => {},
   ) {
     this.queries = new UpdateQueries(db, executions);
+    this.workspace = this.queries.workspace.bind(this.queries);
+    this.batchView = this.queries.batchView.bind(this.queries);
+    this.requireExternalAttachmentAccess =
+      this.queries.requireExternalAttachmentAccess.bind(this.queries);
     this.writes = new TestSubmissionWriteStore(db, now, createId, onInvalidated);
     this.delivery = new UpdateDelivery(
       db,
@@ -64,8 +60,20 @@ export class UpdateService {
       now,
       createId,
     );
-    this.projection = new UpdateProjection(db, this.queries, this.writes, now, createId);
-    this.projectExecution = this.projection.projectExecution;
+    this.recordCandidateAvailable = this.delivery.recordCandidateAvailable.bind(
+      this.delivery,
+    );
+    this.recalculatePendingDeliveryForBug =
+      this.delivery.recalculatePendingDeliveryForBug.bind(this.delivery);
+    this.prepareDueExecutions = this.delivery.prepareDueExecutions.bind(this.delivery);
+    this.projectExecution = new UpdateProjection(
+      db,
+      this.queries,
+      this.writes,
+      now,
+      createId,
+      this.delivery,
+    ).projectExecution;
   }
 
   freezeNow(
@@ -287,8 +295,7 @@ export class UpdateService {
           [state, now, batchId, input.expectedVersion],
         );
         if (batchUpdate.changes !== 1) throw staleBatch();
-        if (input.outcome === 'SUCCEEDED')
-          this.projection.completeBatchBugs(batchId, now);
+        if (input.outcome === 'SUCCEEDED') this.delivery.completeBatchBugs(batchId, now);
         const revision = this.writes.bumpRevision(batch.submission_id, now);
         return {
           result: {

@@ -12,11 +12,7 @@ import {
   createInitialCodexTurn,
 } from '@/platform/execution/codexTurn';
 import type { ExecutionService } from '@/platform/execution/service';
-import {
-  buildInitialUpdateBrief,
-  buildUpdateExternalFailureInput,
-  buildUpdateRetryInput,
-} from '../brief';
+import type { JsonObject } from '@agent-party-time/execution-contract';
 import {
   CiCdUpdateOutputJsonSchema,
   LocalScriptUpdateOutputJsonSchema,
@@ -61,7 +57,7 @@ export class UpdateDelivery {
       throw new PlatformError('INVALID_TRANSITION', '原更新任务不存在，不能自动重建');
     const previousExecution = this.executions.get(latest.execution_id);
     const continuationInput = externalReport
-      ? buildUpdateExternalFailureInput({
+      ? `继续处理原 Update Batch。新增外部部署失败事实：${JSON.stringify({
           reportRound: externalReport.round,
           summary: externalReport.summary!,
           attachments: this.queries
@@ -70,8 +66,8 @@ export class UpdateDelivery {
               fileId: id,
               originalName: original_name,
             })),
-        })
-      : buildUpdateRetryInput();
+        })}`
+      : '继续完成上次未完成的任务。';
     const attemptId = this.createId();
     const execution = this.executions.enqueue({
       owner: { namespace: 'cooking', kind: 'UPDATE_BATCH', id: attemptId },
@@ -222,15 +218,21 @@ export class UpdateDelivery {
         repairHandoffs: freezeRepairHandoffs(this.db, candidate.bug_id, commits),
       };
     });
-    const executionBrief = buildInitialUpdateBrief({
+    const executionBrief: JsonObject = {
       targetBranch: source.target_branch,
-      environmentName: source.environment_name,
-      entries,
+      environment: source.environment_name,
+      frozenCandidates: entries.map((entry, position) => ({
+        position,
+        ...entry,
+        repairHandoffs: entry.repairHandoffs.map(
+          ({ attemptId: _attempt, executionId: _execution, ...context }) => context,
+        ),
+      })),
       deployment:
         deployment.kind === 'LOCAL_SCRIPT'
           ? { mode: 'LOCAL_SCRIPT', command: deployment.command }
           : { mode: 'CI_CD' },
-    });
+    };
     this.db.run(
       `INSERT INTO cooking_update_batch(
            id, submission_id, submission_item_id, state, version,
@@ -305,6 +307,33 @@ export class UpdateDelivery {
     this.recalculatePendingDelivery(submissionItemId);
     const revision = this.writes.bumpRevision(source.submission_id, now);
     return { batchId, executionId: execution.id, revision };
+  }
+
+  completeBatchBugs(batchId: string, now: string): void {
+    const entries = this.queries.batchEntries(batchId);
+    const bugUpdate = this.db.run(
+      `UPDATE cooking_bug
+         SET stage = 'WAITING_FOR_VERIFICATION', version = version + 1,
+             updated_at = ?
+         WHERE id IN (
+           SELECT bug_id FROM cooking_update_batch_entry WHERE batch_id = ?
+         ) AND stage = 'UPDATING'`,
+      [now, batchId],
+    );
+    if (bugUpdate.changes !== entries.length)
+      throw new PlatformError('STALE_STATE', '更新批次中的缺陷状态已变化');
+    const contextUpdate = this.db.run(
+      `UPDATE cooking_bug_repair_context
+         SET pending_commits_json = '[]',
+             pending_manual_operations_json = '[]', last_candidate_at = NULL,
+             version = version + 1, updated_at = ?
+         WHERE bug_id IN (
+           SELECT bug_id FROM cooking_update_batch_entry WHERE batch_id = ?
+         )`,
+      [now, batchId],
+    );
+    if (contextUpdate.changes !== entries.length)
+      throw new PlatformError('INTERNAL_ERROR', '更新批次候选提交上下文不完整');
   }
 
   private recalculatePendingDelivery(submissionItemId: string): void {

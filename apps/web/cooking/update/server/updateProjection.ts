@@ -9,7 +9,6 @@ import {
 import { insertAuditEvent } from '@/cooking/shared/server/auditEvent';
 
 import type { AppDatabase } from '@/platform/database';
-import { PlatformError } from '@/platform/errors';
 import { executionProjector } from '@/platform/execution/projection';
 import type { Execution, JsonValue } from '@agent-party-time/execution-contract';
 import {
@@ -19,6 +18,7 @@ import {
 import type { BatchRow } from './updateQueries';
 import { isUpdateExecution, staleBatch } from './results';
 import { UpdateQueries } from './updateQueries';
+import type { UpdateDelivery } from './updateDelivery';
 const INVALID_RESULT_MESSAGE = 'Codex 返回的更新结果无效';
 export class UpdateProjection {
   constructor(
@@ -27,6 +27,7 @@ export class UpdateProjection {
     private readonly writes: TestSubmissionWriteStore,
     private readonly now: () => Date,
     private readonly createId: () => string,
+    private readonly delivery: UpdateDelivery,
   ) {}
   readonly projectExecution = executionProjector({
     APPLY: {
@@ -110,7 +111,7 @@ export class UpdateProjection {
       ],
     );
     if (batchUpdate.changes !== 1) throw staleBatch();
-    if (interpreted.kind === 'COMPLETED') this.completeBatchBugs(batch.id, now);
+    if (interpreted.kind === 'COMPLETED') this.delivery.completeBatchBugs(batch.id, now);
     this.db.run(
       `UPDATE cooking_update_attempt
          SET outcome_json = ?, finished_at = ? WHERE id = ?`,
@@ -146,11 +147,7 @@ export class UpdateProjection {
     const turnId = typeof envelope.turnId === 'string' ? envelope.turnId : null;
     const result = envelope.result;
     if (!turnId) return;
-    const deployment = DeploymentMethodSchema.parse(JSON.parse(batch.deployment_json));
-    const parsed =
-      deployment.kind === 'LOCAL_SCRIPT'
-        ? LocalScriptUpdateExecutionResultSchema.safeParse(result)
-        : CiCdUpdateExecutionResultSchema.safeParse(result);
+    const parsed = this.parseResult(batch, result);
     if (!parsed.success) {
       markInvalidExecutionResult(this.db, execution.id, INVALID_RESULT_MESSAGE);
       return;
@@ -240,11 +237,7 @@ export class UpdateProjection {
         attemptOutcome: { outcome: 'HANDED_OFF', questions: execution.outcome.questions },
       };
     if (execution.outcome?.kind === 'SUCCEEDED') {
-      const deployment = DeploymentMethodSchema.parse(JSON.parse(batch.deployment_json));
-      const parsed =
-        deployment.kind === 'LOCAL_SCRIPT'
-          ? LocalScriptUpdateExecutionResultSchema.safeParse(execution.outcome.result)
-          : CiCdUpdateExecutionResultSchema.safeParse(execution.outcome.result);
+      const parsed = this.parseResult(batch, execution.outcome.result);
       const result = parsed.success ? parsed.data.result : null;
       if (result?.outcome === 'COMPLETED')
         return { kind: 'COMPLETED', attemptOutcome: result };
@@ -289,31 +282,11 @@ export class UpdateProjection {
     };
   }
 
-  completeBatchBugs(batchId: string, now: string): void {
-    const entries = this.queries.batchEntries(batchId);
-    const bugUpdate = this.db.run(
-      `UPDATE cooking_bug
-         SET stage = 'WAITING_FOR_VERIFICATION', version = version + 1,
-             updated_at = ?
-         WHERE id IN (
-           SELECT bug_id FROM cooking_update_batch_entry WHERE batch_id = ?
-         ) AND stage = 'UPDATING'`,
-      [now, batchId],
-    );
-    if (bugUpdate.changes !== entries.length)
-      throw new PlatformError('STALE_STATE', '更新批次中的缺陷状态已变化');
-    const contextUpdate = this.db.run(
-      `UPDATE cooking_bug_repair_context
-         SET pending_commits_json = '[]',
-             pending_manual_operations_json = '[]', last_candidate_at = NULL,
-             version = version + 1, updated_at = ?
-         WHERE bug_id IN (
-           SELECT bug_id FROM cooking_update_batch_entry WHERE batch_id = ?
-         )`,
-      [now, batchId],
-    );
-    if (contextUpdate.changes !== entries.length)
-      throw new PlatformError('INTERNAL_ERROR', '更新批次候选提交上下文不完整');
+  private parseResult(batch: BatchRow, result: unknown) {
+    const deployment = DeploymentMethodSchema.parse(JSON.parse(batch.deployment_json));
+    return deployment.kind === 'LOCAL_SCRIPT'
+      ? LocalScriptUpdateExecutionResultSchema.safeParse(result)
+      : CiCdUpdateExecutionResultSchema.safeParse(result);
   }
 
   private auditForBatch(

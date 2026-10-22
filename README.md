@@ -297,7 +297,9 @@ Cooking 的职责归属：
 
 提测工作区是聚合视图。`submissions/contract.ts` 定义提测基础数据；`submissions/workspace.ts` 定义包含缺陷、修复、更新和生命周期投影的快照；`submissions/server/workspaceService.ts` 在访问权限通过后准备到期更新，再读取并组合这些投影。聚合快照与基础契约分开，避免基础实体相互引用，同时让界面能直接使用纯数据 Schema。
 
-修复、更新和生命周期的 SQL 行类型分别与查询放在 `repairQueries.ts`、`updateQueries.ts` 和 `lifecycleQueries.ts`；`updateDelivery.ts` 保存批次冻结和执行准备，以及它返回的 `FrozenBatch`。读取、状态变更和 Execution 投影各自保留明确职责，避免把整个业务堆进一个文件。
+修复、更新和生命周期的 SQL 行类型分别与查询放在 `repairQueries.ts`、`updateQueries.ts` 和 `lifecycleQueries.ts`。`repairService.ts` 创建修复执行时直接组装 Execution Brief 和继续执行所需的新事实；`updateDelivery.ts` 同样就近组装更新与外部部署失败反馈，不再经过单一调用方的 Brief 转换文件。两个业务入口直接绑定查询和交付方法，保留调用 Interface，省去纯转发函数。
+
+`updateDelivery.ts` 负责候选调度、批次冻结、执行准备和交付完成后的缺陷推进、候选清空，并拥有 `FrozenBatch`。Agent 更新成功与人工确认外部部署成功都调用同一完成逻辑；`updateProjection.ts` 专注 Execution 事件和会话同步结果的解释，两条结果回写路径共用按冻结部署配置选择的校验。`repairHandoffs.ts` 同时供批次冻结和离线迁移使用，保留独立的交接一致性校验。读取、业务状态变更和 Execution 投影各自保留明确职责，避免把整个业务堆进一个文件。
 
 `lifecycle/server/submissionClosure.ts` 负责关闭前的业务校验、关闭状态、环境释放和通知；`cleanupService.ts` 负责选择清理范围、创建任务、重试及执行结果投影。关闭事务调用 `createForClosedSubmission`，只传入提测单与时间，不拼装各工程的工作区范围；无资源的提测项不创建清理任务。清理结果解析是 Cleanup 的内部实现，清理展示标签与 `lifecycleQueries.ts` 的视图读取放在一起；装配入口向命令与清理共用同一份查询实例。
 
