@@ -295,6 +295,8 @@ Cooking 的职责归属：
 
 工程绑定属于工程配置：Binding Schema 放在 `engineering/contract.ts`，绑定操作入口放在 `engineering/server/actions.ts`，工程成员与归档校验归 `engineeringQueries.ts`。`bindingService.ts` 管长期绑定和仓库确认，`bindingRequestService.ts` 管有时限的目录选择申请及领取、完成状态。
 
+工程与环境配置共用同一份 `CookingWriteStore`，由 `EngineeringService` 装配；`EnvironmentService` 保留环境创建、更新、删除的业务职责。项目邀请与环境引用检查直接绑定已有方法，避免仅转发参数的装配函数。
+
 提测工作区是聚合视图。`submissions/contract.ts` 定义提测基础数据；`submissions/workspace.ts` 定义包含缺陷、修复、更新和生命周期投影的快照；`submissions/server/workspaceService.ts` 在访问权限通过后准备到期更新，再读取并组合这些投影。聚合快照与基础契约分开，避免基础实体相互引用，同时让界面能直接使用纯数据 Schema。
 
 `bugs/server/bugQueries.ts` 集中缺陷读取与可操作条件；删除、转交命令和工作区操作展示共用其中的规则。一次工作区读取只计算一次当前用户是否为提测项负责人。关联记录与删除事务仍分别由 `bugRelations.ts`、`bugDeletion.ts` 负责。
@@ -312,6 +314,8 @@ Cooking 的职责归属：
 `shared/server/writeStore.ts` 负责事务、幂等结果校验和审计编排；`auditEvent.ts` 保留仅依赖数据库的审计落库函数，供执行投影等调用方使用。将二者合并会让这些调用方提前加载业务 Schema，已在生产构建中触发初始化错误，因此保留这个低依赖 Interface。`executionState.ts` 处理执行状态、Task Skill Binding、执行事件详情和无效结果标记；交互脱敏与角色投影、通用执行展示和 Server Action 传输也由多个业务共用。`shared/` 只保存含义一致且没有单一业务拥有者的共用能力。
 
 `runtime/createCooking.ts` 是生产和集成测试共同使用的执行链装配入口，统一连接修复、更新、生命周期和工作区读取。Platform 发出事务内 APPLY 与提交后 AFTER 事件，Cooking 根据归属选择投影；Session Synchronization 先确认 Repair 或 Update 归属。HTTP 路由和协议测试共用 `platform/runner/router.ts`，业务装配在 `runtime/runnerHttp.ts`。
+
+耗时报告的上传、读取与导出由 `platform/execution/observationHttp.ts` 处理；Cooking 只通过 `runtime/observationAccess.ts` 注入业务访问规则。通用 HTTP 格式、预算和错误处理不依赖 Cooking。
 
 xapt 按本机职责分为 `cli/`、`daemon/`、`agent/`、`codex/`、`execution/`、`state/`、`install/`、`skills/`、`observability/`、`platform/` 和 `testing/`。操作系统与外部 Codex、HTTP 通信有真实的生产和测试 Adapter，继续通过这些 Interface 验证。Server 不接收本机仓库绝对路径，xapt 不导入 Cooking。
 

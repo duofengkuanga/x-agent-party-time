@@ -16,7 +16,7 @@ import {
 import { completeClaimedExecution } from '@/cooking/testing/execution';
 import { cookingObservationAccess } from '@/cooking/runtime/observationAccess';
 import { ExecutionObservations } from './observations';
-import { handleObservationRead } from '@/cooking/runtime/observationRead';
+import { handleObservationRead } from '@/platform/execution/observationHttp';
 
 const setup = repairFixture(testDatabases());
 async function fixture() {

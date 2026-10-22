@@ -73,7 +73,8 @@ export class EngineeringService {
     const environments = new EnvironmentService(
       db,
       this.queries,
-      (id) => guards.environmentReferenced(id),
+      this.writes,
+      guards.environmentReferenced.bind(guards),
       now,
       createId,
     );

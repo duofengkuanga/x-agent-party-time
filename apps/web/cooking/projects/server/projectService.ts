@@ -62,9 +62,7 @@ export class ProjectService {
       this.writes,
       now,
       createId,
-      (userId, projectId) => {
-        this.requireOwner(userId, projectId);
-      },
+      this.requireOwner.bind(this),
     );
     this.inviteUser = invitations.inviteUser.bind(invitations);
     this.listProjectInvitations = invitations.listProjectInvitations.bind(invitations);

@@ -2,7 +2,7 @@ import { currentUser } from '@/platform/auth/server';
 import { database } from '@/platform/database';
 import { ExecutionObservations } from '@/platform/execution/observations';
 import { cookingObservationAccess } from '@/cooking/runtime/observationAccess';
-import { handleObservationRead } from '@/cooking/runtime/observationRead';
+import { handleObservationRead } from '@/platform/execution/observationHttp';
 
 export async function GET(
   request: Request,

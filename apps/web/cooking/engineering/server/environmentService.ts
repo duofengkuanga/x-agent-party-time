@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
-import { CookingWriteStore } from '@/cooking/shared/server/writeStore';
+import type { CookingWriteStore } from '@/cooking/shared/server/writeStore';
 import {
   DeploymentMethodSchema,
   EnvironmentIdSchema,
@@ -25,17 +25,14 @@ const DeleteEnvironmentResultSchema = z.object({
 });
 
 export class EnvironmentService {
-  private readonly writes: CookingWriteStore;
-
   constructor(
     private readonly db: AppDatabase,
     private readonly queries: EngineeringQueries,
+    private readonly writes: CookingWriteStore,
     private readonly environmentReferenced: (id: string) => boolean,
     private readonly now: () => Date,
     private readonly createId: () => string,
-  ) {
-    this.writes = new CookingWriteStore(db, now, createId);
-  }
+  ) {}
 
   createEnvironments(
     actorUserId: string,

@@ -8,7 +8,7 @@ import { deliveryProject } from '@/cooking/testing/project';
 import { createCooking } from '@/cooking/runtime/createCooking';
 import { cookingRunnerFetch } from '@/cooking/runtime/runnerHttp';
 import { cookingObservationAccess } from '@/cooking/runtime/observationAccess';
-import { handleObservationRead } from '@/cooking/runtime/observationRead';
+import { handleObservationRead } from '@/platform/execution/observationHttp';
 import { ExecutionObservations } from '@/platform/execution/observations';
 import { LocalFileStore } from '@/platform/files/localFileStore';
 import { RepairExecutionResultSchema } from '@/cooking/repair/contract';
