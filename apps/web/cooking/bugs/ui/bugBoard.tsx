@@ -165,7 +165,7 @@ export function BugBoard({
           mutationId: createClientId(),
           expectedVersion: bug.version,
         }),
-      message,
+      null,
       (result) => {
         const version = bugVersionOf(result);
         if (!version) return;
@@ -179,7 +179,6 @@ export function BugBoard({
             }),
         });
       },
-      null,
     );
   }
 
@@ -194,7 +193,7 @@ export function BugBoard({
           expectedVersion: pair.primary.version,
           relatedExpectedVersion: related.version,
         }),
-      message,
+      null,
       (result) => {
         if (!result.ok || !('bugVersions' in result.result)) return;
         const [expectedVersion, relatedExpectedVersion] =
@@ -210,7 +209,6 @@ export function BugBoard({
             }),
         });
       },
-      null,
     );
   }
 

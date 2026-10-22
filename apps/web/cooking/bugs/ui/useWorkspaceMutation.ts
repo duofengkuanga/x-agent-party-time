@@ -13,7 +13,6 @@ export function useWorkspaceMutation<Notice extends string | null>(
     command: () => Promise<WorkspaceActionResult>,
     message: Notice,
     onSuccess?: (result: WorkspaceActionResult) => void,
-    noticeMessage: Notice = message,
   ): void {
     startTransition(async () => {
       try {
@@ -24,7 +23,7 @@ export function useWorkspaceMutation<Notice extends string | null>(
         }
         setError(null);
         onSuccess?.(result);
-        onChanged(result.result.revision, noticeMessage);
+        onChanged(result.result.revision, message);
       } catch (error) {
         setError(messageOf(error, '操作失败，请稍后重试。'));
       }

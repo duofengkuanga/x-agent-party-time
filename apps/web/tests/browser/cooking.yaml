@@ -915,11 +915,14 @@ cases:
           target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: transfer }));
           target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer })); return true; })()
       - wait: 900
+      - eval: 'window.cancelNoticeCount=document.querySelectorAll(".collab-banner[role=status]").length; true'
       - eval: "[...document.querySelectorAll('[role=status] button')].find((button) => button.textContent?.includes('撤销'))?.click(); true"
       - wait: 900
     assert:
       - visible: 'article[data-stage="WAITING_FOR_REPAIR"] button[aria-label^="待取消缺陷，"]'
       - text: { sel: '[role="status"]', contains: 已恢复到待修复 }
+      - eval: 'window.cancelNoticeCount === 1'
+      - count: { sel: '.collab-banner[role="status"]', eq: 1 }
 
   - name: drag request repair moves the bug into engineering execution
     steps:
@@ -947,11 +950,14 @@ cases:
           target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: transfer }));
           target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer })); return true; })()
       - wait: 900
+      - eval: 'window.archiveNoticeCount=document.querySelectorAll(".collab-banner[role=status]").length; true'
       - eval: "[...document.querySelectorAll('[role=status] button')].find((button) => button.textContent?.includes('撤销'))?.click(); true"
       - wait: 900
     assert:
       - visible: 'article[data-stage="DONE"] button[aria-label^="待归档与重开缺陷，"]'
       - text: { sel: '[role="status"]', contains: 已移出归档 }
+      - eval: 'window.archiveNoticeCount === 1'
+      - count: { sel: '.collab-banner[role="status"]', eq: 1 }
 
   - name: completed linked card keeps both statuses and actions inside its border
     steps:
@@ -1092,11 +1098,14 @@ cases:
     steps:
       - click: '.collab-linked-review-card[data-stage="DONE"] .collab-bug-card__actions button:last-child'
       - wait: '.collab-banner[role="status"]'
+      - eval: 'window.linkedArchiveNoticeCount=document.querySelectorAll(".collab-banner[role=status]").length; true'
       - click: '.collab-banner[role="status"] button'
       - wait: '.collab-linked-review-card[data-stage="DONE"]'
     assert:
       - count: { sel: '.collab-linked-review-card[data-stage="DONE"]', eq: 1 }
       - text: { sel: '[role="status"]', contains: 已移出归档 }
+      - eval: 'window.linkedArchiveNoticeCount === 1'
+      - count: { sel: '.collab-banner[role="status"]', eq: 1 }
 
   - name: verification buttons stay side by side and fit the card in both themes
     steps:
