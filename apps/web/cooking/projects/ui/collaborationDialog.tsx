@@ -10,8 +10,6 @@ import {
 import { ProjectDialogEffects } from './projectDialogEffects';
 import { Dialog } from './dialog';
 import { DialogFeedback, ProjectFields } from './settingsFields';
-
-import { invitationStatus } from './settingsLinks';
 import { InvitationForm } from './invitationForm';
 import { ProjectDeleteControl } from './projectDeleteControl';
 import { randomUUID } from 'node:crypto';
@@ -266,5 +264,16 @@ export function InvitationDialog({
         )}
       </section>
     </div>
+  );
+}
+
+function invitationStatus(status: string): string {
+  return (
+    {
+      PENDING: '等待处理',
+      ACCEPTED: '已接受',
+      REJECTED: '已拒绝',
+      REVOKED: '已撤销',
+    }[status] ?? '未知状态'
   );
 }

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import Link from 'next/link';
-import { settingsHref } from './settingsLinks';
+import { projectPanelPath } from './routeState';
 
 export function DialogFeedback({
   error,
@@ -47,7 +47,7 @@ export function EngineeringTaskHeading({
         </span>
         <h3>{name}</h3>
       </div>
-      <Link href={settingsHref(projectId, 'engineering')} replace>
+      <Link href={projectPanelPath(projectId, 'engineering')} replace>
         返回目录
       </Link>
     </div>

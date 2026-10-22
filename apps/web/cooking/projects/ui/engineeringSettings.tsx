@@ -15,17 +15,11 @@ import {
   updateEngineeringAction,
   updateEnvironmentAction,
 } from '@/cooking/engineering/server/actions';
-
 import { DeploymentFields } from '@/cooking/engineering/ui/deploymentFields';
 import { EngineeringCreateEnvironments } from './engineeringCreateEnvironments';
 import { BindingDeleteForm } from './bindingDeleteForm';
 import { AutoRefresh } from '@/cooking/shared/ui/autoRefresh';
 import { EngineeringTaskHeading, EngineeringFields } from './settingsFields';
-import {
-  deploymentLabel,
-  bindingRequestLabel,
-  bindingRequestMessage,
-} from './settingsLinks';
 
 export function EngineeringEnvironmentManagement({
   engineeringId,
@@ -422,4 +416,31 @@ export function EngineeringDetail({
       </section>
     </div>
   );
+}
+function deploymentLabel(kind: 'LOCAL_SCRIPT' | 'CI_CD'): string {
+  return kind === 'LOCAL_SCRIPT' ? '本地脚本' : '持续集成';
+}
+
+function bindingRequestLabel(
+  state: 'PENDING' | 'PROCESSING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED',
+): string {
+  return {
+    PENDING: '等待 Agent 响应',
+    PROCESSING: '等待选择仓库',
+    SUCCEEDED: '工程绑定已完成',
+    FAILED: '工程绑定未完成',
+    CANCELLED: '工程绑定已取消',
+  }[state];
+}
+
+function bindingRequestMessage(
+  state: 'PENDING' | 'PROCESSING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED',
+): string {
+  return {
+    PENDING: '等待本机 Agent 领取请求。',
+    PROCESSING: '请在本机选择要绑定的 Git 仓库。',
+    SUCCEEDED: '工程绑定已完成。',
+    FAILED: '请根据提示重新发起工程绑定。',
+    CANCELLED: '如需继续，请重新发起工程绑定。',
+  }[state];
 }

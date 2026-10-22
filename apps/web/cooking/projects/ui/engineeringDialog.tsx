@@ -6,7 +6,12 @@ import {
   createEngineeringAction,
   removeEngineeringMemberAction,
 } from '@/cooking/engineering/server/actions';
-import { engineeringViewPath as engineeringViewHref } from '@/cooking/projects/ui/routeState';
+import {
+  engineeringCreatePath,
+  engineeringSettingsPath,
+  engineeringViewPath as engineeringViewHref,
+  projectPanelPath,
+} from '@/cooking/projects/ui/routeState';
 import { EngineeringCreateEnvironments } from './engineeringCreateEnvironments';
 import { Dialog } from './dialog';
 import {
@@ -20,12 +25,6 @@ import {
   EngineeringInformationManagement,
   EngineeringDetail,
 } from './engineeringSettings';
-
-import {
-  engineeringCreateHref,
-  engineeringHref,
-  settingsHref,
-} from './settingsLinks';
 
 export function EngineeringDialog({
   bindingRequestId,
@@ -96,7 +95,7 @@ export function EngineeringDialog({
             {owner ? (
               <Link
                 className="repair-primary"
-                href={engineeringCreateHref(projectId)}
+                href={engineeringCreatePath(projectId)}
                 replace
               >
                 新建工程
@@ -175,7 +174,10 @@ export function EngineeringDialog({
                                 </>
                               ) : null}
                               <Link
-                                href={engineeringHref(projectId, item.id)}
+                                href={engineeringSettingsPath(
+                                  projectId,
+                                  item.id,
+                                )}
                                 replace
                               >
                                 详情
@@ -287,7 +289,7 @@ function EngineeringCreateForm({
       <EngineeringCreateEnvironments initialMutationId={randomUUID()} />
 
       <div className="dialog-actions">
-        <Link href={settingsHref(projectId, 'engineering')} replace>
+        <Link href={projectPanelPath(projectId, 'engineering')} replace>
           返回目录
         </Link>
         <button className="repair-primary" type="submit">

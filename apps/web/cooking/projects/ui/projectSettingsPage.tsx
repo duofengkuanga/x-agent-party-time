@@ -9,9 +9,9 @@ import {
   parseProjectSettingsRoute,
   projectSettingsPath,
   projectSettingsRouteChanged,
+  projectPanelPath,
 } from '@/cooking/projects/ui/routeState';
 import { ProjectSettingsControls } from './projectSettingsControls';
-import { settingsHref } from './settingsLinks';
 import {
   InvitationDialog,
   ProjectSettingsDialog,
@@ -88,17 +88,17 @@ export default async function ProjectSettingsPage({
                   <Link
                     aria-label={`设置项目 ${project.name}`}
                     className="project-settings__row-settings"
-                    href={settingsHref(project.id, 'project')}
+                    href={projectPanelPath(project.id, 'project')}
                   >
                     设置
                   </Link>
                 ) : null}
-                <Link href={settingsHref(project.id, 'collaboration')}>
+                <Link href={projectPanelPath(project.id, 'collaboration')}>
                   成员
                 </Link>
                 <Link
                   className="project-settings__row-primary"
-                  href={settingsHref(project.id, 'engineering')}
+                  href={projectPanelPath(project.id, 'engineering')}
                 >
                   工程与 Agent
                 </Link>
