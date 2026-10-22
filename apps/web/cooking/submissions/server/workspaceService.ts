@@ -13,7 +13,7 @@ import {
   CookingWorkspaceSnapshotSchema,
   type BugProgressTimelineNode,
   type CookingWorkspaceSnapshot,
-} from '../contract';
+} from '../workspace';
 
 export class CookingWorkspaceService {
   constructor(

@@ -1,7 +1,7 @@
 import { mutation } from '@/cooking/testing/project';
 import { completeSuccessfulExecution } from '@/cooking/testing/execution';
 import { SubmissionService } from '@/cooking/submissions/server/submissionService';
-import { CookingWorkspaceService } from '@/cooking/workspace/server/workspaceService';
+import { CookingWorkspaceService } from '@/cooking/submissions/server/workspaceService';
 import { AuthService } from '@/platform/auth/service';
 import { handleExecutionClaim } from '@/platform/execution/http';
 import { ExecutionService } from '@/platform/execution/service';

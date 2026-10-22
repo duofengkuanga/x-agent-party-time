@@ -4,7 +4,7 @@ import { projectScenario, engineeringScenario } from '@/cooking/testing/scenario
 import { mutation } from '@/cooking/testing/project';
 import { RunnerService } from '@/platform/runner/service';
 import { EngineeringService } from '@/cooking/engineering/server/engineeringService';
-import { BindingRequestService } from '@/cooking/bindings/server/bindingRequestService';
+import { BindingRequestService } from '@/cooking/engineering/server/bindingRequestService';
 import { expectRowCount, testDatabases } from '@/testing/database';
 import {
   completeCleanup,

@@ -1,7 +1,7 @@
 import { type Execution } from '@agent-party-time/execution-contract';
 import { PlatformError } from '@/platform/errors';
 import { CleanupExecutionResultSchema } from '../contract';
-import type { CleanupSourceRow } from './records';
+import type { CleanupSourceRow } from './lifecycleQueries';
 
 export function isCleanupExecution(execution: Execution): boolean {
   return execution.owner.namespace === 'cooking' && execution.owner.kind === 'CLEANUP';

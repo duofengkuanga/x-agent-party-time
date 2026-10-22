@@ -25,7 +25,7 @@ import {
   type VerifyBugInput,
 } from '../contract';
 import { LifecycleQueries } from './lifecycleQueries';
-import type { BugSourceRow } from './records';
+import type { BugSourceRow } from './lifecycleQueries';
 import { staleLifecycle } from './results';
 
 const STORED_BUG_TRANSITIONS = {

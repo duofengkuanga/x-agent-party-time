@@ -1,5 +1,5 @@
 import { mutation } from '@/cooking/testing/project';
-import { CookingWorkspaceService } from '@/cooking/workspace/server/workspaceService';
+import { CookingWorkspaceService } from '@/cooking/submissions/server/workspaceService';
 import { testDatabases } from '@/testing/database';
 import { describe, expect, test } from 'bun:test';
 import {

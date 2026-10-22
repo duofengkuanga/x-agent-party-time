@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import type { JsonValue } from '@agent-party-time/execution-contract';
-import { type CookingWorkspaceSnapshot } from '@/cooking/workspace/contract';
+import { type CookingWorkspaceSnapshot } from '@/cooking/submissions/workspace';
 import { CleanupInteractionPanel } from './cleanupInteraction';
 import { AddSubmissionItems } from './addSubmissionItems';
 

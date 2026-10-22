@@ -2,7 +2,7 @@ import type { ExecutionState } from '@agent-party-time/execution-contract';
 import type {
   BugProgressTimelineNode,
   CookingWorkspaceSnapshot,
-} from '@/cooking/workspace/contract';
+} from '@/cooking/submissions/workspace';
 import type { UpdateBatchView } from '@/cooking/update/contract';
 
 export type RepairRound = Extract<BugProgressTimelineNode, { kind: 'REPAIR_ATTEMPT' }>;

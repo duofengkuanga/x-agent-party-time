@@ -1,5 +1,5 @@
-import { BindingRequestService } from '@/cooking/bindings/server/bindingRequestService';
-import { BindingService } from '@/cooking/bindings/server/bindingService';
+import { BindingRequestService } from '@/cooking/engineering/server/bindingRequestService';
+import { BindingService } from '@/cooking/engineering/server/bindingService';
 import { EngineeringService } from '@/cooking/engineering/server/engineeringService';
 import { projectMemberHasEngineeringResponsibilities } from '@/cooking/engineering/server/responsibilities';
 import { ProjectService } from '@/cooking/projects/server/projectService';

@@ -7,7 +7,7 @@ import type {
 } from '@/cooking/shared/contract';
 import { interactionVisual, queueVisual } from '@/cooking/shared/server/executionVisual';
 import { RepairExecutionResultSchema } from '../contract';
-import type { AttemptRow } from './records';
+import type { AttemptRow } from './repairQueries';
 
 export function formatRepairContractIssues(
   issues: ReadonlyArray<{ path: readonly PropertyKey[]; message: string }>,

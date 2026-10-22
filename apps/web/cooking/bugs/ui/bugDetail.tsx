@@ -1,6 +1,6 @@
 'use client';
 
-import type { CookingWorkspaceSnapshot } from '@/cooking/workspace/contract';
+import type { CookingWorkspaceSnapshot } from '@/cooking/submissions/workspace';
 import { createClientId } from '@/cooking/shared/ui/clientId';
 import { freezeUpdateNowAction } from '@/cooking/update/server/actions';
 import type { BugView } from '../contract';

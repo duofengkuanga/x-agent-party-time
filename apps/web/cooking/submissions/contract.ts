@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { UserIdSchema, UserSchema } from '@/platform/auth/contract';
-import { BindingIdSchema } from '@/cooking/bindings/contract';
 import {
+  BindingIdSchema,
   DeploymentMethodSchema,
   EngineeringIdSchema,
   EngineeringIdentifierSchema,
@@ -11,6 +11,7 @@ import {
   EnvironmentNameSchema,
   RepositoryUrlSchema,
 } from '@/cooking/engineering/contract';
+
 import { ProjectIdSchema, ProjectNameSchema } from '@/cooking/projects/contract';
 import {
   CookingMutationIdSchema,

@@ -6,7 +6,7 @@ import type {
   BugOwnershipDraft,
   BugRegistration,
 } from './bugFormDraft';
-import type { CookingWorkspaceSnapshot } from '@/cooking/workspace/contract';
+import type { CookingWorkspaceSnapshot } from '@/cooking/submissions/workspace';
 import type { Drawer } from './boardModel';
 import { drawerTitle, bugLabel } from './boardModel';
 

@@ -11,7 +11,7 @@ import {
 import { EngineeringIdSchema } from '@/cooking/engineering/contract';
 import { CookingMutationIdSchema } from '@/cooking/shared/contract';
 import { CookingWriteStore } from '@/cooking/shared/server/writeStore';
-import { requireBindingEngineering } from './engineeringAccess';
+import { requireBindingEngineering } from './engineeringQueries';
 import {
   BindingRequestIdSchema,
   BindingRequestSchema,

@@ -15,7 +15,7 @@ import {
   type ResolveCleanupInteractionInput,
 } from '../contract';
 import { LifecycleQueries } from './lifecycleQueries';
-import type { CleanupSourceRow } from './records';
+import type { CleanupSourceRow } from './lifecycleQueries';
 import { isTerminal } from '@/cooking/shared/server/executionState';
 import {
   interpretCleanup,

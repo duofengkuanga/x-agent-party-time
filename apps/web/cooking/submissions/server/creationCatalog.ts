@@ -1,6 +1,6 @@
 import { ProjectService } from '@/cooking/projects/server/projectService';
 import { EngineeringService } from '@/cooking/engineering/server/engineeringService';
-import { BindingService } from '@/cooking/bindings/server/bindingService';
+import { BindingService } from '@/cooking/engineering/server/bindingService';
 import type { AppDatabase } from '@/platform/database';
 import { SubmissionCreationCatalogSchema } from '../contract';
 import { environmentConflict } from './environmentAccess';

@@ -1,8 +1,13 @@
 import { DeploymentMethodSchema } from '@/cooking/engineering/contract';
 import { TestSubmissionWriteStore } from '@/cooking/submissions/server/testSubmissionWriteStore';
-import { asDetails, isTerminal } from '@/cooking/shared/server/executionState';
+import {
+  asDetails,
+  isTerminal,
+  markInvalidExecutionResult,
+} from '@/cooking/shared/server/executionState';
+
 import { insertAuditEvent } from '@/cooking/shared/server/auditEvent';
-import { markInvalidExecutionResult } from '@/cooking/shared/server/invalidExecutionResult';
+
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
 import { executionProjector } from '@/platform/execution/projection';
@@ -11,7 +16,7 @@ import {
   CiCdUpdateExecutionResultSchema,
   LocalScriptUpdateExecutionResultSchema,
 } from '../contract';
-import type { BatchRow } from './records';
+import type { BatchRow } from './updateQueries';
 import { isUpdateExecution, staleBatch } from './results';
 import { UpdateQueries } from './updateQueries';
 const INVALID_RESULT_MESSAGE = 'Codex 返回的更新结果无效';

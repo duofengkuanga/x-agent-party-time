@@ -7,7 +7,7 @@ import { PlatformError } from '@/platform/errors';
 import { RunnerSchema } from '@/platform/runner/contract';
 import { EngineeringIdSchema, RepositoryUrlSchema } from '@/cooking/engineering/contract';
 import { CookingWriteStore } from '@/cooking/shared/server/writeStore';
-import { requireBindingEngineering } from './engineeringAccess';
+import { requireBindingEngineering } from './engineeringQueries';
 import {
   EngineeringBindingSchema,
   EngineeringBindingSummarySchema,

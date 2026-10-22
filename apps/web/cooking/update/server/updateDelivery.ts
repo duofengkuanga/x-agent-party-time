@@ -21,9 +21,9 @@ import {
   CiCdUpdateOutputJsonSchema,
   LocalScriptUpdateOutputJsonSchema,
 } from '../contract';
-import type { BatchRow, FrozenBatch, ItemSourceRow } from './records';
+import type { BatchRow, ItemSourceRow, UpdateQueries } from './updateQueries';
 import { parseCommits } from '@/cooking/shared/server/resultData';
-import type { UpdateQueries } from './updateQueries';
+
 import { staleBatch } from './results';
 import { freezeRepairHandoffs } from './repairHandoffs';
 import { UPDATE_HANDOFF_TEXT_ASSERTION } from '@/cooking/repair/handoff';
@@ -340,3 +340,9 @@ export class UpdateDelivery {
     );
   }
 }
+
+export type FrozenBatch = {
+  batchId: string;
+  executionId: string;
+  revision: number;
+};

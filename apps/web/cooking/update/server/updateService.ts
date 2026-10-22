@@ -20,7 +20,7 @@ import {
   type SynchronizeUpdateSessionInput,
   type UpdateMutationResult,
 } from '../contract';
-import type { BatchRow, ItemSourceRow } from './records';
+import type { BatchRow, ItemSourceRow } from './updateQueries';
 import { UpdateProjection } from './updateProjection';
 import { UpdateQueries } from './updateQueries';
 import { UpdateDelivery } from './updateDelivery';

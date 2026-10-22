@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import type { CookingWorkspaceSnapshot } from '@/cooking/workspace/contract';
+import type { CookingWorkspaceSnapshot } from '@/cooking/submissions/workspace';
 import {
   reopenBugAction,
   reviewLinkedBugsAction,

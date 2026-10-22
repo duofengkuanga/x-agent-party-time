@@ -20,7 +20,7 @@ import {
 import {
   CookingWorkspaceSnapshotSchema,
   type CookingWorkspaceSnapshot,
-} from '@/cooking/workspace/contract';
+} from '@/cooking/submissions/workspace';
 import { BugBoard } from '@/cooking/bugs/ui/bugBoard';
 import {
   closeSubmissionAction,

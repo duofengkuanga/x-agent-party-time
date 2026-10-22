@@ -1,7 +1,7 @@
 'use client';
 
 import type { FormEvent } from 'react';
-import { deleteEngineeringBindingAction } from '@/cooking/bindings/server/actions';
+import { deleteEngineeringBindingAction } from '@/cooking/engineering/server/actions';
 
 export function BindingDeleteForm({
   bindingId,

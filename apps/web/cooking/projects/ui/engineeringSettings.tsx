@@ -7,14 +7,15 @@ import {
   bindingService,
   engineeringService,
 } from '@/cooking/runtime/services';
-import { createEngineeringBindingAction } from '@/cooking/bindings/server/actions';
 import {
+  createEngineeringBindingAction,
   archiveEngineeringAction,
   createEnvironmentAction,
   deleteEnvironmentAction,
   updateEngineeringAction,
   updateEnvironmentAction,
 } from '@/cooking/engineering/server/actions';
+
 import { DeploymentFields } from '@/cooking/engineering/ui/deploymentFields';
 import { EngineeringCreateEnvironments } from './engineeringCreateEnvironments';
 import { BindingDeleteForm } from './bindingDeleteForm';

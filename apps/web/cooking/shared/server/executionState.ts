@@ -1,5 +1,6 @@
 import { PlatformError } from '@/platform/errors';
 import type { Execution } from '@agent-party-time/execution-contract';
+import type { AppDatabase } from '@/platform/database';
 
 export function requireTaskSkillBinding(execution: Execution, task: '修复' | '更新') {
   const binding =
@@ -14,6 +15,28 @@ export function requireTaskSkillBinding(execution: Execution, task: '修复' | '
 
 export function isTerminal(state: Execution['state']): boolean {
   return state === 'SUCCEEDED' || state === 'FAILED' || state === 'CANCELLED';
+}
+
+export function markInvalidExecutionResult(
+  db: AppDatabase,
+  executionId: string,
+  message: string,
+): void {
+  db.run(
+    `UPDATE platform_execution
+       SET state = 'FAILED', outcome_json = ? WHERE id = ?`,
+    [
+      JSON.stringify({
+        kind: 'FAILED',
+        failure: {
+          code: 'CODEX_EXECUTION_FAILED',
+          message,
+          retryable: true,
+        },
+      }),
+      executionId,
+    ],
+  );
 }
 
 export function asDetails(value: unknown): Record<string, unknown> {

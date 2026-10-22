@@ -2,8 +2,8 @@ import { ZodError } from 'zod';
 import { PlatformError } from '@/platform/errors';
 import { errorResponse, jsonResponse } from '@/platform/http/responses';
 import { logger } from '@/platform/logging';
-import type { CookingWorkspaceService } from '@/cooking/workspace/server/workspaceService';
-import { CookingWorkspaceSnapshotSchema } from '@/cooking/workspace/contract';
+import type { CookingWorkspaceService } from '@/cooking/submissions/server/workspaceService';
+import { CookingWorkspaceSnapshotSchema } from '@/cooking/submissions/workspace';
 import {
   SubmissionIdSchema,
   WorkspaceInvalidationSchema,

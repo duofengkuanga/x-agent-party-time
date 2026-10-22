@@ -18,7 +18,7 @@ import {
   verifyBugAction,
 } from '@/cooking/lifecycle/server/actions';
 import { createClientId } from '@/cooking/shared/ui/clientId';
-import type { CookingWorkspaceSnapshot } from '@/cooking/workspace/contract';
+import type { CookingWorkspaceSnapshot } from '@/cooking/submissions/workspace';
 import {
   Fragment,
   useCallback,

@@ -6,7 +6,7 @@ import type {
   CookingVisualPresentation,
 } from '@/cooking/shared/contract';
 import { interactionVisual, queueVisual } from '@/cooking/shared/server/executionVisual';
-import type { BatchRow, AttemptRow } from './records';
+import type { BatchRow, AttemptRow } from './updateQueries';
 import { UpdateHandoffUseSchema } from '../contract';
 
 export function parseManualOperations(value: string) {

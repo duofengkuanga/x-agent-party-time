@@ -1,7 +1,7 @@
 'use client';
 
 import { createClientId } from '@/cooking/shared/ui/clientId';
-import type { CookingWorkspaceSnapshot } from '@/cooking/workspace/contract';
+import type { CookingWorkspaceSnapshot } from '@/cooking/submissions/workspace';
 import {
   verifyBugAction,
   type BugLifecycleActionResult,

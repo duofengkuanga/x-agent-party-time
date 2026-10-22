@@ -260,60 +260,50 @@ bun run eval:observability-overhead
 
 ## 代码结构
 
+按业务拥有者组织代码。一个目录对应一组需要一起理解和修改的业务行为；小函数、数据库行类型和仅服务于该业务的校验放在实现附近。
+
 ```text
 apps/web/
-├── app/                    Next 路由、布局和路由级装配
-├── cooking/                提测与缺陷交付业务
-│   ├── runtime/            跨业务 Module 的依赖装配与执行事件分发
-│   ├── projects/           私密项目、成员、邀请和项目设置
-│   ├── engineering/        工程、环境与负责人
-│   ├── bindings/           工程与本机 Agent 的绑定
-│   ├── submissions/        提测、工作区同步与提测信息
-│   ├── bugs/               缺陷报告、分诊、看板与删除
-│   ├── repair/             修复尝试、结果与会话同步
-│   ├── update/             更新批次、部署与会话同步
-│   ├── lifecycle/          验证、重开、取消与善后
-│   ├── workspace/          按角色聚合工作区视图
-│   ├── shared/             业务共享契约、写入与界面基础能力
-│   └── ui/                 Cooking 共享页面框架
-└── platform/               领域无关的认证、数据、文件、错误、Agent 与 Execution
+├── app/          Next 路由、布局和路由级接入
+├── cooking/      提测与缺陷交付业务，职责见下表
+└── platform/     领域无关的认证、数据库、文件、错误、Agent 与 Execution
 
-apps/xapt/src/
-├── cli/                    命令解析、调用和输出
-├── daemon/                 当前用户后台进程、控制通道和状态
-├── agent/                  Server 连接、授权、心跳与 HTTP 通信
-├── codex/                  App Server 协议、输入、交互与结果读取
-├── execution/              Execution 执行、工作区、附件与结果验证
-├── state/                  本机持久状态和 Outbox
-├── platform/               OS Interface 与 macOS Adapter
-├── install/                安装版本切换、更新与卸载
-├── skills/                 本机 Skill Bundle 管理
-└── testing/                测试临时目录生命周期与本机 Adapter
-
-packages/execution-contract/  Web 与 xapt 共享的 Execution 协议
-packages/runner-contract/     Web 与 xapt 共享的 Agent 协议和 HTTP 客户端
-packages/runner-conformance/  协议验收 Adapter
+apps/xapt/src/    本机 CLI、daemon、连接、Codex、Execution 与本机状态
+packages/
+├── execution-contract/  Web 与 xapt 共享的 Execution 协议
+├── runner-contract/     Web 与 xapt 共享的 Agent 协议和 HTTP 客户端
+└── runner-conformance/  通过协议驱动场景的验收 Adapter
 ```
 
-每个 Cooking Module 使用 `contract.ts` 声明跨调用方的数据 Interface，`server/` 保存事务、业务行为与 Server Actions，`ui/` 保存界面和交互。测试与被测 Module 就近放置。`ui/` 中的 Server 渲染与 `'use client'` 声明仍按 Next 的执行规则区分；客户端只调用 Server Actions，不导入事务实现。
+Cooking 的职责归属：
 
-`runtime/` 是跨业务装配的集中入口，负责把修复候选、更新、善后与执行投影连接起来。通用 `platform/` 不引用 Cooking；路由在两者之间选择并装配所需能力。缺陷删除 HTTP 处理属于 `cooking/bugs/server/http.ts`，共享响应转换属于 `platform/http/responses.ts`。
+| 目录           | 负责的行为                                             |
+| -------------- | ------------------------------------------------------ |
+| `projects/`    | 私密项目、项目成员和邀请；组合项目管理页面中的各项设置 |
+| `engineering/` | 工程、工程成员、环境配置、Agent 绑定及绑定申请         |
+| `submissions/` | 提测单与提测项、环境使用权和切换；按角色聚合完整工作区 |
+| `bugs/`        | 缺陷报告、分诊归属、关联关系和删除；看板与缺陷详情     |
+| `repair/`      | Repair Attempt、修复结果、修复会话同步及候选交接       |
+| `update/`      | Update Batch 冻结、更新执行、部署结果和更新会话同步    |
+| `lifecycle/`   | 验证、重开、取消与恢复、归档；关闭提测及 Cleanup       |
+| `runtime/`     | 跨业务依赖装配、Execution 事件分发和 Runner HTTP 接入  |
+| `shared/`      | 多个业务实际共用且含义一致的契约、写入和界面能力       |
+| `ui/`          | Cooking 共享页面框架                                   |
+| `testing/`     | 真实业务场景与协议测试的隔离装配                       |
 
-大文件按职责拆分：缺陷看板协调状态，附件、报告编辑、修复时间线、更新详情与交互记录分别实现；提测工作区把同步状态、侧栏偏好、详情和清理交互分开。时间线通过 `bugs/ui/progressTimeline.tsx` 统一列表结构、标题、时间与摘要显示，Repair 执行状态文案由 `shared/executionLabels.ts` 同时供 Server 与 UI 使用，各业务记录只定义内容。
+业务目录内，`contract.ts` 保存共享数据 Interface，`server/` 保存查询、事务和 Server Actions，`ui/` 保存界面及交互。测试与被测实现就近放置。客户端通过 Server Actions 或 HTTP 发起操作，使用纯数据契约，不导入数据库实现。
 
-修复与更新的命令、执行投影、查询分别位于 `server/*Service.ts`、`server/*Projection.ts`、`server/*Queries.ts`；更新候选计时、Batch 冻结与交付 Execution 准备集中在 `updateDelivery.ts`，只读 Session Synchronization 请求由 `UpdateService` 处理。生命周期的缺陷状态命令集中在 `bugLifecycleCommands.ts`，Cleanup 位于 `cleanupService.ts`，提测关闭及后续 Cleanup 编排集中在 `submissionClosure.ts`；`runtime/createCooking.ts` 将这些实现的方法直接绑定为统一的 `lifecycle` 调用入口。工程服务保留统一调用入口，内部由 `engineeringQueries.ts` 集中读取与权限检查、`environmentService.ts` 管理环境写入，写入结果复用查询侧的记录映射。结果解释与行类型仍位于 `results.ts`、`records.ts`。
+工程绑定属于工程配置：Binding Schema 放在 `engineering/contract.ts`，绑定操作入口放在 `engineering/server/actions.ts`，工程成员与归档校验归 `engineeringQueries.ts`。`bindingService.ts` 管长期绑定和仓库确认，`bindingRequestService.ts` 管有时限的目录选择申请及领取、完成状态。
 
-提测服务保留 `submissionService.ts` 作为调用入口，由 `submissionQueries.ts` 集中有权限的读取和工作区投影；环境使用权由 `environmentAccess.ts` 判断。
+提测工作区是聚合视图。`submissions/contract.ts` 定义提测基础数据；`submissions/workspace.ts` 定义包含缺陷、修复、更新和生命周期投影的快照；`submissions/server/workspaceService.ts` 在访问权限通过后准备到期更新，再读取并组合这些投影。聚合快照与基础契约分开，避免基础实体相互引用，同时让界面能直接使用纯数据 Schema。
 
-`platform/runner/service.ts` 保留 Agent 配对、在线状态与停用的统一入口；浏览器授权请求及凭据领取由 `authorization.ts` 处理，持久行映射与密钥哈希由 `runnerStorage.ts` 共用。
+修复、更新和生命周期的 SQL 行类型分别与查询放在 `repairQueries.ts`、`updateQueries.ts` 和 `lifecycleQueries.ts`；`updateDelivery.ts` 保存批次冻结和执行准备，以及它返回的 `FrozenBatch`。读取、状态变更和 Execution 投影各自保留明确职责，避免把整个业务堆进一个文件。
 
-`runtime/createCooking.ts` 是生产和集成测试共同使用的执行链装配入口。Platform 以同一个带类型的事件通知事务内的 APPLY 和提交后的 AFTER；会话同步先按记录归属选择 Repair 或 Update，避免跨领域解释结果。修复和更新的 Codex JSON Schema 从服务器 Zod 定义派生。共享权限检查、附件归属校验和幂等写入集中在 `shared/server/`；写入 Store 集中验证结果并从 Mutation 资源填充 Audit 目标，仅目标 ID 不同的命令显式覆盖。平坦实体及先解码 JSON 字段的 SQL 行映射集中在 `platform/database/rowMapper.ts`，由已有 Zod Schema 限定读取字段；数据库建表 SQL 按 Platform 与 Cooking 分别保存在 `platformSchema.ts`、`cookingSchema.ts`，初始化仍一次执行完整 Schema。Runner 与 Execution HTTP 处理器通过 `platform/http/responses.ts` 统一结果校验和公开错误响应，认证与业务执行顺序由各处理器保留。
+`shared/server/writeStore.ts` 负责事务、幂等结果校验和审计编排；`auditEvent.ts` 保留仅依赖数据库的审计落库函数，供执行投影等调用方使用。将二者合并会让这些调用方提前加载业务 Schema，已在生产构建中触发初始化错误，因此保留这个低依赖 Interface。`executionState.ts` 处理执行状态、Task Skill Binding、执行事件详情和无效结果标记；`resultData.ts` 解码已保存的提交与手动操作。只有被多个业务实际复用的行为才进入 `shared/`。
 
-Execution 的领域无关状态转换在 `platform/execution/service.ts`；`queue.ts` 管领取、恢复及 Lease 到期，`interactions.ts` 管操作请求的打开、等待与处理，`records.ts` 读取并映射持久记录，`lease.ts` 集中 Lease 状态与校验，`polling.ts` 统一有界等待。xapt 的 `execution/service.ts` 驱动本机 Codex，`preparation.ts` 负责工作区、附件、规则包与结果校验准备，`recovery.ts` 维护执行阶段和 Lease，`outbox.ts` 持久化待上报结果并负责恢复后重放。两侧通过 Runner HTTP 协议连接，Cooking 只接收归属明确的 Execution 投影事件。`platform/runner/router.ts` 是生产与协议测试共用的路由表，`cooking/runtime/runnerHttp.ts` 装配绑定操作和带业务投影的执行服务；Next 路由文件只声明允许的 HTTP 方法。`runner-contract/http-client` 统一通用客户端的请求校验、认证、响应解析及错误类型；xapt 只扩展缺陷删除命令，协议验收客户端只补充场景驱动。
+`runtime/createCooking.ts` 是生产和集成测试共同使用的执行链装配入口，统一连接修复、更新、生命周期和工作区读取。Platform 发出事务内 APPLY 与提交后 AFTER 事件，Cooking 根据归属选择投影；Session Synchronization 先确认 Repair 或 Update 归属。HTTP 路由和协议测试共用 `platform/runner/router.ts`，业务装配在 `runtime/runnerHttp.ts`。
 
-Cooking 样式入口 `app/cooking/cooking.css` 只声明有序导入；`styles/` 按页面和职责维护样式，导入顺序保留共享控件与布局的层叠规则。看板卡片与表单、工程目录与工程管理分别维护在相邻的样式文件中，附件选择与展示集中在 `styles/attachments.css`，Agent 台账与连接页分别由 `styles/agents.css` 和 `styles/agentConnect.css` 承担；跨页面的 accent 悬停与焦点规则由最后导入的 `styles/accentInteractions.css` 统一管理。集成测试通过 `testing/database.ts` 管理隔离数据库，通过 `cooking/testing/scenario.ts` 装配真实用户、成员、工程与绑定，再由 `cooking/testing/project.ts` 建立完整提测场景；协议级 Agent 测试通过 `cooking/testing/runnerHttp.ts` 装配本地 Runner HTTP 处理器。
-
-`BugService` 保留缺陷命令入口，`BugQueries` 集中有权限的读取、附件访问与工作区投影。`BugService.deleteBugs()` 提供维护命令的删除 Interface；`deleteUnassignedBug()` 提供网页删除入口，仅允许活动提测单的测试负责人或提测项开发负责人删除尚未分配、未开始修复的缺陷。网页删除需确认，并校验版本、记录审计及支持幂等重试。内部 `BugDeletion` 集中处理权限与状态校验、关联执行收集、活动检查、事务删除、依赖校验与提测版本推进。测试继续通过 `BugService` 验证完整行为，不依赖私有步骤。
+xapt 按本机职责分为 `cli/`、`daemon/`、`agent/`、`codex/`、`execution/`、`state/`、`install/`、`skills/`、`observability/`、`platform/` 和 `testing/`。操作系统与外部 Codex、HTTP 通信有真实的生产和测试 Adapter，继续通过这些 Interface 验证。Server 不接收本机仓库绝对路径，xapt 不导入 Cooking。
 
 依赖方向：
 
@@ -326,7 +316,7 @@ xapt → execution-contract + runner-contract
 xapt ✕→ web / cooking
 ```
 
-修改目录或抽取 Module 时，同时更新导入、脚本和配置中的扫描范围、按源码路径定位的架构测试及文档指针。协议、路由、Schema、命令和持久化路径不能随目录整理改变。
+Platform 与 xapt 的依赖限制由 `platform/architectureBoundaries.test.ts` 验证。移动或合并实现时同步修改导入、扫描范围和文档指针，保留调用方的业务 Interface 和原有验收；按职责判断拆分，不用文件大小或行数替代这个判断。
 
 ## 安全边界
 

@@ -1,5 +1,5 @@
-import { BindingService } from '@/cooking/bindings/server/bindingService';
-import { BindingRequestService } from '@/cooking/bindings/server/bindingRequestService';
+import { BindingService } from '@/cooking/engineering/server/bindingService';
+import { BindingRequestService } from '@/cooking/engineering/server/bindingRequestService';
 import { database, type AppDatabase } from '@/platform/database';
 import { runnerFetch, type RunnerHttpServices } from '@/platform/runner/router';
 import { runnerService } from '@/platform/runner/server';

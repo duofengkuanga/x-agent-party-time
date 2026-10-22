@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { createClientId } from '@/cooking/shared/ui/clientId';
 import { messageOf } from '@/cooking/shared/ui/actionError';
-import type { CookingWorkspaceSnapshot } from '@/cooking/workspace/contract';
+import type { CookingWorkspaceSnapshot } from '@/cooking/submissions/workspace';
 import type {
   EnvironmentConflict,
   SubmissionCreationCatalog,

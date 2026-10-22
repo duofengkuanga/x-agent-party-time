@@ -1,5 +1,5 @@
 import { createClientId } from '@/cooking/shared/ui/clientId';
-import type { CookingWorkspaceSnapshot } from '@/cooking/workspace/contract';
+import type { CookingWorkspaceSnapshot } from '@/cooking/submissions/workspace';
 import type { BugView } from '../contract';
 
 export type BugOwnershipDraft = {

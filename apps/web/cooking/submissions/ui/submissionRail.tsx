@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import type { JsonValue } from '@agent-party-time/execution-contract';
-import { type CookingWorkspaceSnapshot } from '@/cooking/workspace/contract';
+import { type CookingWorkspaceSnapshot } from '@/cooking/submissions/workspace';
 import { type SubmissionSummary } from '../contract';
 import type { SyncState } from './workspaceState';
 import { SubmissionDetails } from './submissionDetails';

@@ -8,7 +8,7 @@ import { RepairService } from '@/cooking/repair/server/repairService';
 import { SubmissionService } from '@/cooking/submissions/server/submissionService';
 import { TestSubmissionWriteStore } from '@/cooking/submissions/server/testSubmissionWriteStore';
 import { UpdateService } from '@/cooking/update/server/updateService';
-import { CookingWorkspaceService } from '@/cooking/workspace/server/workspaceService';
+import { CookingWorkspaceService } from '@/cooking/submissions/server/workspaceService';
 import type { AppDatabase } from '@/platform/database';
 import { ExecutionService } from '@/platform/execution/service';
 import { cookingExecutionProjection } from './executionProjection';

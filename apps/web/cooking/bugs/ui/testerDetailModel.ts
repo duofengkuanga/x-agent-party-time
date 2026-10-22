@@ -1,5 +1,5 @@
 import type { BugView } from '../contract';
-import type { CookingWorkspaceSnapshot } from '@/cooking/workspace/contract';
+import type { CookingWorkspaceSnapshot } from '@/cooking/submissions/workspace';
 
 export function testerBugStatus(
   bug: BugView,
