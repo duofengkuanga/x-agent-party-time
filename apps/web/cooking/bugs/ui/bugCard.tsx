@@ -207,7 +207,7 @@ export function LinkedReviewCard({
   );
 }
 
-export function UpdateCountdown({ eligibleAt }: { eligibleAt: string }) {
+function UpdateCountdown({ eligibleAt }: { eligibleAt: string }) {
   const [remainingMs, setRemainingMs] = useState<number | null>(null);
   useEffect(() => {
     const update = () =>

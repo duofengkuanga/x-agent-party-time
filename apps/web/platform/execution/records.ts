@@ -147,7 +147,7 @@ export function mapInteraction(row: InteractionRow): ExecutionInteraction {
     resolution: row.resolution_json ? JSON.parse(row.resolution_json) : null,
   });
 }
-export function mapCodexTurn(row: ExecutionRow): CodexTurn | null {
+function mapCodexTurn(row: ExecutionRow): CodexTurn | null {
   if (!row.codex_turn_json) return null;
   const turn = JSON.parse(row.codex_turn_json) as CodexTurn;
   const taskSkillBinding = persistedSkillBinding(row);
@@ -155,7 +155,7 @@ export function mapCodexTurn(row: ExecutionRow): CodexTurn | null {
     ? { ...turn, taskSkillBinding }
     : turn;
 }
-export function persistedSkillBinding(row: ExecutionRow): TaskSkillBinding | null {
+function persistedSkillBinding(row: ExecutionRow): TaskSkillBinding | null {
   if (!row.skill_name || !row.skill_bundle_hash || !row.skill_source_revision)
     return null;
   return {

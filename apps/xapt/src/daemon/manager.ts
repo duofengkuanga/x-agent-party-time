@@ -219,7 +219,7 @@ export class DaemonManager {
   }
 }
 
-export function launchAgentPlist(paths: XaptPaths, stableExecutable: string): string {
+function launchAgentPlist(paths: XaptPaths, stableExecutable: string): string {
   const escape = (value: string) =>
     value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
   return `<?xml version="1.0" encoding="UTF-8"?>
