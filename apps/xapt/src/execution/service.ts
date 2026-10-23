@@ -6,7 +6,6 @@ import type {
   JsonValue,
 } from '@agent-party-time/execution-contract';
 import { serializeDeterministicJson } from '@agent-party-time/execution-contract';
-import { sanitizeExecutionInteractionPayload } from '@agent-party-time/execution-contract';
 import type { OutboxEntry } from '../state/schemas';
 import { randomUUID } from 'node:crypto';
 import type { AuthenticatedRunnerSession } from '../agent/connection';
@@ -72,7 +71,7 @@ export class ExecutionService {
     now: () => Date = () => new Date(),
     createId: () => string = randomUUID,
   ) {
-    this.outbox = new ExecutionOutbox(http, state, now, createId, (notice) => {
+    this.outbox = new ExecutionOutbox(http, state, executor, now, createId, (notice) => {
       const correlation = {
         intervalId: notice.attemptId,
         parentIntervalId: notice.entryId,
@@ -126,77 +125,7 @@ export class ExecutionService {
   async cycle(session: AuthenticatedRunnerSession): Promise<boolean> {
     await this.observations.prepareCycle(session);
     if (this.tasks.size === 0) {
-      if (
-        !(await this.outbox.replayOutbox(session, async (entry) => {
-          if (entry.kind !== 'OUTCOME' || entry.request.outcome.kind !== 'HANDED_OFF')
-            return true;
-          if (!entry.sessionReleased) {
-            if (!this.executor.releaseSession) return false;
-            try {
-              await this.executor.releaseSession(entry.request.sessionId);
-              await this.outbox.confirmSessionReleased(entry);
-            } catch {
-              return false;
-            }
-          }
-          const attemptId = randomUUID();
-          const correlation = { intervalId: attemptId, parentIntervalId: entry.id };
-          this.observations.event(entry.executionId, {
-            name: 'delivery.started',
-            source: 'xapt',
-            phase: 'delivery',
-            correlation,
-          });
-          try {
-            await this.http.completeExecution(
-              session.serverOrigin,
-              session.credential,
-              entry.executionId,
-              entry.request,
-            );
-            this.observations.event(entry.executionId, {
-              name: 'delivery.accepted',
-              source: 'server_response',
-              phase: 'delivery',
-              correlation,
-            });
-            return true;
-          } catch (error) {
-            this.observations.event(entry.executionId, {
-              name:
-                error instanceof RunnerHttpError &&
-                ['OUTCOME_CONFLICT', 'INVALID_TRANSITION', 'LEASE_EXPIRED'].includes(
-                  error.code,
-                )
-                  ? 'delivery.rejected'
-                  : 'delivery.unknown',
-              source: 'server_response',
-              phase: 'delivery',
-              correlation,
-            });
-            if (!(error instanceof RunnerHttpError)) return false;
-            if (error.code === 'OUTCOME_CONFLICT') return true;
-            if (error.code !== 'INVALID_TRANSITION') return false;
-          }
-          try {
-            await this.http.openInteraction(
-              session.serverOrigin,
-              session.credential,
-              entry.executionId,
-              {
-                leaseToken: entry.request.leaseToken,
-                kind: 'USER_INPUT',
-                method: 'xapt/manualHandoff',
-                payload: { questions: entry.request.outcome.questions },
-              },
-            );
-            return true;
-          } catch {
-            return false;
-          }
-        }))
-      )
-        return false;
+      if (!(await this.outbox.replayOutbox(session))) return false;
       if (await this.recovery.recoverInterrupted()) {
         this.recoveryRequired = true;
         return true;
@@ -363,8 +292,7 @@ export class ExecutionService {
     });
     let startAccepted = false;
     let started: StartedCodexExecution;
-    let handoffEntry: OutboxEntry | undefined;
-    let handoffPrepared = false;
+    let handoffEntry: Promise<OutboxEntry> | undefined;
     try {
       started = await this.executor.begin(
         {
@@ -393,30 +321,13 @@ export class ExecutionService {
                   });
                   await startGate;
                   if (!startAccepted) throw new Error('任务启动状态尚未被服务接受');
-                  const payload = sanitizeExecutionInteractionPayload(
-                    'xapt/manualHandoff',
-                    { questions },
+                  handoffEntry = this.outbox.prepareHandoff(
+                    session,
+                    execution,
+                    started.sessionId,
+                    questions,
                   );
-                  handoffEntry = await this.outbox.prepare('OUTCOME', execution.id, {
-                    leaseToken: execution.lease.token,
-                    sessionId: started.sessionId,
-                    outcome: {
-                      kind: 'HANDED_OFF',
-                      questions: (payload as { questions: string[] }).questions,
-                    },
-                  });
-                  await this.http.openInteraction(
-                    session.serverOrigin,
-                    session.credential,
-                    execution.id,
-                    {
-                      leaseToken: execution.lease.token,
-                      kind: 'USER_INPUT',
-                      method: 'xapt/manualHandoff',
-                      payload,
-                    },
-                  );
-                  handoffPrepared = true;
+                  await handoffEntry;
                 }
               : undefined,
           onInteraction: async (interaction) => {
@@ -503,13 +414,12 @@ export class ExecutionService {
       };
     } catch (error) {
       if (handoffEntry) {
-        // completion settles only after the owning app-server has exited.
-        await started.completion.catch(() => undefined);
-        handoffEntry = await this.outbox.confirmSessionReleased(handoffEntry);
-        lease.stop();
         await this.recovery.recordPhase(execution, 'OUTCOME_PENDING', started.sessionId);
-        if (handoffPrepared && (await this.outbox.deliverPrepared(session, handoffEntry)))
-          await this.state.removeExecution(execution.id);
+        await this.outbox.finishHandoff(
+          session,
+          handoffEntry,
+          started.completion.finally(lease.stop),
+        );
         this.controllers.delete(execution.id);
         return;
       }
@@ -533,8 +443,7 @@ export class ExecutionService {
       lease.stop();
     }
     await this.recovery.recordPhase(execution, 'OUTCOME_PENDING', started.sessionId);
-    if (await this.outbox.persistAndDeliver(session, 'OUTCOME', execution.id, request))
-      await this.state.removeExecution(execution.id);
+    await this.outbox.persistAndDeliver(session, 'OUTCOME', execution.id, request);
     this.controllers.delete(execution.id);
   }
 
@@ -588,14 +497,11 @@ export class ExecutionService {
     execution: ClaimedExecution,
     failure: ExecutionFailure,
   ): Promise<void> {
-    if (
-      await this.outbox.persistAndDeliver(session, 'START', execution.id, {
-        kind: 'START_FAILED',
-        leaseToken: execution.lease.token,
-        failure,
-      })
-    )
-      await this.state.removeExecution(execution.id);
+    await this.outbox.persistAndDeliver(session, 'START', execution.id, {
+      kind: 'START_FAILED',
+      leaseToken: execution.lease.token,
+      failure,
+    });
   }
 
   private async completeImmediateExecution(
@@ -613,14 +519,11 @@ export class ExecutionService {
       }))
     )
       return;
-    if (
-      await this.outbox.persistAndDeliver(session, 'OUTCOME', execution.id, {
-        leaseToken: execution.lease.token,
-        sessionId,
-        outcome: { kind: 'SUCCEEDED', result },
-      })
-    )
-      await this.state.removeExecution(execution.id);
+    await this.outbox.persistAndDeliver(session, 'OUTCOME', execution.id, {
+      leaseToken: execution.lease.token,
+      sessionId,
+      outcome: { kind: 'SUCCEEDED', result },
+    });
   }
 }
 
