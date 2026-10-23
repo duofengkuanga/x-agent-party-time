@@ -34,7 +34,7 @@ test('授权成功只把 Credential 写入 Keychain 并报告浏览器进度', a
   expect(progress).toEqual([
     {
       authorizationUrl: expect.stringContaining(
-        'https://apt.example.com/cooking/agents/connect?request=',
+        'https://apt.example.com/agents/connect?request=',
       ),
       fingerprint: expect.stringMatching(/^[A-F0-9]{4}(?:-[A-F0-9]{4}){2}$/),
       browserOpened: true,
@@ -68,7 +68,7 @@ test('浏览器打开失败仍立即给出可复制 URL，授权可继续完成'
   expect(progress).toHaveLength(1);
   expect(progress[0]).toMatchObject({
     browserOpened: false,
-    authorizationUrl: expect.stringContaining('/cooking/agents/connect'),
+    authorizationUrl: expect.stringContaining('/agents/connect'),
   });
   expect(fixture.connection.projection.status).toBe('CONNECTED');
 });

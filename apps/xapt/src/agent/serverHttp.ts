@@ -48,7 +48,7 @@ export class RunnerHttpClient extends ProtocolHttpClient {
     return await this.authorizedJson(
       serverOrigin,
       credential,
-      '/api/cooking/bugs/delete',
+      '/api/submissions/bugs/delete',
       BugsDeleteResponseSchema,
       body,
     );

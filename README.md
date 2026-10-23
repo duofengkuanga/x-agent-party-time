@@ -1,6 +1,6 @@
 # Agent Party Time
 
-Agent Party Time 将产品测试人员、工程负责人和开发者本机 Agent 的 Codex 执行连接成一条可恢复的缺陷修复与提测闭环。仓库当前只保留新的 Cooking 系统：一个 Next 全栈 App、一个本机 Agent，以及它们共享的通用协议包。
+Agent Party Time 将产品测试人员、工程负责人和开发者本机 Agent 的 Codex 执行连接成一条可恢复的缺陷修复与提测闭环。仓库包含一个 Next 全栈 App、一个本机 Agent，以及它们共享的通用协议包。项目与 Agent 管理提供通用能力，提测与缺陷交付是一条独立业务流程。
 
 ## 产品能力
 
@@ -29,7 +29,7 @@ Agent Party Time 将产品测试人员、工程负责人和开发者本机 Agent
 - 一张提测单可以包含多个工程，活动期间创建人、测试负责人、已有工程负责人或项目所有者可追加工程，原工程和缺陷保留；环境冲突沿用确认切换规则。
 - 提测项固定负责人、Binding 和环境，活动提测的部署配置读取工程环境当前设置。缺陷首次进入修复队列时固定部署配置，后续修复、更新和返修沿用；同工程不同部署配置的缺陷分批串行更新。被活动提测引用的环境仍不能在页面修改部署配置。
 - Server 不保存开发者本机仓库绝对路径；路径只保存在对应 Agent 本机。
-- Agent 只负责通用 Execution、Lease、附件、Interaction、Outcome 与 Outbox，不包含 Cooking 领域逻辑。
+- Agent 只负责通用 Execution、Lease、附件、Interaction、Outcome 与 Outbox，不包含 提测业务逻辑。
 - Git、测试、构建、Commit、Push、部署和 Cleanup 都由 Codex 根据版本化 Prompt 在仓库规则约束下执行。
 - `LOCAL_SCRIPT` 在普通 Push 后执行本地部署脚本；`CI_CD` 在 Push 后等待工程负责人明确报告外部结果。
 - 验证失败和活动期重开会沿用原 Repair Session 自动继续；关闭提测单立即释放环境，不等待 Cleanup。
@@ -79,7 +79,7 @@ bun install --frozen-lockfile
 bun run dev
 ```
 
-`bun run dev` 会在仓库 `.scratch/development/` 中准备数据库并自动创建上述本地开发用户。新流程使用 Schema 30；旧版本明确报错并保留数据，不自动迁移或清空。Schema 27、28、29 可按下述流程保留数据升级。
+`bun run dev` 会在仓库 `.scratch/development/` 中准备数据库并自动创建上述本地开发用户。新流程使用 Schema 31；旧版本明确报错并保留数据，不自动迁移或清空。Schema 27、28、29、30 可按下述流程保留数据升级。
 
 `bun run dev` 前台管理两个进程：
 
@@ -89,7 +89,7 @@ bun run dev
 首次运行 `bun run xapt:dev -- daemon connect http://localhost:3000` 时，Agent 会打开浏览器连接页。登录后确认
 Agent 名称与短指纹即可完成授权；正常重启不会再次打开授权页。
 
-浏览器打开 `http://localhost:3000`，登录后会进入 `/cooking`。工程成员在
+浏览器打开 `http://localhost:3000`，登录后会进入 `/submissions`。工程成员在
 “项目与工程”的工程详情中选择自己的在线 Agent，Agent 随后打开 macOS
 文件夹选择器；选择 Git 仓库后，网页会自动显示最终绑定结果。本机绝对路径
 不会发送给 Web 服务。
@@ -131,7 +131,7 @@ bun run dev:xapt
 
 `bun run dev`、`bun run dev:app` 和 `bun run seed:app` 使用这个目录。开发启动流程保留数据库和附件，不支持的 Schema 版本会阻止启动；如果 `AGENT_PARTY_TIME_HOME` 指向仓库 `.scratch/` 之外，开发准备脚本会拒绝处理。
 
-正式 Server 数据默认位于 `~/.agent-party-time/`，也可以通过 `AGENT_PARTY_TIME_HOME` 指定。启动只接受 Schema 30 和空数据库，现有旧库不会被启动流程改写。
+正式 Server 数据默认位于 `~/.agent-party-time/`，也可以通过 `AGENT_PARTY_TIME_HOME` 指定。启动只接受 Schema 31 和空数据库，现有旧库不会被启动流程改写。
 
 ### 保留数据升级 Server
 
@@ -141,7 +141,7 @@ bun run dev:xapt
 bun run migrate:server -- --database .scratch/development/server/server.sqlite
 ```
 
-预检默认只读，检查 Schema 27/28/29 的完整结构、数据库完整性和未完成旧流程。Schema 27/28 若存在未完成执行、交互、更新批次、候选提交或已开始但未结束的修复流程，先在旧 Server 完成，不清空任务来绕过检查。Schema 29 → 30 仅新增归因表和删除标记，不转换业务记录，允许保留活动任务；应用前仍须停止访问该库的进程。
+预检默认只读，检查 Schema 27/28/29/30 的完整结构、数据库完整性和未完成旧流程。Schema 27/28 若存在未完成执行、交互、更新批次、候选提交或已开始但未结束的修复流程，先在旧 Server 完成，不清空任务来绕过检查。Schema 29/30 → 31 允许保留活动任务，将项目、工程及公共写入表归入 `platform_*`，缺陷交付表归入 `submission_*`，提测单表为 `test_submission`。Execution 的明确旧归属 `cooking` 转为 `submissions`；除 27/28 原有结果转换及该归属字段外，历史 JSON、ID、状态、版本、关联与附件存储位置保持不变。应用前须停止访问该库的进程。
 
 确认目标库及迁移方案后停止该 Server；本仓库开发进程可用 `bun run stop`。再执行：
 
@@ -149,7 +149,7 @@ bun run migrate:server -- --database .scratch/development/server/server.sqlite
 bun run migrate:server -- --database .scratch/development/server/server.sqlite --apply
 ```
 
-工具先取得写锁，通过 SQLite `VACUUM INTO` 将包含 WAL 提交的完整数据库备份到原库旁的 `server.sqlite.backup-*/server.sqlite`，验证备份后才在事务中升级。备份目录权限为 `0700`，文件为 `0600`；输出 `backupPath` 是本次备份路径。迁移前后逐表校验记录数量、原有字段和业务内容，并检查外键和完整性；失败时回滚，版本号最后才更新。重复运行 Schema 30 不再迁移。
+工具先取得写锁，通过 SQLite `VACUUM INTO` 将包含 WAL 提交的完整数据库备份到原库旁的 `server.sqlite.backup-*/server.sqlite`，验证备份后才在事务中升级。备份目录权限为 `0700`，文件为 `0600`；输出 `backupPath` 是本次备份路径。迁移前后逐表逐字段校验记录数量和业务内容，并核对索引、触发器、外键和完整性；失败时回滚，版本号最后才更新。重复运行 Schema 31 不再迁移。
 
 保留全部历史修复、更新、会话、账号、项目、绑定和附件索引，附件文件目录不变。旧结果一次性转换成当前契约：修复记录新增交接字段并注明旧版本未记录的信息；更新记录的交接使用列表表示旧记录中实际留存的内容，不虚构命令或验证结果；已完成批次根据原修复来源和完整提交 Hash 重建交接关联。执行结果及已报告结果同步转换，所有既有字段的业务内容保持不变。无法无损转换或关联不完整时整次回滚。应用运行时只接受最新格式，不增加旧格式读取分支。完成后重新启动对应 Server，并核对历史详情与 Agent 连接。
 
@@ -178,7 +178,7 @@ bun run test:browser
 ```
 
 `test:browser` 需要本机已安装 `chrome-use`。它使用独立临时数据目录和浏览器
-会话运行 Cooking 关键交互，不读取或修改开发数据库。
+会话运行 提测、项目与 Agent 的关键交互，不读取或修改开发数据库。
 
 常用分项：
 
@@ -209,7 +209,7 @@ bun run eval:handoff --skills-root /path/to/x-skills --baseline-app <旧版本�
 
 Repair Handoff 随候选提交冻结，包含历史验证入口、环境经验和剩余事项；Update 核实这些线索后，对最终组合完成当前工程要求的验收。历史通过不代表本轮免检。工程负责人在更新详情中查看来源和使用依据，测试负责人只看到业务结果与验证摘要。
 
-Server Schema 30 要求新交接契约。旧 Task 固定原 Skill Bundle，更新 Skill 不会改写旧任务；切换前完成或明确处置旧任务，并核对 Server、xapt 和 Skill Bundle 的组合。交接缺失、来源不匹配和冻结矛盾会明确阻止更新。
+Server Schema 31 沿用新交接契约。旧 Task 固定原 Skill Bundle，更新 Skill 不会改写旧任务；切换前完成或明确处置旧任务，并核对 Server、xapt 和 Skill Bundle 的组合。交接缺失、来源不匹配和冻结矛盾会明确阻止更新。
 
 操作失败时，先按提示区分处理方式：繁忙错误可以稍后重试；数据一致性或存储错误需要维护者检查；未知异常应先刷新确认当前状态，避免重复提交。
 
@@ -256,85 +256,61 @@ bun run eval:observability --skills-root /path/to/x-skills --runs 2
 bun run eval:observability-overhead
 ```
 
-真实评估入口通过 App Server 加载指定 Skill Bundle，每个变体完成两次 Repair → Update，先登记最多8次真实调用、单次5分钟上限，交替运行基线/优化。它同时核对 Cooking 状态转换、独立补报、读取导出、构建次数和产物回执。所有 Git Push 与部署仅作用于临时假目标，不连接真实环境；保留安全报告和独立轨迹。此入口是功能/诊断回归，**不能用于正式性能收益验收**。正式收益仍需规划票约定的观测开关对照及至少5对可比样本，当前不宣称真实工程已提速。
+真实评估入口通过 App Server 加载指定 Skill Bundle，每个变体完成两次 Repair → Update，先登记最多8次真实调用、单次5分钟上限，交替运行基线/优化。它同时核对 提测业务状态转换、独立补报、读取导出、构建次数和产物回执。所有 Git Push 与部署仅作用于临时假目标，不连接真实环境；保留安全报告和独立轨迹。此入口是功能/诊断回归，**不能用于正式性能收益验收**。正式收益仍需规划票约定的观测开关对照及至少5对可比样本，当前不宣称真实工程已提速。
 
 ## 代码结构
 
-按业务拥有者组织代码。一个目录对应一组需要一起理解和修改的业务行为；小函数、数据库行类型和仅服务于该业务的校验放在实现附近。
+Web 按页面入口、服务端实现和共享数据契约组织。项目、工程及 Agent 管理是通用能力；提测、缺陷修复、更新、验证与关闭构成独立的提测业务。目录不再使用 Cooking 作为总业务名称，设计取舍见 [ADR-0015](docs/adr/adr0015SeparatePlatformAndSubmissionModules.md)。
 
 ```text
 apps/web/
-├── app/          Next 路由、布局和路由级接入
-├── cooking/      提测与缺陷交付业务，职责见下表
-└── platform/     领域无关的认证、数据库、文件、错误、Agent 与 Execution
+├── app/
+│   ├── (pages)/
+│   │   ├── login/
+│   │   └── (main)/
+│   │       ├── layout.tsx       共享页面框架
+│   │       ├── components/     多页面共用组件与基础样式
+│   │       ├── projects/       项目、成员、工程和环境配置界面
+│   │       ├── agents/         Agent 管理与连接界面
+│   │       └── submissions/    提测单、缺陷看板和交付界面
+│   ├── actions/                网页业务操作的 Server Actions
+│   ├── api/                    HTTP 接口与 Agent 协议接入
+│   └── auth.ts                 Cookie 与页面登录接入
+├── server/
+│   ├── platform/               通用项目、工程、Runner、Execution 等能力
+│   ├── submissions/            提测与缺陷交付业务
+│   ├── database/               应用数据库连接、Schema 和初始化
+│   ├── runtime/                生产与测试共用的模块装配
+│   └── config.ts
+├── contracts/                  输入、结果、页面数据与纯数据校验
+├── testing/                    隔离测试工具和业务场景
+├── tests/browser/
+└── scripts/                    开发数据、迁移和 Web 工具
 
-apps/xapt/src/    本机 CLI、daemon、连接、Codex、Execution 与本机状态
+apps/xapt/src/                  本机 CLI、daemon、Codex、Execution 与状态
 packages/
-├── execution-contract/  Web 与 xapt 共享的 Execution 协议
-├── runner-contract/     Web 与 xapt 共享的 Agent 协议和 HTTP 客户端
-└── runner-conformance/  通过协议驱动场景的验收 Adapter
+├── execution-contract/         Web 与 xapt 共享的 Execution 协议
+├── runner-contract/            Web 与 xapt 共享的 Agent 协议与 HTTP 客户端
+└── runner-conformance/         通过公开协议驱动场景的验收 Adapter
 ```
 
-Cooking 的职责归属：
+`(pages)` 与 `(main)` 是不进入网址的路由分组。用户页面为 `/projects`、`/agents`、`/agents/connect`、`/submissions` 和 `/submissions/[submissionId]`。共享 Shell 只在 `(main)/layout.tsx` 挂载，登录页面保持独立。组件、交互逻辑和业务样式就近放在对应页面目录；`main.css` 保持既有样式引入顺序。目录按职责划分，页面入口、Server Components、Actions 和 HTTP handlers 可以在服务器运行。
 
-| 目录           | 负责的行为                                             |
-| -------------- | ------------------------------------------------------ |
-| `projects/`    | 私密项目、项目成员和邀请；组合项目管理页面中的各项设置 |
-| `engineering/` | 工程、工程成员、环境配置、Agent 绑定及绑定申请         |
-| `submissions/` | 提测单与提测项、环境使用权和切换；按角色聚合完整工作区 |
-| `bugs/`        | 缺陷报告、分诊归属、关联关系和删除；看板与缺陷详情     |
-| `repair/`      | Repair Attempt、修复结果、修复会话同步及候选交接       |
-| `update/`      | Update Batch 冻结、更新执行、部署结果和更新会话同步    |
-| `lifecycle/`   | 验证、重开、取消与恢复、归档；关闭提测及 Cleanup       |
-| `runtime/`     | 跨业务依赖装配、Execution 事件分发和 Runner HTTP 接入  |
-| `shared/`      | 多个业务实际共用且含义一致的契约、写入和界面能力       |
-| `ui/`          | Cooking 共享页面框架                                   |
-| `testing/`     | 真实业务场景与协议测试的隔离装配                       |
+网页操作使用 `app/actions/`，明确的 HTTP 接口使用 `app/api/`；两个入口都校验身份并调用服务端实现，不重复业务规则。浏览器组件只通过 Actions 或 HTTP 调用服务端，使用 `contracts/` 的纯数据定义。原 `/api/cooking/*` 接口改为 `/api/submissions/*`，工作区接口为 `/api/submissions/[submissionId]/workspace`。xapt 的连接页面与缺陷维护调用同步使用新地址，不保留旧入口转发。
 
-业务目录内，`contract.ts` 保存共享数据 Interface，`server/` 保存查询、事务和 Server Actions，`ui/` 保存界面及交互。测试与被测实现就近放置。客户端通过 Server Actions 或 HTTP 发起操作，使用纯数据契约，不导入数据库实现。
+`server/platform/projects/` 拥有 Project、成员和邀请，其 `engineering/` 拥有工程、环境配置、Binding 和绑定申请。提测期间的环境占用、切换、部署确认与提测引用检查归 `server/submissions/`。通用模块不导入提测业务，也不查询提测表；生产与场景测试通过 `server/runtime/projects.ts` 接入提测的成员职责、绑定引用与删除参与者。删除参与者与项目删除处于同一事务。
 
-工程绑定属于工程配置：Binding Schema 放在 `engineering/contract.ts`，绑定操作入口放在 `engineering/server/actions.ts`，工程成员与归档校验归 `engineeringQueries.ts`。`bindingService.ts` 管长期绑定和仓库确认，`bindingRequestService.ts` 管有时限的目录选择申请及领取、完成状态。
+`server/submissions/` 的 `bugs/`、`repair/`、`update/`、`lifecycle/` 分别负责缺陷登记与分诊、修复尝试与会话同步、冻结批次与交付、验证重开关闭与 Cleanup。基础提测数据与聚合工作区数据分开定义。`workspaceService.ts` 在访问权限通过后准备到期更新，再聚合业务投影；各业务查询与变更入口共用权限和状态判定。
 
-工程与环境配置共用同一份 `CookingWriteStore`，由 `EngineeringService` 装配；`EnvironmentService` 保留环境创建、更新、删除的业务职责。项目邀请与环境引用检查直接绑定已有方法，避免仅转发参数的装配函数。
+`server/runtime/createSubmissionWorkflow.ts` 是生产和集成测试共用的执行链装配。通用 Execution 发出事务内 APPLY、提交后 AFTER 事件，提测投影按 owner namespace 和 kind 路由。Session Synchronization 先确认 Repair 或 Update 归属。归因上传、读取和导出由 `server/platform/execution/` 处理，提测模块注入访问规则；Runner 协议测试与生产接入共用同一 router。
 
-提测工作区是聚合视图。`submissions/contract.ts` 定义提测基础数据；`submissions/workspace.ts` 定义包含缺陷、修复、更新和生命周期投影的快照；`submissions/server/workspaceService.ts` 在访问权限通过后准备到期更新，再读取并组合这些投影。聚合快照与基础契约分开，避免基础实体相互引用，同时让界面能直接使用纯数据 Schema。
+`server/platform/mutations/` 统一处理事务、幂等回执和项目审计；低依赖的 `auditEvent.ts` 保持独立，避免审计调用方提前加载业务 Schema。提测工作区 revision 去重与提交后通知由 `testSubmissionWriteStore.ts` 负责。修复结果及候选交接解析归 Repair，Update 直接使用数据拥有者的校验，不通过共享转发层重复包装。
 
-`bugs/server/bugQueries.ts` 集中缺陷读取与可操作条件；删除、转交命令和工作区操作展示共用其中的规则。一次工作区读取只计算一次当前用户是否为提测项负责人。关联记录与删除事务仍分别由 `bugRelations.ts`、`bugDeletion.ts` 负责。关联验收判定由 `lifecycle/server/lifecycleQueries.ts` 集中读取两端阶段、归档、环境和权限，查询投影与事务入口共用；界面只组合展示关联卡片。
+`server/database/` 是整个应用的数据库装配，不承诺领域无关。项目表与提测表分别在 `projectSchema.ts`、`submissionSchema.ts`；运行时只接受 Schema 31。旧表名、旧 namespace 与旧结果解释只在独立离线迁移及其 fixture 中存在，不提供业务运行时双读、双写或 fallback。
 
-`submissions/server/submissionItems.ts` 负责提测项配置校验和快照写入，调用 `environmentAccess.ts` 取得环境使用权并返回受影响的提测单。创建、追加工程、环境切换和关闭提测的业务入口只返回受影响提测单及变更时间；`TestSubmissionWriteStore` 在业务事务中去重并递增这些提测单的工作区版本，成功提交后统一通知，回放或回滚不重复通知。当前提测单的版本仍由具体业务变更决定。冲突预检由业务入口完成权限和输入校验后，只传项目与提测项列表；追加预检不再转换为创建提测输入。`environmentAccess.ts` 集中环境操作判定，工作区与变更命令共用；创建、追加与重新取得共用接管校验、旧占用释放和新占用写入，保留首次取得空闲环境与重新取得的部署确认差异；`references.ts` 保留供项目、工程配置检查使用的低依赖查询。
+单元测试与实现就近放置；跨 Web/xapt 的真实评估脚本位于根 `scripts/`。架构、浏览器组件导入和旧运行时名称由 `server/architectureBoundaries.test.ts` 检查，共享框架由 `app/(pages)/(main)/components/appShell.test.ts` 检查。移动文件时同步导入、扫描范围、文档和验收入口。
 
-修复、更新和生命周期的 SQL 行类型分别与查询放在 `repairQueries.ts`、`updateQueries.ts` 和 `lifecycleQueries.ts`。修复输入读取统一归 `repairQueries.ts`：只读取执行使用的报告、目标分支、绑定、历史反馈和带角色附件，附件直接使用 Execution Brief 所需的引用结构。`repairService.ts` 创建修复执行时直接组装 Execution Brief 和继续执行所需的新事实；`updateDelivery.ts` 同样就近组装更新与外部部署失败反馈，不再经过单一调用方的 Brief 转换文件。两个业务入口直接绑定查询和交付方法，保留调用 Interface，省去纯转发函数。
-
-`updateDelivery.ts` 负责候选调度、批次冻结、执行准备和交付完成后的缺陷推进、候选清空，并拥有 `FrozenBatch`。Agent 更新成功与人工确认外部部署成功都调用同一完成逻辑；`updateProjection.ts` 专注 Execution 事件和会话同步结果的解释，两条结果回写路径共用按冻结部署配置选择的校验。`repairHandoffs.ts` 同时供批次冻结和离线迁移使用，保留独立的交接一致性校验。读取、业务状态变更和 Execution 投影各自保留明确职责，避免把整个业务堆进一个文件。
-
-`lifecycle/server/submissionClosure.ts` 负责关闭前的业务校验、关闭状态、环境释放和受影响提测单的识别。其只读 `submissionCloseBlocker` 统一判断未完成缺陷、活跃修复或更新执行、未完成更新批次；工作区关闭入口和关闭事务共用该规则，访问权限、测试负责人和版本检查仍由各自入口完成。侧边栏直接使用工作区的 `CLOSE` 操作标记，不再根据缺陷列表自行推断能否关闭。`cleanupService.ts` 负责选择清理范围、创建任务、重试及执行结果投影。关闭事务调用 `createForClosedSubmission`，只传入提测单与时间，不拼装各工程的工作区范围；无资源的提测项不创建清理任务。清理结果解析是 Cleanup 的内部实现，清理展示标签与 `lifecycleQueries.ts` 的视图读取放在一起；装配入口向命令与清理共用同一份查询实例。
-
-`repair/server/results.ts` 拥有修复状态标签、结果投影及已保存候选提交和手动操作的解析。Update 冻结、读取 Repair 产生的数据时直接复用这些解析，不经 `shared/` 转接或再包装一层函数。跨业务使用并不改变数据的拥有者。
-
-`shared/server/writeStore.ts` 负责事务、幂等结果校验和审计编排；`auditEvent.ts` 保留仅依赖数据库的审计落库函数，供执行投影等调用方使用。将二者合并会让这些调用方提前加载业务 Schema，已在生产构建中触发初始化错误，因此保留这个低依赖 Interface。`executionState.ts` 处理执行状态、Task Skill Binding、执行事件详情和无效结果标记；交互脱敏与角色投影、通用执行展示和 Server Action 传输也由多个业务共用。`shared/` 只保存含义一致且没有单一业务拥有者的共用能力。
-
-`runtime/createCooking.ts` 是生产和集成测试共同使用的执行链装配入口，统一连接修复、更新、生命周期和工作区读取。Platform 发出事务内 APPLY 与提交后 AFTER 事件，Cooking 根据归属选择投影；Session Synchronization 先确认 Repair 或 Update 归属。HTTP 路由和协议测试共用 `platform/runner/router.ts`，业务装配在 `runtime/runnerHttp.ts`。
-
-耗时报告的上传、读取与导出由 `platform/execution/observationHttp.ts` 处理；Cooking 只通过 `runtime/observationAccess.ts` 注入业务访问规则。通用 HTTP 格式、预算和错误处理不依赖 Cooking。
-
-xapt 按本机职责分为 `cli/`、`daemon/`、`agent/`、`codex/`、`execution/`、`state/`、`install/`、`skills/`、`observability/`、`platform/` 和 `testing/`。操作系统与外部 Codex、HTTP 通信有真实的生产和测试 Adapter，继续通过这些 Interface 验证。Server 不接收本机仓库绝对路径，xapt 不导入 Cooking。
-
-`execution/outbox.ts` 集中回执持久化、人工接管准备、会话释放证明、投递重试与终态记录清理，实时执行与重启重放共用。未知投递结果或本地清理失败时保留回执；已保存释放证明的重试不再加载用户会话。执行调度与租约生命周期仍由 `execution/service.ts`、`execution/recovery.ts` 负责。
-
-`execution/workspaces.ts` 统一保存本机工作区状态、Git 身份校验、忽略内容镜像与创建、复用、清理流程。仅供该实现使用的 Git 调用和路径校验保持文件内私有；调用方继续通过 `ExecutionWorkspaceManager` 使用工作区能力，测试通过真实隔离 Git 仓库验证身份与清理保护。
-
-依赖方向：
-
-```text
-app routes → cooking/runtime → cooking/*/server → platform
-app routes → cooking/*/ui → contract / Server Actions
-app routes → platform
-platform ✕→ cooking
-xapt → execution-contract + runner-contract
-xapt ✕→ web / cooking
-```
-
-Platform 与 xapt 的依赖限制由 `platform/architectureBoundaries.test.ts` 验证。移动或合并实现时同步修改导入、扫描范围和文档指针，保留调用方的业务 Interface 和原有验收；按职责判断拆分，不用文件大小或行数替代这个判断。
+xapt 的职责仍按 `cli/`、`daemon/`、`agent/`、`codex/`、`execution/`、`state/`、`install/`、`skills/`、`observability/`、`platform/` 和 `testing/` 划分。本机仓库路径只保存在 xapt，本机执行能力不依赖提测业务。实时执行与重启共用 Outbox 投递、会话释放证明及清理；工作区身份、Git 校验与清理由 `ExecutionWorkspaceManager` 统一提供。
 
 ## 安全边界
 

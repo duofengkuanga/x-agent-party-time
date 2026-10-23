@@ -7,7 +7,7 @@ for (const lostPreparationAck of [false, true])
   test(`接管回执持久化、释放与恢复；准备响应${lostPreparationAck ? '丢失' : '正常'}`, async () => {
     const f = await createFixture({
       failOutcome: true,
-      owner: { namespace: 'cooking', kind: 'BUG_REPAIR', id: 'bug' },
+      owner: { namespace: 'submissions', kind: 'BUG_REPAIR', id: 'bug' },
     });
     const turn = f.http.claimed[0]!.codexTurn!;
     if (turn.kind === 'READ_SESSION') throw new Error('expected executable turn');

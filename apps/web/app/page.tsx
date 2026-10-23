@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
-import { currentUser } from '@/platform/auth/server';
+import { currentUser } from '@/app/auth';
 
 export default async function HomePage() {
-  redirect((await currentUser()) ? '/cooking' : '/login');
+  redirect((await currentUser()) ? '/submissions' : '/login');
 }

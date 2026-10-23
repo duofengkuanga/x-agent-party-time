@@ -11,14 +11,15 @@ const nextEnvPath = join(webRoot, 'next-env.d.ts');
 const originalNextEnv = await readFile(nextEnvPath, 'utf8');
 let nextDistDir: string | undefined;
 let server: Bun.Subprocess | undefined;
+let browserSession: string | undefined;
 let exitCode = 1;
 try {
   const fixture = await seedBrowserFixture(home);
   const port = await reservePort();
   const baseUrl = `http://127.0.0.1:${port}`;
   nextDistDir = `.next-browser-${port}`;
-  const templatePath = join(webRoot, 'tests/browser/cooking.yaml');
-  const suitePath = join(home, 'cooking.browser.yaml');
+  const templatePath = join(webRoot, 'tests/browser/submissions.yaml');
+  const suitePath = join(home, 'submissions.browser.yaml');
   const template = await readFile(templatePath, 'utf8');
   const suite = selectBrowserCase(template, process.env.AGENT_PARTY_TIME_BROWSER_CASE)
     .replaceAll('__BASE_URL__', baseUrl)
@@ -51,7 +52,7 @@ try {
     },
   );
   await waitForServer(`${baseUrl}/login`, server);
-  const browserSession = `agent-party-time-${port}`;
+  browserSession = `agent-party-time-${port}`;
   const viewport = Bun.spawn(
     [chromeUse, '--session', browserSession, 'set', 'viewport', '1800', '900'],
     {
@@ -72,6 +73,19 @@ try {
   });
   exitCode = await browser.exited;
 } finally {
+  if (browserSession) {
+    try {
+      const cleanupBrowser = Bun.spawn([chromeUse, '--session', browserSession, 'done'], {
+        cwd: repositoryRoot,
+        stdout: 'inherit',
+        stderr: 'inherit',
+      });
+      if ((await cleanupBrowser.exited) !== 0) exitCode = 1;
+    } catch (error) {
+      exitCode = 1;
+      console.error('浏览器会话清理失败，其余资源仍会清理：', error);
+    }
+  }
   if (server) {
     server.kill();
     await server.exited;
@@ -88,12 +102,18 @@ process.exit(exitCode);
 function selectBrowserCase(template: string, name: string | undefined): string {
   if (!name) return template;
   const cases = template.indexOf('\ncases:\n');
-  const start = template.indexOf(`\n  - name: ${name}\n`, cases);
-  if (cases < 0 || start < 0) throw new Error(`浏览器用例不存在：${name}`);
-  const end = template.indexOf('\n  - name: ', start + 1);
+  const selected = [...new Set(name.split(/\r?\n/u).filter(Boolean))].map((item) => {
+    const start = template.indexOf(`\n  - name: ${item}\n`, cases);
+    if (cases < 0 || start < 0) throw new Error(`浏览器用例不存在：${item}`);
+    const end = template.indexOf('\n  - name: ', start + 1);
+    return { start, text: template.slice(start, end < 0 ? undefined : end) };
+  });
   return (
     template.slice(0, cases + '\ncases:\n'.length) +
-    template.slice(start, end < 0 ? undefined : end)
+    selected
+      .sort((a, b) => a.start - b.start)
+      .map(({ text }) => text)
+      .join('')
   );
 }
 

@@ -2,27 +2,62 @@ import { afterEach, expect, spyOn, test } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { AppDatabase, openDatabase } from '@/platform/database';
-import { createCooking } from '@/cooking/runtime/createCooking';
+import { AppDatabase, openDatabase } from '@/server/database/index';
+import { createSubmissionWorkflow } from '@/server/runtime/createSubmissionWorkflow';
 import { testDatabases } from '@/testing/database';
-import { completeSuccessfulExecution } from '@/cooking/testing/execution';
+import { completeSuccessfulExecution } from '@/testing/submissions/execution';
 import {
   completedUpdate,
   latestBatch,
   startCandidateUpdate,
   updateFixture,
-} from '@/cooking/update/server/updateFixture';
+} from '@/server/submissions/update/updateFixture';
 import { migrateServerDatabase } from './migrateServer';
-import { PLATFORM_SCHEMA } from '@/platform/database/platformSchema';
-import { projectAttemptResult } from '@/cooking/repair/server/results';
-import { projectUpdateAttemptResult } from '@/cooking/update/server/results';
-import { RepairExecutionResultSchema } from '@/cooking/repair/contract';
-import { LocalScriptUpdateExecutionResultSchema } from '@/cooking/update/contract';
+import { SCHEMA_31_TABLE_NAMES } from './schema31Migration';
+import { ExecutionService } from '@/server/platform/execution/service';
+import { PLATFORM_SCHEMA } from '@/server/database/platformSchema';
+import { projectAttemptResult } from '@/server/submissions/repair/results';
+import { projectUpdateAttemptResult } from '@/server/submissions/update/results';
+import { RepairExecutionResultSchema } from '@/contracts/submissions/repair';
+import { LocalScriptUpdateExecutionResultSchema } from '@/contracts/submissions/update';
 
 const setup = updateFixture(testDatabases());
 const opened: Database[] = [];
 afterEach(() => opened.splice(0).forEach((db) => db.close()));
 const legacySql = readFileSync(join(import.meta.dir, 'fixtures/serverV27.sql'), 'utf8');
+const schema30 = readFileSync(join(import.meta.dir, 'fixtures/serverV30.sql'), 'utf8');
+
+function copyCurrentToLegacy(directory: string, version: 27 | 28 | 29 | 30) {
+  const path = join(directory, `legacy${version}.sqlite`);
+  const db = new AppDatabase(path, { create: true });
+  opened.push(db);
+  let sql = version === 27 ? legacySql : schema30;
+  if (version === 28 || version === 29) {
+    const observationStart = sql.indexOf('CREATE TABLE platform_observation_');
+    if (observationStart < 0) throw new Error('旧 Schema 缺少归因表边界');
+    sql = sql.slice(0, observationStart);
+  }
+  if (version === 28) sql = sql.replace('  handoffs_json TEXT NOT NULL,\n', '');
+  db.exec(sql);
+  db.query('ATTACH DATABASE ? AS seed').run(join(directory, 'server.sqlite'));
+  for (const { name } of db.all<{ name: string }>(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+  )) {
+    const columns = db
+      .all<{ name: string }>(`PRAGMA table_info(${name})`)
+      .map(({ name }) => `"${name}"`)
+      .join(', ');
+    db.exec(
+      `INSERT INTO ${name} (rowid, ${columns}) SELECT rowid, ${columns} FROM seed.${SCHEMA_31_TABLE_NAMES[name] ?? name}`,
+    );
+  }
+  db.exec('DETACH DATABASE seed');
+  db.exec(
+    "UPDATE platform_execution SET owner_namespace='cooking' WHERE owner_namespace='submissions'",
+  );
+  db.exec(`PRAGMA user_version=${version}`);
+  return { db, path };
+}
 
 async function legacyFixture() {
   const f = await setup();
@@ -34,23 +69,9 @@ async function legacyFixture() {
     'old-update-session',
   );
   completeSuccessfulExecution(f, started, completedUpdate());
-  f.database.run("UPDATE cooking_bug SET stage='DONE' WHERE id=?", [bug.id]);
+  f.database.run("UPDATE submission_bug SET stage='DONE' WHERE id=?", [bug.id]);
   const batch = latestBatch(f.database, f.item.id);
-  const path = join(f.directory, 'legacy.sqlite');
-  const db = new AppDatabase(path, { create: true });
-  opened.push(db);
-  db.exec(legacySql);
-  db.query('ATTACH DATABASE ? AS seed').run(join(f.directory, 'server.sqlite'));
-  for (const { name } of db.all<{ name: string }>(
-    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
-  )) {
-    const columns = db
-      .all<{ name: string }>(`PRAGMA table_info(${name})`)
-      .map(({ name }) => `"${name}"`)
-      .join(', ');
-    db.exec(`INSERT INTO ${name} (${columns}) SELECT ${columns} FROM seed.${name}`);
-  }
-  db.exec('DETACH DATABASE seed');
+  const { db, path } = copyCurrentToLegacy(f.directory, 27);
   db.exec(
     "UPDATE cooking_repair_attempt SET outcome_json=json_remove(outcome_json, '$.handoff')",
   );
@@ -84,7 +105,9 @@ function originalRows(db: Database) {
 function expectOriginalFacts(db: Database, before: ReturnType<typeof originalRows>) {
   for (const table of before) {
     const rows = db
-      .query(`SELECT ${table.columns.join(',')} FROM ${table.name} ORDER BY rowid`)
+      .query(
+        `SELECT ${table.columns.join(',')} FROM ${SCHEMA_31_TABLE_NAMES[table.name] ?? table.name} ORDER BY rowid`,
+      )
       .values();
     expect(rows).toHaveLength(table.rows.length);
     table.rows.forEach((row, index) =>
@@ -94,6 +117,12 @@ function expectOriginalFacts(db: Database, before: ReturnType<typeof originalRow
           expect(JSON.parse(rows[index]![column] as string)).toMatchObject(
             JSON.parse(value as string),
           );
+        else if (
+          table.name === 'platform_execution' &&
+          field === 'owner_namespace' &&
+          value === 'cooking'
+        )
+          expect(rows[index]![column]).toEqual('submissions');
         else expect(rows[index]![column]).toEqual(value);
       }),
     );
@@ -118,12 +147,12 @@ test('预检只读；迁移备份并逐字段保留全部旧数据、关联和�
   expectOriginalFacts(f.db, before);
   expect(result.rewrittenResults).toBeGreaterThan(0);
   expect(f.db.get<{ user_version: number }>('PRAGMA user_version')).toEqual({
-    user_version: 30,
+    user_version: 31,
   });
   expect(f.db.all('PRAGMA foreign_key_check')).toEqual([]);
   const handoffs = JSON.parse(
     f.db.get<{ handoffs_json: string }>(
-      'SELECT handoffs_json FROM cooking_update_batch_entry',
+      'SELECT handoffs_json FROM submission_update_batch_entry',
     )!.handoffs_json,
   );
   expect(handoffs).toHaveLength(1);
@@ -132,15 +161,15 @@ test('预检只读；迁移备份并逐字段保留全部旧数据、关联和�
   expect(handoffs[0].handoff.limitations[0]).toContain('旧版本未记录');
   const migrated = openDatabase(f.path);
   opened.push(migrated);
-  const cooking = createCooking(migrated);
+  const submissionWorkflow = createSubmissionWorkflow(migrated);
   for (const user of [f.users.developer, f.users.tester]) {
-    const repair = cooking.repairs.repairView(user.id, f.bug.id);
+    const repair = submissionWorkflow.repairs.repairView(user.id, f.bug.id);
     expect(
       repair?.timeline.some(
         (node) => node.kind === 'REPAIR_ATTEMPT' && node.result?.outcome === 'COMPLETED',
       ),
     ).toBe(true);
-    const update = cooking.updates.batchView(user.id, f.batch.id);
+    const update = submissionWorkflow.updates.batchView(user.id, f.batch.id);
     expect(update.state).toBe('COMPLETED');
     if (user.id === f.users.tester.id)
       expect(JSON.stringify(update)).not.toContain('validationCommands');
@@ -210,7 +239,7 @@ test('提交前故障回滚全部 DDL；备份和旧数据均可重新打开', a
     this: Database,
     sql: string,
   ) {
-    if (sql === 'PRAGMA user_version=30') throw new Error('模拟提交前故障');
+    if (sql === 'PRAGMA user_version=31') throw new Error('模拟提交前故障');
     return originalExec.call(this, sql);
   });
   try {
@@ -283,7 +312,7 @@ test('运行时只接受最新结果契约，无修改结果仍正常显示', ()
   ).toThrow();
 });
 
-test('Schema29只新增归因存储，活动执行与全部业务事实保持不变', async () => {
+test('Schema29保留活动执行并升级归因存储与模块命名', async () => {
   const f = await setup();
   const { started } = await startCandidateUpdate(
     f,
@@ -292,27 +321,54 @@ test('Schema29只新增归因存储，活动执行与全部业务事实保持不
     ['a'.repeat(40)],
     'update-active',
   );
-  const path = join(f.directory, 'server.sqlite');
-  // Recreate the exact prior schema in this isolated database, retaining active business rows.
-  f.database.exec('DROP TRIGGER platform_observation_deleted');
-  for (const table of [
-    'platform_observation_head',
-    'platform_observation_report',
-    'platform_observation_event',
-    'platform_observation_batch',
-    'platform_observation_tombstone',
-  ])
-    f.database.exec(`DROP TABLE ${table}`);
-  f.database.exec('PRAGMA user_version=29');
-  const before = originalRows(f.database);
+  const { db, path } = copyCurrentToLegacy(f.directory, 29);
+  const before = originalRows(db);
   expect(migrateServerDatabase(path).status).toBe('ready');
   expect(migrateServerDatabase(path, true).from).toBe(29);
-  expectOriginalFacts(f.database, before);
-  expect(f.executions.get(started.executionId).state).toBe('RUNNING');
+  expectOriginalFacts(db, before);
+  expect(new ExecutionService(db).get(started.executionId).state).toBe('RUNNING');
   expect(
-    f.database.get<{ count: number }>(
-      'SELECT COUNT(*) count FROM platform_observation_event',
-    ),
+    db.get<{ count: number }>('SELECT COUNT(*) count FROM platform_observation_event'),
   ).toEqual({ count: 0 });
+  expect(migrateServerDatabase(path, true).status).toBe('current');
+});
+
+test('Schema30逐字段保留活动流程、幂等回执和归因记录，只更新明确的执行归属', async () => {
+  const f = await setup();
+  const { bug, started } = await startCandidateUpdate(
+    f,
+    '命名迁移保留活动流程',
+    'repair-live',
+    ['a'.repeat(40)],
+    'update-live',
+  );
+  const { db, path } = copyCurrentToLegacy(f.directory, 30);
+  const before = originalRows(db);
+  expect(migrateServerDatabase(path).status).toBe('ready');
+  expect(originalRows(db)).toEqual(before);
+  const report = migrateServerDatabase(path, true);
+  expect(report.from).toBe(30);
+  expect(report.to).toBe(31);
+  expect(report.rewrittenResults).toBe(0);
+  expectOriginalFacts(db, before);
+  expect(db.all("SELECT name FROM sqlite_master WHERE name GLOB 'cooking_*'")).toEqual(
+    [],
+  );
+  expect(
+    db.all("SELECT id FROM platform_execution WHERE owner_namespace='cooking'"),
+  ).toEqual([]);
+  const execution = new ExecutionService(db).get(started.executionId);
+  expect(execution.owner.namespace).toBe('submissions');
+  expect(execution.state).toBe('RUNNING');
+  const workflow = createSubmissionWorkflow(db);
+  const workspace = workflow.workspace.getWorkspace(
+    f.users.developer.id,
+    f.submission.id,
+  );
+  expect(workspace.bugs.some((item) => item.id === bug.id)).toBe(true);
+  const backup = new Database(report.backupPath!, { readonly: true });
+  opened.push(backup);
+  expect(originalRows(backup)).toEqual(before);
+  expect(backup.query('PRAGMA user_version').get()).toEqual({ user_version: 30 });
   expect(migrateServerDatabase(path, true).status).toBe('current');
 });

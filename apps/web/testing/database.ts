@@ -2,7 +2,7 @@ import { afterEach, expect } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { openDatabase, type AppDatabase } from '@/platform/database';
+import { openDatabase, type AppDatabase } from '@/server/database/index';
 
 /** Register per-suite cleanup before creating any isolated test databases. */
 export function testDatabases() {

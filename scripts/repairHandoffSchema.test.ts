@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module';
 import { expect, test } from 'bun:test';
-import { RepairOutputJsonSchema } from '../apps/web/cooking/repair/contract';
-import { REPAIR_HANDOFF_TEXT_ASSERTION } from '../apps/web/cooking/repair/handoff';
+import { RepairOutputJsonSchema } from '../apps/web/contracts/submissions/repair';
+import { REPAIR_HANDOFF_TEXT_ASSERTION } from '../apps/web/contracts/submissions/handoff';
 import { GitExecutionResultVerifier } from '../apps/xapt/src/execution/resultVerification';
 import { NodeCommandRunner } from '../apps/xapt/src/platform/system';
 

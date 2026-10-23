@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import {
   calculateObservationReport,
   type ObservationEvent,
-} from '../../packages/execution-contract/src/observability';
+} from '../../packages/execution-contract/src/observability/index';
 import { ExecutionObservation } from '../../apps/xapt/src/observability/recorder';
 import { protocolObserver } from '../../apps/xapt/src/observability/protocol';
 import { prepareBuildCase, fixtureGit, runCaseTool, caseTrace } from './fixture';

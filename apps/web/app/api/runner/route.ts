@@ -1,1 +1,1 @@
-export { handleRunnerRequest as DELETE } from '@/cooking/runtime/runnerHttp';
+export { handleRunnerRequest as DELETE } from '@/server/runtime/runnerHttp';

@@ -1,5 +1,5 @@
-import type { User } from '@/platform/auth/contract';
-import type { AuthService } from '@/platform/auth/service';
+import type { User } from '@/contracts/auth';
+import type { AuthService } from '@/server/platform/auth/service';
 
 type TestPerson = [username: string, displayName: string, id?: string];
 

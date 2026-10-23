@@ -1,13 +1,13 @@
-import { createCooking } from '@/cooking/runtime/createCooking';
-import { deliveryProject } from '@/cooking/testing/project';
-import { engineeringScenario } from '@/cooking/testing/scenario';
+import { createSubmissionWorkflow } from '@/server/runtime/createSubmissionWorkflow';
+import { deliveryProject } from '@/testing/submissions/project';
+import { engineeringScenario } from '@/testing/submissions/scenario';
 import {
   completeRepairExecution,
   completeSuccessfulExecution,
-} from '@/cooking/testing/execution';
-import { openDatabase } from '@/platform/database';
-import { ExecutionObservations } from '@/platform/execution/observations';
-import { cookingObservationAccess } from '@/cooking/runtime/observationAccess';
+} from '@/testing/submissions/execution';
+import { openDatabase } from '@/server/database/index';
+import { ExecutionObservations } from '@/server/platform/execution/observations';
+import { submissionObservationAccess } from '@/server/submissions/observationAccess';
 import {
   calculateObservationReport,
   observationDigest,
@@ -79,7 +79,8 @@ export async function seedBrowserFixture(home: string): Promise<BrowserFixture> 
     });
     const item = items[0]!;
 
-    const { executions, bugs, lifecycle, repairs, updates } = createCooking(db);
+    const { executions, bugs, lifecycle, repairs, updates } =
+      createSubmissionWorkflow(db);
 
     const createBug = (title: string) =>
       bugs.createBug(tester.id, submission.id, {
@@ -315,7 +316,7 @@ export async function seedBrowserFixture(home: string): Promise<BrowserFixture> 
         },
       },
     });
-    const observations = new ExecutionObservations(db, cookingObservationAccess(db));
+    const observations = new ExecutionObservations(db, submissionObservationAccess(db));
     for (const executionId of [nextScrollRepair.id, scrollUpdate.id]) {
       const segmentId = randomUUID();
       const workId = randomUUID();
@@ -539,7 +540,7 @@ export async function seedBrowserFixture(home: string): Promise<BrowserFixture> 
       expectedResultAttachmentIds: [],
     });
     for (const bug of linkedDone.bugs)
-      db.run("UPDATE cooking_bug SET stage = 'DONE' WHERE id = ?", [bug.id]);
+      db.run("UPDATE submission_bug SET stage = 'DONE' WHERE id = ?", [bug.id]);
 
     return {
       developerUsername: developer.username,

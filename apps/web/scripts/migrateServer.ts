@@ -7,17 +7,21 @@ import {
   mkdtempSync,
   openSync,
   realpathSync,
+  readFileSync,
   statSync,
 } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
-import { PLATFORM_SCHEMA } from '@/platform/database/platformSchema';
-import { COOKING_SCHEMA } from '@/platform/database/cookingSchema';
-import { BUG_DEPLOYMENT_SCHEMA } from '@/platform/database/bugDeploymentSchema';
-import { OBSERVATION_SCHEMA } from '@/platform/database/observationSchema';
-import { SERVER_SCHEMA_VERSION } from '@/platform/database/schema';
-import { AppDatabase } from '@/platform/database';
+import { PLATFORM_SCHEMA } from '@/server/database/platformSchema';
+import { PROJECT_SCHEMA } from '@/server/database/projectSchema';
+import { SUBMISSION_SCHEMA } from '@/server/database/submissionSchema';
+import { BUG_DEPLOYMENT_SCHEMA } from '@/server/database/bugDeploymentSchema';
+import { OBSERVATION_SCHEMA } from '@/server/database/observationSchema';
+import { SERVER_SCHEMA_VERSION } from '@/server/database/schema';
+import { AppDatabase } from '@/server/database/index';
 import { rewriteHistoricalResults, type ResultRewrite } from './migrateServerResults';
+
+import { migrateSchema31Names, SCHEMA_31_TABLE_NAMES } from './schema31Migration';
 
 type SchemaObject = { type: string; name: string; tbl_name: string; sql: string };
 type TableSnapshot = { name: string; columns: string[]; rows: number; hash: string };
@@ -32,7 +36,15 @@ type MigrationReport = {
 };
 
 const targetSchema =
-  PLATFORM_SCHEMA + COOKING_SCHEMA + BUG_DEPLOYMENT_SCHEMA + OBSERVATION_SCHEMA;
+  PLATFORM_SCHEMA +
+  PROJECT_SCHEMA +
+  SUBMISSION_SCHEMA +
+  BUG_DEPLOYMENT_SCHEMA +
+  OBSERVATION_SCHEMA;
+const schema30 = readFileSync(
+  new URL('./fixtures/serverV30.sql', import.meta.url),
+  'utf8',
+);
 const quote = (name: string) => `"${name.replaceAll('"', '""')}"`;
 
 function schemaObjects(db: Database): SchemaObject[] {
@@ -47,7 +59,7 @@ function schemaObjects(db: Database): SchemaObject[] {
 function assertSchema(db: Database, version: number): void {
   const reference = new Database(':memory:');
   try {
-    let sql = targetSchema;
+    let sql = version < 31 ? schema30 : targetSchema;
     if (version < 30) sql = sql.replace(OBSERVATION_SCHEMA, '');
     if (version < 29) sql = sql.replace('  handoffs_json TEXT NOT NULL,\n', '');
     if (version === 27) sql = sql.replace(",\n    'HANDED_OFF'", '');
@@ -122,6 +134,7 @@ function snapshot(
   db: Database,
   original?: TableSnapshot[],
   rewrites: ResultRewrite[] = [],
+  renamed = false,
 ): TableSnapshot[] {
   const tables =
     original ??
@@ -135,16 +148,17 @@ function snapshot(
           .map((c) => c.name),
       }));
   return tables.map(({ name, columns }) => {
+    const currentName = renamed ? (SCHEMA_31_TABLE_NAMES[name] ?? name) : name;
     const hash = createHash('sha256');
     let rows = 0;
     for (const row of db
       .query<Record<string, unknown>, []>(
-        `SELECT rowid AS __migration_rowid, ${columns.map(quote).join(',')} FROM ${quote(name)} ORDER BY rowid`,
+        `SELECT rowid AS __migration_rowid, ${columns.map(quote).join(',')} FROM ${quote(currentName)} ORDER BY rowid`,
       )
       .iterate()) {
       const { __migration_rowid: rowid, ...values } = row;
       for (const change of rewrites.filter(
-        (change) => change.table === name && change.rowid === rowid,
+        (change) => change.table === currentName && change.rowid === rowid,
       )) {
         if (values[change.column] !== change.after)
           throw new Error('历史结果转换校验失败。');
@@ -162,8 +176,9 @@ function assertUnchanged(
   db: Database,
   before: TableSnapshot[],
   rewrites: ResultRewrite[] = [],
+  renamed = false,
 ): void {
-  if (JSON.stringify(snapshot(db, before, rewrites)) !== JSON.stringify(before))
+  if (JSON.stringify(snapshot(db, before, rewrites, renamed)) !== JSON.stringify(before))
     throw new Error('原有记录校验失败，迁移未提交。');
 }
 
@@ -221,7 +236,7 @@ export function migrateServerDatabase(
   databasePath: string,
   apply = false,
 ): MigrationReport {
-  if (SERVER_SCHEMA_VERSION !== 30) throw new Error('此迁移只适用于 Server Schema 30。');
+  if (SERVER_SCHEMA_VERSION !== 31) throw new Error('此迁移只适用于 Server Schema 31。');
   const path = realpathSync(databasePath);
   if (!statSync(path).isFile()) throw new Error('请指定现有数据库文件。');
   const db = new AppDatabase(
@@ -236,35 +251,47 @@ export function migrateServerDatabase(
     transaction = true;
     const version = db.query<{ user_version: number }, []>('PRAGMA user_version').get()!
       .user_version;
-    if (![27, 28, 29, 30].includes(version))
+    if (![27, 28, 29, 30, 31].includes(version))
       throw new Error(`不支持从版本 ${version} 迁移；原数据已保留。`);
     assertSchema(db, version);
     assertIntegrity(db);
     if (version < 29) assertSettled(db);
     const before = snapshot(db);
     const report: MigrationReport = {
-      status: version === 30 ? 'current' : 'ready',
+      status: version === 31 ? 'current' : 'ready',
       database: path,
       from: version,
-      to: 30,
+      to: 31,
       backupPath: null,
       rewrittenResults: 0,
       tables: before.map(({ name, rows }) => ({ name, rows })),
     };
-    if (apply && version !== 30) {
+    if (apply && version !== 31) {
       report.backupPath = backupDatabase(path, before);
       const reference = new Database(':memory:');
       try {
-        reference.exec(targetSchema);
+        reference.exec(schema30);
         if (version === 27) rebuildTable(db, reference, 'platform_execution');
         if (version < 29) rebuildTable(db, reference, 'cooking_update_batch_entry');
+        if (version < 30) db.exec(OBSERVATION_SCHEMA);
+        const current = new Database(':memory:');
+        let renamed: ResultRewrite[];
+        try {
+          current.exec(targetSchema);
+          const renamedTables = new Set(Object.values(SCHEMA_31_TABLE_NAMES));
+          const indexes = schemaObjects(current)
+            .filter((row) => row.type === 'index' && renamedTables.has(row.tbl_name))
+            .map((row) => row.sql);
+          renamed = migrateSchema31Names(db, indexes);
+        } finally {
+          current.close();
+        }
         const rewrites = version < 29 ? rewriteHistoricalResults(db) : [];
-        db.exec(OBSERVATION_SCHEMA);
-        assertSchema(db, 30);
+        assertSchema(db, 31);
         assertIntegrity(db);
-        assertUnchanged(db, before, rewrites);
+        assertUnchanged(db, before, [...renamed, ...rewrites], true);
         report.rewrittenResults = rewrites.length;
-        db.exec('PRAGMA user_version=30');
+        db.exec('PRAGMA user_version=31');
         report.status = 'migrated';
       } finally {
         reference.close();

@@ -17,20 +17,12 @@
     "next-env.d.ts",
     "app/**/*.ts",
     "app/**/*.tsx",
-    "cooking/**/*.ts",
-    "cooking/**/*.tsx",
-    "platform/**/*.ts",
-    "platform/**/*.tsx",
+    "server/**/*.ts",
+    "contracts/**/*.ts",
     "scripts/**/*.ts",
-    ".next/types/**/*.ts"
+    "testing/**/*.ts",
+    ".next/types/**/*.ts",
+    "../../scripts/evaluateObservability.ts"
   ],
-  "exclude": [
-    "node_modules",
-    "app/**/*.test.ts",
-    "app/**/*.test.tsx",
-    "cooking/**/*.test.ts",
-    "cooking/**/*.test.tsx",
-    "platform/**/*.test.ts",
-    "platform/**/*.test.tsx"
-  ]
+  "exclude": ["node_modules", "**/*.test.ts", "**/*.test.tsx"]
 }

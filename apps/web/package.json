@@ -8,7 +8,7 @@
     "build": "bun --bun next build",
     "start": "bun --bun next start",
     "seed": "AGENT_PARTY_TIME_HOME=${AGENT_PARTY_TIME_HOME:-../../.scratch/development} bun scripts/prepareDevelopment.ts && AGENT_PARTY_TIME_HOME=${AGENT_PARTY_TIME_HOME:-../../.scratch/development} bun scripts/seed.ts",
-    "test": "bun test app cooking platform",
+    "test": "bun test app server contracts scripts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

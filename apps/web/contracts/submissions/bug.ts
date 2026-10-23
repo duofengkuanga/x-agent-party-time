@@ -1,0 +1,255 @@
+import { z } from 'zod';
+import { UserIdSchema, UserSchema } from '@/contracts/auth';
+import {
+  SubmissionIdSchema,
+  SubmissionItemIdSchema,
+} from '@/contracts/submissions/submission';
+import {
+  EngineeringIdentifierSchema,
+  EngineeringTypeSchema,
+} from '@/contracts/projects/engineering';
+import { AttachmentViewSchema } from '@/contracts/shared';
+import { RequestMutationIdSchema, VersionedMutationSchema } from '@/contracts/mutation';
+
+export const BugIdSchema = z.uuid();
+const BugStageSchema = z.enum([
+  'WAITING_FOR_REPAIR',
+  'REPAIRING',
+  'WAITING_FOR_UPDATE',
+  'UPDATING',
+  'WAITING_FOR_VERIFICATION',
+  'DONE',
+  'CANCELLED',
+]);
+const BugTitleSchema = z.string().trim().min(1).max(240);
+const OptionalReportTextSchema = z.string().trim().min(1).max(8_000);
+const BugAttachmentIdsSchema = z
+  .array(z.uuid())
+  .max(5)
+  .refine((ids) => new Set(ids).size === ids.length, {
+    message: '同一结果不能重复添加附件',
+  });
+const BugMutationAttachmentIdsSchema = z.array(z.uuid()).max(10);
+
+type BugAttachmentGroups = {
+  actualResultAttachmentIds: string[];
+  expectedResultAttachmentIds: string[];
+};
+
+function requireDisjointAttachments(
+  groups: BugAttachmentGroups,
+  context: z.RefinementCtx,
+): void {
+  const actualIds = new Set(groups.actualResultAttachmentIds);
+  if (groups.expectedResultAttachmentIds.some((fileId) => actualIds.has(fileId)))
+    context.addIssue({
+      code: 'custom',
+      message: '同一附件不能同时属于实际结果和预期结果',
+      path: ['expectedResultAttachmentIds'],
+    });
+}
+
+const BugReportBaseSchema = z.object({
+  title: BugTitleSchema,
+  operationPath: OptionalReportTextSchema.optional(),
+  actualResult: OptionalReportTextSchema.optional(),
+  expectedResult: OptionalReportTextSchema.optional(),
+  actualResultAttachmentIds: BugAttachmentIdsSchema,
+  expectedResultAttachmentIds: BugAttachmentIdsSchema,
+});
+const BugReportSchema = BugReportBaseSchema.superRefine(requireDisjointAttachments);
+
+export const BugSchema = z.object({
+  id: BugIdSchema,
+  shortId: z.number().int().positive(),
+  submissionId: SubmissionIdSchema,
+  submissionItemId: SubmissionItemIdSchema.nullable(),
+  stage: BugStageSchema,
+  report: BugReportSchema,
+  reportLockedAt: z.iso.datetime().nullable(),
+  collaborationLocked: z.boolean(),
+  transferredAt: z.iso.datetime().nullable(),
+  archivedAt: z.iso.datetime().nullable(),
+  archivedByUserId: UserIdSchema.nullable(),
+  version: z.number().int().positive(),
+  createdByUserId: UserIdSchema,
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+
+const CreateBugInputBaseSchema = z.object({
+  mutationId: RequestMutationIdSchema,
+  submissionItemId: SubmissionItemIdSchema.nullable(),
+  title: BugTitleSchema,
+  operationPath: z.string().max(8_000).optional(),
+  actualResult: z.string().max(8_000).optional(),
+  expectedResult: z.string().max(8_000).optional(),
+  actualResultAttachmentIds: BugAttachmentIdsSchema,
+  expectedResultAttachmentIds: BugAttachmentIdsSchema,
+});
+export const CreateBugInputSchema = CreateBugInputBaseSchema.extend({
+  startRepair: z.boolean().optional(),
+}).superRefine(requireDisjointAttachments);
+
+export const CreateLinkedBugsInputSchema = CreateBugInputBaseSchema.omit({
+  submissionItemId: true,
+})
+  .extend({
+    startRepair: z.boolean().optional(),
+    submissionItemIds: z
+      .array(SubmissionItemIdSchema)
+      .length(2)
+      .refine((ids) => new Set(ids).size === 2, '请选择不同的前端和后端工程'),
+  })
+  .superRefine(requireDisjointAttachments);
+
+export const UpdateBugReportInputSchema = CreateBugInputBaseSchema.extend({
+  expectedVersion: z.number().int().positive(),
+  additionalSubmissionItemId: SubmissionItemIdSchema.optional(),
+}).superRefine(requireDisjointAttachments);
+
+export const AssignBugInputSchema = VersionedMutationSchema.extend({
+  submissionItemId: SubmissionItemIdSchema.nullable(),
+  additionalSubmissionItemId: SubmissionItemIdSchema.optional(),
+});
+
+export const RequestRepairInputSchema = VersionedMutationSchema;
+
+export const DeleteUnassignedBugInputSchema = VersionedMutationSchema;
+export type DeleteUnassignedBugInput = z.infer<typeof DeleteUnassignedBugInputSchema>;
+export const DeleteUnassignedBugResultSchema = z.object({
+  deletedBugId: BugIdSchema,
+  submissionId: SubmissionIdSchema,
+  revision: z.number().int().positive(),
+  unboundAttachmentIds: BugMutationAttachmentIdsSchema,
+});
+export type DeleteUnassignedBugResult = z.infer<typeof DeleteUnassignedBugResultSchema>;
+
+export const RouteBugInputSchema = VersionedMutationSchema.extend({
+  kind: z.enum(['TRANSFER', 'COLLABORATE']),
+  targetSubmissionItemId: SubmissionItemIdSchema,
+});
+export type RouteBugInput = z.infer<typeof RouteBugInputSchema>;
+
+export const BugAttachmentViewSchema = AttachmentViewSchema;
+
+const BugActionSchema = z.enum([
+  'DELETE',
+  'TRANSFER',
+  'COLLABORATE',
+  'EDIT_REPORT',
+  'ASSIGN',
+  'REQUEST_REPAIR',
+  'VERIFY_PASS',
+  'VERIFY_FAIL',
+  'REOPEN',
+  'CANCEL',
+  'RESTORE',
+  'ARCHIVE',
+  'UNARCHIVE',
+]);
+
+const BugViewSchema = BugSchema.omit({
+  report: true,
+}).extend({
+  routing: z.object({
+    targets: z.array(
+      z.object({
+        id: SubmissionItemIdSchema,
+        name: z.string(),
+        type: EngineeringTypeSchema,
+      }),
+    ),
+    transferReason: z.string().nullable(),
+    collaborationReason: z.string().nullable(),
+  }),
+  linkedReview: z
+    .object({
+      relatedBugId: BugIdSchema,
+      column: z.enum(['WAITING_FOR_VERIFICATION', 'DONE']).nullable(),
+      blockedReason: z.string().nullable(),
+    })
+    .nullable(),
+  relatedBugs: z.array(
+    z.object({
+      id: BugIdSchema.nullable(),
+      shortId: z.number().int().positive(),
+      title: BugTitleSchema,
+      kind: z.enum(['JOINT', 'TRANSFER', 'COLLABORATION']),
+      stageLabel: z.string(),
+      engineeringName: z.string().nullable(),
+      handoffText: z.string(),
+    }),
+  ),
+  report: BugReportBaseSchema.omit({
+    actualResultAttachmentIds: true,
+    expectedResultAttachmentIds: true,
+  }).extend({
+    actualResultAttachments: z.array(BugAttachmentViewSchema),
+    expectedResultAttachments: z.array(BugAttachmentViewSchema),
+  }),
+  createdBy: UserSchema,
+  assignment: z
+    .object({
+      submissionItemId: SubmissionItemIdSchema,
+      engineeringName: z.string().trim().min(1).max(120),
+      engineeringType: EngineeringTypeSchema,
+      engineeringIdentifier: EngineeringIdentifierSchema,
+      responsibleUser: UserSchema,
+    })
+    .nullable(),
+  availableActions: z.array(BugActionSchema),
+  presentation: z.object({
+    stageLabel: z.string().trim().min(1),
+    assignmentLabel: z.string().trim().min(1),
+  }),
+});
+
+export const BugWorkspaceProjectionSchema = z.object({
+  availableActions: z.array(z.literal('CREATE_BUG')),
+  bugs: z.array(BugViewSchema),
+});
+
+export const BugMutationResultSchema = z.object({
+  bug: BugSchema,
+  revision: z.number().int().positive(),
+  boundAttachmentIds: BugMutationAttachmentIdsSchema,
+  unboundAttachmentIds: BugMutationAttachmentIdsSchema,
+});
+
+export const LinkedBugsMutationResultSchema = z.object({
+  bugs: z.array(BugSchema).length(2),
+  revision: z.number().int().positive(),
+  boundAttachmentIds: BugMutationAttachmentIdsSchema,
+});
+export const RouteBugMutationResultSchema = BugMutationResultSchema.extend({
+  createdBug: BugSchema,
+});
+export type RouteBugMutationResult = z.infer<typeof RouteBugMutationResultSchema>;
+export type CreateLinkedBugsInput = z.infer<typeof CreateLinkedBugsInputSchema>;
+export type LinkedBugsMutationResult = z.infer<typeof LinkedBugsMutationResultSchema>;
+
+export type Bug = z.infer<typeof BugSchema>;
+export type BugView = z.infer<typeof BugViewSchema>;
+export type CreateBugInput = z.infer<typeof CreateBugInputSchema>;
+export type UpdateBugReportInput = z.infer<typeof UpdateBugReportInputSchema>;
+export type AssignBugInput = z.infer<typeof AssignBugInputSchema>;
+export type RequestRepairInput = z.infer<typeof RequestRepairInputSchema>;
+export type BugWorkspaceProjection = z.infer<typeof BugWorkspaceProjectionSchema>;
+export type BugMutationResult = z.infer<typeof BugMutationResultSchema>;
+
+export const BugDeleteRequestSchema = z
+  .strictObject({
+    bugIds: z.array(z.uuid()).min(1).optional(),
+    all: z.boolean().optional(),
+    force: z.boolean().optional(),
+  })
+  .refine((value) => (value.all ? !value.bugIds : value.bugIds !== undefined), {
+    message: '必须指定 bugIds 或 all 之一',
+  });
+export const BugDeleteResponseSchema = z.object({
+  deletedBugIds: z.array(z.uuid()),
+  deletedExecutionIds: z.array(z.uuid()),
+});
+export type BugDeleteRequest = z.infer<typeof BugDeleteRequestSchema>;
+export type BugDeleteResponse = z.infer<typeof BugDeleteResponseSchema>;

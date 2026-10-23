@@ -1,4 +1,4 @@
-import { currentUser } from '@/platform/auth/server';
+import { currentUser } from '@/app/auth';
 
 export async function GET() {
   const user = await currentUser();

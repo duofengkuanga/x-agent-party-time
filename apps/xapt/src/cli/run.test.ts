@@ -233,7 +233,7 @@ function fakeRuntime(snapshot: DaemonSnapshot): CliRuntime {
     daemonStatus: async () => snapshot,
     daemonConnect: async (_serverUrl, progress) => {
       progress({
-        authorizationUrl: 'https://apt.example.com/cooking/agents/connect?request=req_1',
+        authorizationUrl: 'https://apt.example.com/agents/connect?request=req_1',
         fingerprint: 'ABCD-EF12-3456',
         browserOpened: true,
       });

@@ -6,17 +6,17 @@ import { parseArgs } from 'node:util';
 import {
   RepairExecutionResultSchema,
   RepairOutputJsonSchema,
-} from '../apps/web/cooking/repair/contract';
+} from '../apps/web/contracts/submissions/repair';
 import {
   CiCdUpdateExecutionResultSchema,
   CiCdUpdateOutputJsonSchema,
-} from '../apps/web/cooking/update/contract';
+} from '../apps/web/contracts/submissions/update';
 import { bundleHash } from '../apps/xapt/src/skills/manager';
 import { verifyResultContent } from '../apps/xapt/src/execution/resultVerification';
 import {
   REPAIR_HANDOFF_TEXT_ASSERTION,
   UPDATE_HANDOFF_TEXT_ASSERTION,
-} from '../apps/web/cooking/repair/handoff';
+} from '../apps/web/contracts/submissions/handoff';
 
 const { values } = parseArgs({
   options: {

@@ -77,7 +77,7 @@ test('deleteBugs 携带认证并解析删除结果', async () => {
     deletedBugIds: ['944d519c-1ed0-4711-a3b1-325bec5bbe56'],
     deletedExecutionIds: ['00000000-0000-4000-8000-000000000001'],
   });
-  expect(new URL(request!.url).pathname).toBe('/api/cooking/bugs/delete');
+  expect(new URL(request!.url).pathname).toBe('/api/submissions/bugs/delete');
   expect(await request?.json()).toEqual({
     bugIds: ['944d519c-1ed0-4711-a3b1-325bec5bbe56'],
     all: false,

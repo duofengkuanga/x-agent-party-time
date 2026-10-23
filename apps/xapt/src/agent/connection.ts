@@ -195,7 +195,7 @@ export class ConnectionCoordinator {
         suggestedName: this.suggestedName(),
       });
       const authorizationUrl =
-        `${origin}/cooking/agents/connect?request=` + encodeURIComponent(issue.requestId);
+        `${origin}/agents/connect?request=` + encodeURIComponent(issue.requestId);
       let browserOpened = true;
       try {
         await this.browser.open(new URL(authorizationUrl));

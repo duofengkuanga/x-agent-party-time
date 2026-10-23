@@ -1,10 +1,10 @@
-import type { AppDatabase } from '@/platform/database';
-import { RepairExecutionResultSchema } from '@/cooking/repair/contract';
+import type { AppDatabase } from '@/server/database/index';
+import { RepairExecutionResultSchema } from '@/contracts/submissions/repair';
 import {
   CiCdUpdateExecutionResultSchema,
   LocalScriptUpdateExecutionResultSchema,
-} from '@/cooking/update/contract';
-import { freezeRepairHandoffs } from '@/cooking/update/server/repairHandoffs';
+} from '@/contracts/submissions/update';
+import { freezeRepairHandoffs } from '@/server/submissions/update/repairHandoffs';
 import { ExecutionOutcomeSchema } from '@agent-party-time/execution-contract';
 
 export type ResultRewrite = {
@@ -75,8 +75,8 @@ export function rewriteHistoricalResults(db: AppDatabase): ResultRewrite[] {
     changes.push({ table, rowid, column, before, after });
   };
   for (const [table, kind] of [
-    ['cooking_repair_attempt', 'repair'],
-    ['cooking_update_attempt', 'update'],
+    ['submission_repair_attempt', 'repair'],
+    ['submission_update_attempt', 'update'],
   ] as const) {
     for (const row of db.all<{ rowid: number; outcome_json: string }>(
       `SELECT rowid, outcome_json FROM ${table} WHERE outcome_json IS NOT NULL`,
@@ -92,14 +92,14 @@ export function rewriteHistoricalResults(db: AppDatabase): ResultRewrite[] {
   const repairSyncs = new Set(
     db
       .all<{ execution_id: string }>(
-        'SELECT execution_id FROM cooking_repair_session_sync',
+        'SELECT execution_id FROM submission_repair_session_sync',
       )
       .map((row) => row.execution_id),
   );
   const updateSyncs = new Set(
     db
       .all<{ execution_id: string }>(
-        'SELECT execution_id FROM cooking_update_session_sync',
+        'SELECT execution_id FROM submission_update_session_sync',
       )
       .map((row) => row.execution_id),
   );
@@ -110,7 +110,7 @@ export function rewriteHistoricalResults(db: AppDatabase): ResultRewrite[] {
     outcome_json: string | null;
     reported_outcome_json: string | null;
   }>(
-    "SELECT rowid, id, owner_kind, outcome_json, reported_outcome_json FROM platform_execution WHERE owner_namespace='cooking'",
+    "SELECT rowid, id, owner_kind, outcome_json, reported_outcome_json FROM platform_execution WHERE owner_namespace='submissions'",
   )) {
     const kind: Kind | null =
       row.owner_kind === 'BUG_REPAIR' || repairSyncs.has(row.id)
@@ -134,7 +134,7 @@ export function rewriteHistoricalResults(db: AppDatabase): ResultRewrite[] {
     }
   }
   for (const entry of db.all<{ batch_id: string; bug_id: string; commits_json: string }>(
-    'SELECT batch_id, bug_id, commits_json FROM cooking_update_batch_entry ORDER BY batch_id, position',
+    'SELECT batch_id, bug_id, commits_json FROM submission_update_batch_entry ORDER BY batch_id, position',
   )) {
     const sources = freezeRepairHandoffs(
       db,
@@ -142,7 +142,7 @@ export function rewriteHistoricalResults(db: AppDatabase): ResultRewrite[] {
       JSON.parse(entry.commits_json),
     );
     db.run(
-      'UPDATE cooking_update_batch_entry SET handoffs_json=? WHERE batch_id=? AND bug_id=?',
+      'UPDATE submission_update_batch_entry SET handoffs_json=? WHERE batch_id=? AND bug_id=?',
       [JSON.stringify(sources), entry.batch_id, entry.bug_id],
     );
   }

@@ -1,6 +1,6 @@
 import { isAbsolute, relative, resolve, sep } from 'node:path';
-import { serverPaths } from '@/platform/config';
-import { openDatabase } from '@/platform/database';
+import { serverPaths } from '@/server/config';
+import { openDatabase } from '@/server/database/index';
 
 type PreparationResult = {
   database: string;

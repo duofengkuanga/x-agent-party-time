@@ -4,13 +4,13 @@ import {
   HandoffTextSchema,
   REPAIR_HANDOFF_TEXT_ASSERTION,
   UPDATE_HANDOFF_TEXT_ASSERTION,
-} from '../apps/web/cooking/repair/handoff';
+} from '../apps/web/contracts/submissions/handoff';
 
 const routeNotes = [
   '拆分 /bigScreen 与 /bigScreen/map 的角色权限，沿用现有菜单过滤和新窗口打开机制。',
   '访问 `/bigScreen/map` 验证区县账号。',
   '/bigScreen/map',
-  '访问 /api/users?active=true 和 /cooking/projects#current。',
+  '访问 /api/users?active=true 和 /projects#current。',
   '访问 /users、/homePage 和 /data-center。',
   '参考 https://example.invalid/Users/example 和 //example.invalid/home/docs。',
 ];

@@ -5,7 +5,7 @@ Agent Party Time 将私密项目中的测试交付活动，与开发者本机 Ag
 ## 协作边界
 
 **Project**:
-成员、工程和提测单的私密协作边界。
+成员、工程及其业务活动的私密协作边界，可供提测与其他业务共同使用。
 _Avoid_: Workspace、团队空间
 
 **Engineering**:
@@ -43,7 +43,7 @@ Engineering、工程成员、Agent 与本机 Git 仓库之间的绑定关系；�
 _Avoid_: Path、Runner Binding
 
 **Execution**:
-与 Cooking 业务无关的一次本机 Codex 执行尝试，承载领取、租约、会话、交互和结果。
+与具体业务无关的一次本机 Codex 执行尝试，承载领取、租约、会话、交互和结果。
 _Avoid_: Repair、Task、Job
 
 **Execution Brief**:

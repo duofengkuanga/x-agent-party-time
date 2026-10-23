@@ -1,1 +1,1 @@
-export { handleRunnerRequest as POST } from '@/cooking/runtime/runnerHttp';
+export { handleRunnerRequest as POST } from '@/server/runtime/runnerHttp';

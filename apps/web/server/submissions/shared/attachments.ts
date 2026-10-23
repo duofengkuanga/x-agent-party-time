@@ -1,0 +1,32 @@
+import type { AppDatabase } from '@/server/database/index';
+import { PlatformError } from '@/server/platform/errors/index';
+
+/** New bindings require an unused upload; a report may retain its shared files. */
+export function requireBindableFiles(
+  db: AppDatabase,
+  userId: string,
+  fileIds: string[],
+  currentBugId: string | null = null,
+): void {
+  const available = db.prepare(`
+    SELECT 1 FROM platform_file file
+    WHERE file.id = ? AND (
+      EXISTS (SELECT 1 FROM submission_bug_attachment WHERE file_id = file.id AND bug_id = ?)
+      OR (file.uploaded_by_user_id = ? AND NOT EXISTS (
+        SELECT 1 FROM submission_bug_attachment
+        WHERE file_id = file.id
+      )
+      AND NOT EXISTS (SELECT 1 FROM submission_verification_attachment WHERE file_id = file.id)
+      AND NOT EXISTS (SELECT 1 FROM submission_reopen_attachment WHERE file_id = file.id)
+      AND NOT EXISTS (SELECT 1 FROM submission_external_deployment_report_attachment WHERE file_id = file.id)
+      )
+    )
+  `);
+  for (const fileId of fileIds) {
+    if (!available.get(fileId, currentBugId, userId))
+      throw new PlatformError(
+        'VALIDATION_FAILED',
+        '附件不存在、已被使用或不属于当前用户',
+      );
+  }
+}
