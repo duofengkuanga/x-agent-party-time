@@ -1,4 +1,5 @@
 import { parseRow, type DatabaseRow } from '@/platform/database/rowMapper';
+import { submissionCloseBlocker } from '@/cooking/lifecycle/server/submissionClosure';
 import {
   environmentBusy,
   environmentConflict,
@@ -20,34 +21,6 @@ import {
 } from '../contract';
 
 export const SUBMISSION_HIDDEN_MESSAGE = '提测单不存在或无权访问';
-
-export function hasActiveSubmissionExecution(
-  db: AppDatabase,
-  submissionId: string,
-): boolean {
-  return Boolean(
-    db.get(
-      `SELECT 1 active
-         FROM platform_execution execution
-         WHERE execution.state IN (
-           'QUEUED', 'CLAIMED', 'RUNNING', 'WAITING_FOR_INTERACTION',
-           'WAITING_TO_RESUME', 'CANCEL_REQUESTED'
-         ) AND (
-           execution.id IN (
-             SELECT attempt.execution_id FROM cooking_repair_attempt attempt
-             JOIN cooking_bug bug ON bug.id = attempt.bug_id
-             WHERE bug.submission_id = ?
-           ) OR execution.id IN (
-             SELECT attempt.execution_id FROM cooking_update_attempt attempt
-             JOIN cooking_update_batch batch ON batch.id = attempt.batch_id
-             WHERE batch.submission_id = ?
-           )
-         ) LIMIT 1`,
-      submissionId,
-      submissionId,
-    ),
-  );
-}
 
 export type SubmissionRow = DatabaseRow<TestSubmission>;
 
@@ -163,7 +136,7 @@ export class SubmissionQueries {
     const canClose =
       row.status === 'ACTIVE' &&
       row.tester_user_id === userId &&
-      this.canCloseSubmission(submissionId);
+      !submissionCloseBlocker(this.db, submissionId);
     return CookingWorkspaceSnapshotSchema.parse({
       revision: row.workspace_revision,
       currentUser: this.getUser(userId),
@@ -248,24 +221,6 @@ export class SubmissionQueries {
       if (error instanceof PlatformError && error.code === 'NOT_FOUND') return false;
       throw error;
     }
-  }
-
-  private canCloseSubmission(submissionId: string): boolean {
-    const nonTerminal = this.db.get(
-      `SELECT 1 blocked FROM cooking_bug
-         WHERE submission_id = ? AND stage NOT IN ('DONE', 'CANCELLED')
-         LIMIT 1`,
-      submissionId,
-    );
-    if (nonTerminal) return false;
-    const unfinishedBatch = this.db.get(
-      `SELECT 1 blocked FROM cooking_update_batch
-         WHERE submission_id = ? AND state NOT IN ('COMPLETED', 'CANCELLED')
-         LIMIT 1`,
-      submissionId,
-    );
-    if (unfinishedBatch) return false;
-    return !hasActiveSubmissionExecution(this.db, submissionId);
   }
 
   requireSubmissionAccess(userId: string, submissionId: string): SubmissionAccessRow {

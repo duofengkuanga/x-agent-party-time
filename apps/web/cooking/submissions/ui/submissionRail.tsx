@@ -131,19 +131,15 @@ export function SubmissionRail({
                 <button
                   disabled={
                     updating ||
-                    !snapshot.bugs.every(({ stage }) =>
-                      ['DONE', 'CANCELLED'].includes(stage),
-                    )
+                    !snapshot.submission.availableActions.includes('CLOSE')
                   }
                   onClick={onCloseSubmission}
                   type="button"
                 >
                   关闭提测单
                 </button>
-                {!snapshot.bugs.every(({ stage }) =>
-                  ['DONE', 'CANCELLED'].includes(stage),
-                ) ? (
-                  <small>所有缺陷完成或取消后可关闭</small>
+                {!snapshot.submission.availableActions.includes('CLOSE') ? (
+                  <small>所有缺陷完成或取消、修复与更新结束后可关闭</small>
                 ) : null}
               </div>
             ) : null}

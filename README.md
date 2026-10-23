@@ -307,7 +307,7 @@ Cooking 的职责归属：
 
 `updateDelivery.ts` 负责候选调度、批次冻结、执行准备和交付完成后的缺陷推进、候选清空，并拥有 `FrozenBatch`。Agent 更新成功与人工确认外部部署成功都调用同一完成逻辑；`updateProjection.ts` 专注 Execution 事件和会话同步结果的解释，两条结果回写路径共用按冻结部署配置选择的校验。`repairHandoffs.ts` 同时供批次冻结和离线迁移使用，保留独立的交接一致性校验。读取、业务状态变更和 Execution 投影各自保留明确职责，避免把整个业务堆进一个文件。
 
-`lifecycle/server/submissionClosure.ts` 负责关闭前的业务校验、关闭状态、环境释放和受影响提测单的识别；`cleanupService.ts` 负责选择清理范围、创建任务、重试及执行结果投影。关闭事务调用 `createForClosedSubmission`，只传入提测单与时间，不拼装各工程的工作区范围；无资源的提测项不创建清理任务。清理结果解析是 Cleanup 的内部实现，清理展示标签与 `lifecycleQueries.ts` 的视图读取放在一起；装配入口向命令与清理共用同一份查询实例。
+`lifecycle/server/submissionClosure.ts` 负责关闭前的业务校验、关闭状态、环境释放和受影响提测单的识别。其只读 `submissionCloseBlocker` 统一判断未完成缺陷、活跃修复或更新执行、未完成更新批次；工作区关闭入口和关闭事务共用该规则，访问权限、测试负责人和版本检查仍由各自入口完成。侧边栏直接使用工作区的 `CLOSE` 操作标记，不再根据缺陷列表自行推断能否关闭。`cleanupService.ts` 负责选择清理范围、创建任务、重试及执行结果投影。关闭事务调用 `createForClosedSubmission`，只传入提测单与时间，不拼装各工程的工作区范围；无资源的提测项不创建清理任务。清理结果解析是 Cleanup 的内部实现，清理展示标签与 `lifecycleQueries.ts` 的视图读取放在一起；装配入口向命令与清理共用同一份查询实例。
 
 `repair/server/results.ts` 拥有修复状态标签、结果投影及已保存候选提交和手动操作的解析。Update 冻结、读取 Repair 产生的数据时直接复用这些解析，不经 `shared/` 转接或再包装一层函数。跨业务使用并不改变数据的拥有者。
 

@@ -1,6 +1,5 @@
 import { requireSubmissionAccess } from '@/cooking/shared/server/access';
 import { environmentObservers } from '@/cooking/submissions/server/environmentAccess';
-import { hasActiveSubmissionExecution } from '@/cooking/submissions/server/submissionQueries';
 import type { TestSubmissionWriteStore } from '@/cooking/submissions/server/testSubmissionWriteStore';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
@@ -37,29 +36,8 @@ export class SubmissionClosure {
         const submission = this.requireSubmissionTester(actorUserId, submissionId);
         if (submission.version !== input.expectedVersion)
           throw new PlatformError('STALE_STATE', '提测单已变化，请刷新后重试');
-        const nonTerminal = this.db.get(
-          `SELECT COUNT(*) count FROM cooking_bug
-             WHERE submission_id = ? AND stage NOT IN ('DONE', 'CANCELLED')`,
-          submissionId,
-        ) as { count: number };
-        if (nonTerminal.count > 0)
-          throw new PlatformError('INVALID_TRANSITION', '仍有未完成缺陷，不能关闭提测单');
-        if (hasActiveSubmissionExecution(this.db, submissionId))
-          throw new PlatformError(
-            'RESOURCE_CONFLICT',
-            '仍有修复或更新执行未结束，不能关闭提测单',
-          );
-        const unfinishedBatch = this.db.get(
-          `SELECT 1 blocked FROM cooking_update_batch
-             WHERE submission_id = ? AND state != 'COMPLETED'
-             LIMIT 1`,
-          submissionId,
-        );
-        if (unfinishedBatch)
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '仍有未完成更新批次，不能关闭提测单',
-          );
+        const blocker = submissionCloseBlocker(this.db, submissionId);
+        if (blocker) throw new PlatformError(blocker.code, blocker.message);
         const now = this.now().toISOString();
         const update = this.db.run(
           `UPDATE cooking_test_submission
@@ -127,4 +105,59 @@ export class SubmissionClosure {
       throw new PlatformError('PERMISSION_DENIED', '只有测试负责人可以关闭提测单');
     return row;
   }
+}
+
+/** Read-only readiness rule; callers check access, tester identity and active status. */
+export function submissionCloseBlocker(
+  db: AppDatabase,
+  submissionId: string,
+): Pick<PlatformError, 'code' | 'message'> | null {
+  if (
+    db.get(
+      `SELECT 1 FROM cooking_bug
+       WHERE submission_id = ? AND stage NOT IN ('DONE', 'CANCELLED') LIMIT 1`,
+      submissionId,
+    )
+  )
+    return {
+      code: 'INVALID_TRANSITION',
+      message: '仍有未完成缺陷，不能关闭提测单',
+    };
+  if (
+    db.get(
+      `SELECT 1 FROM platform_execution execution
+       WHERE execution.state IN (
+         'QUEUED', 'CLAIMED', 'RUNNING', 'WAITING_FOR_INTERACTION',
+         'WAITING_TO_RESUME', 'CANCEL_REQUESTED'
+       ) AND (
+         execution.id IN (
+           SELECT attempt.execution_id FROM cooking_repair_attempt attempt
+           JOIN cooking_bug bug ON bug.id = attempt.bug_id
+           WHERE bug.submission_id = ?
+         ) OR execution.id IN (
+           SELECT attempt.execution_id FROM cooking_update_attempt attempt
+           JOIN cooking_update_batch batch ON batch.id = attempt.batch_id
+           WHERE batch.submission_id = ?
+         )
+       ) LIMIT 1`,
+      submissionId,
+      submissionId,
+    )
+  )
+    return {
+      code: 'RESOURCE_CONFLICT',
+      message: '仍有修复或更新执行未结束，不能关闭提测单',
+    };
+  if (
+    db.get(
+      `SELECT 1 FROM cooking_update_batch
+       WHERE submission_id = ? AND state != 'COMPLETED' LIMIT 1`,
+      submissionId,
+    )
+  )
+    return {
+      code: 'INVALID_TRANSITION',
+      message: '仍有未完成更新批次，不能关闭提测单',
+    };
+  return null;
 }
