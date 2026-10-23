@@ -1,11 +1,6 @@
 import { parseRow, type DatabaseRow } from '@/platform/database/rowMapper';
 import { submissionCloseBlocker } from '@/cooking/lifecycle/server/submissionClosure';
-import {
-  environmentBusy,
-  environmentConflict,
-  environmentOwned,
-  environmentReady,
-} from './environmentAccess';
+import { environmentAccessForItem } from './environmentAccess';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
 import { UserSchema, type User } from '@/platform/auth/contract';
@@ -122,13 +117,14 @@ export class SubmissionQueries {
          ORDER BY item.position, item.id`,
         submissionId,
       )
-      .map((row) => ({
+      .map((item) => ({
         item: mapItem({
-          ...row,
-          engineering_name: row.current_engineering_name,
-          deployment_json: row.current_deployment_json,
+          ...item,
+          engineering_name: item.current_engineering_name,
+          deployment_json: item.current_deployment_json,
         }),
-        hasBug: row.bug_count > 0,
+        hasBug: item.bug_count > 0,
+        environmentAccess: environmentAccessForItem(this.db, userId, row, item).view,
       }));
     const canEdit =
       row.status === 'ACTIVE' &&
@@ -146,7 +142,7 @@ export class SubmissionQueries {
         projectName: row.project_name,
         tester: mapUser('tester', row),
         createdBy: mapUser('creator', row),
-        items: items.map(({ item, hasBug }) => ({
+        items: items.map(({ item, hasBug, environmentAccess }) => ({
           id: item.id,
           submissionId: item.submissionId,
           engineering: {
@@ -169,28 +165,7 @@ export class SubmissionQueries {
                   deployment: item.environment.deployment,
                 }
               : null,
-          environmentAccess: {
-            owned: environmentOwned(this.db, item.id),
-            deploymentConfirmed: environmentReady(this.db, item.id),
-            conflict: environmentOwned(this.db, item.id)
-              ? null
-              : environmentConflict(this.db, userId, item.environment.id),
-            canAcquire:
-              row.status === 'ACTIVE' &&
-              !environmentOwned(this.db, item.id) &&
-              (row.membership_role === 'OWNER' ||
-                [
-                  row.tester_user_id,
-                  row.created_by_user_id,
-                  item.responsibleUser.id,
-                ].includes(userId)),
-            canConfirmDeployment:
-              row.status === 'ACTIVE' &&
-              item.responsibleUser.id === userId &&
-              environmentOwned(this.db, item.id) &&
-              !environmentReady(this.db, item.id) &&
-              !environmentBusy(this.db, item.id),
-          },
+          environmentAccess,
           availableActions:
             row.status === 'ACTIVE' && item.responsibleUser.id === userId && !hasBug
               ? (['EDIT_TARGET_BRANCH'] as const)

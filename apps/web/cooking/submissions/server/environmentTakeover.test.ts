@@ -8,6 +8,7 @@ const setup = submissionFixture(testDatabases());
 describe('环境使用权切换', () => {
   test('多工程原子切换、幂等回放、只暂停目标提测项并通知双方', async () => {
     const fixture = await setup();
+    const { service, users, database, project, events } = fixture;
     const front = item(fixture, 'front', 'developerA', 'frontA', 'main');
     const back = item(fixture, 'back', 'developerB', 'backB', 'main');
     const original = createSubmission(fixture, [front, back]);
@@ -15,78 +16,79 @@ describe('环境使用权切换', () => {
       mutationId: randomUUID(),
       title: '优先提测',
       requirementDescription: '优先验收前端',
-      testerUserId: fixture.users.tester.id,
+      testerUserId: users.tester.id,
       items: [front],
     };
-    expect(() =>
-      fixture.service.createSubmission(fixture.users.owner.id, fixture.project.id, input),
-    ).toThrow('所选环境');
-    const conflicts = fixture.service.environmentConflicts(
-      fixture.users.owner.id,
-      fixture.project.id,
-      input,
+    expect(() => service.createSubmission(users.owner.id, project.id, input)).toThrow(
+      '所选环境',
     );
+    const conflicts = service.environmentConflicts(users.owner.id, project.id, input);
     expect(conflicts).toHaveLength(1);
     expect(conflicts[0]).toMatchObject({
       submissionId: original.id,
       blockedReason: null,
     });
     const confirmed = { ...input, environmentTakeovers: conflicts };
-    fixture.events.length = 0;
-    const next = fixture.service.createSubmission(
-      fixture.users.owner.id,
-      fixture.project.id,
-      confirmed,
-    );
-    expect(fixture.events.map(({ submissionId }) => submissionId).sort()).toEqual(
+    events.length = 0;
+    const next = service.createSubmission(users.owner.id, project.id, confirmed);
+    expect(events.map(({ submissionId }) => submissionId).sort()).toEqual(
       [next.id, original.id].sort(),
     );
-    const oldItems = fixture.service.getWorkspace(fixture.users.owner.id, original.id)
-      .submission.items;
+    const oldItems = service.getWorkspace(users.owner.id, original.id).submission.items;
     expect(oldItems[0]!.environmentAccess.owned).toBe(false);
     expect(oldItems[1]!.environmentAccess.owned).toBe(true);
-    const nextItem = fixture.service.getWorkspace(fixture.users.developerA.id, next.id)
-      .submission.items[0]!;
+    const nextItem = service.getWorkspace(users.developerA.id, next.id).submission
+      .items[0]!;
     expect(nextItem.environmentAccess).toMatchObject({
       owned: true,
       deploymentConfirmed: false,
       canConfirmDeployment: true,
     });
-    const eventCount = fixture.events.length;
-    expect(
-      fixture.service.createSubmission(
-        fixture.users.owner.id,
-        fixture.project.id,
-        confirmed,
-      ).id,
-    ).toBe(next.id);
-    expect(fixture.events).toHaveLength(eventCount);
-    expectRowCount(fixture.database, 'cooking_submission_environment_lock').toBe(2);
+    const eventCount = events.length;
+    expect(service.createSubmission(users.owner.id, project.id, confirmed).id).toBe(
+      next.id,
+    );
+    expect(events).toHaveLength(eventCount);
+    expectRowCount(database, 'cooking_submission_environment_lock').toBe(2);
     const competing = { ...confirmed, mutationId: randomUUID() };
-    expect(() =>
-      fixture.service.createSubmission(
-        fixture.users.owner.id,
-        fixture.project.id,
-        competing,
-      ),
-    ).toThrow('环境使用情况已变化');
-    expectRowCount(fixture.database, 'cooking_test_submission').toBe(2);
-    expect(() =>
-      fixture.service.changeEnvironment(fixture.users.tester.id, nextItem.id, {
-        mutationId: randomUUID(),
-        expectedRevision: next.workspaceRevision,
-        action: 'CONFIRM_DEPLOYMENT',
-      }),
-    ).toThrow('只有对应工程负责人');
-    fixture.service.changeEnvironment(fixture.users.developerA.id, nextItem.id, {
+    expect(() => service.createSubmission(users.owner.id, project.id, competing)).toThrow(
+      '环境使用情况已变化',
+    );
+    expectRowCount(database, 'cooking_test_submission').toBe(2);
+    const deploymentInput = {
       mutationId: randomUUID(),
       expectedRevision: next.workspaceRevision,
-      action: 'CONFIRM_DEPLOYMENT',
-    });
+      action: 'CONFIRM_DEPLOYMENT' as const,
+    };
+    expect(() =>
+      service.changeEnvironment(users.tester.id, nextItem.id, deploymentInput),
+    ).toThrow('只有对应工程负责人');
+    const deployed = service.changeEnvironment(
+      users.developerA.id,
+      nextItem.id,
+      deploymentInput,
+    );
     expect(
-      fixture.service.getWorkspace(fixture.users.tester.id, next.id).submission.items[0]!
-        .environmentAccess.deploymentConfirmed,
-    ).toBe(true);
+      service.changeEnvironment(users.developerA.id, nextItem.id, deploymentInput),
+    ).toEqual(deployed);
+    expect(
+      service.getWorkspace(users.developerA.id, next.id).submission.items[0]!
+        .environmentAccess,
+    ).toMatchObject({
+      owned: true,
+      deploymentConfirmed: true,
+      canAcquire: false,
+      canConfirmDeployment: false,
+    });
+    const eventsAfterConfirmation = [...events];
+    expect(() =>
+      service.changeEnvironment(users.developerA.id, nextItem.id, {
+        ...deploymentInput,
+        mutationId: randomUUID(),
+        expectedRevision: deployed.workspaceRevision,
+      }),
+    ).toThrow('已确认部署');
+    expect(events).toEqual(eventsAfterConfirmation);
   });
 
   test('第二个环境确认过期时全部回滚；同一原提测单的多个环境可以一起转移', async () => {

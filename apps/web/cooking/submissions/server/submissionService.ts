@@ -1,11 +1,5 @@
 import { requireProjectMember } from '@/cooking/shared/server/access';
-import {
-  environmentObservers,
-  environmentOwned,
-  environmentBusy,
-  requireEnvironment,
-  releaseEnvironmentForTakeover,
-} from './environmentAccess';
+import { acquireEnvironment, environmentAccessForItem } from './environmentAccess';
 import { randomUUID } from 'node:crypto';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
@@ -309,63 +303,26 @@ export class SubmissionService {
           actorUserId,
           item.submission_id,
         );
-        if (submission.status !== 'ACTIVE')
-          throw new PlatformError('INVALID_TRANSITION', '已关闭提测单不能切换环境');
         if (submission.workspace_revision !== input.expectedRevision)
           throw new PlatformError('STALE_STATE', '提测单已更新，请刷新后重试');
+        const blocker = environmentAccessForItem(this.db, actorUserId, submission, item)
+          .blockers[input.action];
+        if (blocker) throw blocker;
         const now = this.now().toISOString();
         let affectedSubmissionIds: string[] = [];
         if (input.action === 'CONFIRM_DEPLOYMENT') {
-          if (actorUserId !== item.responsible_user_id)
-            throw new PlatformError(
-              'PERMISSION_DENIED',
-              '只有对应工程负责人可以确认部署',
-            );
-          requireEnvironment(this.db, itemId);
-          if (environmentBusy(this.db, itemId))
-            throw new PlatformError(
-              'RESOURCE_CONFLICT',
-              '更新或部署尚未结束，暂时不能确认',
-            );
           this.db.run(
             'UPDATE cooking_submission_environment_lock SET deployment_confirmed = 1 WHERE submission_item_id = ?',
             [itemId],
           );
         } else {
-          if (
-            ![
-              submission.tester_user_id,
-              submission.created_by_user_id,
-              item.responsible_user_id,
-            ].includes(actorUserId) &&
-            submission.membership_role !== 'OWNER'
-          )
-            throw new PlatformError(
-              'PERMISSION_DENIED',
-              '只有提测参与者或项目所有者可以取得环境使用权',
-            );
-          if (environmentOwned(this.db, itemId))
-            throw new PlatformError('STALE_STATE', '当前提测项已取得环境，请刷新后重试');
-          if (input.takeover && input.takeover.environmentId !== item.environment_id)
-            throw new PlatformError(
-              'VALIDATION_FAILED',
-              '环境切换确认与当前提测项不匹配',
-            );
-          releaseEnvironmentForTakeover(
+          affectedSubmissionIds = acquireEnvironment(
             this.db,
             actorUserId,
-            item.environment_id,
+            item,
+            now,
+            'REACQUIRE',
             input.takeover,
-          );
-          this.db.run(
-            `INSERT INTO cooking_submission_environment_lock(environment_id, engineering_id, submission_id, submission_item_id, created_at, deployment_confirmed)
-            VALUES (?, ?, ?, ?, ?, 0)`,
-            [item.environment_id, item.engineering_id, item.submission_id, item.id, now],
-          );
-          affectedSubmissionIds = environmentObservers(
-            this.db,
-            item.environment_id,
-            submission.id,
           );
         }
         const revision = this.writes.bumpRevision(submission.id, now);

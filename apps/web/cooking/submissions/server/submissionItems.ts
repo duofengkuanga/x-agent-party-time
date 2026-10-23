@@ -5,11 +5,7 @@ import type {
   EnvironmentConflict,
   EnvironmentTakeover,
 } from '../contract';
-import {
-  environmentConflict,
-  environmentObservers,
-  releaseEnvironmentForTakeover,
-} from './environmentAccess';
+import { environmentConflict, acquireEnvironment } from './environmentAccess';
 import type { SubmissionItemRow } from './submissionQueries';
 
 type ItemSnapshotSource = Omit<
@@ -146,24 +142,12 @@ export function insertItem(
       createdAt,
     ],
   );
-  const previous = releaseEnvironmentForTakeover(
+  return acquireEnvironment(
     db,
     input.actorUserId,
-    source.environment_id,
+    { ...source, id: itemId, submission_id: submissionId },
+    createdAt,
+    'INITIAL',
     input.takeover,
   );
-  db.run(
-    `INSERT INTO cooking_submission_environment_lock(
-       environment_id, engineering_id, submission_id, submission_item_id, created_at, deployment_confirmed
-     ) VALUES (?, ?, ?, ?, ?, ?)`,
-    [
-      source.environment_id,
-      source.engineering_id,
-      submissionId,
-      itemId,
-      createdAt,
-      previous ? 0 : 1,
-    ],
-  );
-  return environmentObservers(db, source.environment_id, submissionId);
 }

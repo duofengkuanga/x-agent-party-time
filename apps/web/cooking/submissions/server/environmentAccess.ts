@@ -1,3 +1,4 @@
+import type { SubmissionAccessRow, SubmissionItemRow } from './submissionQueries';
 import type { AppDatabase } from '@/platform/database';
 import { PlatformError } from '@/platform/errors';
 import {
@@ -57,6 +58,66 @@ export function environmentBusy(db: AppDatabase, itemId: string): boolean {
   );
 }
 
+export function environmentAccessForItem(
+  db: AppDatabase,
+  userId: string,
+  submission: SubmissionAccessRow,
+  item: Pick<SubmissionItemRow, 'id' | 'environment_id' | 'responsible_user_id'>,
+) {
+  const lock = db.get<{ deployment_confirmed: number }>(
+    'SELECT deployment_confirmed FROM cooking_submission_environment_lock WHERE submission_item_id = ?',
+    item.id,
+  );
+  const owned = Boolean(lock);
+  const deploymentConfirmed = lock?.deployment_confirmed === 1;
+  const inactive =
+    submission.status !== 'ACTIVE'
+      ? new PlatformError('INVALID_TRANSITION', '已关闭提测单不能切换环境')
+      : null;
+  const acquireBlocker =
+    inactive ??
+    (submission.membership_role !== 'OWNER' &&
+    ![
+      submission.tester_user_id,
+      submission.created_by_user_id,
+      item.responsible_user_id,
+    ].includes(userId)
+      ? new PlatformError(
+          'PERMISSION_DENIED',
+          '只有提测参与者或项目所有者可以取得环境使用权',
+        )
+      : owned
+        ? new PlatformError('STALE_STATE', '当前提测项已取得环境，请刷新后重试')
+        : null);
+  const confirmBlocker =
+    inactive ??
+    (userId !== item.responsible_user_id
+      ? new PlatformError('PERMISSION_DENIED', '只有对应工程负责人可以确认部署')
+      : !owned
+        ? new PlatformError(
+            'RESOURCE_CONFLICT',
+            '此提测项已暂停使用环境，请先重新取得环境使用权',
+          )
+        : deploymentConfirmed
+          ? new PlatformError(
+              'INVALID_TRANSITION',
+              '当前提测版本已确认部署，无需重复确认',
+            )
+          : environmentBusy(db, item.id)
+            ? new PlatformError('RESOURCE_CONFLICT', '更新或部署尚未结束，暂时不能确认')
+            : null);
+  return {
+    view: {
+      owned,
+      deploymentConfirmed,
+      conflict: owned ? null : environmentConflict(db, userId, item.environment_id),
+      canAcquire: !acquireBlocker,
+      canConfirmDeployment: !confirmBlocker,
+    },
+    blockers: { ACQUIRE: acquireBlocker, CONFIRM_DEPLOYMENT: confirmBlocker },
+  };
+}
+
 export function environmentConflict(
   db: AppDatabase,
   userId: string,
@@ -108,33 +169,52 @@ export function environmentConflict(
   });
 }
 
-// Caller owns the write transaction. The observed owner and revision are a compare-and-swap token.
-export function releaseEnvironmentForTakeover(
+// The caller's transaction includes the new item (if any), takeover and new ownership.
+export function acquireEnvironment(
   db: AppDatabase,
   userId: string,
-  environmentId: string,
+  item: Pick<
+    SubmissionItemRow,
+    'id' | 'submission_id' | 'environment_id' | 'engineering_id'
+  >,
+  now: string,
+  mode: 'INITIAL' | 'REACQUIRE',
   expected: EnvironmentTakeover | undefined,
-): EnvironmentConflict | null {
-  const conflict = environmentConflict(db, userId, environmentId);
-  if (!conflict) {
-    if (expected)
+): string[] {
+  if (expected && expected.environmentId !== item.environment_id)
+    throw new PlatformError('VALIDATION_FAILED', '环境切换确认与当前提测项不匹配');
+  const previous = environmentConflict(db, userId, item.environment_id);
+  if (previous) {
+    if (!expected)
+      throw new PlatformError('RESOURCE_CONFLICT', '所选环境已被其他活动提测单占用');
+    if (
+      expected.submissionItemId !== previous.submissionItemId ||
+      expected.expectedRevision !== previous.expectedRevision
+    )
       throw new PlatformError('STALE_STATE', '环境使用情况已变化，请重新确认');
-    return null;
-  }
-  if (!expected)
-    throw new PlatformError('RESOURCE_CONFLICT', '所选环境已被其他活动提测单占用');
-  if (
-    expected.submissionItemId !== conflict.submissionItemId ||
-    expected.expectedRevision !== conflict.expectedRevision
-  )
+    if (previous.blockedReason)
+      throw new PlatformError('RESOURCE_CONFLICT', previous.blockedReason);
+    db.run(
+      'DELETE FROM cooking_submission_environment_lock WHERE environment_id = ? AND submission_item_id = ?',
+      [item.environment_id, previous.submissionItemId],
+    );
+  } else if (expected) {
     throw new PlatformError('STALE_STATE', '环境使用情况已变化，请重新确认');
-  if (conflict.blockedReason)
-    throw new PlatformError('RESOURCE_CONFLICT', conflict.blockedReason);
+  }
   db.run(
-    'DELETE FROM cooking_submission_environment_lock WHERE environment_id = ? AND submission_item_id = ?',
-    [environmentId, conflict.submissionItemId],
+    `INSERT INTO cooking_submission_environment_lock(
+       environment_id, engineering_id, submission_id, submission_item_id, created_at, deployment_confirmed
+     ) VALUES (?, ?, ?, ?, ?, ?)`,
+    [
+      item.environment_id,
+      item.engineering_id,
+      item.submission_id,
+      item.id,
+      now,
+      mode === 'INITIAL' && !previous ? 1 : 0,
+    ],
   );
-  return conflict;
+  return environmentObservers(db, item.environment_id, item.submission_id);
 }
 
 export function environmentObservers(

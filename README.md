@@ -301,7 +301,7 @@ Cooking 的职责归属：
 
 `bugs/server/bugQueries.ts` 集中缺陷读取与可操作条件；删除、转交命令和工作区操作展示共用其中的规则。一次工作区读取只计算一次当前用户是否为提测项负责人。关联记录与删除事务仍分别由 `bugRelations.ts`、`bugDeletion.ts` 负责。关联验收判定由 `lifecycle/server/lifecycleQueries.ts` 集中读取两端阶段、归档、环境和权限，查询投影与事务入口共用；界面只组合展示关联卡片。
 
-`submissions/server/submissionItems.ts` 负责提测项配置校验、快照写入和环境接管，并返回受影响的提测单。创建、追加工程、环境切换和关闭提测的业务入口只返回受影响提测单及变更时间；`TestSubmissionWriteStore` 在业务事务中去重并递增这些提测单的工作区版本，成功提交后统一通知，回放或回滚不重复通知。当前提测单的版本仍由具体业务变更决定。冲突预检由业务入口完成权限和输入校验后，只传项目与提测项列表；追加预检不再转换为创建提测输入。`environmentAccess.ts` 保留跨业务的环境占用、确认和接管规则；`references.ts` 保留供项目、工程配置检查使用的低依赖查询。
+`submissions/server/submissionItems.ts` 负责提测项配置校验和快照写入，调用 `environmentAccess.ts` 取得环境使用权并返回受影响的提测单。创建、追加工程、环境切换和关闭提测的业务入口只返回受影响提测单及变更时间；`TestSubmissionWriteStore` 在业务事务中去重并递增这些提测单的工作区版本，成功提交后统一通知，回放或回滚不重复通知。当前提测单的版本仍由具体业务变更决定。冲突预检由业务入口完成权限和输入校验后，只传项目与提测项列表；追加预检不再转换为创建提测输入。`environmentAccess.ts` 集中环境操作判定，工作区与变更命令共用；创建、追加与重新取得共用接管校验、旧占用释放和新占用写入，保留首次取得空闲环境与重新取得的部署确认差异；`references.ts` 保留供项目、工程配置检查使用的低依赖查询。
 
 修复、更新和生命周期的 SQL 行类型分别与查询放在 `repairQueries.ts`、`updateQueries.ts` 和 `lifecycleQueries.ts`。修复输入读取统一归 `repairQueries.ts`：只读取执行使用的报告、目标分支、绑定、历史反馈和带角色附件，附件直接使用 Execution Brief 所需的引用结构。`repairService.ts` 创建修复执行时直接组装 Execution Brief 和继续执行所需的新事实；`updateDelivery.ts` 同样就近组装更新与外部部署失败反馈，不再经过单一调用方的 Brief 转换文件。两个业务入口直接绑定查询和交付方法，保留调用 Interface，省去纯转发函数。
 
