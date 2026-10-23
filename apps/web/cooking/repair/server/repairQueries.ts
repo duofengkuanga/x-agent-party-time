@@ -22,6 +22,28 @@ import {
 } from '../contract';
 import type { Execution } from '@agent-party-time/execution-contract';
 import type { Bug } from '@/cooking/bugs/contract';
+import { z } from 'zod';
+
+const RepairInputSchema = z.object({
+  targetBranch: z.string().min(1),
+  runnerId: z.string().min(1),
+  bindingId: z.string().min(1),
+  report: z.object({
+    title: z.string().min(1),
+    operationPath: z.string().nullable(),
+    actualResult: z.string().nullable(),
+    expectedResult: z.string().nullable(),
+  }),
+  attachmentReferences: z.array(
+    z.object({
+      fileId: z.string().min(1),
+      originalName: z.string().min(1),
+      role: z.enum(['ACTUAL_RESULT', 'EXPECTED_RESULT']),
+    }),
+  ),
+  feedback: z.array(z.string().min(1)),
+});
+type RepairInput = z.infer<typeof RepairInputSchema>;
 
 const REPAIR_ATTEMPT_SELECT = `SELECT attempt.id, attempt.bug_id, attempt.execution_id,
        attempt.attempt, attempt.outcome_json, attempt.created_at,
@@ -37,6 +59,62 @@ export class RepairQueries {
     private readonly db: AppDatabase,
     private readonly executions: ExecutionService,
   ) {}
+
+  inputForBug(bugId: string): RepairInput {
+    const row = this.db.get<
+      Pick<RepairInput, 'targetBranch' | 'runnerId' | 'bindingId'> & RepairInput['report']
+    >(
+      `SELECT bug.title, bug.operation_path operationPath,
+              bug.actual_result actualResult, bug.expected_result expectedResult,
+              item.target_branch targetBranch, item.binding_id bindingId,
+              binding.runner_id runnerId
+       FROM cooking_bug bug
+       JOIN cooking_submission_item item ON item.id = bug.submission_item_id
+       JOIN cooking_engineering_binding binding ON binding.id = item.binding_id
+       WHERE bug.id = ?`,
+      bugId,
+    );
+    if (!row) throw new PlatformError('NOT_FOUND', '待修复缺陷不存在');
+    const { targetBranch, runnerId, bindingId, ...report } = row;
+    const attachmentReferences = this.db.all(
+      `SELECT file.id fileId, file.original_name originalName, attachment.role
+       FROM cooking_bug_attachment attachment
+       JOIN platform_file file ON file.id = attachment.file_id
+       WHERE attachment.bug_id = ?
+       ORDER BY CASE attachment.role
+         WHEN 'ACTUAL_RESULT' THEN 0
+         WHEN 'EXPECTED_RESULT' THEN 1
+       END, attachment.position`,
+      bugId,
+    );
+    const feedback = this.db
+      .all<{ content: string }>(
+        `SELECT content FROM (
+           SELECT comment content, created_at, id
+           FROM cooking_verification_record
+           WHERE bug_id = ? AND result = 'FAILED'
+           UNION ALL
+           SELECT feedback content, created_at, id
+           FROM cooking_reopen_record WHERE bug_id = ?
+           UNION ALL
+           SELECT handoff_text content, created_at, id
+           FROM cooking_bug_relation WHERE target_bug_id = ? AND handoff_text != ''
+         ) ORDER BY created_at, id`,
+        bugId,
+        bugId,
+        bugId,
+      )
+      .map(({ content }) => content);
+    return RepairInputSchema.parse({
+      targetBranch,
+      runnerId,
+      bindingId,
+      report,
+      attachmentReferences,
+      feedback,
+    });
+  }
+
   workspace(userId: string, submissionId: string): RepairWorkspaceProjection {
     requireSubmissionAccess(this.db, userId, submissionId);
     const bugIds = this.db

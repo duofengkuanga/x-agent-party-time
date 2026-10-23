@@ -65,6 +65,7 @@ async function setup(
     mutationId: randomUUID(),
     submissionItemId: item.id,
     title: '支付按钮无响应',
+    operationPath: '打开结算页',
     actualResult: '点击后没有反应',
     expectedResult: '进入支付流程',
     actualResultAttachmentIds: [actualResultAttachment.id],

@@ -1,4 +1,3 @@
-import { BugRepairContextService } from '@/cooking/bugs/server/repairContext';
 import { DeploymentMethodSchema } from '@/cooking/engineering/contract';
 import { requireSubmissionAccess } from '@/cooking/shared/server/access';
 import {
@@ -70,9 +69,6 @@ export class RepairService {
     private readonly createId: () => string = randomUUID,
     onInvalidated: (submissionId: string, revision: number) => void = () => {},
     private readonly deliveryHooks: RepairDeliveryHooks = NOOP_DELIVERY_HOOKS,
-    private readonly bugContexts: BugRepairContextService = new BugRepairContextService(
-      db,
-    ),
   ) {
     this.queries = new RepairQueries(db, executions);
     this.workspace = this.queries.workspace.bind(this.queries);
@@ -89,7 +85,7 @@ export class RepairService {
   }
 
   createInitialExecution(bugId: string): string {
-    const repairContext = this.bugContexts.get(bugId);
+    const repairContext = this.queries.inputForBug(bugId);
     const existingContext = this.queries.context(bugId);
     const latest = existingContext ? this.queries.latestAttempt(bugId) : undefined;
     if (latest && !isTerminal(latest.state))
@@ -125,19 +121,7 @@ export class RepairService {
         [bugId, workspaceKey, now, now],
       );
     const attempt = (latest?.attempt ?? 0) + 1;
-    const report = repairContext.report;
-    const attachmentReferences = [
-      ...report.attachments.actualResult.map(({ id, originalName }) => ({
-        fileId: id,
-        originalName,
-        role: 'ACTUAL_RESULT',
-      })),
-      ...report.attachments.expectedResult.map(({ id, originalName }) => ({
-        fileId: id,
-        originalName,
-        role: 'EXPECTED_RESULT',
-      })),
-    ];
+    const { report, attachmentReferences } = repairContext;
     const pendingCommits = existingContext
       ? parseCommits(existingContext.pending_commits_json)
       : [];
@@ -175,10 +159,7 @@ export class RepairService {
         baseRef: `origin/${repairContext.targetBranch}`,
         branch: `apt/repair/${bugId}`,
       },
-      attachmentIds: [
-        ...repairContext.report.attachments.actualResult,
-        ...repairContext.report.attachments.expectedResult,
-      ].map(({ id }) => id),
+      attachmentIds: attachmentReferences.map(({ fileId }) => fileId),
     });
     this.db.run(
       `INSERT INTO cooking_repair_attempt(
@@ -194,7 +175,7 @@ export class RepairService {
     lifecycleContext = '',
     attachmentIds: string[] = [],
   ): string {
-    const repairContext = this.bugContexts.get(bugId);
+    const repairContext = this.queries.inputForBug(bugId);
     const context = this.queries.requireContext(bugId);
     const latest = this.queries.latestAttempt(bugId);
     if (!latest || !isTerminal(latest.state))
@@ -334,7 +315,7 @@ export class RepairService {
             '原修复任务缺少结果约束，不能同步',
           );
         const resultAssertions = previousExecution.codexTurn?.resultAssertions;
-        const repairContext = this.bugContexts.get(bugId);
+        const repairContext = this.queries.inputForBug(bugId);
         const syncId = this.createId();
         const executionId = this.createId();
         const execution = this.executions.enqueue({

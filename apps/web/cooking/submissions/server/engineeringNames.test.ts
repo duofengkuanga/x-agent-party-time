@@ -2,7 +2,6 @@ import { expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { EngineeringService } from '@/cooking/engineering/server/engineeringService';
 import { createCooking } from '@/cooking/runtime/createCooking';
-import { BugRepairContextService } from '@/cooking/bugs/server/repairContext';
 import { completeRepairExecution } from '@/cooking/testing/execution';
 import { mutation } from '@/cooking/testing/project';
 import { testDatabases } from '@/testing/database';
@@ -64,10 +63,6 @@ test('工程改名在已有提测、缺陷、关联、流转目标和更新批�
   expect(
     view.bugs.find(({ id }) => id === pair.bugs[1]!.id)?.relatedBugs[0]?.engineeringName,
   ).toBe('前端土壤大屏');
-  expect(new BugRepairContextService(f.database).get(single.id)).toMatchObject({
-    engineeringName: '前端土壤大屏',
-    targetBranch: 'feature/front',
-  });
   const conflicts = f.service.environmentConflicts(f.users.owner.id, f.project.id, {
     mutationId: randomUUID(),
     title: '环境检查',
@@ -80,6 +75,7 @@ test('工程改名在已有提测、缺陷、关联、流转目标和更新批�
   app.bugs.requestRepair(f.users.tester.id, single.id, mutation(single.version));
   const runner = f.runners.runnerA.runner;
   const claimed = (await app.executions.claim(runner.id, 1, 0))[0]!;
+  expect(claimed.workspace).toMatchObject({ baseRef: 'origin/feature/front' });
   completeRepairExecution(
     { executions: app.executions, runner },
     claimed.id,
