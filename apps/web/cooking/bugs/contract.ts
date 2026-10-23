@@ -15,7 +15,7 @@ import {
 } from '@/cooking/shared/contract';
 
 export const BugIdSchema = z.uuid();
-export const BugStageSchema = z.enum([
+const BugStageSchema = z.enum([
   'WAITING_FOR_REPAIR',
   'REPAIRING',
   'WAITING_FOR_UPDATE',
@@ -24,9 +24,9 @@ export const BugStageSchema = z.enum([
   'DONE',
   'CANCELLED',
 ]);
-export const BugTitleSchema = z.string().trim().min(1).max(240);
+const BugTitleSchema = z.string().trim().min(1).max(240);
 const OptionalReportTextSchema = z.string().trim().min(1).max(8_000);
-export const BugAttachmentIdsSchema = z
+const BugAttachmentIdsSchema = z
   .array(z.uuid())
   .max(5)
   .refine((ids) => new Set(ids).size === ids.length, {
@@ -60,9 +60,7 @@ const BugReportBaseSchema = z.object({
   actualResultAttachmentIds: BugAttachmentIdsSchema,
   expectedResultAttachmentIds: BugAttachmentIdsSchema,
 });
-export const BugReportSchema = BugReportBaseSchema.superRefine(
-  requireDisjointAttachments,
-);
+const BugReportSchema = BugReportBaseSchema.superRefine(requireDisjointAttachments);
 
 export const BugSchema = z.object({
   id: BugIdSchema,
@@ -138,7 +136,7 @@ export type RouteBugInput = z.infer<typeof RouteBugInputSchema>;
 
 export const BugAttachmentViewSchema = CookingAttachmentViewSchema;
 
-export const BugActionSchema = z.enum([
+const BugActionSchema = z.enum([
   'DELETE',
   'TRANSFER',
   'COLLABORATE',
@@ -154,7 +152,7 @@ export const BugActionSchema = z.enum([
   'UNARCHIVE',
 ]);
 
-export const BugViewSchema = BugSchema.omit({
+const BugViewSchema = BugSchema.omit({
   report: true,
 }).extend({
   routing: z.object({

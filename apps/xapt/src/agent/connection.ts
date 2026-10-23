@@ -284,7 +284,7 @@ export type ConnectionErrorCode =
   | 'AUTHORIZATION_REJECTED'
   | 'AUTHORIZATION_EXPIRED';
 
-export class ConnectionError extends Error {
+class ConnectionError extends Error {
   constructor(
     readonly code: ConnectionErrorCode,
     message: string,

@@ -20,10 +20,10 @@ import {
 
 export const SubmissionIdSchema = z.uuid();
 export const SubmissionItemIdSchema = z.uuid();
-export const SubmissionTitleSchema = z.string().trim().min(1).max(160);
-export const RequirementDescriptionSchema = z.string().trim().min(1).max(8_000);
-export const TargetBranchSchema = z.string().trim().min(1).max(240);
-export const SubmissionStatusSchema = z.enum(['ACTIVE', 'CLOSED']);
+const SubmissionTitleSchema = z.string().trim().min(1).max(160);
+const RequirementDescriptionSchema = z.string().trim().min(1).max(8_000);
+const TargetBranchSchema = z.string().trim().min(1).max(240);
+const SubmissionStatusSchema = z.enum(['ACTIVE', 'CLOSED']);
 
 export const TestSubmissionSchema = z.object({
   id: SubmissionIdSchema,
@@ -61,7 +61,7 @@ export const SubmissionItemSchema = z.object({
   createdAt: z.iso.datetime(),
 });
 
-export const CreateSubmissionItemInputSchema = z.object({
+const CreateSubmissionItemInputSchema = z.object({
   engineeringId: EngineeringIdSchema,
   responsibleUserId: UserIdSchema,
   bindingId: BindingIdSchema,
@@ -69,7 +69,7 @@ export const CreateSubmissionItemInputSchema = z.object({
   environmentId: EnvironmentIdSchema,
 });
 
-export const EnvironmentTakeoverSchema = z.object({
+const EnvironmentTakeoverSchema = z.object({
   environmentId: EnvironmentIdSchema,
   submissionItemId: SubmissionItemIdSchema,
   expectedRevision: z.number().int().positive(),
@@ -108,7 +108,7 @@ export const SubmissionSummarySchema = z.object({
   itemCount: z.number().int().positive(),
 });
 
-export const SubmissionItemViewSchema = SubmissionItemSchema.omit({
+const SubmissionItemViewSchema = SubmissionItemSchema.omit({
   bindingId: true,
 }).extend({
   engineering: SubmissionItemSchema.shape.engineering.omit({
@@ -134,7 +134,7 @@ export const SubmissionItemViewSchema = SubmissionItemSchema.omit({
   availableActions: z.array(z.literal('EDIT_TARGET_BRANCH')),
 });
 
-export const SubmissionViewSchema = z.object({
+const SubmissionViewSchema = z.object({
   submission: TestSubmissionSchema,
   projectName: ProjectNameSchema,
   tester: UserSchema,

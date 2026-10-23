@@ -10,8 +10,8 @@ import {
   SubmissionItemIdSchema,
 } from '@/cooking/submissions/contract';
 
-export const VerificationIdSchema = z.uuid();
-export const CleanupIdSchema = z.uuid();
+const VerificationIdSchema = z.uuid();
+const CleanupIdSchema = z.uuid();
 
 export const VerificationRecordViewSchema = z.object({
   id: VerificationIdSchema,
@@ -41,7 +41,7 @@ export const BugLifecycleTransitionViewSchema = z.object({
   createdAt: z.iso.datetime(),
 });
 
-export const CleanupAttemptViewSchema = z.object({
+const CleanupAttemptViewSchema = z.object({
   id: z.uuid(),
   attempt: z.number().int().positive(),
   executionState: ExecutionStateSchema,
@@ -51,7 +51,7 @@ export const CleanupAttemptViewSchema = z.object({
   finishedAt: z.iso.datetime().nullable(),
 });
 
-export const CleanupViewSchema = z.object({
+const CleanupViewSchema = z.object({
   id: CleanupIdSchema,
   submissionId: SubmissionIdSchema,
   submissionItemId: SubmissionItemIdSchema,
@@ -79,7 +79,7 @@ export const CleanupInteractionViewSchema = ExecutionInteractionSchema.pick({
   canResolve: z.boolean(),
 });
 
-export const TimelineEntrySchema = z.object({
+const TimelineEntrySchema = z.object({
   id: z.string().trim().min(1),
   kind: z.enum([
     'VERIFICATION',

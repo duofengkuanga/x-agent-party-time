@@ -138,7 +138,7 @@ export class UninstallManager {
   }
 }
 
-export class UninstallError extends Error {
+class UninstallError extends Error {
   constructor(
     readonly code: string,
     message: string,

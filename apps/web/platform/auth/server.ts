@@ -5,7 +5,7 @@ import { database } from '@/platform/database';
 import type { User } from './contract';
 import { AuthService } from './service';
 
-export const SESSION_COOKIE_NAME = 'agent_party_time_session';
+const SESSION_COOKIE_NAME = 'agent_party_time_session';
 
 export function authService(): AuthService {
   return new AuthService(database());

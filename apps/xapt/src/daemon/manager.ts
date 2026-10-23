@@ -270,7 +270,7 @@ export type DaemonLifecycleErrorCode =
   | 'START_TIMEOUT'
   | 'STOP_TIMEOUT';
 
-export class DaemonLifecycleError extends Error {
+class DaemonLifecycleError extends Error {
   constructor(
     readonly code: DaemonLifecycleErrorCode,
     message: string,

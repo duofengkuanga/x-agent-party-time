@@ -47,7 +47,7 @@ export class MacOsLaunchAgent implements LaunchAgent {
   }
 }
 
-export class LaunchAgentError extends Error {
+class LaunchAgentError extends Error {
   constructor(message: string) {
     super(`${message}。下一步：运行 xapt daemon status 检查状态。`);
     this.name = 'LaunchAgentError';

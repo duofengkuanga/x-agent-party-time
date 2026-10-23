@@ -19,8 +19,8 @@ import { ExecutionStateSchema } from '@agent-party-time/execution-contract';
 import { z } from 'zod';
 
 export const UpdateBatchIdSchema = z.uuid();
-export const UpdateAttemptIdSchema = z.uuid();
-export const ExternalDeploymentReportIdSchema = z.uuid();
+const UpdateAttemptIdSchema = z.uuid();
+const ExternalDeploymentReportIdSchema = z.uuid();
 export const UpdateBatchStateSchema = z.enum([
   'READY',
   'RUNNING',
@@ -29,7 +29,7 @@ export const UpdateBatchStateSchema = z.enum([
   'COMPLETED',
 ]);
 
-export const UpdateValidationSchema = CookingValidationSchema;
+const UpdateValidationSchema = CookingValidationSchema;
 
 export const FrozenRepairHandoffSchema = z.strictObject({
   attemptId: z.uuid(),
@@ -128,14 +128,14 @@ export const CiCdUpdateOutputJsonSchema = outputJsonSchema(
   CiCdUpdateExecutionResultSchema,
 );
 
-export const PendingDeliveryViewSchema = z.object({
+const PendingDeliveryViewSchema = z.object({
   submissionItemId: SubmissionItemIdSchema,
   lastCandidateAt: z.iso.datetime(),
   eligibleAt: z.iso.datetime(),
   availableActions: z.array(z.literal('FREEZE_NOW')),
 });
 
-export const UpdateBatchEntryViewSchema = z.object({
+const UpdateBatchEntryViewSchema = z.object({
   bugId: BugIdSchema,
   bugShortId: z.number().int().positive(),
   bugTitle: z.string().trim().min(1).max(240),
@@ -165,9 +165,9 @@ const UpdateAttemptResultViewSchema = z.discriminatedUnion('outcome', [
   }),
 ]);
 
-export const UpdateAttachmentViewSchema = CookingAttachmentViewSchema;
+const UpdateAttachmentViewSchema = CookingAttachmentViewSchema;
 
-export const UpdateBatchTimelineNodeSchema = z.discriminatedUnion('kind', [
+const UpdateBatchTimelineNodeSchema = z.discriminatedUnion('kind', [
   z.object({
     id: z.string().trim().min(1),
     kind: z.literal('BATCH_FORMED'),
@@ -232,7 +232,7 @@ export const FreezeUpdateInputSchema = z.object({
 
 export const RetryUpdateInputSchema = VersionedCookingMutationSchema;
 
-export const SynchronizeUpdateSessionInputSchema = RetryUpdateInputSchema;
+const SynchronizeUpdateSessionInputSchema = RetryUpdateInputSchema;
 
 export const ExternalDeploymentReportInputSchema = z.discriminatedUnion('outcome', [
   VersionedCookingMutationSchema.extend({

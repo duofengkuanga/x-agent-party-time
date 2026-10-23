@@ -32,7 +32,7 @@ const RepositoryRelativePathSchema = z
     '必须是仓库内的相对路径',
   );
 
-export const ManualOperationSchema = z.strictObject({
+const ManualOperationSchema = z.strictObject({
   kind: z.literal('DATABASE_SQL'),
   paths: z.array(RepositoryRelativePathSchema).min(1).max(100),
 });
@@ -187,7 +187,7 @@ export const BugRepairViewSchema = z.object({
 
 export const ContinueRepairInputSchema = VersionedCookingMutationSchema;
 
-export const SynchronizeRepairSessionInputSchema = ContinueRepairInputSchema;
+const SynchronizeRepairSessionInputSchema = ContinueRepairInputSchema;
 
 export const ResolveRepairInteractionInputSchema = VersionedCookingMutationSchema.extend({
   resolution: z.json(),

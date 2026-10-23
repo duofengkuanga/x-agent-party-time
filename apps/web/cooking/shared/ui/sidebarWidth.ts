@@ -1,8 +1,8 @@
 export const SIDEBAR_COOKIE_NAME = 'agent_party_time_collab_sidebar_width';
-export const SIDEBAR_DEFAULT_WIDTH = 320;
+const SIDEBAR_DEFAULT_WIDTH = 320;
 export const SIDEBAR_MIN_WIDTH = 240;
 export const SIDEBAR_MAX_WIDTH = 560;
-export const STAGE_MIN_WIDTH = 480;
+const STAGE_MIN_WIDTH = 480;
 
 export function clampSidebarWidth(width: number): number {
   if (typeof window === 'undefined')

@@ -107,7 +107,7 @@ export type CodexPreflightErrorCode =
   | 'NOT_LOGGED_IN'
   | 'INITIALIZE_FAILED';
 
-export class CodexPreflightError extends Error {
+class CodexPreflightError extends Error {
   constructor(
     readonly code: CodexPreflightErrorCode,
     message: string,

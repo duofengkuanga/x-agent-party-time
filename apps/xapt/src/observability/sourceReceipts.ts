@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-export const SOURCE_RECEIPT_PREFIX = 'XAPT_OBSERVATION_V1 ';
-export const SourceActivityReceiptSchema = z.strictObject({
+const SOURCE_RECEIPT_PREFIX = 'XAPT_OBSERVATION_V1 ';
+const SourceActivityReceiptSchema = z.strictObject({
   version: z.literal(1),
   activityId: z.uuid(),
   activity: z.enum(['build', 'test', 'typecheck', 'lint', 'deploy']),

@@ -18,7 +18,7 @@ import {
   VerificationRecordViewSchema,
 } from '@/cooking/lifecycle/contract';
 
-export const BugProgressTimelineNodeSchema = z.union([
+const BugProgressTimelineNodeSchema = z.union([
   RepairTimelineNodeSchema,
   z.object({
     id: z.string().trim().min(1),

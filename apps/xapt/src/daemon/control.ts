@@ -318,7 +318,7 @@ function hasCode(value: unknown): value is { code: unknown } {
   return typeof value === 'object' && value !== null && 'code' in value;
 }
 
-export class ControlSocketError extends Error {
+class ControlSocketError extends Error {
   constructor(
     readonly code: string,
     message: string,

@@ -15,9 +15,9 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 
-export const SIDEBAR_STORAGE_KEY = 'agent-party-time:collab-sidebar-width';
+const SIDEBAR_STORAGE_KEY = 'agent-party-time:collab-sidebar-width';
 
-export const SIDEBAR_CHANGE_EVENT = 'agent-party-time:collab-sidebar-width-change';
+const SIDEBAR_CHANGE_EVENT = 'agent-party-time:collab-sidebar-width-change';
 
 function subscribeSidebarWidth(onStoreChange: () => void) {
   window.addEventListener(SIDEBAR_CHANGE_EVENT, onStoreChange);

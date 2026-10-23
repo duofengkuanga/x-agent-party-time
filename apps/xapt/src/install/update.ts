@@ -260,7 +260,7 @@ export class UpdateManager {
   }
 }
 
-export class UpdateError extends Error {
+class UpdateError extends Error {
   constructor(
     readonly code: string,
     message: string,

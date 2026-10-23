@@ -61,7 +61,7 @@ export class MacOsKeychain implements Keychain {
   }
 }
 
-export class KeychainError extends Error {
+class KeychainError extends Error {
   constructor(message: string) {
     super(`${message}。下一步：请检查 macOS 系统钥匙串是否可用后重试。`);
     this.name = 'KeychainError';

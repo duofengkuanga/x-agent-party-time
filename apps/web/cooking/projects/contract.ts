@@ -15,9 +15,9 @@ export const DeleteProjectResultSchema = z.object({
   projectName: ProjectNameSchema,
   deletedAt: z.iso.datetime(),
 });
-export const ProjectRoleSchema = z.enum(['OWNER', 'MEMBER']);
+const ProjectRoleSchema = z.enum(['OWNER', 'MEMBER']);
 export const ProjectInvitationDecisionSchema = z.enum(['ACCEPT', 'REJECT']);
-export const ProjectInvitationStatusSchema = z.enum([
+const ProjectInvitationStatusSchema = z.enum([
   'PENDING',
   'ACCEPTED',
   'REJECTED',

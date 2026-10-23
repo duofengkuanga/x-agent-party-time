@@ -68,13 +68,13 @@ export const CookingVisualPresentationSchema = z.discriminatedUnion('state', [
   }).strict(),
 ]);
 
-export const CookingInteractionQuestionOptionSchema = z.object({
+const CookingInteractionQuestionOptionSchema = z.object({
   value: z.string().trim().min(1),
   label: z.string().trim().min(1),
   description: z.string().trim().min(1).nullable(),
 });
 
-export const CookingInteractionQuestionSchema = z.object({
+const CookingInteractionQuestionSchema = z.object({
   id: z.string().trim().min(1),
   header: z.string().trim().min(1),
   question: z.string().trim().min(1),

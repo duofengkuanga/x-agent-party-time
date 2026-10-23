@@ -465,7 +465,7 @@ function safeMessage(error: unknown): string {
   return error instanceof Error ? error.message : '未知错误';
 }
 
-export class SkillBundleError extends Error {
+class SkillBundleError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'SkillBundleError';
