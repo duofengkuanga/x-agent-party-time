@@ -21,7 +21,6 @@ async function setup(createDatabase: ReturnType<typeof testDatabases>) {
     pairedRunner: paired,
     project,
     submission,
-    submissions,
     sources,
     items,
   } = await deliveryProject(database, {
@@ -54,10 +53,13 @@ async function setup(createDatabase: ReturnType<typeof testDatabases>) {
   const { source: localEngineering, environment: localEnvironment } = sources[0]!;
   const { source: ciEngineering, environment: ciEnvironment } = sources[1]!;
   const events: Array<{ submissionId: string; revision: number }> = [];
-  const { repairs, updates, lifecycle, bugs, executions } = createCooking(database, {
-    now: clock.now,
-    publish: (submissionId, revision) => events.push({ submissionId, revision }),
-  });
+  const { repairs, updates, lifecycle, bugs, executions, submissions } = createCooking(
+    database,
+    {
+      now: clock.now,
+      publish: (submissionId, revision) => events.push({ submissionId, revision }),
+    },
+  );
 
   return {
     bugs,

@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import type { AppDatabase } from '@/platform/database';
-import type { CookingWriteInput } from '@/cooking/shared/server/writeStore';
+import type {
+  CookingWriteInput,
+  CookingWriteOutcome,
+} from '@/cooking/shared/server/writeStore';
 import { CookingWriteStore } from '@/cooking/shared/server/writeStore';
 
 type RevisionedWorkspace =
@@ -23,16 +26,35 @@ export class TestSubmissionWriteStore {
   }
 
   run<T extends RevisionedWorkspace>(
-    input: CookingWriteInput<T> & {
+    input: Omit<CookingWriteInput<T>, 'perform'> & {
       submissionId: (result: T) => string;
+      perform: () => CookingWriteOutcome<T> & {
+        affectedSubmissions?: { ids: string[]; updatedAt: string };
+      };
     },
   ): T {
-    const tracked = this.writes.runTracked(input);
-    if (!tracked.replayed)
+    const invalidations = new Map<string, number>();
+    const tracked = this.writes.runTracked({
+      ...input,
+      perform: () => {
+        const outcome = input.perform();
+        const affected = outcome.affectedSubmissions;
+        if (affected?.ids.length) {
+          const primaryId = input.submissionId(outcome.result);
+          for (const id of new Set(affected.ids))
+            if (id !== primaryId)
+              invalidations.set(id, this.bumpRevision(id, affected.updatedAt));
+        }
+        return outcome;
+      },
+    });
+    if (!tracked.replayed) {
       this.onInvalidated(
         input.submissionId(tracked.result),
         tracked.result.revision ?? tracked.result.workspaceRevision,
       );
+      for (const [id, revision] of invalidations) this.onInvalidated(id, revision);
+    }
     return tracked.result;
   }
 

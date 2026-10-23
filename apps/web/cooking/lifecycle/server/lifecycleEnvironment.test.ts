@@ -42,6 +42,7 @@ describe('环境切换与验证、关闭', () => {
       fixture.users.owner.id,
       fixture.submission.id,
     );
+    fixture.events.length = 0;
     const restored = fixture.submissions.changeEnvironment(
       fixture.users.owner.id,
       originalItem.id,
@@ -52,12 +53,24 @@ describe('环境切换与验证、关闭', () => {
         takeover: paused.submission.items[0]!.environmentAccess.conflict!,
       },
     );
+    expect(fixture.events).toEqual([
+      { submissionId: fixture.submission.id, revision: restored.workspaceRevision },
+      { submissionId: next.id, revision: next.workspaceRevision + 1 },
+    ]);
     expect(verify).toThrow('先确认当前提测版本已部署');
-    fixture.submissions.changeEnvironment(fixture.users.developer.id, originalItem.id, {
-      mutationId: randomUUID(),
-      expectedRevision: restored.workspaceRevision,
-      action: 'CONFIRM_DEPLOYMENT',
-    });
+    fixture.events.length = 0;
+    const confirmed = fixture.submissions.changeEnvironment(
+      fixture.users.developer.id,
+      originalItem.id,
+      {
+        mutationId: randomUUID(),
+        expectedRevision: restored.workspaceRevision,
+        action: 'CONFIRM_DEPLOYMENT',
+      },
+    );
+    expect(fixture.events).toEqual([
+      { submissionId: fixture.submission.id, revision: confirmed.workspaceRevision },
+    ]);
     verify();
     fixture.lifecycle.closeSubmission(fixture.users.tester.id, next.id, {
       ...mutation(next.version),
@@ -80,14 +93,26 @@ test('占用单关闭后暂停单收到新版本，可重新取得空闲环境�
     fixture.users.owner.id,
     fixture.submission.id,
   ).revision;
-  fixture.lifecycle.closeSubmission(fixture.users.tester.id, next.id, {
-    ...mutation(next.version),
-  });
+  fixture.events.length = 0;
+  const closeInput = mutation(next.version);
+  const closed = fixture.lifecycle.closeSubmission(
+    fixture.users.tester.id,
+    next.id,
+    closeInput,
+  );
+  expect(fixture.events).toEqual([
+    { submissionId: next.id, revision: closed.revision },
+    { submissionId: fixture.submission.id, revision: pausedRevision + 1 },
+  ]);
+  expect(
+    fixture.lifecycle.closeSubmission(fixture.users.tester.id, next.id, closeInput),
+  ).toEqual(closed);
+  expect(fixture.events).toHaveLength(2);
   const available = fixture.submissions.getWorkspace(
     fixture.users.developer.id,
     fixture.submission.id,
   );
-  expect(available.revision).toBeGreaterThan(pausedRevision);
+  expect(available.revision).toBe(pausedRevision + 1);
   expect(available.submission.items[0]!.environmentAccess).toMatchObject({
     owned: false,
     conflict: null,

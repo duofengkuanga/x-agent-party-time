@@ -76,8 +76,7 @@ export class SubmissionService {
       )
     )
       throw new PlatformError('VALIDATION_FAILED', '环境切换确认与当前提测项不匹配');
-    const invalidations = new Map<string, number>();
-    const result = this.writes.run({
+    return this.writes.run({
       mutationId: parsed.mutationId,
       actorUserId,
       operation: 'SUBMISSION_CREATE',
@@ -117,6 +116,7 @@ export class SubmissionService {
           createdAt,
           createdAt,
         )!;
+        const affectedSubmissionIds: string[] = [];
         for (const item of itemSnapshots) {
           const observers = insertItem(this.db, {
             actorUserId,
@@ -130,14 +130,13 @@ export class SubmissionService {
               (value) => value.environmentId === item.source.environment_id,
             ),
           });
-          for (const observer of observers) invalidations.set(observer, 0);
+          affectedSubmissionIds.push(...observers);
         }
-        for (const previousId of invalidations.keys())
-          invalidations.set(previousId, this.writes.bumpRevision(previousId, createdAt));
         const submission = mapSubmission(stored);
         return {
           result: submission,
           resourceId: submissionId,
+          affectedSubmissions: { ids: affectedSubmissionIds, updatedAt: createdAt },
           audit: {
             projectId,
             action: 'SUBMISSION_CREATED',
@@ -150,9 +149,6 @@ export class SubmissionService {
         };
       },
     });
-    for (const [id, revision] of invalidations)
-      this.writes.publishInvalidation(id, revision);
-    return result;
   }
 
   environmentConflicts(
@@ -185,8 +181,7 @@ export class SubmissionService {
       )
     )
       throw new PlatformError('VALIDATION_FAILED', '环境切换确认与追加工程不匹配');
-    const invalidations = new Map<string, number>();
-    const result = this.writes.run({
+    return this.writes.run({
       mutationId: parsed.mutationId,
       actorUserId,
       operation: 'SUBMISSION_ADD_ITEMS',
@@ -219,6 +214,7 @@ export class SubmissionService {
         const environmentIds = new Set(existing.map((item) => item.environment_id));
         const now = this.now().toISOString();
         const itemIds: string[] = [];
+        const affectedSubmissionIds: string[] = [];
         for (const [index, item] of parsed.items.entries()) {
           if (
             engineeringIds.has(item.engineeringId) ||
@@ -249,11 +245,9 @@ export class SubmissionService {
               (value) => value.environmentId === item.environmentId,
             ),
           });
-          for (const observer of observers) invalidations.set(observer, 0);
+          affectedSubmissionIds.push(...observers);
           itemIds.push(itemId);
         }
-        for (const observer of invalidations.keys())
-          invalidations.set(observer, this.writes.bumpRevision(observer, now));
         const stored = this.db.get<SubmissionRow>(
           `UPDATE cooking_test_submission
           SET version = version + 1, workspace_revision = workspace_revision + 1, updated_at = ?
@@ -266,6 +260,7 @@ export class SubmissionService {
         return {
           result: mapSubmission(stored),
           resourceId: submissionId,
+          affectedSubmissions: { ids: affectedSubmissionIds, updatedAt: now },
           audit: {
             projectId: current.project_id,
             action: 'SUBMISSION_ITEMS_ADDED',
@@ -274,9 +269,6 @@ export class SubmissionService {
         };
       },
     });
-    for (const [id, revision] of invalidations)
-      this.writes.publishInvalidation(id, revision);
-    return result;
   }
 
   addedItemConflicts(
@@ -300,8 +292,7 @@ export class SubmissionService {
     inputValue: EnvironmentCommand,
   ): TestSubmission {
     const input = EnvironmentCommandSchema.parse(inputValue);
-    const invalidations = new Map<string, number>();
-    const result = this.writes.run({
+    return this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
       operation: 'SUBMISSION_ENVIRONMENT_CHANGE',
@@ -323,6 +314,7 @@ export class SubmissionService {
         if (submission.workspace_revision !== input.expectedRevision)
           throw new PlatformError('STALE_STATE', '提测单已更新，请刷新后重试');
         const now = this.now().toISOString();
+        let affectedSubmissionIds: string[] = [];
         if (input.action === 'CONFIRM_DEPLOYMENT') {
           if (actorUserId !== item.responsible_user_id)
             throw new PlatformError(
@@ -370,12 +362,11 @@ export class SubmissionService {
             VALUES (?, ?, ?, ?, ?, 0)`,
             [item.environment_id, item.engineering_id, item.submission_id, item.id, now],
           );
-          for (const observer of environmentObservers(
+          affectedSubmissionIds = environmentObservers(
             this.db,
             item.environment_id,
             submission.id,
-          ))
-            invalidations.set(observer, this.writes.bumpRevision(observer, now));
+          );
         }
         const revision = this.writes.bumpRevision(submission.id, now);
         return {
@@ -385,6 +376,7 @@ export class SubmissionService {
             updatedAt: now,
           },
           resourceId: submission.id,
+          affectedSubmissions: { ids: affectedSubmissionIds, updatedAt: now },
           audit: {
             projectId: submission.project_id,
             action:
@@ -399,9 +391,6 @@ export class SubmissionService {
         };
       },
     });
-    for (const [id, revision] of invalidations)
-      this.writes.publishInvalidation(id, revision);
-    return result;
   }
 
   updateSubmission(

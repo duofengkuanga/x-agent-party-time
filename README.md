@@ -301,13 +301,13 @@ Cooking 的职责归属：
 
 `bugs/server/bugQueries.ts` 集中缺陷读取与可操作条件；删除、转交命令和工作区操作展示共用其中的规则。一次工作区读取只计算一次当前用户是否为提测项负责人。关联记录与删除事务仍分别由 `bugRelations.ts`、`bugDeletion.ts` 负责。
 
-`submissions/server/submissionItems.ts` 负责提测项配置校验、快照写入和环境接管，并返回需要通知的提测单。创建和追加工程共用这段实现，调用方统一拥有事务、版本递增与提交后通知。冲突预检由业务入口完成权限和输入校验后，只传项目与提测项列表；追加预检不再转换为创建提测输入。`environmentAccess.ts` 保留跨业务的环境占用、确认和接管规则；`references.ts` 保留供项目、工程配置检查使用的低依赖查询。
+`submissions/server/submissionItems.ts` 负责提测项配置校验、快照写入和环境接管，并返回受影响的提测单。创建、追加工程、环境切换和关闭提测的业务入口只返回受影响提测单及变更时间；`TestSubmissionWriteStore` 在业务事务中去重并递增这些提测单的工作区版本，成功提交后统一通知，回放或回滚不重复通知。当前提测单的版本仍由具体业务变更决定。冲突预检由业务入口完成权限和输入校验后，只传项目与提测项列表；追加预检不再转换为创建提测输入。`environmentAccess.ts` 保留跨业务的环境占用、确认和接管规则；`references.ts` 保留供项目、工程配置检查使用的低依赖查询。
 
 修复、更新和生命周期的 SQL 行类型分别与查询放在 `repairQueries.ts`、`updateQueries.ts` 和 `lifecycleQueries.ts`。`repairService.ts` 创建修复执行时直接组装 Execution Brief 和继续执行所需的新事实；`updateDelivery.ts` 同样就近组装更新与外部部署失败反馈，不再经过单一调用方的 Brief 转换文件。两个业务入口直接绑定查询和交付方法，保留调用 Interface，省去纯转发函数。
 
 `updateDelivery.ts` 负责候选调度、批次冻结、执行准备和交付完成后的缺陷推进、候选清空，并拥有 `FrozenBatch`。Agent 更新成功与人工确认外部部署成功都调用同一完成逻辑；`updateProjection.ts` 专注 Execution 事件和会话同步结果的解释，两条结果回写路径共用按冻结部署配置选择的校验。`repairHandoffs.ts` 同时供批次冻结和离线迁移使用，保留独立的交接一致性校验。读取、业务状态变更和 Execution 投影各自保留明确职责，避免把整个业务堆进一个文件。
 
-`lifecycle/server/submissionClosure.ts` 负责关闭前的业务校验、关闭状态、环境释放和通知；`cleanupService.ts` 负责选择清理范围、创建任务、重试及执行结果投影。关闭事务调用 `createForClosedSubmission`，只传入提测单与时间，不拼装各工程的工作区范围；无资源的提测项不创建清理任务。清理结果解析是 Cleanup 的内部实现，清理展示标签与 `lifecycleQueries.ts` 的视图读取放在一起；装配入口向命令与清理共用同一份查询实例。
+`lifecycle/server/submissionClosure.ts` 负责关闭前的业务校验、关闭状态、环境释放和受影响提测单的识别；`cleanupService.ts` 负责选择清理范围、创建任务、重试及执行结果投影。关闭事务调用 `createForClosedSubmission`，只传入提测单与时间，不拼装各工程的工作区范围；无资源的提测项不创建清理任务。清理结果解析是 Cleanup 的内部实现，清理展示标签与 `lifecycleQueries.ts` 的视图读取放在一起；装配入口向命令与清理共用同一份查询实例。
 
 `repair/server/results.ts` 拥有修复状态标签、结果投影及已保存候选提交和手动操作的解析。Update 冻结、读取 Repair 产生的数据时直接复用这些解析，不经 `shared/` 转接或再包装一层函数。跨业务使用并不改变数据的拥有者。
 

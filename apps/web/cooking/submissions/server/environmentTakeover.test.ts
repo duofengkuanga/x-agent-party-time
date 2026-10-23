@@ -126,11 +126,19 @@ describe('环境使用权切换', () => {
         .getWorkspace(fixture.users.owner.id, original.id)
         .submission.items.every((entry) => entry.environmentAccess.owned),
     ).toBe(true);
+    fixture.events.length = 0;
     const next = fixture.service.createSubmission(
       fixture.users.owner.id,
       fixture.project.id,
       { ...input, environmentTakeovers: conflicts },
     );
+    expect(fixture.events).toEqual([
+      { submissionId: next.id, revision: next.workspaceRevision },
+      { submissionId: original.id, revision: original.workspaceRevision + 1 },
+    ]);
+    expect(
+      fixture.service.getWorkspace(fixture.users.owner.id, original.id).revision,
+    ).toBe(original.workspaceRevision + 1);
     expect(
       fixture.service
         .getWorkspace(fixture.users.owner.id, next.id)

@@ -26,8 +26,7 @@ export class SubmissionClosure {
     inputValue: LifecycleCommandInput,
   ): CloseSubmissionMutationResult {
     const input = LifecycleCommandInputSchema.parse(inputValue);
-    const environmentInvalidations = new Map<string, number>();
-    const result = this.writes.run({
+    return this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
       operation: 'SUBMISSION_CLOSE',
@@ -77,15 +76,9 @@ export class SubmissionClosure {
           'SELECT environment_id FROM cooking_submission_environment_lock WHERE submission_id = ?',
           submissionId,
         );
-        for (const { environment_id } of heldEnvironments)
-          for (const observer of environmentObservers(
-            this.db,
-            environment_id,
-            submissionId,
-          ))
-            environmentInvalidations.set(observer, 0);
-        for (const observer of environmentInvalidations.keys())
-          environmentInvalidations.set(observer, this.writes.bumpRevision(observer, now));
+        const affectedSubmissionIds = heldEnvironments.flatMap(({ environment_id }) =>
+          environmentObservers(this.db, environment_id, submissionId),
+        );
         this.db.run(
           'DELETE FROM cooking_submission_environment_lock WHERE submission_id = ?',
           [submissionId],
@@ -102,6 +95,7 @@ export class SubmissionClosure {
             revision,
           },
           resourceId: submissionId,
+          affectedSubmissions: { ids: affectedSubmissionIds, updatedAt: now },
           audit: {
             projectId: submission.project_id,
             action: 'SUBMISSION_CLOSED',
@@ -110,9 +104,6 @@ export class SubmissionClosure {
         };
       },
     });
-    for (const [id, revision] of environmentInvalidations)
-      this.writes.publishInvalidation(id, revision);
-    return result;
   }
 
   private requireSubmissionTester(userId: string, submissionId: string) {
