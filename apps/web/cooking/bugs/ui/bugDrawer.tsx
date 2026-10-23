@@ -15,7 +15,7 @@ import { BugDetail } from './bugDetail';
 import { BugForm } from './bugEditor';
 import { BugDeleteControl } from './bugDeleteControl';
 import { TesterBugDetail, type RunTesterAction } from './testerBugDetail';
-import { linkedReviewPairFor } from './linkedReviewModel';
+import { linkedReviewPairFor } from './testerDetailModel';
 
 export function BugDrawer({
   drawer,

@@ -49,10 +49,9 @@ import {
 
 import { BugCard, LinkedReviewCard, UpdateBatchCard } from './bugCard';
 import {
-  linkedReviewBlockedReason,
   linkedReviewPairFor,
   type LinkedReviewPair,
-} from './linkedReviewModel';
+} from './testerDetailModel';
 
 import { BugDrawer } from './bugDrawer';
 import { BugReworkDialog } from './bugEditor';
@@ -111,7 +110,7 @@ export function BugBoard({
   const linkedReviewPairs = testerView
     ? activeBugs.flatMap((bug) => {
         const pair = linkedReviewPairFor(bug, snapshot.bugs);
-        return pair?.ready && pair.primary.id === bug.id ? [pair] : [];
+        return pair?.column && pair.primary.id === bug.id ? [pair] : [];
       })
     : [];
   const groupedBugIds = new Set(
@@ -376,10 +375,9 @@ export function BugBoard({
                         const pair = testerView
                           ? linkedReviewPairFor(bug, snapshot.bugs)
                           : null;
-                        const blockedReason = linkedReviewBlockedReason(
-                          bug,
-                          pair,
-                        );
+                        const blockedReason = testerView
+                          ? bug.linkedReview?.blockedReason
+                          : null;
                         const draggable = Boolean(
                           (!pair &&
                             (dragTransition(bug, 'REPAIRING') ||
@@ -403,10 +401,6 @@ export function BugBoard({
                             pending={pending}
                             onArchive={() => storeBug(bug, 'archived')}
                             onVerifyPass={() => {
-                              if (blockedReason) {
-                                setError(blockedReason);
-                                return;
-                              }
                               const transition =
                                 verificationPassTransition(bug);
                               if (transition)
@@ -443,10 +437,6 @@ export function BugBoard({
                               setDrawer({ mode: 'view', bugId: bug.id });
                             }}
                             onReopen={() => {
-                              if (blockedReason) {
-                                setError(blockedReason);
-                                return;
-                              }
                               setError(null);
                               setFeedbackIntent({
                                 bugId: bug.id,
@@ -454,10 +444,6 @@ export function BugBoard({
                               });
                             }}
                             onRequestRework={() => {
-                              if (blockedReason) {
-                                setError(blockedReason);
-                                return;
-                              }
                               setError(null);
                               setFeedbackIntent({
                                 bugId: bug.id,

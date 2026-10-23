@@ -88,6 +88,52 @@ describe('前后端关联缺陷统一验收', () => {
       decision: 'PASSED' as const,
       attachmentIds: [],
     };
+    const read = () =>
+      fixture.bugs.workspace(fixture.users.tester.id, fixture.submission.id).bugs;
+    for (const state of ['unconfirmed', 'released'] as const) {
+      fixture.database.run(
+        state === 'unconfirmed'
+          ? 'UPDATE cooking_submission_environment_lock SET deployment_confirmed = 0 WHERE submission_item_id = ?'
+          : 'DELETE FROM cooking_submission_environment_lock WHERE submission_item_id = ?',
+        fixture.items[1]!.id,
+      );
+      const reason = read()[0]!.linkedReview!.blockedReason!;
+      expect(reason).toContain(
+        state === 'unconfirmed' ? '确认当前提测版本已部署' : '重新取得环境使用权',
+      );
+      expect(read().every((bug) => !bug.availableActions.includes('VERIFY_PASS'))).toBe(
+        true,
+      );
+      expect(() =>
+        fixture.lifecycle.reviewLinkedBugs(fixture.users.tester.id, front!.id, input),
+      ).toThrow(reason);
+      expect(() =>
+        fixture.lifecycle.verifyBug(fixture.users.tester.id, front!.id, {
+          ...mutation(expectedVersion!),
+          result: 'PASSED',
+          attachmentIds: [],
+        }),
+      ).toThrow(reason);
+      expect(fixture.database.all('SELECT id FROM cooking_verification_record')).toEqual(
+        [],
+      );
+    }
+    for (const action of ['ACQUIRE', 'CONFIRM_DEPLOYMENT'] as const)
+      fixture.submissions.changeEnvironment(
+        fixture.users.developer.id,
+        fixture.items[1]!.id,
+        {
+          mutationId: randomUUID(),
+          action,
+          expectedRevision: fixture.submissions.getWorkspace(
+            fixture.users.developer.id,
+            fixture.submission.id,
+          ).revision,
+        },
+      );
+    expect(read().every((bug) => bug.availableActions.includes('VERIFY_PASS'))).toBe(
+      true,
+    );
     const result = fixture.lifecycle.reviewLinkedBugs(
       fixture.users.tester.id,
       front!.id,

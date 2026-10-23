@@ -44,28 +44,11 @@ const STORED_BUG_TRANSITIONS = {
   },
 } as const;
 
-const REVIEW_STAGE_LABELS: Record<string, string> = {
-  WAITING_FOR_REPAIR: '待修复',
-  REPAIRING: '修复中',
-  WAITING_FOR_UPDATE: '待更新',
-  UPDATING: '更新中',
-  WAITING_FOR_VERIFICATION: '待验证',
-  DONE: '已完成',
-  CANCELLED: '已取消',
-};
-
 type TransitionOutcome = {
   revision: number;
   executionId?: string;
   action: string;
   details: Record<string, unknown>;
-};
-
-type LinkedPeer = {
-  id: string;
-  stage: string;
-  archived_at: string | null;
-  engineering_type: 'FRONTEND' | 'BACKEND';
 };
 
 export class BugLifecycleCommands {
@@ -86,7 +69,7 @@ export class BugLifecycleCommands {
     const input = VerifyBugInputSchema.parse(inputValue);
     return this.writeBugTransition(actorUserId, bugId, input, 'BUG_VERIFY', (source) => {
       this.requireBugVersion(source, input.expectedVersion);
-      this.requireLinkedReady(bugId);
+      this.requireLinkedReady(actorUserId, bugId);
       return this.performVerification(
         source,
         actorUserId,
@@ -104,7 +87,7 @@ export class BugLifecycleCommands {
     const input = ReopenBugInputSchema.parse(inputValue);
     return this.writeBugTransition(actorUserId, bugId, input, 'BUG_REOPEN', (source) => {
       this.requireBugVersion(source, input.expectedVersion);
-      this.requireLinkedReady(bugId);
+      this.requireLinkedReady(actorUserId, bugId);
       return this.performReopen(source, actorUserId, input, this.now().toISOString());
     });
   }
@@ -124,27 +107,16 @@ export class BugLifecycleCommands {
       submissionId: () => this.queries.bugSource(bugId).submission_id,
       perform: () => {
         const source = this.requireTester(actorUserId, bugId);
-        const related = this.linkedPeer(bugId);
+        const related = this.requireLinkedReady(actorUserId, bugId);
         if (!related)
           throw new PlatformError(
             'INVALID_TRANSITION',
             '当前缺陷没有可共同验收的关联缺陷',
           );
-        const peer = this.requireTester(actorUserId, related.id);
+        const peer = this.requireTester(actorUserId, related.relatedBugId);
         this.requireBugVersion(source, input.expectedVersion);
         this.requireBugVersion(peer, input.relatedExpectedVersion);
-        if (source.submission_id !== peer.submission_id)
-          throw new PlatformError('RESOURCE_CONFLICT', '关联缺陷不属于同一提测单');
         const pairs = [source, peer];
-        if (
-          pairs.some(({ stage }) => !['WAITING_FOR_VERIFICATION', 'DONE'].includes(stage))
-        )
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '请等前端和后端关联缺陷都进入待验证或已完成后再操作',
-          );
-        if (pairs.some(({ archived_at }) => archived_at))
-          throw new PlatformError('INVALID_TRANSITION', '请先将已归档的关联缺陷移出归档');
         if (input.decision === 'PASSED' && pairs.every(({ stage }) => stage === 'DONE'))
           throw new PlatformError('INVALID_TRANSITION', '关联缺陷均已完成，无需再次通过');
         const now = this.now().toISOString();
@@ -238,13 +210,13 @@ export class BugLifecycleCommands {
       submissionId: () => this.queries.bugSource(bugId).submission_id,
       perform: () => {
         const source = this.requireTester(actorUserId, bugId);
-        const related = this.linkedPeer(bugId);
+        const related = this.queries.linkedReview(actorUserId, bugId);
         if (!related)
           throw new PlatformError(
             'INVALID_TRANSITION',
             '当前缺陷没有可共同归档的关联缺陷',
           );
-        const peer = this.requireTester(actorUserId, related.id);
+        const peer = this.requireTester(actorUserId, related.relatedBugId);
         this.requireBugVersion(source, input.expectedVersion);
         this.requireBugVersion(peer, input.relatedExpectedVersion);
         const pair = [source, peer];
@@ -425,43 +397,11 @@ export class BugLifecycleCommands {
     };
   }
 
-  private linkedPeer(bugId: string): LinkedPeer | null {
-    const peers = this.db.all<LinkedPeer>(
-      `SELECT other.id, other.stage, other.archived_at, item.engineering_type
-         FROM cooking_bug_relation relation
-         JOIN cooking_bug other ON other.id = CASE
-           WHEN relation.source_bug_id = ? THEN relation.target_bug_id
-           ELSE relation.source_bug_id END
-         JOIN cooking_submission_item item ON item.id = other.submission_item_id
-         WHERE relation.kind IN ('JOINT', 'COLLABORATION')
-           AND (relation.source_bug_id = ? OR relation.target_bug_id = ?)`,
-      bugId,
-      bugId,
-      bugId,
-    );
-    if (peers.length > 1)
-      throw new PlatformError(
-        'RESOURCE_CONFLICT',
-        '当前缺陷存在多个协作关联，请联系负责人',
-      );
-    return peers[0] ?? null;
-  }
-
-  private requireLinkedReady(bugId: string): void {
-    const peer = this.linkedPeer(bugId);
-    if (!peer) return;
-    const engineering = peer.engineering_type === 'FRONTEND' ? '前端' : '后端';
-    if (peer.archived_at)
-      throw new PlatformError(
-        'INVALID_TRANSITION',
-        `关联的${engineering}缺陷已归档，请先移出归档后再操作`,
-      );
-    if (['WAITING_FOR_VERIFICATION', 'DONE'].includes(peer.stage)) return;
-    const stage = REVIEW_STAGE_LABELS[peer.stage] ?? '处理中';
-    throw new PlatformError(
-      'INVALID_TRANSITION',
-      `关联的${engineering}缺陷仍在${stage}，请等它进入待验证或已完成后再操作`,
-    );
+  private requireLinkedReady(actorUserId: string, bugId: string) {
+    const review = this.queries.linkedReview(actorUserId, bugId);
+    if (review?.blockedReason)
+      throw new PlatformError(review.blockedCode, review.blockedReason);
+    return review;
   }
 
   private engineeringType(source: BugSourceRow): 'FRONTEND' | 'BACKEND' {

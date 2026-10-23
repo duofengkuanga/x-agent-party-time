@@ -1,3 +1,4 @@
+import { LifecycleQueries } from '@/cooking/lifecycle/server/lifecycleQueries';
 import { BugRelations, stageLabel } from './bugRelations';
 import { parseRow, type DatabaseRow } from '@/platform/database/rowMapper';
 import { environmentReady } from '@/cooking/submissions/server/environmentAccess';
@@ -10,6 +11,7 @@ import {
   BugSchema,
   BugWorkspaceProjectionSchema,
   type Bug,
+  type BugView,
   type BugWorkspaceProjection,
 } from '../contract';
 
@@ -62,6 +64,7 @@ export class BugQueries {
       access.submission_status === 'ACTIVE' &&
       this.isAnyResponsible(userId, submissionId);
     const relations = new BugRelations(this.db);
+    const lifecycle = new LifecycleQueries(this.db);
     const bugs = this.db
       .all<BugRow>(
         `SELECT * FROM cooking_bug
@@ -72,11 +75,13 @@ export class BugQueries {
         const attachments = this.attachmentsForBug(row.id);
         const bug = mapBug(row, attachments);
         const routing = bugRoutingPolicy(this.db, bug, userId);
+        const linkedReview = lifecycle.linkedReview(userId, bug.id);
         const item = this.requireItem(submissionId, bug.submissionItemId);
         return {
           ...bug,
           routing,
           relatedBugs: relations.list(bug.id),
+          linkedReview,
           report: {
             title: bug.report.title,
             ...(bug.report.operationPath
@@ -105,6 +110,7 @@ export class BugQueries {
             bug,
             routing,
             anyResponsible,
+            linkedReview,
           ),
           presentation: {
             stageLabel: bug.transferredAt ? '已关闭（转交）' : stageLabel(bug.stage),
@@ -259,6 +265,7 @@ export class BugQueries {
     bug: Bug,
     routing: ReturnType<typeof bugRoutingPolicy>,
     anyResponsible: boolean,
+    linkedReview: BugView['linkedReview'],
   ) {
     if (access.submission_status !== 'ACTIVE') return [];
     const tester = userId === access.tester_user_id;
@@ -299,10 +306,15 @@ export class BugQueries {
     if (
       bug.stage === 'WAITING_FOR_VERIFICATION' &&
       bug.submissionItemId &&
-      environmentReady(this.db, bug.submissionItemId)
+      (linkedReview
+        ? !linkedReview.blockedReason
+        : environmentReady(this.db, bug.submissionItemId))
     )
       actions.push('VERIFY_PASS', 'VERIFY_FAIL');
-    if (bug.stage === 'DONE' && !bug.archivedAt) actions.push('REOPEN', 'ARCHIVE');
+    if (bug.stage === 'DONE' && !bug.archivedAt) {
+      if (!linkedReview?.blockedReason) actions.push('REOPEN');
+      actions.push('ARCHIVE');
+    }
     if (bug.stage === 'DONE' && bug.archivedAt) actions.push('UNARCHIVE');
     return actions;
   }

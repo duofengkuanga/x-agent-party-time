@@ -88,21 +88,11 @@ export function BugCard({
               className={`collab-bug-card__actions${bug.availableActions.includes('VERIFY_PASS') ? ' collab-bug-card__verification' : ''}`}
             >
               {bug.availableActions.includes('VERIFY_PASS') ? (
-                blockedReason ? (
-                  <button
-                    disabled={pending}
-                    onClick={stopCardAction(onVerifyPass)}
-                    type="button"
-                  >
-                    通过
-                  </button>
-                ) : (
-                  <PassConfirmButton
-                    disabled={pending}
-                    message="确认这张缺陷已通过测试？"
-                    onConfirm={onVerifyPass}
-                  />
-                )
+                <PassConfirmButton
+                  disabled={pending}
+                  message="确认这张缺陷已通过测试？"
+                  onConfirm={onVerifyPass}
+                />
               ) : null}
               {bug.availableActions.includes('VERIFY_FAIL') ? (
                 <button
@@ -156,9 +146,8 @@ export function LinkedReviewCard({
   onVerifyPass: () => void;
   pending: boolean;
 }) {
-  const waiting =
-    frontend.stage === 'WAITING_FOR_VERIFICATION' ||
-    backend.stage === 'WAITING_FOR_VERIFICATION';
+  const review = frontend.linkedReview!;
+  const waiting = review.column === 'WAITING_FOR_VERIFICATION';
   return (
     <article
       className="collab-bug-card collab-linked-review-card"
@@ -183,25 +172,30 @@ export function LinkedReviewCard({
           </div>
         ))}
       </div>
+      {review.blockedReason ? (
+        <p className="collab-bug-card__blocked">{review.blockedReason}</p>
+      ) : null}
       <footer className="collab-bug-card__footer">
         <small className="collab-bug-card__type">前端＋后端</small>
-        <div className="collab-bug-card__actions" aria-busy={pending}>
-          {waiting ? (
-            <PassConfirmButton
-              disabled={pending}
-              message="确认前端和后端的待验证缺陷都已通过测试？已完成的缺陷保持原状。"
-              onConfirm={onVerifyPass}
-            />
-          ) : null}
-          <button disabled={pending} onClick={onIssue} type="button">
-            {waiting ? '还有问题' : '重新打开'}
-          </button>
-          {!waiting ? (
-            <button disabled={pending} onClick={onArchive} type="button">
-              归档
+        {!review.blockedReason ? (
+          <div className="collab-bug-card__actions" aria-busy={pending}>
+            {waiting ? (
+              <PassConfirmButton
+                disabled={pending}
+                message="确认前端和后端的待验证缺陷都已通过测试？已完成的缺陷保持原状。"
+                onConfirm={onVerifyPass}
+              />
+            ) : null}
+            <button disabled={pending} onClick={onIssue} type="button">
+              {waiting ? '还有问题' : '重新打开'}
             </button>
-          ) : null}
-        </div>
+            {!waiting ? (
+              <button disabled={pending} onClick={onArchive} type="button">
+                归档
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </footer>
     </article>
   );

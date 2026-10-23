@@ -1,4 +1,7 @@
 import { expect, test } from 'bun:test';
+import { randomUUID } from 'node:crypto';
+import { LinkedReviewCard } from './bugCard';
+import { linkedReviewPairFor } from './testerDetailModel';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createCooking } from '@/cooking/runtime/createCooking';
 import {
@@ -215,4 +218,96 @@ test('最近一次复测反馈按发生时间选择，保留附件并排除验�
   ];
   expect(latestTesterFeedback(created.id, snapshot)?.text).toBe('再次出现');
   expect(latestTesterFeedback('missing', snapshot)).toBeUndefined();
+});
+
+test('测试视角在双方就绪后只显示一组通过和还有问题，未就绪时说明另一端进度', async () => {
+  const fixture = await setup();
+  const created = fixture.bugs.createLinkedBugs(
+    fixture.users.tester.id,
+    fixture.submission.id,
+    {
+      mutationId: randomUUID(),
+      submissionItemIds: [fixture.items[0]!.id, fixture.items[1]!.id],
+      title: '共同问题',
+      actualResultAttachmentIds: [],
+      expectedResultAttachmentIds: [],
+    },
+  );
+  const [front, back] = created.bugs;
+  fixture.database.run(
+    "UPDATE cooking_bug SET stage = 'WAITING_FOR_VERIFICATION' WHERE id = ?",
+    front!.id,
+  );
+  fixture.database.run(
+    "UPDATE cooking_bug SET stage = 'REPAIRING' WHERE id = ?",
+    back!.id,
+  );
+  const readPair = () => {
+    const bugs = fixture.bugs.workspace(
+      fixture.users.tester.id,
+      fixture.submission.id,
+    ).bugs;
+    return linkedReviewPairFor(bugs[0]!, bugs)!;
+  };
+  let pair = readPair();
+  expect(pair.ready).toBe(false);
+  expect(pair.frontend.linkedReview?.blockedReason).toContain(
+    '后端缺陷仍在修复中',
+  );
+
+  fixture.database.run(
+    "UPDATE cooking_bug SET stage = 'DONE' WHERE id = ?",
+    back!.id,
+  );
+  pair = readPair();
+  expect(pair.ready).toBe(true);
+  expect(pair.column).toBe('WAITING_FOR_VERIFICATION');
+  const renderPair = () =>
+    renderToStaticMarkup(
+      <LinkedReviewCard
+        frontend={pair.frontend}
+        backend={pair.backend}
+        onArchive={() => {}}
+        onOpen={() => {}}
+        onIssue={() => {}}
+        onVerifyPass={() => {}}
+        pending={false}
+      />,
+    );
+  const html = renderPair();
+  expect(html).toContain('前端');
+  expect(html).toContain('后端');
+  expect(html.match(/>通过</g)).toHaveLength(1);
+  expect(html.match(/>还有问题</g)).toHaveLength(1);
+  expect(html).not.toContain('统一验收');
+
+  fixture.database.run(
+    'UPDATE cooking_submission_environment_lock SET deployment_confirmed = 0 WHERE submission_item_id = ?',
+    fixture.items[0]!.id,
+  );
+  pair = readPair();
+  expect(pair.ready).toBe(false);
+  expect(pair.column).toBe('WAITING_FOR_VERIFICATION');
+  expect(renderPair()).toContain('确认当前提测版本已部署');
+  expect(renderPair()).not.toContain('>通过<');
+  expect(renderPair()).not.toContain('>还有问题<');
+
+  fixture.database.run(
+    "UPDATE cooking_bug SET stage = 'DONE' WHERE id = ?",
+    front!.id,
+  );
+  pair = readPair();
+  expect(pair.column).toBe('DONE');
+  const completed = renderPair();
+  expect(completed).toContain('重新打开');
+  expect(completed).toContain('归档');
+  expect(completed).not.toContain('>通过<');
+  fixture.database.run(
+    "UPDATE cooking_test_submission SET status = 'CLOSED' WHERE id = ?",
+    fixture.submission.id,
+  );
+  pair = readPair();
+  expect(renderPair()).toContain('已关闭提测单不能操作');
+  expect(renderPair()).not.toContain('>重新打开<');
+  expect(renderPair()).not.toContain('>归档<');
 });

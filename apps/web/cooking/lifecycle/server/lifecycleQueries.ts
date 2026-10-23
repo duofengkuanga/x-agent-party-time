@@ -1,3 +1,6 @@
+import { stageLabel } from '@/cooking/bugs/server/bugRelations';
+import type { Bug } from '@/cooking/bugs/contract';
+import { requireEnvironment } from '@/cooking/submissions/server/environmentAccess';
 import { requireSubmissionAccess } from '@/cooking/shared/server/access';
 import { CookingAttachmentViewSchema } from '@/cooking/shared/contract';
 import { parseRow, type DatabaseRow } from '@/platform/database/rowMapper';
@@ -379,6 +382,84 @@ export class LifecycleQueries {
         Date.parse(right.createdAt) - Date.parse(left.createdAt) ||
         left.id.localeCompare(right.id),
     );
+  }
+
+  linkedReview(userId: string, bugId: string) {
+    const peers = this.db.all<{
+      id: string;
+      submission_id: string;
+      submission_item_id: string;
+      stage: Bug['stage'];
+      archived_at: string | null;
+      engineering_type: 'FRONTEND' | 'BACKEND';
+    }>(
+      `SELECT other.id, other.submission_id, other.submission_item_id,
+              other.stage, other.archived_at, item.engineering_type
+       FROM cooking_bug_relation relation
+       JOIN cooking_bug other ON other.id = CASE
+         WHEN relation.source_bug_id = ? THEN relation.target_bug_id
+         ELSE relation.source_bug_id END
+       JOIN cooking_submission_item item ON item.id = other.submission_item_id
+       WHERE relation.kind IN ('JOINT', 'COLLABORATION')
+         AND (relation.source_bug_id = ? OR relation.target_bug_id = ?)`,
+      bugId,
+      bugId,
+      bugId,
+    );
+    if (peers.length > 1)
+      throw new PlatformError(
+        'RESOURCE_CONFLICT',
+        '当前缺陷存在多个协作关联，请联系负责人',
+      );
+    const peer = peers[0];
+    if (!peer) return null;
+    const source = this.bugSource(bugId);
+    if (source.submission_id !== peer.submission_id)
+      throw new PlatformError('RESOURCE_CONFLICT', '关联缺陷不属于同一提测单');
+    const pair = [peer, source];
+    const column = pair.every(
+      ({ stage, archived_at }) =>
+        !archived_at && (stage === 'WAITING_FOR_VERIFICATION' || stage === 'DONE'),
+    )
+      ? pair.some(({ stage }) => stage === 'WAITING_FOR_VERIFICATION')
+        ? ('WAITING_FOR_VERIFICATION' as const)
+        : ('DONE' as const)
+      : null;
+    let blockedReason: string | null = null;
+    let blockedCode: PlatformError['code'] = 'INVALID_TRANSITION';
+    try {
+      if (source.submission_status !== 'ACTIVE')
+        throw new PlatformError('INVALID_TRANSITION', '已关闭提测单不能操作');
+      if (source.tester_user_id !== userId)
+        throw new PlatformError('PERMISSION_DENIED', '只有测试负责人可以验收缺陷');
+      for (const bug of pair) {
+        const engineering = (
+          bug === peer
+            ? peer.engineering_type === 'FRONTEND'
+            : peer.engineering_type !== 'FRONTEND'
+        )
+          ? '前端'
+          : '后端';
+        if (bug.archived_at)
+          throw new PlatformError(
+            'INVALID_TRANSITION',
+            `关联的${engineering}缺陷已归档，请先移出归档后再操作`,
+          );
+        if (bug.stage !== 'WAITING_FOR_VERIFICATION' && bug.stage !== 'DONE')
+          throw new PlatformError(
+            'INVALID_TRANSITION',
+            `关联的${engineering}缺陷仍在${stageLabel(bug.stage as Bug['stage'])}，请等它进入待验证或已完成后再操作`,
+          );
+      }
+      for (const bug of pair)
+        if (bug.stage === 'WAITING_FOR_VERIFICATION' && bug.submission_item_id)
+          requireEnvironment(this.db, bug.submission_item_id, true);
+    } catch (error) {
+      if (!(error instanceof PlatformError)) throw error;
+      blockedReason = error.message;
+      blockedCode = error.code;
+    }
+    return { relatedBugId: peer.id, column, blockedReason, blockedCode };
   }
 
   bugSource(bugId: string): BugSourceRow {

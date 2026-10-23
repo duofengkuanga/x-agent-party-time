@@ -20,11 +20,11 @@ import {
   verificationPassTransition,
   type WorkspaceActionResult,
 } from './boardModel';
-import { latestTesterFeedback, testerBugStatus } from './testerDetailModel';
 import {
-  linkedReviewBlockedReason,
+  latestTesterFeedback,
+  testerBugStatus,
   linkedReviewPairFor,
-} from './linkedReviewModel';
+} from './testerDetailModel';
 import { PassConfirmButton } from './passConfirmButton';
 import {
   LinkedOwnershipChoice,
@@ -61,18 +61,17 @@ export function TesterBugDetail({
   >(null);
   const [feedback, setFeedback] = useState('');
   const [ownership, setOwnership] = useState<LinkedOwnership>('BOTH');
-  const [notice, setNotice] = useState<string | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const feedbackInput = useRef<HTMLInputElement>(null);
   const feedbackButton = useRef<HTMLButtonElement>(null);
   const latestFeedback = latestTesterFeedback(bug.id, snapshot);
   const pair = linkedReviewPairFor(bug, snapshot.bugs);
-  const blockedReason = linkedReviewBlockedReason(bug, pair);
-  const canPass = pair?.ready
-    ? pair.column === 'WAITING_FOR_VERIFICATION'
+  const blockedReason = bug.linkedReview?.blockedReason;
+  const canPass = pair
+    ? pair.ready && pair.column === 'WAITING_FOR_VERIFICATION'
     : bug.availableActions.includes('VERIFY_PASS');
-  const canIssue = pair?.ready
-    ? true
+  const canIssue = pair
+    ? pair.ready
     : bug.availableActions.some((action) =>
         ['VERIFY_FAIL', 'REOPEN'].includes(action),
       );
@@ -85,7 +84,7 @@ export function TesterBugDetail({
   );
   const feedbackAllowed =
     feedbackKind !== null &&
-    (pair?.ready || bug.availableActions.includes(feedbackKind));
+    (pair ? pair.ready : bug.availableActions.includes(feedbackKind));
   const showActions =
     canEdit ||
     Boolean(pair?.ready) ||
@@ -104,11 +103,6 @@ export function TesterBugDetail({
     expectedVersion: bug.version,
   });
   const submitPass = () => {
-    if (blockedReason) {
-      setNotice(blockedReason);
-      return;
-    }
-    setNotice(null);
     if (pair?.ready) {
       const related =
         pair.frontend.id === bug.id ? pair.backend : pair.frontend;
@@ -272,7 +266,6 @@ export function TesterBugDetail({
                   setFeedbackKind(null);
                   setFeedback('');
                   setOwnership('BOTH');
-                  setNotice(null);
                   setFiles([]);
                   if (feedbackInput.current) feedbackInput.current.value = '';
                 },
@@ -313,7 +306,7 @@ export function TesterBugDetail({
           </form>
         ) : null}
       </div>
-      {showActions || error || notice ? (
+      {showActions || error ? (
         <footer
           aria-busy={pending}
           aria-label="缺陷操作"
@@ -322,11 +315,6 @@ export function TesterBugDetail({
           {error ? (
             <p className="collab-form__error" role="alert">
               {error}
-            </p>
-          ) : null}
-          {notice ? (
-            <p className="collab-form__error" role="alert">
-              {notice}
             </p>
           ) : null}
           {pending ? <span role="status">正在提交…</span> : null}
@@ -378,25 +366,15 @@ export function TesterBugDetail({
                   </button>
                 ) : null}
                 {canPass ? (
-                  blockedReason ? (
-                    <button
-                      disabled={pending}
-                      onClick={submitPass}
-                      type="button"
-                    >
-                      通过
-                    </button>
-                  ) : (
-                    <PassConfirmButton
-                      disabled={pending}
-                      message={
-                        pair?.ready
-                          ? '确认前端和后端的待验证缺陷都已通过测试？已完成的缺陷保持原状。'
-                          : '确认这张缺陷已通过测试？'
-                      }
-                      onConfirm={submitPass}
-                    />
-                  )
+                  <PassConfirmButton
+                    disabled={pending}
+                    message={
+                      pair?.ready
+                        ? '确认前端和后端的待验证缺陷都已通过测试？已完成的缺陷保持原状。'
+                        : '确认这张缺陷已通过测试？'
+                    }
+                    onConfirm={submitPass}
+                  />
                 ) : null}
                 {canIssue ? (
                   <button
@@ -404,11 +382,6 @@ export function TesterBugDetail({
                     disabled={pending}
                     type="button"
                     onClick={() => {
-                      if (blockedReason) {
-                        setNotice(blockedReason);
-                        return;
-                      }
-                      setNotice(null);
                       onClearError();
                       setFeedbackKind(
                         issueLabel === '重新打开' ? 'REOPEN' : 'VERIFY_FAIL',

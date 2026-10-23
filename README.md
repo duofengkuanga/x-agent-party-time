@@ -299,7 +299,7 @@ Cooking 的职责归属：
 
 提测工作区是聚合视图。`submissions/contract.ts` 定义提测基础数据；`submissions/workspace.ts` 定义包含缺陷、修复、更新和生命周期投影的快照；`submissions/server/workspaceService.ts` 在访问权限通过后准备到期更新，再读取并组合这些投影。聚合快照与基础契约分开，避免基础实体相互引用，同时让界面能直接使用纯数据 Schema。
 
-`bugs/server/bugQueries.ts` 集中缺陷读取与可操作条件；删除、转交命令和工作区操作展示共用其中的规则。一次工作区读取只计算一次当前用户是否为提测项负责人。关联记录与删除事务仍分别由 `bugRelations.ts`、`bugDeletion.ts` 负责。
+`bugs/server/bugQueries.ts` 集中缺陷读取与可操作条件；删除、转交命令和工作区操作展示共用其中的规则。一次工作区读取只计算一次当前用户是否为提测项负责人。关联记录与删除事务仍分别由 `bugRelations.ts`、`bugDeletion.ts` 负责。关联验收判定由 `lifecycle/server/lifecycleQueries.ts` 集中读取两端阶段、归档、环境和权限，查询投影与事务入口共用；界面只组合展示关联卡片。
 
 `submissions/server/submissionItems.ts` 负责提测项配置校验、快照写入和环境接管，并返回受影响的提测单。创建、追加工程、环境切换和关闭提测的业务入口只返回受影响提测单及变更时间；`TestSubmissionWriteStore` 在业务事务中去重并递增这些提测单的工作区版本，成功提交后统一通知，回放或回滚不重复通知。当前提测单的版本仍由具体业务变更决定。冲突预检由业务入口完成权限和输入校验后，只传项目与提测项列表；追加预检不再转换为创建提测输入。`environmentAccess.ts` 保留跨业务的环境占用、确认和接管规则；`references.ts` 保留供项目、工程配置检查使用的低依赖查询。
 

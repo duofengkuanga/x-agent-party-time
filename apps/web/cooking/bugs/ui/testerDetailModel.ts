@@ -74,3 +74,19 @@ export function latestTesterFeedback(bugId: string, snapshot: CookingWorkspaceSn
     ),
   ].sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
 }
+
+export function linkedReviewPairFor(bug: BugView, bugs: BugView[]) {
+  const review = bug.linkedReview;
+  const peer = bugs.find(({ id }) => id === review?.relatedBugId);
+  if (!review || !peer) return null;
+  const frontend = bug.assignment?.engineeringType === 'FRONTEND' ? bug : peer;
+  return {
+    frontend,
+    backend: frontend === bug ? peer : bug,
+    primary: bug.shortId < peer.shortId ? bug : peer,
+    ready: !review.blockedReason,
+    column: review.column,
+  };
+}
+
+export type LinkedReviewPair = NonNullable<ReturnType<typeof linkedReviewPairFor>>;

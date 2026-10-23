@@ -17,7 +17,7 @@ import {
   updateBugReportAction,
 } from '../server/actions';
 import type { BugFeedbackIntent } from './boardModel';
-import type { LinkedReviewPair } from './linkedReviewModel';
+import type { LinkedReviewPair } from './testerDetailModel';
 import {
   LinkedOwnershipChoice,
   type LinkedOwnership,
@@ -58,6 +58,7 @@ export function BugReworkDialog({
         className="collab-dialog collab-bug-rework-dialog"
         onSubmit={(event) => {
           event.preventDefault();
+          if (pair && !pair.ready) return;
           const formData = new FormData();
           formData.set('mutationId', createClientId());
           formData.set('expectedVersion', String(bug.version));
@@ -89,6 +90,9 @@ export function BugReworkDialog({
         </header>
         <div className="collab-dialog__body collab-form collab-bug-rework-dialog__body">
           <p>{bug.report.title}</p>
+          {bug.linkedReview?.blockedReason ? (
+            <p role="alert">{bug.linkedReview.blockedReason}</p>
+          ) : null}
           {pair?.ready ? (
             <LinkedOwnershipChoice
               disabled={pending}
@@ -122,7 +126,12 @@ export function BugReworkDialog({
           <button onClick={onCancel} type="button">
             取消
           </button>
-          <button disabled={pending || !feedback.trim()} type="submit">
+          <button
+            disabled={
+              pending || !feedback.trim() || Boolean(pair && !pair.ready)
+            }
+            type="submit"
+          >
             {pending ? '提交中…' : reopening ? '确认重新打开' : '确认返修'}
           </button>
         </footer>

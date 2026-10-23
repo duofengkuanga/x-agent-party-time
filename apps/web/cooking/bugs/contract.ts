@@ -166,6 +166,13 @@ const BugViewSchema = BugSchema.omit({
     transferReason: z.string().nullable(),
     collaborationReason: z.string().nullable(),
   }),
+  linkedReview: z
+    .object({
+      relatedBugId: BugIdSchema,
+      column: z.enum(['WAITING_FOR_VERIFICATION', 'DONE']).nullable(),
+      blockedReason: z.string().nullable(),
+    })
+    .nullable(),
   relatedBugs: z.array(
     z.object({
       id: BugIdSchema.nullable(),
