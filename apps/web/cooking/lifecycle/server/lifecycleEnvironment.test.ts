@@ -6,6 +6,7 @@ import {
   completeNextRepair,
   completeUpdate,
   createAndRequestBug,
+  createBug,
   createTakeoverSubmission,
   currentBug,
   lifecycleFixture,
@@ -72,6 +73,7 @@ describe('环境切换与验证、关闭', () => {
       { submissionId: fixture.submission.id, revision: confirmed.workspaceRevision },
     ]);
     verify();
+    createBug(fixture, originalItem.id, '其他提测单的未完成缺陷不阻止关闭');
     fixture.lifecycle.closeSubmission(fixture.users.tester.id, next.id, {
       ...mutation(next.version),
     });

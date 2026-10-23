@@ -1,6 +1,6 @@
 import { mutation } from '@/cooking/testing/project';
 import { LocalFileStore } from '@/platform/files/localFileStore';
-import { testDatabases } from '@/testing/database';
+import { expectRowCount, testDatabases } from '@/testing/database';
 import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
@@ -362,4 +362,97 @@ describe('生命周期', () => {
         .submission.submission.status,
     ).toBe('CLOSED');
   });
+});
+
+test('关闭入口和命令共用阻断规则，保持权限、版本、错误优先级与事务保护', async () => {
+  const f = await setup();
+  const bug = createAndRequestBug(f, f.items[0]!.id, '关闭条件验证');
+  const actions = (userId = f.users.tester.id) =>
+    f.submissions.getWorkspace(userId, f.submission.id).submission.availableActions;
+  const close = (userId = f.users.tester.id, input = mutation(f.submission.version)) =>
+    f.lifecycle.closeSubmission(userId, f.submission.id, input);
+  const blocked = (code: string, message: string) => {
+    const before = submissionRow(f.database, f.submission.id);
+    const locks = f.database.all('SELECT * FROM cooking_submission_environment_lock');
+    const eventCount = f.events.length;
+    const input = mutation(before.version);
+    expect(actions()).not.toContain('CLOSE');
+    expect(() => close(f.users.tester.id, input)).toThrow(
+      expect.objectContaining({ code, message }),
+    );
+    expect(submissionRow(f.database, f.submission.id)).toEqual(before);
+    expect(f.database.all('SELECT * FROM cooking_submission_environment_lock')).toEqual(
+      locks,
+    );
+    expect(f.events).toHaveLength(eventCount);
+    expectRowCount(f.database, 'cooking_cleanup').toBe(0);
+    expectRowCount(f.database, 'cooking_mutation', { id: input.mutationId }).toBe(0);
+  };
+  for (const actor of [f.users.owner, f.users.developer]) {
+    expect(actions(actor.id)).not.toContain('CLOSE');
+    expect(() => close(actor.id)).toThrow(
+      expect.objectContaining({ code: 'PERMISSION_DENIED' }),
+    );
+  }
+  expect(() => close(f.users.tester.id, mutation(f.submission.version + 1))).toThrow(
+    expect.objectContaining({ code: 'STALE_STATE' }),
+  );
+  for (const stage of [
+    'WAITING_FOR_REPAIR',
+    'REPAIRING',
+    'WAITING_FOR_UPDATE',
+    'UPDATING',
+    'WAITING_FOR_VERIFICATION',
+  ]) {
+    f.database.run('UPDATE cooking_bug SET stage = ? WHERE id = ?', [stage, bug.id]);
+    blocked('INVALID_TRANSITION', '仍有未完成缺陷，不能关闭提测单');
+  }
+  const checkActiveExecution = (executionId: string) => {
+    f.database.run("UPDATE cooking_bug SET stage = 'CANCELLED' WHERE id = ?", [bug.id]);
+    for (const state of [
+      'QUEUED',
+      'CLAIMED',
+      'RUNNING',
+      'WAITING_FOR_INTERACTION',
+      'WAITING_TO_RESUME',
+      'CANCEL_REQUESTED',
+    ]) {
+      f.database.run('UPDATE platform_execution SET state = ? WHERE id = ?', [
+        state,
+        executionId,
+      ]);
+      blocked('RESOURCE_CONFLICT', '仍有修复或更新执行未结束，不能关闭提测单');
+    }
+    f.database.run("UPDATE platform_execution SET state = 'QUEUED' WHERE id = ?", [
+      executionId,
+    ]);
+  };
+  const repair = f.database.get<{ execution_id: string }>(
+    'SELECT execution_id FROM cooking_repair_attempt WHERE bug_id = ?',
+    bug.id,
+  )!;
+  checkActiveExecution(repair.execution_id);
+  f.database.run("UPDATE cooking_bug SET stage = 'REPAIRING' WHERE id = ?", [bug.id]);
+  await completeNextRepair(f, 'close-policy-repair', [
+    '1111111111111111111111111111111111111111',
+  ]);
+  const batch = f.updates.freezeNow(f.users.developer.id, f.items[0]!.id, {
+    mutationId: randomUUID(),
+  });
+  checkActiveExecution(batch.executionId!);
+  f.executions.requestCancellation(batch.executionId!);
+  for (const state of ['READY', 'RUNNING', 'WAITING_EXTERNAL', 'FAILED']) {
+    f.database.run('UPDATE cooking_update_batch SET state = ? WHERE id = ?', [
+      state,
+      batch.batchId,
+    ]);
+    blocked('INVALID_TRANSITION', '仍有未完成更新批次，不能关闭提测单');
+  }
+  f.database.run("UPDATE cooking_update_batch SET state = 'COMPLETED' WHERE id = ?", [
+    batch.batchId,
+  ]);
+  expect(actions()).toContain('CLOSE');
+  close();
+  expect(submissionRow(f.database, f.submission.id).status).toBe('CLOSED');
+  expect(actions()).not.toContain('CLOSE');
 });

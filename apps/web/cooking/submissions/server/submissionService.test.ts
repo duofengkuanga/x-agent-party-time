@@ -4,6 +4,8 @@ import { ProjectService } from '@/cooking/projects/server/projectService';
 import { expectRowCount, testDatabases } from '@/testing/database';
 import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
+import { TestSubmissionWriteStore } from './testSubmissionWriteStore';
 import {
   engineeringMemberHasSubmissionResponsibilities,
   projectMemberHasSubmissionResponsibilities,
@@ -456,4 +458,108 @@ describe('Submission workspace', () => {
 
 const PlatformErrorLike = expect.objectContaining({
   code: expect.any(String),
+});
+
+test('关联工作区写入原子回滚、提交后去重通知，回放和后续操作不重复通知', async () => {
+  const f = await setup();
+  const primary = createSubmission(f, [item(f, 'front', 'developerA', 'frontA', 'main')]);
+  const related = createSubmission(f, [item(f, 'back', 'developerB', 'backB', 'main')]);
+  const environment = new EngineeringService(f.database).createEnvironment(
+    f.users.owner.id,
+    f.engineering.front.id,
+    {
+      mutationId: randomUUID(),
+      name: '额外测试环境',
+      deployment: f.environments.front.deployment,
+    },
+  );
+  const other = createSubmission(f, [
+    {
+      ...item(f, 'front', 'developerA', 'frontA', 'main'),
+      environmentId: environment.id,
+    },
+  ]);
+  const ids = [primary.id, related.id, other.id];
+  const revisions = () =>
+    ids.map((id) => f.service.getWorkspace(f.users.owner.id, id).revision);
+  const events: Array<{
+    id: string;
+    revision: number;
+    inTransaction: boolean;
+    revisions: number[];
+  }> = [];
+  const updatedAt = '2026-10-23T01:00:00.000Z';
+  const store = new TestSubmissionWriteStore(
+    f.database,
+    () => new Date(updatedAt),
+    randomUUID,
+    (id, revision) =>
+      events.push({
+        id,
+        revision,
+        inTransaction: f.database.inTransaction,
+        revisions: revisions(),
+      }),
+  );
+  let valid = false;
+  const input = {
+    mutationId: randomUUID(),
+    actorUserId: f.users.owner.id,
+    operation: 'AFFECTED_SUBMISSIONS',
+    resourceType: 'TEST_SUBMISSION',
+    resultSchema: z
+      .object({ revision: z.number().int() })
+      .refine(() => valid, '结果未通过校验'),
+    submissionId: () => primary.id,
+    perform: () => ({
+      result: { revision: store.bumpRevision(primary.id, updatedAt) },
+      resourceId: primary.id,
+      affectedSubmissions: {
+        ids: [related.id, other.id, related.id, primary.id],
+        updatedAt,
+      },
+    }),
+  };
+  expect(() => store.run(input)).toThrow('结果未通过校验');
+  expect(revisions()).toEqual([1, 1, 1]);
+  expect(events).toEqual([]);
+  expectRowCount(f.database, 'cooking_mutation', { id: input.mutationId }).toBe(0);
+
+  valid = true;
+  expect(store.run(input)).toEqual({ revision: 2 });
+  expect(revisions()).toEqual([2, 2, 2]);
+  expect(events).toEqual(
+    ids.map((id) => ({ id, revision: 2, inTransaction: false, revisions: [2, 2, 2] })),
+  );
+  expect(store.run(input)).toEqual({ revision: 2 });
+  expect(events).toHaveLength(3);
+  expect(revisions()).toEqual([2, 2, 2]);
+  expect(
+    f.database.get<{ result_json: string }>(
+      'SELECT result_json FROM cooking_mutation WHERE id = ?',
+      input.mutationId,
+    )!.result_json,
+  ).toBe('{"revision":2}');
+  expect(
+    f.database
+      .all<{ updated_at: string }>('SELECT updated_at FROM cooking_test_submission')
+      .every((row) => row.updated_at === updatedAt),
+  ).toBe(true);
+
+  store.run({
+    ...input,
+    mutationId: randomUUID(),
+    perform: () => ({
+      result: { revision: store.bumpRevision(primary.id, updatedAt) },
+      resourceId: primary.id,
+    }),
+  });
+  expect(revisions()).toEqual([3, 2, 2]);
+  expect(events).toHaveLength(4);
+  expect(events.at(-1)).toEqual({
+    id: primary.id,
+    revision: 3,
+    inTransaction: false,
+    revisions: [3, 2, 2],
+  });
 });
