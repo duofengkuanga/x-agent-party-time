@@ -20,6 +20,7 @@ import { EngineeringCreateEnvironments } from './engineeringCreateEnvironments';
 import { BindingDeleteForm } from './bindingDeleteForm';
 import { AutoRefresh } from '@/app/(pages)/(main)/components/autoRefresh';
 import { EngineeringTaskHeading, EngineeringFields } from './settingsFields';
+import { engineeringViewPath } from '../components/routeState';
 
 export function EngineeringEnvironmentManagement({
   engineeringId,
@@ -233,11 +234,13 @@ export function EngineeringInformationManagement({
 export function EngineeringDetail({
   bindingRequestId,
   engineeringId,
+  owner,
   projectId,
   userId,
 }: {
   bindingRequestId?: string;
   engineeringId: string;
+  owner: boolean;
   projectId: string;
   userId: string;
 }) {
@@ -269,23 +272,32 @@ export function EngineeringDetail({
       : '等待首次本机 Agent 绑定确认仓库';
 
   return (
-    <div className="engineering-detail">
-      <EngineeringTaskHeading
-        label="工程详情"
-        name={workspace.engineering.name}
-        projectId={projectId}
-        status={workspace.engineering.archivedAt ? '已归档' : '使用中'}
-      />
+    <article
+      className="engineering-detail project-engineering"
+      id={`engineering-${engineeringId}`}
+      aria-label={workspace.engineering.name}
+    >
+      <header className="project-engineering__heading">
+        <div>
+          <span className="project-engineering__type">
+            {workspace.engineering.type === 'FRONTEND' ? '前端' : '后端'}
+          </span>
+          <h4>{workspace.engineering.name}</h4>
+          <small>{workspace.engineering.identifier}</small>
+          {workspace.engineering.archivedAt ? <span>已归档</span> : null}
+        </div>
+        {owner ? (
+          <Link
+            href={engineeringViewPath(projectId, engineeringId, 'information')}
+            replace
+            scroll={false}
+          >
+            编辑信息
+          </Link>
+        ) : null}
+      </header>
 
       <dl>
-        <div>
-          <dt>工程归属</dt>
-          <dd>{workspace.engineering.type === 'FRONTEND' ? '前端' : '后端'}</dd>
-        </div>
-        <div>
-          <dt>稳定标识</dt>
-          <dd>{workspace.engineering.identifier}</dd>
-        </div>
         <div>
           <dt>仓库地址</dt>
           <dd>{repositoryLabel}</dd>
@@ -293,128 +305,171 @@ export function EngineeringDetail({
         <div>
           <dt>工程成员</dt>
           <dd>
-            {workspace.members.length
-              ? workspace.members.map(({ user }) => user.displayName).join('、')
-              : '暂未配置工程成员'}
+            <span>
+              {workspace.members.length
+                ? workspace.members
+                    .map(({ user }) => user.displayName)
+                    .join('、')
+                : '暂未配置工程成员'}
+            </span>
+            {owner ? (
+              <Link
+                href={engineeringViewPath(projectId, engineeringId, 'members')}
+                replace
+                scroll={false}
+              >
+                管理成员
+              </Link>
+            ) : null}
           </dd>
         </div>
       </dl>
 
-      <section className="engineering-detail__environments">
-        <div className="collaboration-section-title">
-          <span>测试环境</span>
-          <small>{workspace.environments.length} 个</small>
-        </div>
-        {workspace.environments.length ? (
-          workspace.environments.map((environment) => (
-            <article key={environment.id}>
-              <div>
-                <strong>{environment.name}</strong>
-                <small>{deploymentLabel(environment.deployment.kind)}</small>
-                {'command' in environment.deployment ? (
-                  <code>{environment.deployment.command}</code>
-                ) : null}
-              </div>
-            </article>
-          ))
-        ) : (
-          <p className="collaboration-empty">还没有测试环境。</p>
-        )}
-      </section>
+      <div className="project-engineering__body">
+        <section
+          className="engineering-detail__environments"
+          aria-label={`${workspace.engineering.name}测试环境`}
+        >
+          <div className="collaboration-section-title">
+            <h5>
+              测试环境 <small>{workspace.environments.length}</small>
+            </h5>
+            {owner ? (
+              <Link
+                href={engineeringViewPath(
+                  projectId,
+                  engineeringId,
+                  'environments',
+                )}
+                replace
+                scroll={false}
+              >
+                管理环境
+              </Link>
+            ) : null}
+          </div>
+          {workspace.environments.length ? (
+            workspace.environments.map((environment) => (
+              <article key={environment.id}>
+                <div>
+                  <strong>{environment.name}</strong>
+                  <small>{deploymentLabel(environment.deployment.kind)}</small>
+                  {'command' in environment.deployment ? (
+                    <details>
+                      <summary>部署命令</summary>
+                      <code>{environment.deployment.command}</code>
+                    </details>
+                  ) : null}
+                </div>
+              </article>
+            ))
+          ) : (
+            <p className="collaboration-empty">还没有测试环境。</p>
+          )}
+        </section>
 
-      <section className="engineering-detail__bindings">
-        <div className="collaboration-section-title">
-          <span>本机 Agent 绑定</span>
-          <small>{bindings.length} 个</small>
-        </div>
-        {bindings.length ? (
-          <ul>
-            {bindings.map(({ binding, runner, user }) => (
-              <li key={binding.id}>
-                <span>
-                  <strong>{runner.name}</strong>
-                  <small>{user.displayName}</small>
-                </span>
-                <em>
-                  {runner.revokedAt
-                    ? '已撤销'
-                    : runner.lastSeenAt
-                      ? '已连接'
-                      : '未连接'}
-                </em>
-                {binding.userId === userId ? (
-                  <BindingDeleteForm
-                    bindingId={binding.id}
-                    engineeringId={engineeringId}
-                    mutationId={randomUUID()}
-                    projectId={projectId}
-                  />
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="collaboration-empty">还没有开发人员绑定本机 Agent。</p>
-        )}
-        {bindingRequest && bindingRequest.state !== 'SUCCEEDED' ? (
-          <div
-            className="engineering-binding-request"
-            data-state={bindingRequest.state}
-          >
-            <AutoRefresh
-              active={['PENDING', 'PROCESSING'].includes(bindingRequest.state)}
-            />
-            <strong>{bindingRequestLabel(bindingRequest.state)}</strong>
-            <p>
-              {bindingRequest.errorMessage ??
-                bindingRequestMessage(bindingRequest.state)}
+        <section
+          className="engineering-detail__bindings"
+          aria-label={`${workspace.engineering.name}本机 Agent 绑定`}
+        >
+          <div className="collaboration-section-title">
+            <h5>
+              本机 Agent 绑定 <small>{bindings.length}</small>
+            </h5>
+          </div>
+          {bindings.length ? (
+            <ul>
+              {bindings.map(({ binding, runner, user }) => (
+                <li key={binding.id}>
+                  <span>
+                    <strong>{runner.name}</strong>
+                    <small>{user.displayName}</small>
+                  </span>
+                  <em>
+                    {runner.revokedAt
+                      ? '已撤销'
+                      : runner.lastSeenAt
+                        ? '已绑定'
+                        : '未连接'}
+                  </em>
+                  {binding.userId === userId ? (
+                    <BindingDeleteForm
+                      bindingId={binding.id}
+                      engineeringId={engineeringId}
+                      mutationId={randomUUID()}
+                      projectId={projectId}
+                    />
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="collaboration-empty">
+              还没有开发人员绑定本机 Agent。
             </p>
-          </div>
-        ) : null}
-        {currentBinding ? null : bindingRequest &&
-          ['PENDING', 'PROCESSING'].includes(
-            bindingRequest.state,
-          ) ? null : assigned.has(userId) && runners.length ? (
-          <div className="engineering-binding-disclosure">
-            <form
-              action={createEngineeringBindingAction}
-              className="engineering-binding-form"
+          )}
+          {bindingRequest && bindingRequest.state !== 'SUCCEEDED' ? (
+            <div
+              className="engineering-binding-request"
+              data-state={bindingRequest.state}
             >
-              <EngineeringFields
-                engineeringId={engineeringId}
-                projectId={projectId}
+              <AutoRefresh
+                active={['PENDING', 'PROCESSING'].includes(
+                  bindingRequest.state,
+                )}
               />
-              <label>
-                <span>选择本机 Agent</span>
-                <select name="runnerId" required>
-                  {runners.map(({ runner }) => (
-                    <option key={runner.id} value={runner.id}>
-                      {runner.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button type="submit">绑定本机 Agent</button>
-            </form>
-          </div>
-        ) : assigned.has(userId) ? (
-          <div className="collab-form__blocked">
-            <div>
-              <strong>需要先连接本机 Agent</strong>
-              <p>连接完成后再为当前工程建立绑定。</p>
+              <strong>{bindingRequestLabel(bindingRequest.state)}</strong>
+              <p>
+                {bindingRequest.errorMessage ??
+                  bindingRequestMessage(bindingRequest.state)}
+              </p>
             </div>
-            <Link href="/agents">我的 Agent</Link>
-          </div>
-        ) : (
-          <div className="collab-form__blocked">
-            <div>
-              <strong>你还不是工程成员</strong>
-              <p>由项目负责人把你加入工程后，才能创建本机 Agent 绑定。</p>
+          ) : null}
+          {currentBinding ? null : bindingRequest &&
+            ['PENDING', 'PROCESSING'].includes(
+              bindingRequest.state,
+            ) ? null : assigned.has(userId) && runners.length ? (
+            <div className="engineering-binding-disclosure">
+              <form
+                action={createEngineeringBindingAction}
+                className="engineering-binding-form"
+              >
+                <EngineeringFields
+                  engineeringId={engineeringId}
+                  projectId={projectId}
+                />
+                <label>
+                  <span>选择本机 Agent</span>
+                  <select name="runnerId" required>
+                    {runners.map(({ runner }) => (
+                      <option key={runner.id} value={runner.id}>
+                        {runner.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button type="submit">绑定本机 Agent</button>
+              </form>
             </div>
-          </div>
-        )}
-      </section>
-    </div>
+          ) : assigned.has(userId) ? (
+            <div className="collab-form__blocked">
+              <div>
+                <strong>需要先连接本机 Agent</strong>
+                <p>连接完成后再为当前工程建立绑定。</p>
+              </div>
+              <Link href="/agents">我的 Agent</Link>
+            </div>
+          ) : (
+            <div className="collab-form__blocked">
+              <div>
+                <strong>你还不是工程成员</strong>
+                <p>由项目负责人把你加入工程后，才能创建本机 Agent 绑定。</p>
+              </div>
+            </div>
+          )}
+        </section>
+      </div>
+    </article>
   );
 }
 function deploymentLabel(kind: 'LOCAL_SCRIPT' | 'CI_CD'): string {

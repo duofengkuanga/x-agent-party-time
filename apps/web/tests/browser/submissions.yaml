@@ -55,8 +55,7 @@ cases:
             text: 删除项目浏览器验收,
           }
       - click: '#project-create-form button[type="submit"]'
-      - wait: '.engineering-dialog__close'
-      - click: '.engineering-dialog__close'
+      - wait: '.project-overview__empty'
       - click: '[aria-label="设置项目 删除项目浏览器验收"]'
       - wait: '.project-name-dialog'
       - eval: >-
@@ -69,7 +68,7 @@ cases:
           &&getComputedStyle(field).color===getComputedStyle(shell).color&&getComputedStyle(close).color===getComputedStyle(probe).color&&getComputedStyle(close).textDecorationLine==='none';})));
           probe.remove();shell.dataset.theme='paper';return true;})()
       - click: '.engineering-dialog__close'
-      - click: 'li:has([aria-label="设置项目 删除项目浏览器验收"]) a[href*="panel=collaboration"]'
+      - click: '.project-overview__members a[href*="panel=collaboration"]'
       - wait: 'input[aria-label="受邀用户名"]'
       - eval: >-
           (()=>{const shell=document.querySelector('.collab-shell'),field=document.querySelector('input[aria-label=受邀用户名]');
@@ -117,6 +116,126 @@ cases:
       - eval: >-
           ['projectSettingsColors','projectMemberColors','projectDeleteInitiallyDisabled','projectDeleteWrongNameDisabled',
           'projectDeleteCancelFocus','projectDeleteErrorVisible','projectDeleteFits','projectDeletePendingDisabled'].every(key=>sessionStorage.getItem(key)==='true')
+
+  - name: project overview shows every engineering without opening a dialog
+    steps:
+      - open: __BASE_URL__/projects?project=__PROJECT_ID__
+      - wait: '.project-engineering'
+    assert:
+      - count: { sel: '.project-engineering', eq: 3 }
+      - count: { sel: '.project-settings__list [aria-current="page"]', eq: 1 }
+      - hidden: '[role="dialog"]'
+      - hidden: '.project-engineering a[href*="mode="]'
+      - text: { sel: '.project-overview__members', contains: 浏览器测试执行人 }
+      - text:
+          { sel: '.project-overview__engineering', contains: 浏览器前端工程 }
+      - text:
+          { sel: '.project-overview__engineering', contains: 浏览器后端工程 }
+      - text:
+          { sel: '.project-overview__engineering', contains: 浏览器测试环境 }
+      - text:
+          { sel: '.project-overview__engineering', contains: 浏览器测试 Agent }
+      - eval: >-
+          (()=>{const sidebar=document.querySelector('.project-settings__sidebar'),content=document.querySelector('.project-settings__content');
+          const a=sidebar.getBoundingClientRect(),b=content.getBoundingClientRect();
+          return a.right<=b.left+1&&Math.abs(a.top-b.top)<1&&content.scrollHeight>content.clientHeight
+          &&getComputedStyle(content).overflowY==='auto';})()
+
+  - name: project search keeps the selected information visible
+    steps:
+      - fill: { sel: '.project-settings__search input', text: 不存在的项目 }
+    assert:
+      - visible: '.project-settings__search-empty'
+      - count: { sel: '.project-settings__list li', eq: 0 }
+      - count: { sel: '.project-engineering', eq: 3 }
+
+  - name: engineering deployment command expands in place
+    steps:
+      - fill: { sel: '.project-settings__search input', text: 浏览器验收 }
+      - click: '.project-engineering details summary'
+    assert:
+      - visible: '.project-engineering details[open] code'
+      - text:
+          {
+            sel: '.project-engineering details[open] code',
+            contains: 'pnpm run deploy:84',
+          }
+      - hidden: '[role="dialog"]'
+
+  - name: project owner creates an engineering and edits it directly from the overview
+    steps:
+      - open: __BASE_URL__/projects?project=__PROJECT_ID__
+      - wait: '.project-settings__primary-action'
+      - click: '.project-settings__primary-action'
+      - fill:
+          { sel: '#project-create-form input[name="name"]', text: 项目总览验收 }
+      - eval: >-
+          window.projectCreateFetch=window.fetch;window.fetch=(...args)=>new Headers(args[1]?.headers).has('Next-Action')
+          ?new Promise((resolve,reject)=>{window.releaseProjectCreate=()=>window.projectCreateFetch(...args).then(resolve,reject);})
+          :window.projectCreateFetch(...args);true
+      - click: '#project-create-form button[type="submit"]'
+      - wait: '#project-create-form button:disabled'
+      - eval: >-
+          sessionStorage.setItem('projectCreatePending',String(document.querySelector('#project-create-form button:disabled').textContent.includes('正在创建')));
+          window.fetch=window.projectCreateFetch;window.releaseProjectCreate();true
+      - wait: '.project-overview__empty'
+      - click: '.project-overview__empty a'
+      - wait: '.engineering-editor input[name="name"]'
+      - fill:
+          { sel: '.engineering-editor input[name="name"]', text: 总览前端工程 }
+      - fill:
+          {
+            sel: '.engineering-editor input[name="identifier"]',
+            text: overview-web,
+          }
+      - eval: >-
+          (()=>{const select=document.querySelector('.engineering-editor select[name=type]');
+          select.value='FRONTEND';select.dispatchEvent(new Event('change',{bubbles:true}));return true;})()
+      - fill:
+          {
+            sel: '.engineering-environments input[name^="command:"]',
+            text: 'bun run deploy:test',
+          }
+      - click: '.engineering-editor > .dialog-actions button[type="submit"]'
+      - wait: '.project-engineering'
+      - click: '.project-engineering a[href*="mode=information"]'
+      - wait: '.engineering-information-form'
+      - fill:
+          {
+            sel: '.engineering-information-form input[name="name"]',
+            text: 总览前端已更新,
+          }
+      - click: '.engineering-information-form button[type="submit"]'
+      - wait: '.project-dialog__feedback--success'
+      - click: '.engineering-dialog__close'
+      - wait: 'body:not(:has(.repair-overlay))'
+      - click: '.project-engineering a[href*="mode=members"]'
+      - wait: '.engineering-member-list'
+      - wait: '[role="dialog"]:focus'
+      - press: Escape
+      - wait: 'body:not(:has(.repair-overlay))'
+      - click: '.project-engineering a[href*="mode=environments"]'
+      - wait: '.engineering-environment-list'
+      - click: '.engineering-dialog__close'
+      - wait: 'body:not(:has(.repair-overlay))'
+      - click: '.project-settings__list a[href="/projects?project=__PROJECT_ID__"]'
+      - wait: '.project-engineering[aria-label="浏览器前端工程"]'
+      - fill: { sel: '.project-settings__search input', text: 项目总览验收 }
+      - click: '.project-settings__list a'
+      - wait: '.project-engineering[aria-label="总览前端已更新"]'
+    assert:
+      - hidden: '[role="dialog"]'
+      - hidden: '#project-create-form'
+      - text: { sel: '.project-overview__heading h2', contains: 项目总览验收 }
+      - text: { sel: '.project-engineering h4', contains: 总览前端已更新 }
+      - text: { sel: '.project-engineering', contains: 测试环境 }
+      - text:
+          {
+            sel: '.project-settings__list [aria-current="page"]',
+            contains: 项目总览验收,
+          }
+      - text: { sel: '.project-engineering', contains: 需要先连接本机 Agent }
+      - eval: 'sessionStorage.getItem("projectCreatePending")==="true"'
 
   - name: product defaults follow the current project and only offer valid people
     steps:

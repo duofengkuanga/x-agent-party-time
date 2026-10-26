@@ -1,48 +1,52 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
+import Link from 'next/link';
+import { useEffect, useState, type ReactNode } from 'react';
+import { useFormStatus } from 'react-dom';
 import { createProjectAction } from '@/app/actions/projects/projects';
+import type { ProjectSummary } from '@/contracts/projects/project';
+import { projectSettingsPath } from './routeState';
 
 export function ProjectSettingsControls({
   children,
-  error,
-  hasProjects,
   mutationId,
-  success,
+  projects,
+  selectedProjectId,
 }: {
   children: ReactNode;
-  error?: string;
-  hasProjects: boolean;
   mutationId: string;
-  success?: string;
+  projects: ProjectSummary[];
+  selectedProjectId?: string;
 }) {
   const [showCreate, setShowCreate] = useState(false);
+  const [search, setSearch] = useState('');
+  useEffect(() => {
+    setShowCreate(false);
+    setSearch('');
+  }, [selectedProjectId]);
+  const matchingProjects = projects.filter(({ project }) =>
+    project.name
+      .toLocaleLowerCase()
+      .includes(search.trim().toLocaleLowerCase()),
+  );
 
   return (
     <main className="project-settings project-settings-shell">
-      {hasProjects ? (
-        <section className="project-settings__hero">
-          <div className="project-settings__intro">
-            <h1>我的项目</h1>
-            <p>
-              在这里维护项目成员、工程环境和 Agent 绑定；提测仍在工作台完成。
-            </p>
-          </div>
-          <div className="project-settings__toolbar-actions">
-            <button
-              aria-controls="project-create-form"
-              aria-expanded={showCreate}
-              className="project-settings__primary-action"
-              onClick={() => setShowCreate((current) => !current)}
-              type="button"
-            >
-              {showCreate ? '取消' : '新建项目'}
-            </button>
-          </div>
-        </section>
-      ) : null}
-
-      <section className="project-settings__content">
+      <aside className="project-settings__sidebar" aria-label="项目列表">
+        <header className="project-settings__sidebar-heading">
+          <h1>
+            我的项目 <span>{projects.length}</span>
+          </h1>
+          <button
+            aria-controls="project-create-form"
+            aria-expanded={showCreate}
+            className="project-settings__primary-action"
+            onClick={() => setShowCreate((current) => !current)}
+            type="button"
+          >
+            {showCreate ? '取消' : '新建项目'}
+          </button>
+        </header>
         {showCreate ? (
           <form
             action={createProjectAction}
@@ -50,10 +54,6 @@ export function ProjectSettingsControls({
             id="project-create-form"
           >
             <input name="mutationId" type="hidden" value={mutationId} />
-            <div>
-              <span>新建项目</span>
-              <p>先建立协作边界，随后添加工程并完成本机绑定。</p>
-            </div>
             <label>
               <span>项目名称</span>
               <input
@@ -64,30 +64,93 @@ export function ProjectSettingsControls({
                 required
               />
             </label>
-            <button type="submit">创建并配置工程</button>
+            <CreateProjectButton />
           </form>
         ) : null}
-
-        {error ? (
-          <p className="project-settings__error" role="alert">
-            {error}
+        {projects.length ? (
+          <>
+            <label className="project-settings__search">
+              <span>搜索项目</span>
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="搜索项目名称"
+              />
+            </label>
+            <nav aria-label="切换项目">
+              <ol className="project-settings__list">
+                {matchingProjects.map(({ project, membership }) => (
+                  <li key={project.id}>
+                    <Link
+                      aria-current={
+                        selectedProjectId === project.id ? 'page' : undefined
+                      }
+                      href={projectSettingsPath({ projectId: project.id })}
+                      scroll={false}
+                    >
+                      <span
+                        className="project-settings__project-mark"
+                        aria-hidden="true"
+                      >
+                        {project.name.slice(0, 1)}
+                      </span>
+                      <span className="project-settings__project-copy">
+                        <strong>{project.name}</strong>
+                        <small>
+                          {membership.role === 'OWNER'
+                            ? '项目负责人'
+                            : '项目成员'}
+                        </small>
+                      </span>
+                      <span
+                        className="project-settings__selected-mark"
+                        aria-hidden="true"
+                      >
+                        ›
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ol>
+              {!matchingProjects.length ? (
+                <p className="project-settings__search-empty" role="status">
+                  没有找到“{search}”对应的项目。
+                </p>
+              ) : null}
+            </nav>
+          </>
+        ) : (
+          <p className="project-settings__search-empty">
+            创建项目后，在这里切换。
           </p>
-        ) : null}
-        {success ? <p className="notice notice-success">{success}</p> : null}
-
-        {hasProjects ? (
-          children
-        ) : showCreate ? null : (
+        )}
+      </aside>
+      <section
+        className="project-settings__content"
+        aria-label="项目与工程信息"
+        key={selectedProjectId}
+      >
+        {children}
+        {!projects.length ? (
           <div className="project-settings__empty">
-            <span>暂无项目</span>
-            <h2>从一个项目开始。</h2>
-            <p>项目创建后，可继续添加工程、配置测试环境并绑定本机 Agent。</p>
+            <h2>从一个项目开始</h2>
+            <p>把成员、工程和测试环境放在一起，随后绑定你的本机 Agent。</p>
             <button onClick={() => setShowCreate(true)} type="button">
               新建项目
             </button>
           </div>
-        )}
+        ) : null}
       </section>
     </main>
+  );
+}
+
+function CreateProjectButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button disabled={pending} type="submit">
+      {pending ? '正在创建…' : '创建项目'}
+    </button>
   );
 }

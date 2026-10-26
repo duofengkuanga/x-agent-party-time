@@ -43,12 +43,14 @@ export function normalizeProjectSettingsRoute(
   access: ProjectRouteAccess,
 ): ProjectSettingsRoute {
   const feedback = { error: route.error, success: route.success };
-  if (!isPanel(route.panel)) return compactRoute(feedback);
   if (route.panel === 'invitations')
     return compactRoute({ panel: 'invitations', ...feedback });
 
-  const project = access.projects.find(({ id }) => id === route.projectId);
+  const project =
+    access.projects.find(({ id }) => id === route.projectId) ?? access.projects[0];
   if (!project) return compactRoute(feedback);
+  if (!isPanel(route.panel) || project.id !== route.projectId)
+    return compactRoute({ projectId: project.id, ...feedback });
   const parent = { projectId: project.id, panel: route.panel, ...feedback };
   if (route.panel === 'project' && !project.owner)
     return compactRoute({

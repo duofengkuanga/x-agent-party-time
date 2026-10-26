@@ -6,12 +6,7 @@ import {
   createEngineeringAction,
   removeEngineeringMemberAction,
 } from '@/app/actions/projects/engineering';
-import {
-  engineeringCreatePath,
-  engineeringSettingsPath,
-  engineeringViewPath as engineeringViewHref,
-  projectPanelPath,
-} from '@/app/(pages)/(main)/projects/components/routeState';
+import { projectPanelPath } from '@/app/(pages)/(main)/projects/components/routeState';
 import { EngineeringCreateEnvironments } from './engineeringCreateEnvironments';
 import { Dialog } from '../components/dialog';
 import {
@@ -23,11 +18,9 @@ import {
 import {
   EngineeringEnvironmentManagement,
   EngineeringInformationManagement,
-  EngineeringDetail,
 } from './engineeringSettings';
 
 export function EngineeringDialog({
-  bindingRequestId,
   engineeringId,
   error,
   mode,
@@ -35,7 +28,6 @@ export function EngineeringDialog({
   success,
   userId,
 }: {
-  bindingRequestId?: string;
   engineeringId?: string;
   error?: string;
   mode?: string;
@@ -55,7 +47,11 @@ export function EngineeringDialog({
   const owner = project.membership.role === 'OWNER';
 
   return (
-    <Dialog title="工程目录" kicker={project.project.name}>
+    <Dialog
+      title={engineeringId === 'new' ? '新建工程' : '编辑工程'}
+      kicker={project.project.name}
+      closeHref={projectPanelPath(projectId, 'engineering')}
+    >
       <DialogFeedback error={error} success={success} />
       {engineeringId === 'new' && owner ? (
         <EngineeringCreateForm
@@ -82,117 +78,7 @@ export function EngineeringDialog({
           projectId={projectId}
           userId={userId}
         />
-      ) : selected ? (
-        <EngineeringDetail
-          bindingRequestId={bindingRequestId}
-          engineeringId={selected.id}
-          projectId={projectId}
-          userId={userId}
-        />
-      ) : (
-        <div className="engineering-catalog">
-          <div className="engineering-catalog__intro">
-            {owner ? (
-              <Link
-                className="repair-primary"
-                href={engineeringCreatePath(projectId)}
-                replace
-              >
-                新建工程
-              </Link>
-            ) : null}
-          </div>
-          {items.length
-            ? [
-                { label: '前端工程', type: 'FRONTEND' as const },
-                { label: '后端工程', type: 'BACKEND' as const },
-              ].map((group) => {
-                const groupItems = items.filter(
-                  (item) => item.type === group.type,
-                );
-                if (!groupItems.length) return null;
-                return (
-                  <section className="engineering-group" key={group.type}>
-                    <div className="collaboration-section-title">
-                      <span>{group.label}</span>
-                      <small>{groupItems.length} 个</small>
-                    </div>
-                    <div className="engineering-list">
-                      {groupItems.map((item) => {
-                        const currentUserIsEngineeringMember = engineering
-                          .listMembers(userId, item.id)
-                          .some(({ user }) => user.id === userId);
-                        const currentUserRelation = owner
-                          ? '项目所有者'
-                          : currentUserIsEngineeringMember
-                            ? '工程成员'
-                            : '项目成员';
-                        return (
-                          <article className="engineering-card" key={item.id}>
-                            <div className="engineering-card__copy">
-                              <strong>{item.name}</strong>
-                              <small>
-                                {item.identifier} · {currentUserRelation}
-                              </small>
-                            </div>
-                            <nav
-                              aria-label={`${item.name}管理`}
-                              className="engineering-card__actions"
-                            >
-                              {owner ? (
-                                <>
-                                  <Link
-                                    href={engineeringViewHref(
-                                      projectId,
-                                      item.id,
-                                      'members',
-                                    )}
-                                    replace
-                                  >
-                                    成员管理
-                                  </Link>
-                                  <Link
-                                    href={engineeringViewHref(
-                                      projectId,
-                                      item.id,
-                                      'environments',
-                                    )}
-                                    replace
-                                  >
-                                    环境管理
-                                  </Link>
-                                  <Link
-                                    href={engineeringViewHref(
-                                      projectId,
-                                      item.id,
-                                      'information',
-                                    )}
-                                    replace
-                                  >
-                                    信息管理
-                                  </Link>
-                                </>
-                              ) : null}
-                              <Link
-                                href={engineeringSettingsPath(
-                                  projectId,
-                                  item.id,
-                                )}
-                                replace
-                              >
-                                详情
-                              </Link>
-                            </nav>
-                          </article>
-                        );
-                      })}
-                    </div>
-                  </section>
-                );
-              })
-            : null}
-        </div>
-      )}
+      ) : null}
     </Dialog>
   );
 }
@@ -290,7 +176,7 @@ function EngineeringCreateForm({
 
       <div className="dialog-actions">
         <Link href={projectPanelPath(projectId, 'engineering')} replace>
-          返回目录
+          返回项目
         </Link>
         <button className="repair-primary" type="submit">
           创建工程

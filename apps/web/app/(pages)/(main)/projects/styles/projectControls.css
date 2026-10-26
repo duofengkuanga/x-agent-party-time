@@ -2,17 +2,7 @@
 .project-settings {
   flex: 1 1 auto;
   min-height: 0;
-  overflow-y: auto;
   width: 100%;
-}
-
-.project-settings__create {
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-
-.project-settings .project-settings__create > button {
-  grid-column: auto;
-  justify-self: stretch;
 }
 
 .collab-account-menu__invitation-list article form {
@@ -158,16 +148,6 @@
   text-decoration: none;
 }
 
-@media (max-width: 900px) {
-  .project-settings__create {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  .project-settings__create > button {
-    grid-column: auto;
-  }
-}
-
 @media (max-width: 760px) {
   .engineering-editor > .dialog-actions {
     margin-inline: 0;
@@ -186,22 +166,6 @@
 
   .engineering-environments__title > button {
     width: 100%;
-  }
-}
-
-@media (max-width: 620px) {
-  .project-settings__hero {
-    align-items: stretch;
-    grid-template-columns: 1fr;
-  }
-
-  .project-settings__toolbar-actions,
-  .project-settings .project-settings__primary-action {
-    width: 100%;
-  }
-
-  .project-settings__create {
-    grid-template-columns: 1fr;
   }
 }
 
@@ -251,10 +215,4 @@
   border: 0;
   flex-wrap: wrap;
   padding: 0;
-}
-
-@media (max-width: 620px) {
-  .project-settings__row-actions:has(.project-settings__row-settings) {
-    grid-template-columns: auto auto minmax(0, 1fr) auto;
-  }
 }

@@ -48,7 +48,7 @@ export function EngineeringTaskHeading({
         <h3>{name}</h3>
       </div>
       <Link href={projectPanelPath(projectId, 'engineering')} replace>
-        返回目录
+        返回项目
       </Link>
     </div>
   );

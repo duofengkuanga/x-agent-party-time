@@ -4,19 +4,21 @@ import { ProjectDialogEffects } from './projectDialogEffects';
 export function Dialog({
   children,
   className = 'engineering-catalog-dialog',
+  closeHref,
   kicker,
   overlayClassName = 'engineering-catalog-overlay',
   title,
 }: {
   children: React.ReactNode;
   className?: string;
+  closeHref: string;
   kicker: string;
   overlayClassName?: string;
   title: string;
 }) {
   return (
     <div className={`repair-overlay ${overlayClassName}`} role="presentation">
-      <ProjectDialogEffects closeHref="/projects" />
+      <ProjectDialogEffects closeHref={closeHref} />
       <section
         aria-labelledby="project-dialog-title"
         aria-modal="true"
@@ -32,7 +34,7 @@ export function Dialog({
           <Link
             aria-label={`关闭${title}`}
             className="engineering-dialog__close"
-            href="/projects"
+            href={closeHref}
             replace
           >
             ×

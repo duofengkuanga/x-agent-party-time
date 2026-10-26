@@ -28,8 +28,14 @@ describe('Project settings route state', () => {
   });
 
   test.each([
-    ['未知项目', { projectId: 'missing', panel: 'engineering' }, {}],
-    ['未知面板', { projectId: 'owned', panel: 'unknown', engineeringId: 'x' }, {}],
+    ['默认选中首个项目', {}, { projectId: 'owned' }],
+    ['保留项目选择', { projectId: 'member' }, { projectId: 'member' }],
+    ['未知项目', { projectId: 'missing', panel: 'engineering' }, { projectId: 'owned' }],
+    [
+      '未知面板',
+      { projectId: 'owned', panel: 'unknown', engineeringId: 'x' },
+      { projectId: 'owned' },
+    ],
     [
       '未知工程',
       {
@@ -66,5 +72,30 @@ describe('Project settings route state', () => {
     ],
   ] as const)('%s 回到最近可访问父级', (_case, route, expected) => {
     expect(normalizeProjectSettingsRoute(route, access)).toEqual(expected);
+  });
+
+  test('无项目时保持空状态并保留反馈', () => {
+    expect(
+      normalizeProjectSettingsRoute(
+        { projectId: 'missing', success: '项目已删除' },
+        { projects: [] },
+      ),
+    ).toEqual({ success: '项目已删除' });
+  });
+
+  test('项目邀请不自动跳到工程', () => {
+    expect(normalizeProjectSettingsRoute({ panel: 'invitations' }, access)).toEqual({
+      panel: 'invitations',
+    });
+  });
+
+  test('绑定进度保持当前工程和请求', () => {
+    const route = {
+      projectId: 'owned',
+      panel: 'engineering',
+      engineeringId: 'engineering-one',
+      bindingRequestId: 'request-one',
+    };
+    expect(normalizeProjectSettingsRoute(route, access)).toEqual(route);
   });
 });

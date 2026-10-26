@@ -13,6 +13,7 @@ import { DialogFeedback, ProjectFields } from '../engineering/settingsFields';
 import { InvitationForm } from './invitationForm';
 import { ProjectDeleteControl } from './projectDeleteControl';
 import { randomUUID } from 'node:crypto';
+import { projectSettingsPath } from './routeState';
 
 export function CollaborationDialog({
   error,
@@ -38,6 +39,7 @@ export function CollaborationDialog({
   return (
     <Dialog
       className="project-collaboration-dialog"
+      closeHref={projectSettingsPath({ projectId })}
       title={`${summary.project.name} · 成员与邀请`}
       kicker="私密项目"
       overlayClassName=""
@@ -160,6 +162,7 @@ export function ProjectSettingsDialog({
   return (
     <Dialog
       className="project-name-dialog"
+      closeHref={projectSettingsPath({ projectId })}
       kicker="项目基础信息"
       overlayClassName=""
       title={`${summary.project.name} · 项目设置`}
@@ -184,7 +187,7 @@ export function ProjectSettingsDialog({
           <small>项目名称会展示在项目列表、成员协作和工程目录中。</small>
         </label>
         <div className="dialog-actions">
-          <Link href="/projects">取消</Link>
+          <Link href={projectSettingsPath({ projectId })}>取消</Link>
           <button className="repair-primary" type="submit">
             保存项目名称
           </button>
