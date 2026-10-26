@@ -1,0 +1,341 @@
+.auto-save-form {
+  margin: 0;
+  min-width: 0;
+}
+
+.auto-save-form__fields {
+  border: 0;
+  display: contents;
+  margin: 0;
+  padding: 0;
+}
+
+.auto-save-form label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.auto-save-form label > span,
+.auto-save-form label > small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.auto-save-form :where(input:not([type='hidden']), select, textarea),
+.project-members-direct input,
+.project-delete-disclosure input {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  min-height: 38px;
+  min-width: 0;
+  padding: 7px 9px;
+  width: 100%;
+}
+
+.auto-save-form input:hover,
+.auto-save-form select:hover {
+  background: var(--paper);
+  border-color: var(--strong-line);
+}
+
+.auto-save-form :where(input, select, textarea):focus-visible {
+  background: var(--paper);
+  border-color: var(--accent);
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.auto-save-form input[readonly] {
+  border-color: transparent;
+  color: var(--muted);
+}
+
+.auto-save-form__status {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 10px;
+  gap: 8px;
+  grid-column: 1 / -1;
+  line-height: 1.6;
+  min-height: 16px;
+}
+
+.auto-save-form__status[role='alert'] {
+  color: var(--danger);
+}
+
+.auto-save-form[data-save-state='error'] input:invalid {
+  border-color: var(--danger);
+}
+
+.auto-save-form__status > button {
+  min-height: 26px;
+  padding: 3px 7px;
+}
+
+.project-overview__heading > div {
+  flex: 1 1 auto;
+}
+
+.project-name-direct {
+  max-width: 640px;
+}
+
+.project-name-direct input[name='name'] {
+  border-color: transparent;
+  font-size: clamp(26px, 2.3vw, 36px);
+  font-weight: 600;
+  line-height: 1.3;
+  padding: 0 4px;
+}
+
+.project-name-direct input[name='name']:hover {
+  border-bottom-color: var(--line);
+}
+
+.project-auto-save-note {
+  align-self: center;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.engineering-identity-form {
+  display: grid;
+  gap: 8px 18px;
+  grid-template-columns: minmax(0, 1.8fr) minmax(90px, 0.6fr) minmax(
+      130px,
+      0.9fr
+    );
+  width: 100%;
+}
+
+.engineering-identity-form__name input {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.engineering-members-direct {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+
+.engineering-member-toggle {
+  min-width: 0;
+}
+
+.engineering-member-toggle label {
+  align-items: center;
+  border: 1px solid var(--line);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  gap: 7px;
+  padding: 6px 9px;
+}
+
+.engineering-member-toggle label:has(:checked) {
+  background: var(--paper-deep);
+  border-color: var(--strong-line);
+}
+
+.engineering-member-toggle input {
+  accent-color: var(--accent);
+  height: 14px;
+  margin: 0;
+  width: 14px;
+}
+
+.engineering-member-toggle small,
+.engineering-member-toggle p {
+  font-size: 10px;
+  line-height: 1.6;
+  margin: 5px 0 0;
+  max-width: 260px;
+}
+
+.engineering-member-toggle p {
+  color: var(--danger);
+}
+
+.environment-direct-list {
+  display: grid;
+  gap: 16px;
+}
+
+.environment-direct-row + .environment-direct-row {
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+}
+
+.environment-direct-form {
+  display: grid;
+  gap: 8px 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.environment-direct-form .field-wide,
+.environment-direct-form .engineering-environment-note,
+.environment-direct-form__hint {
+  grid-column: 1 / -1;
+}
+
+.environment-direct-form__hint {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.environment-direct-form--new {
+  border: 1px dashed var(--line);
+  padding: 12px;
+}
+
+.environment-direct-delete {
+  justify-self: end;
+  margin-left: auto;
+  width: fit-content;
+}
+
+.environment-direct-delete > summary {
+  border: 0;
+  color: var(--muted);
+  font-size: 10px;
+  padding: 4px 0;
+}
+
+.environment-add {
+  justify-self: start;
+}
+
+.project-members-direct .collaboration-ledger {
+  gap: 20px;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
+}
+
+.project-members-direct .collaboration-ledger > section {
+  border: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.project-members-direct .collaboration-member-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.project-members-direct .collaboration-member {
+  align-content: start;
+  background: transparent;
+  border-color: var(--line);
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  min-width: min(100%, 220px);
+}
+
+.project-members-direct .collaboration-member > details {
+  grid-column: 2 / -1;
+  justify-self: end;
+}
+
+.project-members-direct .collaboration-invite-form {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.project-members-direct .collaboration-invite-form button {
+  min-height: 38px;
+}
+
+.project-delete-disclosure,
+.engineering-archive-direct {
+  color: var(--muted);
+  font-size: 10px;
+  margin-top: 22px;
+}
+
+.project-delete-disclosure > summary,
+.engineering-archive-direct > summary {
+  cursor: pointer;
+  width: fit-content;
+}
+
+.engineering-archive-direct {
+  border-top: 1px solid var(--line);
+  margin: 0;
+  padding: 12px 20px;
+}
+
+.engineering-archive-direct p {
+  line-height: 1.7;
+}
+
+.project-delete-disclosure .project-delete-form {
+  display: block;
+}
+
+.project-delete-disclosure label {
+  display: grid;
+  gap: 8px;
+}
+
+@media (max-width: 900px) {
+  .project-members-direct .collaboration-ledger,
+  .engineering-identity-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.project-navigation-error {
+  border-bottom: 1px solid var(--line);
+  color: var(--danger);
+  font-size: 11px;
+  margin: 0;
+  padding: 10px 22px;
+}
+
+.project-overview__heading {
+  flex-wrap: wrap;
+}
+
+.project-overview__heading > .project-delete-disclosure {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.project-overview__heading > .project-delete-disclosure[open] {
+  flex-basis: 100%;
+}
+
+.project-overview__heading > .project-delete-disclosure > summary {
+  align-items: center;
+  border: 1px solid var(--line);
+  display: inline-flex;
+  font-size: 11px;
+  min-height: 34px;
+  padding: 6px 11px;
+}
+
+.project-overview__heading
+  > .project-delete-disclosure
+  > summary::-webkit-details-marker {
+  display: none;
+}
+
+.project-overview__heading > .project-delete-disclosure > summary:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}

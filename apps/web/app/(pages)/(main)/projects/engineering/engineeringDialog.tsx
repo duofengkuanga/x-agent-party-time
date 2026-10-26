@@ -1,21 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import Link from 'next/link';
 import { engineeringService, projectService } from '@/server/runtime/services';
-import {
-  addEngineeringMemberAction,
-  createEngineeringAction,
-  removeEngineeringMemberAction,
-} from '@/app/actions/projects/engineering';
+import { createEngineeringAction } from '@/app/actions/projects/engineering';
 import { projectPanelPath } from '@/app/(pages)/(main)/projects/components/routeState';
 import { EngineeringCreateEnvironments } from './engineeringCreateEnvironments';
 import { Dialog } from '../components/dialog';
 import { SaveButton } from '../components/saveButton';
-import {
-  DialogFeedback,
-  ProjectFields,
-  EngineeringTaskHeading,
-  EngineeringFields,
-} from './settingsFields';
+import { EngineeringMemberToggle } from './engineeringMemberToggle';
+import { DialogFeedback, ProjectFields } from './settingsFields';
 
 export function EngineeringDialog({
   error,
@@ -147,93 +139,28 @@ function EngineeringCreateForm({
 
 export function EngineeringMemberManagement({
   engineeringId,
-  projectId,
   projectMembers,
   userId,
 }: {
   engineeringId: string;
-  projectId: string;
   projectMembers: ReturnType<ReturnType<typeof projectService>['listMembers']>;
   userId: string;
 }) {
   const workspace = engineeringService().getWorkspace(userId, engineeringId);
-  const assigned = new Set(workspace.members.map(({ user }) => user.id));
-  const availableMembers = projectMembers.filter(
-    ({ user }) => !assigned.has(user.id),
-  );
-
   return (
-    <div className="engineering-task project-inline-form">
-      <EngineeringTaskHeading
-        label="成员管理"
-        engineeringId={engineeringId}
-        projectId={projectId}
-      />
-
-      <section className="engineering-task__section">
-        <div className="engineering-task__section-title">
-          <strong>工程成员</strong>
-          <small>{workspace.members.length} 人</small>
-        </div>
-        <ul className="engineering-member-list">
-          {workspace.members.map(({ membership, user }) => (
-            <li key={user.id}>
-              <span>
-                <strong>{user.displayName}</strong>
-                <small>@{user.username}</small>
-              </span>
-              <details className="project-inline-confirmation">
-                <summary>移出工程</summary>
-                <p>
-                  移出后，这位成员将不能为此工程创建本机 Agent
-                  绑定。活动职责会阻止移出。
-                </p>
-                <form action={removeEngineeringMemberAction}>
-                  <EngineeringFields
-                    engineeringId={engineeringId}
-                    projectId={projectId}
-                  />
-                  <input name="userId" type="hidden" value={user.id} />
-                  <input
-                    name="expectedVersion"
-                    type="hidden"
-                    value={membership.version}
-                  />
-                  <button type="submit">确认移出工程</button>
-                </form>
-              </details>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      {availableMembers.length ? (
-        <section className="engineering-task__section engineering-member-add">
-          <div className="engineering-task__section-title">
-            <strong>添加成员</strong>
-            <small>从项目成员中选择</small>
-          </div>
-          <form action={addEngineeringMemberAction}>
-            <EngineeringFields
-              engineeringId={engineeringId}
-              projectId={projectId}
-            />
-            <label>
-              <span>项目成员</span>
-              <select name="userId" required>
-                {availableMembers.map(({ user }) => (
-                  <option key={user.id} value={user.id}>
-                    {user.displayName}（@{user.username}）
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button type="submit">添加成员</button>
-          </form>
-        </section>
-      ) : (
-        <p className="engineering-task__empty">所有项目成员都已加入工程。</p>
-      )}
+    <div className="engineering-members-direct" aria-label="工程成员">
+      {projectMembers.map(({ user }) => (
+        <EngineeringMemberToggle
+          key={user.id}
+          engineeringId={engineeringId}
+          userId={user.id}
+          name={user.displayName}
+          membership={
+            workspace.members.find((member) => member.user.id === user.id)
+              ?.membership
+          }
+        />
+      ))}
     </div>
   );
 }

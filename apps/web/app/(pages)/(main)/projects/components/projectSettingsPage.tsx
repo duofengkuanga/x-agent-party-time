@@ -4,21 +4,16 @@ import Link from 'next/link';
 import { redirect, RedirectType } from 'next/navigation';
 import { requireCurrentUser } from '@/app/auth';
 import { engineeringService, projectService } from '@/server/runtime/services';
+import { updateProjectAction } from '@/app/actions/projects/projects';
 import {
   normalizeProjectSettingsRoute,
   parseProjectSettingsRoute,
   projectSettingsPath,
   projectSettingsRouteChanged,
-  projectPanelPath,
   engineeringCreatePath,
-} from '@/app/(pages)/(main)/projects/components/routeState';
+} from './routeState';
 import { ProjectSettingsControls } from './projectSettingsControls';
-import {
-  InvitationDialog,
-  ProjectSettingsDialog,
-  CollaborationDialog,
-} from './collaborationDialog';
-
+import { InvitationDialog, CollaborationDialog } from './collaborationDialog';
 import {
   EngineeringDialog,
   EngineeringMemberManagement,
@@ -29,7 +24,8 @@ import {
   EngineeringInformationManagement,
 } from '../engineering/engineeringSettings';
 import { EngineeringTabs } from './engineeringTabs';
-import { DialogFeedback } from '../engineering/settingsFields';
+import { AutoSaveBoundary, AutoSaveForm } from './autoSaveForm';
+import { ProjectDeleteControl } from './projectDeleteControl';
 
 export const metadata: Metadata = {
   title: '我的项目 — Agent Party Time',
@@ -54,9 +50,9 @@ export default async function ProjectSettingsPage({
   const projects = projectService().listProjects(user.id);
   const invitations = projectService().listReceivedInvitations(user.id);
   const requestedRoute = parseProjectSettingsRoute(query);
-  const requestedProject = requestedRoute.projectId
-    ? projects.find(({ project }) => project.id === requestedRoute.projectId)
-    : undefined;
+  const requestedProject = projects.find(
+    ({ project }) => project.id === requestedRoute.projectId,
+  );
   const engineeringIds =
     requestedProject && requestedRoute.panel === 'engineering'
       ? engineeringService()
@@ -72,16 +68,9 @@ export default async function ProjectSettingsPage({
   });
   if (projectSettingsRouteChanged(requestedRoute, route))
     redirect(projectSettingsPath(route), RedirectType.replace);
-  const selected = route.projectId
-    ? projects.find(({ project }) => project.id === route.projectId)
-    : projects[0];
-  const panel = route.panel;
-  const editing =
-    panel === 'project' ||
-    panel === 'collaboration' ||
-    panel === 'invitations' ||
-    (panel === 'engineering' &&
-      (route.engineeringId === 'new' || Boolean(route.mode)));
+  const selected =
+    projects.find(({ project }) => project.id === route.projectId) ??
+    projects[0];
   const owner = selected?.membership.role === 'OWNER';
   const members = selected
     ? projectService().listMembers(user.id, selected.project.id)
@@ -92,73 +81,71 @@ export default async function ProjectSettingsPage({
   const activeEngineering =
     engineering.find(({ id }) => id === route.engineeringId) ?? engineering[0];
   const creatingEngineering =
-    panel === 'engineering' && route.engineeringId === 'new';
-  const engineeringMode = panel === 'engineering' ? route.mode : undefined;
-  const pendingInvitations =
-    selected && owner
-      ? projectService()
-          .listProjectInvitations(user.id, selected.project.id)
-          .filter(({ invitation }) => invitation.status === 'PENDING').length
-      : 0;
+    route.panel === 'engineering' && route.engineeringId === 'new';
 
   return (
-    <>
+    <AutoSaveBoundary>
       <ProjectSettingsControls
         mutationId={randomUUID()}
         projects={projects}
         selectedProjectId={selected?.project.id}
       >
-        {!editing && route.error ? (
+        {!creatingEngineering && route.error ? (
           <p className="project-settings__error" role="alert">
             {route.error}
           </p>
         ) : null}
-        {!editing && route.success ? (
+        {!creatingEngineering && route.success ? (
           <p className="notice notice-success" role="status">
             {route.success}
           </p>
         ) : null}
-        {!selected && panel === 'invitations' ? (
-          <InvitationDialog
-            error={route.error}
-            invitations={invitations}
-            success={route.success}
-          />
+        {route.panel === 'invitations' ? (
+          <InvitationDialog invitations={invitations} />
         ) : null}
         {selected ? (
           <>
             <header className="project-overview__heading">
               <div>
                 <p>{owner ? '项目负责人' : '项目成员'}</p>
-                <h2>{selected.project.name}</h2>
+                {owner ? (
+                  <AutoSaveForm
+                    className="project-name-direct"
+                    save={updateProjectAction}
+                    version={selected.project.version}
+                  >
+                    <input
+                      name="projectId"
+                      type="hidden"
+                      value={selected.project.id}
+                    />
+                    <input
+                      aria-label="项目名称"
+                      autoComplete="off"
+                      defaultValue={selected.project.name}
+                      maxLength={120}
+                      name="name"
+                      required
+                    />
+                  </AutoSaveForm>
+                ) : (
+                  <h2>{selected.project.name}</h2>
+                )}
               </div>
               <nav aria-label="项目操作">
-                {owner ? (
-                  <Link
-                    aria-label={`设置项目 ${selected.project.name}`}
-                    href={projectPanelPath(selected.project.id, 'project')}
-                  >
-                    项目设置
-                  </Link>
-                ) : null}
+                <span className="project-auto-save-note">修改后自动保存</span>
                 <Link href="/submissions">进入提测</Link>
               </nav>
+              {owner ? (
+                <details className="project-delete-disclosure">
+                  <summary>删除项目</summary>
+                  <ProjectDeleteControl
+                    mutationId={randomUUID()}
+                    project={selected.project}
+                  />
+                </details>
+              ) : null}
             </header>
-            {panel === 'invitations' ? (
-              <InvitationDialog
-                error={route.error}
-                invitations={invitations}
-                success={route.success}
-              />
-            ) : null}
-            {panel === 'project' ? (
-              <ProjectSettingsDialog
-                error={route.error}
-                projectId={selected.project.id}
-                success={route.success}
-                userId={user.id}
-              />
-            ) : null}
             <section
               className="project-overview__members"
               aria-label="项目成员"
@@ -167,44 +154,11 @@ export default async function ProjectSettingsPage({
                 <h3>
                   项目成员 <span>{members.length}</span>
                 </h3>
-                <Link
-                  href={projectPanelPath(selected.project.id, 'collaboration')}
-                >
-                  {owner ? '管理成员与邀请' : '查看成员'}
-                  {pendingInvitations
-                    ? `（${pendingInvitations} 条待接受）`
-                    : ''}
-                </Link>
               </div>
-              {panel === 'collaboration' ? (
-                <CollaborationDialog
-                  error={route.error}
-                  projectId={selected.project.id}
-                  success={route.success}
-                  userId={user.id}
-                />
-              ) : (
-                <ul>
-                  {members.map(({ membership, user: member }) => (
-                    <li key={member.id}>
-                      <span
-                        className="project-overview__avatar"
-                        aria-hidden="true"
-                      >
-                        {member.displayName.slice(0, 1)}
-                      </span>
-                      <span>
-                        <strong>
-                          {member.displayName}
-                          {member.id === user.id ? '（你）' : ''}
-                        </strong>
-                        <small>@{member.username}</small>
-                      </span>
-                      {membership.role === 'OWNER' ? <em>负责人</em> : null}
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <CollaborationDialog
+                projectId={selected.project.id}
+                userId={user.id}
+              />
             </section>
             <section
               className="project-overview__engineering"
@@ -263,16 +217,8 @@ export default async function ProjectSettingsPage({
                     owner={owner}
                     projectId={selected.project.id}
                     userId={user.id}
-                    feedback={
-                      engineeringMode ? (
-                        <DialogFeedback
-                          error={route.error}
-                          success={route.success}
-                        />
-                      ) : null
-                    }
                     informationEditor={
-                      engineeringMode === 'information' && owner ? (
+                      owner ? (
                         <EngineeringInformationManagement
                           engineeringId={activeEngineering.id}
                           projectId={selected.project.id}
@@ -281,17 +227,16 @@ export default async function ProjectSettingsPage({
                       ) : null
                     }
                     membersEditor={
-                      engineeringMode === 'members' && owner ? (
+                      owner ? (
                         <EngineeringMemberManagement
                           engineeringId={activeEngineering.id}
-                          projectId={selected.project.id}
                           projectMembers={members}
                           userId={user.id}
                         />
                       ) : null
                     }
                     environmentsEditor={
-                      engineeringMode === 'environments' && owner ? (
+                      owner ? (
                         <EngineeringEnvironmentManagement
                           engineeringId={activeEngineering.id}
                           projectId={selected.project.id}
@@ -323,6 +268,6 @@ export default async function ProjectSettingsPage({
           </>
         ) : null}
       </ProjectSettingsControls>
-    </>
+    </AutoSaveBoundary>
   );
 }

@@ -11,18 +11,16 @@ import {
 import {
   createEngineeringBindingAction,
   archiveEngineeringAction,
-  createEnvironmentAction,
   deleteEnvironmentAction,
   updateEngineeringAction,
   updateEnvironmentAction,
 } from '@/app/actions/projects/engineering';
 import { DeploymentFields } from '@/app/(pages)/(main)/projects/engineering/deploymentFields';
-import { EngineeringCreateEnvironments } from './engineeringCreateEnvironments';
 import { BindingDeleteForm } from './bindingDeleteForm';
 import { AutoRefresh } from '@/app/(pages)/(main)/components/autoRefresh';
-import { EngineeringTaskHeading, EngineeringFields } from './settingsFields';
-import { engineeringViewPath } from '../components/routeState';
-import { SaveButton } from '../components/saveButton';
+import { EngineeringFields } from './settingsFields';
+import { AutoSaveForm } from '../components/autoSaveForm';
+import { NewEnvironmentRow } from './newEnvironmentRow';
 
 export function EngineeringEnvironmentManagement({
   engineeringId,
@@ -34,93 +32,55 @@ export function EngineeringEnvironmentManagement({
   userId: string;
 }) {
   const workspace = engineeringService().getWorkspace(userId, engineeringId);
-
   return (
-    <div className="engineering-task engineering-task--environments project-inline-form">
-      <EngineeringTaskHeading
-        label="环境管理"
-        engineeringId={engineeringId}
-        projectId={projectId}
-      />
-
-      <section className="engineering-task__section">
-        <div className="engineering-task__section-title">
-          <strong>测试环境</strong>
-          <small>{workspace.environments.length} 个</small>
+    <div className="environment-direct-list">
+      {workspace.environments.map((environment) => (
+        <div className="environment-direct-row" key={environment.id}>
+          <AutoSaveForm
+            className="environment-direct-form"
+            save={updateEnvironmentAction}
+            version={environment.version}
+          >
+            <EngineeringFields
+              engineeringId={engineeringId}
+              projectId={projectId}
+            />
+            <input name="environmentId" type="hidden" value={environment.id} />
+            <label>
+              <span>环境名称</span>
+              <input
+                defaultValue={environment.name}
+                maxLength={120}
+                name="name"
+                required
+              />
+            </label>
+            <DeploymentFields deployment={environment.deployment} />
+          </AutoSaveForm>
+          <details className="project-inline-confirmation environment-direct-delete">
+            <summary>删除环境</summary>
+            <p>删除后无法恢复此环境。已用于提测的环境不能删除。</p>
+            <form action={deleteEnvironmentAction}>
+              <EngineeringFields
+                engineeringId={engineeringId}
+                projectId={projectId}
+              />
+              <input
+                name="environmentId"
+                type="hidden"
+                value={environment.id}
+              />
+              <input
+                name="expectedVersion"
+                type="hidden"
+                value={environment.version}
+              />
+              <button type="submit">确认删除环境</button>
+            </form>
+          </details>
         </div>
-        <div className="engineering-environment-list">
-          {workspace.environments.map((environment) => (
-            <details
-              className="engineering-environment-row"
-              key={environment.id}
-            >
-              <summary>
-                <span>
-                  <strong>{environment.name}</strong>
-                  <small>{deploymentLabel(environment.deployment.kind)}</small>
-                </span>
-                <small>编辑</small>
-              </summary>
-              <form action={updateEnvironmentAction}>
-                <EngineeringFields
-                  engineeringId={engineeringId}
-                  projectId={projectId}
-                />
-                <input
-                  name="environmentId"
-                  type="hidden"
-                  value={environment.id}
-                />
-                <input
-                  name="expectedVersion"
-                  type="hidden"
-                  value={environment.version}
-                />
-                <label>
-                  <span>环境名称</span>
-                  <input defaultValue={environment.name} name="name" required />
-                </label>
-                <DeploymentFields deployment={environment.deployment} />
-                <div className="engineering-task__form-actions">
-                  <SaveButton>保存环境</SaveButton>
-                  <details className="project-inline-confirmation">
-                    <summary>删除环境</summary>
-                    <p>删除后无法恢复此环境。已用于提测的环境不能删除。</p>
-                    <button
-                      className="engineering-task__danger"
-                      formAction={deleteEnvironmentAction}
-                      type="submit"
-                    >
-                      确认删除环境
-                    </button>
-                  </details>
-                </div>
-              </form>
-            </details>
-          ))}
-        </div>
-        {workspace.environments.length ? null : (
-          <p className="engineering-task__empty">还没有测试环境。</p>
-        )}
-      </section>
-
-      <details className="engineering-environment-create">
-        <summary>添加测试环境</summary>
-        <form
-          action={createEnvironmentAction}
-          className="engineering-environment-batch-form"
-        >
-          <EngineeringFields
-            engineeringId={engineeringId}
-            projectId={projectId}
-          />
-          <EngineeringCreateEnvironments
-            initialMutationId={randomUUID()}
-            saveContext="一起保存到当前工程"
-            submitLabel="保存测试环境"
-          />
-        </form>
-      </details>
+      ))}
+      <NewEnvironmentRow engineeringId={engineeringId} />
     </div>
   );
 }
@@ -135,111 +95,50 @@ export function EngineeringInformationManagement({
   userId: string;
 }) {
   const service = engineeringService();
-  const workspace = service.getWorkspace(userId, engineeringId);
+  const { engineering } = service.getWorkspace(userId, engineeringId);
   const identifierLocked = service.isIdentifierLocked(userId, engineeringId);
-
   return (
-    <div className="engineering-task project-inline-form">
-      <EngineeringTaskHeading
-        label="信息管理"
-        engineeringId={engineeringId}
-        projectId={projectId}
-      />
-
-      <section className="engineering-task__section">
-        <form
-          action={updateEngineeringAction}
-          className="engineering-information-form"
-        >
-          <header className="engineering-information-form__header">
-            <div>
-              <strong>工程信息</strong>
-              <small>维护工程在提测与缺陷协作中展示的基础信息。</small>
-            </div>
-            <SaveButton>保存工程信息</SaveButton>
-          </header>
-          <EngineeringFields
-            engineeringId={engineeringId}
-            projectId={projectId}
-          />
-          <input
-            name="expectedVersion"
-            type="hidden"
-            value={workspace.engineering.version}
-          />
-          <div className="engineering-information-form__fields">
-            <label className="engineering-information-form__name">
-              <span>名称</span>
-              <input
-                defaultValue={workspace.engineering.name}
-                name="name"
-                required
-              />
-            </label>
-            <label>
-              <span>归属</span>
-              <select defaultValue={workspace.engineering.type} name="type">
-                <option value="FRONTEND">前端</option>
-                <option value="BACKEND">后端</option>
-              </select>
-            </label>
-            <label>
-              <span>稳定标识</span>
-              <input
-                aria-describedby={
-                  identifierLocked
-                    ? 'engineering-identifier-lock'
-                    : 'engineering-identifier-format'
-                }
-                defaultValue={workspace.engineering.identifier}
-                maxLength={40}
-                name="identifier"
-                pattern="[a-z\p{Script=Han}][a-z0-9\p{Script=Han}]*(?:-[a-z0-9\p{Script=Han}]+)*"
-                readOnly={identifierLocked}
-                required
-              />
-              {identifierLocked ? (
-                <small id="engineering-identifier-lock">
-                  已被提测引用，不可修改。
-                </small>
-              ) : (
-                <small id="engineering-identifier-format">
-                  支持中文、小写字母、数字和单个连字符，需以中文或小写字母开头。
-                </small>
-              )}
-            </label>
-          </div>
-        </form>
-      </section>
-
-      {!workspace.engineering.archivedAt ? (
-        <details className="engineering-task__archive">
-          <summary>归档工程</summary>
-          <form action={archiveEngineeringAction}>
-            <EngineeringFields
-              engineeringId={engineeringId}
-              projectId={projectId}
-            />
-            <input
-              name="expectedVersion"
-              type="hidden"
-              value={workspace.engineering.version}
-            />
-            <p>归档后保留历史记录，并停止继续使用这个工程。</p>
-            <button type="submit">确认归档工程</button>
-          </form>
-        </details>
-      ) : (
-        <p className="engineering-task__empty">这个工程已经归档。</p>
-      )}
-    </div>
+    <AutoSaveForm
+      className="engineering-identity-form"
+      save={updateEngineeringAction}
+      version={engineering.version}
+    >
+      <EngineeringFields engineeringId={engineeringId} projectId={projectId} />
+      <label className="engineering-identity-form__name">
+        <span>工程名称</span>
+        <input
+          defaultValue={engineering.name}
+          maxLength={120}
+          name="name"
+          required
+        />
+      </label>
+      <label>
+        <span>归属</span>
+        <select defaultValue={engineering.type} name="type">
+          <option value="FRONTEND">前端</option>
+          <option value="BACKEND">后端</option>
+        </select>
+      </label>
+      <label>
+        <span>稳定标识</span>
+        <input
+          defaultValue={engineering.identifier}
+          maxLength={40}
+          name="identifier"
+          pattern="[a-z\p{Script=Han}][a-z0-9\p{Script=Han}]*(?:-[a-z0-9\p{Script=Han}]+)*"
+          readOnly={identifierLocked}
+          required
+        />
+        {identifierLocked ? <small>已用于提测，不可修改</small> : null}
+      </label>
+    </AutoSaveForm>
   );
 }
 
 export function EngineeringDetail({
   bindingRequestId,
   engineeringId,
-  feedback,
   informationEditor,
   membersEditor,
   environmentsEditor,
@@ -249,7 +148,6 @@ export function EngineeringDetail({
 }: {
   bindingRequestId?: string;
   engineeringId: string;
-  feedback?: ReactNode;
   informationEditor?: ReactNode;
   membersEditor?: ReactNode;
   environmentsEditor?: ReactNode;
@@ -291,27 +189,18 @@ export function EngineeringDetail({
       aria-label={workspace.engineering.name}
     >
       <header className="project-engineering__heading">
-        <div>
-          <span className="project-engineering__type">
-            {workspace.engineering.type === 'FRONTEND' ? '前端' : '后端'}
-          </span>
-          <h4>{workspace.engineering.name}</h4>
-          <small>{workspace.engineering.identifier}</small>
-          {workspace.engineering.archivedAt ? <span>已归档</span> : null}
-        </div>
-        {owner && !informationEditor ? (
-          <Link
-            href={engineeringViewPath(projectId, engineeringId, 'information')}
-            replace
-            scroll={false}
-          >
-            编辑信息
-          </Link>
-        ) : null}
+        {informationEditor || (
+          <div>
+            <span className="project-engineering__type">
+              {workspace.engineering.type === 'FRONTEND' ? '前端' : '后端'}
+            </span>
+            <h4>{workspace.engineering.name}</h4>
+            <small>{workspace.engineering.identifier}</small>
+            {workspace.engineering.archivedAt ? <span>已归档</span> : null}
+          </div>
+        )}
       </header>
 
-      {feedback}
-      {informationEditor}
       <dl>
         <div>
           <dt>仓库地址</dt>
@@ -320,54 +209,39 @@ export function EngineeringDetail({
         <div>
           <dt>工程成员</dt>
           <dd>
-            <span>
-              {workspace.members.length
-                ? workspace.members
-                    .map(({ user }) => user.displayName)
-                    .join('、')
-                : '暂未配置工程成员'}
-            </span>
-            {owner && !membersEditor ? (
-              <Link
-                href={engineeringViewPath(projectId, engineeringId, 'members')}
-                replace
-                scroll={false}
-              >
-                管理成员
-              </Link>
-            ) : null}
+            {membersEditor || (
+              <span>
+                {workspace.members.length
+                  ? workspace.members
+                      .map(({ user }) => user.displayName)
+                      .join('、')
+                  : '暂未配置工程成员'}
+              </span>
+            )}
           </dd>
         </div>
       </dl>
 
-      {membersEditor}
-      <div
-        className="project-engineering__body"
-        data-editing-environments={environmentsEditor ? true : undefined}
-      >
+      <div className="project-engineering__body">
         <section
           className="engineering-detail__environments"
           aria-label={`${workspace.engineering.name}测试环境`}
         >
-          {environmentsEditor || (
+          {environmentsEditor ? (
             <>
               <div className="collaboration-section-title">
                 <h5>
                   测试环境 <small>{workspace.environments.length}</small>
                 </h5>
-                {owner ? (
-                  <Link
-                    href={engineeringViewPath(
-                      projectId,
-                      engineeringId,
-                      'environments',
-                    )}
-                    replace
-                    scroll={false}
-                  >
-                    管理环境
-                  </Link>
-                ) : null}
+              </div>
+              {environmentsEditor}
+            </>
+          ) : (
+            <>
+              <div className="collaboration-section-title">
+                <h5>
+                  测试环境 <small>{workspace.environments.length}</small>
+                </h5>
               </div>
               {workspace.environments.length ? (
                 workspace.environments.map((environment) => (
@@ -494,6 +368,24 @@ export function EngineeringDetail({
           )}
         </section>
       </div>
+      {owner && !workspace.engineering.archivedAt ? (
+        <details className="engineering-archive-direct">
+          <summary>归档工程</summary>
+          <p>归档后保留历史记录，并停止继续使用这个工程。</p>
+          <form action={archiveEngineeringAction}>
+            <EngineeringFields
+              engineeringId={engineeringId}
+              projectId={projectId}
+            />
+            <input
+              name="expectedVersion"
+              type="hidden"
+              value={workspace.engineering.version}
+            />
+            <button type="submit">确认归档工程</button>
+          </form>
+        </details>
+      ) : null}
     </article>
   );
 }

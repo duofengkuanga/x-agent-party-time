@@ -1,19 +1,13 @@
-import Link from 'next/link';
 import { projectService } from '@/server/runtime/services';
 import type { ReceivedProjectInvitation } from '@/contracts/projects/project';
 import {
   inviteProjectUserAction,
   removeProjectMemberAction,
   revokeProjectInvitationAction,
-  updateProjectAction,
 } from '@/app/actions/projects/projects';
 import { Dialog } from './dialog';
 import { DialogFeedback, ProjectFields } from '../engineering/settingsFields';
 import { InvitationForm } from './invitationForm';
-import { ProjectDeleteControl } from './projectDeleteControl';
-import { randomUUID } from 'node:crypto';
-import { projectSettingsPath } from './routeState';
-import { SaveButton } from './saveButton';
 
 export function CollaborationDialog({
   error,
@@ -37,18 +31,10 @@ export function CollaborationDialog({
     ({ invitation }) => invitation.status === 'PENDING',
   );
   return (
-    <Dialog
-      className="project-collaboration-settings"
-      closeHref={projectSettingsPath({ projectId })}
-      title={`${summary.project.name} · 成员与邀请`}
-    >
+    <div className="project-members-direct">
       <DialogFeedback error={error} success={success} />
       <div className="collaboration-ledger">
         <section>
-          <div className="collaboration-section-title">
-            <span>项目成员</span>
-            <small>{members.length} 人</small>
-          </div>
           <div className="collaboration-member-list">
             {members.map(({ membership, user }) => (
               <article className="collaboration-member" key={user.id}>
@@ -108,7 +94,7 @@ export function CollaborationDialog({
           </section>
         ) : null}
 
-        {owner ? (
+        {owner && pendingInvitations.length ? (
           <section>
             <div className="collaboration-section-title">
               <span>待处理邀请</span>
@@ -150,58 +136,7 @@ export function CollaborationDialog({
           </section>
         ) : null}
       </div>
-    </Dialog>
-  );
-}
-
-export function ProjectSettingsDialog({
-  error,
-  projectId,
-  success,
-  userId,
-}: {
-  error?: string;
-  projectId: string;
-  success?: string;
-  userId: string;
-}) {
-  const summary = projectService().getProject(userId, projectId);
-  if (summary.membership.role !== 'OWNER') return null;
-  return (
-    <Dialog
-      className="project-name-settings"
-      closeHref={projectSettingsPath({ projectId })}
-      title={`${summary.project.name} · 项目设置`}
-    >
-      <DialogFeedback error={error} success={success} />
-      <form action={updateProjectAction}>
-        <ProjectFields projectId={projectId} />
-        <input
-          name="expectedVersion"
-          type="hidden"
-          value={summary.project.version}
-        />
-        <label>
-          <span>项目名称</span>
-          <input
-            autoComplete="off"
-            defaultValue={summary.project.name}
-            maxLength={120}
-            name="name"
-            required
-          />
-          <small>项目名称会展示在项目列表、成员协作和工程目录中。</small>
-        </label>
-        <div className="dialog-actions">
-          <Link href={projectSettingsPath({ projectId })}>取消</Link>
-          <SaveButton className="repair-primary">保存项目名称</SaveButton>
-        </div>
-      </form>
-      <ProjectDeleteControl
-        mutationId={randomUUID()}
-        project={summary.project}
-      />
-    </Dialog>
+    </div>
   );
 }
 

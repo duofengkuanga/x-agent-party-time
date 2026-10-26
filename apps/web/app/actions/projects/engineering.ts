@@ -10,11 +10,11 @@ import {
   formStringList,
   integerFormField,
   runRedirectMutation,
+  runInteractiveMutation,
 } from '@/app/actions/actionTransport';
 import {
   engineeringCreatePath,
   engineeringSettingsPath,
-  engineeringViewPath,
   bindingSettingsPath,
 } from '@/app/(pages)/(main)/projects/components/routeState';
 import {
@@ -54,24 +54,29 @@ export async function createEngineeringAction(formData: FormData): Promise<never
   });
 }
 
-export async function updateEngineeringAction(formData: FormData): Promise<never> {
-  const ids = engineeringIds(formData);
-  const path = engineeringViewPath(ids.projectId, ids.engineeringId, 'information');
-  return runEngineeringRedirect(formData, path, (userId) => {
-    engineeringService().updateEngineering(userId, ids.engineeringId, {
-      mutationId: formField(formData, 'mutationId'),
-      expectedVersion: integerFormField(formData, 'expectedVersion'),
-      name: formField(formData, 'name'),
-      type: EngineeringTypeSchema.parse(formField(formData, 'type')),
-      identifier: formField(formData, 'identifier'),
-    });
-    return { path, message: '工程设置已更新' };
+export async function updateEngineeringAction(formData: FormData) {
+  return runInteractiveMutation({
+    validationEvent: 'engineering_autosave_validation_failed',
+    command: ({ userId }) => ({
+      result: engineeringService().updateEngineering(
+        userId,
+        formField(formData, 'engineeringId'),
+        {
+          mutationId: formField(formData, 'mutationId'),
+          expectedVersion: integerFormField(formData, 'expectedVersion'),
+          name: formField(formData, 'name'),
+          type: EngineeringTypeSchema.parse(formField(formData, 'type')),
+          identifier: formField(formData, 'identifier'),
+        },
+      ),
+      refreshPaths: REFRESH_PATHS,
+    }),
   });
 }
 
 export async function archiveEngineeringAction(formData: FormData): Promise<never> {
   const ids = engineeringIds(formData);
-  const errorPath = engineeringViewPath(ids.projectId, ids.engineeringId, 'information');
+  const errorPath = engineeringSettingsPath(ids.projectId, ids.engineeringId);
   return runEngineeringRedirect(formData, errorPath, (userId) => {
     engineeringService().archiveEngineering(userId, ids.engineeringId, {
       mutationId: formField(formData, 'mutationId'),
@@ -84,71 +89,81 @@ export async function archiveEngineeringAction(formData: FormData): Promise<neve
   });
 }
 
-export async function addEngineeringMemberAction(formData: FormData): Promise<never> {
-  const ids = engineeringIds(formData);
-  const path = engineeringViewPath(ids.projectId, ids.engineeringId, 'members');
-  return runEngineeringRedirect(formData, path, (userId) => {
-    engineeringService().addMember(
-      userId,
-      ids.engineeringId,
-      formField(formData, 'userId'),
-      { mutationId: formField(formData, 'mutationId') },
-    );
-    return { path, message: '工程成员已添加' };
+export async function addEngineeringMemberAction(formData: FormData) {
+  return runInteractiveMutation({
+    validationEvent: 'engineering_member_add_validation_failed',
+    command: ({ userId }) => ({
+      result: engineeringService().addMember(
+        userId,
+        formField(formData, 'engineeringId'),
+        formField(formData, 'userId'),
+        {
+          mutationId: formField(formData, 'mutationId'),
+        },
+      ),
+      refreshPaths: REFRESH_PATHS,
+    }),
   });
 }
 
-export async function removeEngineeringMemberAction(formData: FormData): Promise<never> {
-  const ids = engineeringIds(formData);
-  const path = engineeringViewPath(ids.projectId, ids.engineeringId, 'members');
-  return runEngineeringRedirect(formData, path, (userId) => {
-    engineeringService().removeMember(
-      userId,
-      ids.engineeringId,
-      formField(formData, 'userId'),
-      {
-        mutationId: formField(formData, 'mutationId'),
-        expectedVersion: integerFormField(formData, 'expectedVersion'),
-      },
-    );
-    return { path, message: '工程成员已移除' };
+export async function removeEngineeringMemberAction(formData: FormData) {
+  return runInteractiveMutation({
+    validationEvent: 'engineering_member_remove_validation_failed',
+    command: ({ userId }) => ({
+      result: engineeringService().removeMember(
+        userId,
+        formField(formData, 'engineeringId'),
+        formField(formData, 'userId'),
+        {
+          mutationId: formField(formData, 'mutationId'),
+          expectedVersion: integerFormField(formData, 'expectedVersion'),
+        },
+      ),
+      refreshPaths: REFRESH_PATHS,
+    }),
   });
 }
 
-export async function createEnvironmentAction(formData: FormData): Promise<never> {
-  const ids = engineeringIds(formData);
-  const path = engineeringViewPath(ids.projectId, ids.engineeringId, 'environments');
-  return runEngineeringRedirect(formData, path, (userId) => {
-    engineeringService().createEnvironments(
-      userId,
-      ids.engineeringId,
-      formStringList(formData, 'environmentKey').map((key) => ({
-        mutationId: formField(formData, `environmentMutationId:${key}`),
-        name: formField(formData, `environmentName:${key}`),
-        deployment: deploymentField(formData, key),
-      })),
-    );
-    return { path, message: '测试环境已创建' };
+export async function createEnvironmentAction(formData: FormData) {
+  return runInteractiveMutation({
+    validationEvent: 'environment_create_validation_failed',
+    command: ({ userId }) => ({
+      result: engineeringService().createEnvironment(
+        userId,
+        formField(formData, 'engineeringId'),
+        {
+          mutationId: formField(formData, 'mutationId'),
+          name: formField(formData, 'name'),
+          deployment: deploymentField(formData),
+        },
+      ),
+      refreshPaths: REFRESH_PATHS,
+    }),
   });
 }
 
-export async function updateEnvironmentAction(formData: FormData): Promise<never> {
-  const ids = engineeringIds(formData);
-  const path = engineeringViewPath(ids.projectId, ids.engineeringId, 'environments');
-  return runEngineeringRedirect(formData, path, (userId) => {
-    engineeringService().updateEnvironment(userId, formField(formData, 'environmentId'), {
-      mutationId: formField(formData, 'mutationId'),
-      expectedVersion: integerFormField(formData, 'expectedVersion'),
-      name: formField(formData, 'name'),
-      deployment: deploymentField(formData),
-    });
-    return { path, message: '测试环境已更新' };
+export async function updateEnvironmentAction(formData: FormData) {
+  return runInteractiveMutation({
+    validationEvent: 'environment_autosave_validation_failed',
+    command: ({ userId }) => ({
+      result: engineeringService().updateEnvironment(
+        userId,
+        formField(formData, 'environmentId'),
+        {
+          mutationId: formField(formData, 'mutationId'),
+          expectedVersion: integerFormField(formData, 'expectedVersion'),
+          name: formField(formData, 'name'),
+          deployment: deploymentField(formData),
+        },
+      ),
+      refreshPaths: REFRESH_PATHS,
+    }),
   });
 }
 
 export async function deleteEnvironmentAction(formData: FormData): Promise<never> {
   const ids = engineeringIds(formData);
-  const path = engineeringViewPath(ids.projectId, ids.engineeringId, 'environments');
+  const path = engineeringSettingsPath(ids.projectId, ids.engineeringId);
   return runEngineeringRedirect(formData, path, (userId) => {
     engineeringService().deleteEnvironment(userId, formField(formData, 'environmentId'), {
       mutationId: formField(formData, 'mutationId'),

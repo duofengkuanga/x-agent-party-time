@@ -1,7 +1,4 @@
-export type ProjectSettingsPanel =
-  'invitations' | 'project' | 'collaboration' | 'engineering';
-
-export type EngineeringSettingsMode = 'members' | 'environments' | 'information';
+export type ProjectSettingsPanel = 'invitations' | 'engineering';
 
 export type ProjectSettingsRoute = {
   projectId?: string;
@@ -52,12 +49,6 @@ export function normalizeProjectSettingsRoute(
   if (!isPanel(route.panel) || project.id !== route.projectId)
     return compactRoute({ projectId: project.id, ...feedback });
   const parent = { projectId: project.id, panel: route.panel, ...feedback };
-  if (route.panel === 'project' && !project.owner)
-    return compactRoute({
-      projectId: project.id,
-      panel: 'collaboration',
-      ...feedback,
-    });
   if (route.panel !== 'engineering') return compactRoute(parent);
   if (!route.engineeringId) return compactRoute(parent);
   if (route.engineeringId === 'new')
@@ -66,15 +57,11 @@ export function normalizeProjectSettingsRoute(
       : compactRoute(parent);
   if (!access.engineeringIds?.includes(route.engineeringId)) return compactRoute(parent);
 
-  const detail = { ...parent, engineeringId: route.engineeringId };
-  if (!route.mode) {
-    return compactRoute({
-      ...detail,
-      bindingRequestId: route.bindingRequestId,
-    });
-  }
-  if (!project.owner || !isEngineeringMode(route.mode)) return compactRoute(detail);
-  return compactRoute({ ...detail, mode: route.mode });
+  return compactRoute({
+    ...parent,
+    engineeringId: route.engineeringId,
+    bindingRequestId: route.bindingRequestId,
+  });
 }
 
 export function projectSettingsRouteChanged(
@@ -119,19 +106,6 @@ export function engineeringCreatePath(projectId: string): string {
   return engineeringSettingsPath(projectId, 'new');
 }
 
-export function engineeringViewPath(
-  projectId: string,
-  engineeringId: string,
-  mode: EngineeringSettingsMode,
-): string {
-  return projectSettingsPath({
-    projectId,
-    panel: 'engineering',
-    engineeringId,
-    mode,
-  });
-}
-
 export function bindingSettingsPath(
   projectId: string,
   engineeringId: string,
@@ -152,14 +126,5 @@ function compactRoute(route: ProjectSettingsRoute): ProjectSettingsRoute {
 }
 
 function isPanel(value: string | undefined): value is ProjectSettingsPanel {
-  return (
-    value === 'invitations' ||
-    value === 'project' ||
-    value === 'collaboration' ||
-    value === 'engineering'
-  );
-}
-
-function isEngineeringMode(value: string | undefined): value is EngineeringSettingsMode {
-  return value === 'members' || value === 'environments' || value === 'information';
+  return value === 'invitations' || value === 'engineering';
 }

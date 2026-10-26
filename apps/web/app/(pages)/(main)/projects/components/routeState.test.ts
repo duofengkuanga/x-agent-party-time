@@ -49,7 +49,7 @@ describe('Project settings route state', () => {
     [
       '非所有者的项目面板',
       { projectId: 'member', panel: 'project' },
-      { projectId: 'member', panel: 'collaboration' },
+      { projectId: 'member' },
     ],
     [
       '非所有者新建工程',

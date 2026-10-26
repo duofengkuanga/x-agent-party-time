@@ -45,7 +45,7 @@ cases:
       - visible: '.collab-shell[data-theme="paper"]'
       - visible: '.collab-board'
 
-  - name: project settings keep theme colors and require confirmation before deletion
+  - name: project deletion stays inline and requires the project name
     steps:
       - open: __BASE_URL__/projects
       - click: '.project-settings__primary-action'
@@ -56,66 +56,25 @@ cases:
           }
       - click: '#project-create-form button[type="submit"]'
       - wait: '.project-overview__empty'
-      - click: '[aria-label="设置项目 删除项目浏览器验收"]'
-      - wait: '.project-name-settings'
-      - eval: >-
-          (()=>{const style=document.createElement('style');style.textContent='*{transition:none!important}';document.head.append(style);
-          document.documentElement.style.colorScheme='dark';const shell=document.querySelector('.collab-shell');
-          const field=document.querySelector('.project-name-settings input[name=name]'),close=document.querySelector('.project-inline-settings__close'),probe=document.createElement('span');
-          probe.style.cssText='background:var(--panel);color:var(--muted)';shell.append(probe);
-          sessionStorage.setItem('projectSettingsColors',String(['paper','night'].every(theme=>{shell.dataset.theme=theme;
-          return getComputedStyle(field).colorScheme===(theme==='paper'?'light':'dark')&&getComputedStyle(field).backgroundColor===getComputedStyle(probe).backgroundColor
-          &&getComputedStyle(field).color===getComputedStyle(shell).color&&getComputedStyle(close).color===getComputedStyle(probe).color&&getComputedStyle(close).textDecorationLine==='none';})));
-          probe.remove();shell.dataset.theme='paper';return true;})()
-      - click: '.project-inline-settings__close'
-      - click: '.project-overview__members a[href*="panel=collaboration"]'
-      - wait: 'input[aria-label="受邀用户名"]'
-      - eval: >-
-          (()=>{const shell=document.querySelector('.collab-shell'),field=document.querySelector('input[aria-label=受邀用户名]');
-          const style=document.createElement('style');style.textContent='*{transition:none!important}';document.head.append(style);
-          sessionStorage.setItem('projectMemberColors',String(['paper','night'].every(theme=>{shell.dataset.theme=theme;
-          return getComputedStyle(field).colorScheme===(theme==='paper'?'light':'dark')&&getComputedStyle(field).color===getComputedStyle(shell).color&&getComputedStyle(field).backgroundColor!=='rgba(0, 0, 0, 0)';})));
-          shell.dataset.theme='paper';return true;})()
-      - click: '.project-inline-settings__close'
-      - click: '[aria-label="设置项目 删除项目浏览器验收"]'
+      - eval: 'sessionStorage.setItem("projectDeleteAtTop",String(!!document.querySelector(".project-overview__heading .project-delete-disclosure")));true'
+      - click: '.project-delete-disclosure > summary'
       - click: '.project-delete-control > button'
       - wait: '.project-delete-confirmation'
-      - eval: 'sessionStorage.setItem("projectDeleteInitiallyDisabled",String(document.querySelector(".project-delete-form button[type=submit]").disabled));true'
+      - eval: 'sessionStorage.setItem("projectDeleteInitiallyDisabled", String(document.querySelector(".project-delete-form button[type=submit]").disabled));true'
       - fill: { sel: 'input[name="confirmationName"]', text: 错误项目名称 }
-      - eval: 'sessionStorage.setItem("projectDeleteWrongNameDisabled",String(document.querySelector(".project-delete-form button[type=submit]").disabled));true'
+      - eval: 'sessionStorage.setItem("projectDeleteWrongNameDisabled", String(document.querySelector(".project-delete-form button[type=submit]").disabled));true'
       - click: '.project-delete-form button[type="button"]'
       - eval: 'sessionStorage.setItem("projectDeleteCancelFocus",String(document.activeElement===document.querySelector(".project-delete-control > button")));true'
       - click: '.project-delete-control > button'
       - fill:
           { sel: 'input[name="confirmationName"]', text: 删除项目浏览器验收 }
-      - eval: 'document.querySelector(".project-delete-form input[name=expectedVersion]").value="99";true'
       - click: '.project-delete-form button[type="submit"]'
-      - wait: '.project-dialog__feedback--error'
-      - eval: 'sessionStorage.setItem("projectDeleteErrorVisible",String(document.querySelector(".project-dialog__feedback--error").textContent.includes("项目已更新")));document.querySelector(".project-delete-control > button")?.click();true'
-      - wait: 'input[name="confirmationName"]'
-      - fill:
-          { sel: 'input[name="confirmationName"]', text: 删除项目浏览器验收 }
-      - eval: >-
-          (()=>{const shell=document.querySelector('.collab-shell'),form=document.querySelector('.project-delete-form');
-          sessionStorage.setItem('projectDeleteFits',String(['paper','night'].every(theme=>{shell.dataset.theme=theme;form.scrollIntoView({block:'center'});
-          const box=form.getBoundingClientRect();return box.top>=0&&box.bottom<=innerHeight&&box.right<=innerWidth;})));shell.dataset.theme='paper';
-          window.projectDeleteFetch=window.fetch;window.fetch=(...args)=>new Headers(args[1]?.headers).has('Next-Action')
-          ?new Promise((resolve,reject)=>{window.releaseProjectDelete=()=>window.projectDeleteFetch(...args).then(resolve,reject);})
-          :window.projectDeleteFetch(...args);return true;})()
-      - click: '.project-delete-form button[type="submit"]'
-      - wait: '.project-delete-confirmation[aria-busy="true"]'
-      - eval: >-
-          sessionStorage.setItem('projectDeletePendingDisabled',String([...document.querySelectorAll('.project-delete-form button,.project-delete-form input[name=confirmationName]')].every(control=>control.disabled)
-          &&document.querySelector('.project-delete-form [role=status]').textContent.includes('正在删除')));
-          window.fetch=window.projectDeleteFetch;window.releaseProjectDelete();true
       - wait: '.notice-success'
     assert:
       - text: { sel: '.notice-success', contains: 项目已删除 }
-      - hidden: '[aria-label="设置项目 删除项目浏览器验收"]'
-      - hidden: '.project-name-settings'
-      - eval: >-
-          ['projectSettingsColors','projectMemberColors','projectDeleteInitiallyDisabled','projectDeleteWrongNameDisabled',
-          'projectDeleteCancelFocus','projectDeleteErrorVisible','projectDeleteFits','projectDeletePendingDisabled'].every(key=>sessionStorage.getItem(key)==='true')
+      - hidden: '[role="dialog"]'
+      - hidden: '.repair-overlay'
+      - eval: "['projectDeleteAtTop','projectDeleteInitiallyDisabled','projectDeleteWrongNameDisabled','projectDeleteCancelFocus'].every(key=>sessionStorage.getItem(key)==='true')"
 
   - name: project overview switches engineering tabs without dialogs
     steps:
@@ -129,6 +88,7 @@ cases:
       - count: { sel: '.project-settings__list [aria-current="page"]', eq: 1 }
       - hidden: '[role="dialog"]'
       - hidden: '.repair-overlay'
+      - hidden: '.auto-save-form'
       - hidden: '.project-engineering a[href*="mode="]'
       - text: { sel: '.project-overview__members', contains: 浏览器测试执行人 }
       - text:
@@ -190,31 +150,29 @@ cases:
           }
       - hidden: '[role="dialog"]'
 
-  - name: project owner creates an engineering and edits it directly from the overview
+  - name: direct editing autosaves and waits for pending input before navigation
     steps:
       - open: __BASE_URL__/projects?project=__PROJECT_ID__
       - wait: '.project-settings__primary-action'
       - click: '.project-settings__primary-action'
       - fill:
-          { sel: '#project-create-form input[name="name"]', text: 项目总览验收 }
-      - eval: >-
-          window.projectCreateFetch=window.fetch;window.fetch=(...args)=>new Headers(args[1]?.headers).has('Next-Action')
-          ?new Promise((resolve,reject)=>{window.releaseProjectCreate=()=>window.projectCreateFetch(...args).then(resolve,reject);})
-          :window.projectCreateFetch(...args);true
+          {
+            sel: '#project-create-form input[name="name"]',
+            text: 自动保存初始项目,
+          }
       - click: '#project-create-form button[type="submit"]'
-      - wait: '#project-create-form button:disabled'
-      - eval: >-
-          sessionStorage.setItem('projectCreatePending',String(document.querySelector('#project-create-form button:disabled').textContent.includes('正在创建')));
-          window.fetch=window.projectCreateFetch;window.releaseProjectCreate();true
       - wait: '.project-overview__empty'
+      - fill:
+          { sel: '.project-name-direct input[name="name"]', text: 自动保存验收 }
+      - wait: '.project-name-direct[data-save-state="saved"]'
       - click: '.project-overview__empty a'
       - wait: '.engineering-editor input[name="name"]'
       - fill:
-          { sel: '.engineering-editor input[name="name"]', text: 总览前端工程 }
+          { sel: '.engineering-editor input[name="name"]', text: 直接编辑工程 }
       - fill:
           {
             sel: '.engineering-editor input[name="identifier"]',
-            text: overview-web,
+            text: autosave-web,
           }
       - eval: >-
           (()=>{const select=document.querySelector('.engineering-editor select[name=type]');
@@ -225,61 +183,131 @@ cases:
             text: 'bun run deploy:test',
           }
       - click: '.engineering-editor > .dialog-actions button[type="submit"]'
-      - wait: '.project-engineering'
-      - click: '.project-engineering a[href*="mode=information"]'
-      - wait: '.engineering-information-form'
-      - eval: 'sessionStorage.setItem("engineeringEditingInline", String(!!document.querySelector("[role=tabpanel] .engineering-information-form") && !document.querySelector("[role=dialog],.repair-overlay")));true'
+      - wait: '.engineering-identity-form'
+      - eval: >-
+          sessionStorage.setItem('directControls',String(!document.querySelector('a[href*="mode="],a[href*="panel=project"],a[href*="panel=collaboration"],.auto-save-form button[type=submit],[role=dialog],.repair-overlay')));true
+      - fill:
+          { sel: '.environment-direct-row input[name="name"]', text: 集成环境 }
+      - wait: '.environment-direct-row .auto-save-form[data-save-state="saved"]'
       - fill:
           {
-            sel: '.engineering-information-form input[name="name"]',
-            text: 总览前端已更新,
+            sel: '.environment-direct-row input[name="command"]',
+            text: 'bun run deploy:integration',
           }
+      - wait: '.environment-direct-row .auto-save-form[data-save-state="saved"]'
       - eval: >-
-          window.engineeringSaveFetch=window.fetch;window.fetch=(...args)=>new Headers(args[1]?.headers).has('Next-Action')
-          ?new Promise((resolve,reject)=>{window.releaseEngineeringSave=()=>window.engineeringSaveFetch(...args).then(resolve,reject);})
-          :window.engineeringSaveFetch(...args);true
-      - click: '.engineering-information-form button[type="submit"]'
-      - wait: '.engineering-information-form button:disabled'
+          (()=>{const select=document.querySelector('.environment-direct-row select[name=deploymentKind]');
+          select.value='CI_CD';select.dispatchEvent(new Event('change',{bubbles:true}));return true;})()
+      - wait: '.environment-direct-row .auto-save-form[data-save-state="saved"]'
+      - wait: 'body:not(:has(.environment-direct-row input[name="command"]))'
       - eval: >-
-          sessionStorage.setItem('engineeringSavePending',String(document.querySelector('.engineering-information-form button:disabled').textContent.includes('正在保存')));
-          window.fetch=window.engineeringSaveFetch;window.releaseEngineeringSave();true
-      - wait: '.project-dialog__feedback--success'
-      - click: '.engineering-task__heading a'
-      - wait: 'body:not(:has(.project-inline-form))'
-      - click: '.project-engineering a[href*="mode=members"]'
-      - wait: '.engineering-member-list'
-      - click: '.engineering-task__heading a'
-      - wait: 'body:not(:has(.project-inline-form))'
-      - click: '.project-engineering a[href*="mode=environments"]'
-      - wait: '.engineering-environment-list'
-      - click: '.engineering-environment-row > summary'
+          (()=>{const select=document.querySelector('.environment-direct-row select[name=deploymentKind]');
+          select.value='LOCAL_SCRIPT';select.dispatchEvent(new Event('change',{bubbles:true}));return true;})()
+      - wait: '.environment-direct-row input[name="command"]'
       - fill:
           {
-            sel: '.engineering-environment-row input[name="name"]',
-            text: 集成环境,
+            sel: '.environment-direct-row input[name="command"]',
+            text: 'bun run deploy:integration',
           }
-      - press: Enter
-      - wait: '.project-dialog__feedback--success'
-      - click: '.engineering-task__heading a'
-      - wait: 'body:not(:has(.project-inline-form))'
-      - click: '.project-settings__list a[href="/projects?project=__PROJECT_ID__"]'
-      - wait: '.project-engineering[aria-label="浏览器前端工程"]'
-      - fill: { sel: '.project-settings__search input', text: 项目总览验收 }
-      - click: '.project-settings__list a'
-      - wait: '.project-engineering[aria-label="总览前端已更新"]'
+      - wait: '.environment-direct-row .auto-save-form[data-save-state="saved"]'
+      - click: '.environment-add'
+      - fill:
+          {
+            sel: '.environment-direct-form--new input[name="name"]',
+            text: 预发布环境,
+          }
+      - fill:
+          {
+            sel: '.environment-direct-form--new input[name="command"]',
+            text: 'bun run deploy:staging',
+          }
+      - wait: '.environment-direct-row:nth-child(2)'
+      - wait: 'body:not(:has(.environment-direct-form--new))'
+      - click: '.engineering-member-toggle input'
+      - wait: '.engineering-member-toggle[aria-busy="false"] input:not(:checked)'
+      - click: '.engineering-member-toggle input'
+      - wait: '.engineering-member-toggle[aria-busy="false"] input:checked'
+      - click: '.project-overview__engineering > .project-overview__section-heading a'
+      - wait: '.engineering-editor input[name="name"]'
+      - fill:
+          { sel: '.engineering-editor input[name="name"]', text: 切换目标工程 }
+      - fill:
+          {
+            sel: '.engineering-editor input[name="identifier"]',
+            text: autosave-api,
+          }
+      - eval: >-
+          (()=>{const select=document.querySelector('.engineering-editor select[name=type]');
+          select.value='BACKEND';select.dispatchEvent(new Event('change',{bubbles:true}));return true;})()
+      - fill:
+          {
+            sel: '.engineering-environments input[name^="command:"]',
+            text: 'bun run deploy:test',
+          }
+      - click: '.engineering-editor > .dialog-actions button[type="submit"]'
+      - wait: '.project-engineering[aria-label="切换目标工程"]'
+      - click: 'text=直接编辑工程'
+      - wait: '.project-engineering[aria-label="直接编辑工程"]'
+      - eval: >-
+          window.autosaveFetch=window.fetch;window.holdAutosave=true;window.fetch=(...args)=>new Headers(args[1]?.headers).has('Next-Action')&&window.holdAutosave
+          ?(window.holdAutosave=false,new Promise((resolve,reject)=>{window.releaseAutosave=()=>window.autosaveFetch(...args).then(resolve,reject);}))
+          :window.autosaveFetch(...args);true
+      - fill:
+          {
+            sel: '.engineering-identity-form input[name="name"]',
+            text: 保存中初稿,
+          }
+      - wait: '.engineering-identity-form[data-save-state="saving"]'
+      - fill:
+          {
+            sel: '.engineering-identity-form input[name="name"]',
+            text: 连续输入最终名称,
+          }
+      - click: 'text=切换目标工程'
+      - eval: >-
+          sessionStorage.setItem('navigationWaitsForSave',String(document.querySelector('[role=tab][aria-selected=true]').textContent.includes('直接编辑工程')
+          &&document.querySelector('.engineering-identity-form input[name=name]').value==='连续输入最终名称'));
+          window.fetch=window.autosaveFetch;window.releaseAutosave();true
+      - wait: '.project-engineering[aria-label="切换目标工程"]'
+      - click: 'text=连续输入最终名称'
+      - wait: '.project-engineering[aria-label="连续输入最终名称"]'
+      - eval: >-
+          window.failureFetch=window.fetch;window.failAutosave=true;window.fetch=(...args)=>new Headers(args[1]?.headers).has('Next-Action')&&window.failAutosave
+          ?(window.failAutosave=false,Promise.reject(new TypeError('Failed to fetch'))):window.failureFetch(...args);true
+      - fill:
+          {
+            sel: '.engineering-identity-form input[name="name"]',
+            text: 失败后保留草稿,
+          }
+      - wait: '.engineering-identity-form[data-save-state="error"]'
+      - click: 'text=切换目标工程'
+      - eval: >-
+          sessionStorage.setItem('failedDraftPreserved',String(document.querySelector('.engineering-identity-form input[name=name]').value==='失败后保留草稿'
+          &&document.querySelector('[role=tab][aria-selected=true]').textContent.includes('连续输入最终名称')));window.fetch=window.failureFetch;true
+      - click: '.engineering-identity-form .auto-save-form__status button'
+      - wait: '.engineering-identity-form[data-save-state="saved"]'
+      - fill:
+          {
+            sel: '.engineering-identity-form input[name="name"]',
+            text: 连续输入最终名称,
+          }
+      - wait: '.engineering-identity-form[data-save-state="saved"]'
+      - open: __BASE_URL__/projects
+      - click: 'text=自动保存验收'
+      - wait: '.project-engineering-tabs'
+      - click: 'text=连续输入最终名称'
+      - wait: '.project-engineering[aria-label="连续输入最终名称"]'
     assert:
       - hidden: '[role="dialog"]'
-      - hidden: '#project-create-form'
-      - text: { sel: '.project-overview__heading h2', contains: 项目总览验收 }
-      - text: { sel: '.project-engineering h4', contains: 总览前端已更新 }
-      - text: { sel: '.project-engineering', contains: 集成环境 }
-      - text:
-          {
-            sel: '.project-settings__list [aria-current="page"]',
-            contains: 项目总览验收,
-          }
-      - text: { sel: '.project-engineering', contains: 需要先连接本机 Agent }
-      - eval: 'sessionStorage.getItem("projectCreatePending")==="true" && sessionStorage.getItem("engineeringEditingInline")==="true" && sessionStorage.getItem("engineeringSavePending")==="true"'
+      - hidden: '.repair-overlay'
+      - hidden: '.auto-save-form button[type="submit"]'
+      - count: { sel: '.environment-direct-row', eq: 2 }
+      - eval: >-
+          document.querySelector('.project-name-direct input[name=name]').value==='自动保存验收'
+          &&document.querySelector('.engineering-identity-form input[name=name]').value==='连续输入最终名称'
+          &&[...document.querySelectorAll('.environment-direct-row input[name=name]')].some(input=>input.value==='集成环境')
+          &&[...document.querySelectorAll('.environment-direct-row input[name=command]')].some(input=>input.value==='bun run deploy:integration')
+          &&['directControls','navigationWaitsForSave','failedDraftPreserved'].every(key=>sessionStorage.getItem(key)==='true')
 
   - name: project invitations stay inside the project page
     steps:

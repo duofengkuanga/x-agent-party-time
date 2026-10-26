@@ -5,9 +5,13 @@ import {
   formField,
   integerFormField,
   runRedirectMutation,
+  runInteractiveMutation,
 } from '@/app/actions/actionTransport';
 import { ProjectInvitationDecisionSchema } from '../../../contracts/projects/project';
-import { projectPanelPath } from '../../(pages)/(main)/projects/components/routeState';
+import {
+  projectPanelPath,
+  projectSettingsPath,
+} from '../../(pages)/(main)/projects/components/routeState';
 
 const PROJECTS_PATH = '/projects';
 
@@ -33,7 +37,7 @@ export async function inviteProjectUserAction(formData: FormData): Promise<never
   const projectId = formField(formData, 'projectId');
   return runRedirectMutation({
     formData,
-    errorPath: () => projectPanelPath(projectId, 'collaboration'),
+    errorPath: () => projectSettingsPath({ projectId }),
     command: (userId) => {
       projectService().inviteUser(userId, projectId, {
         mutationId: formField(formData, 'mutationId'),
@@ -68,7 +72,7 @@ export async function revokeProjectInvitationAction(formData: FormData): Promise
   const projectId = formField(formData, 'projectId');
   return runRedirectMutation({
     formData,
-    errorPath: () => projectPanelPath(projectId, 'collaboration'),
+    errorPath: () => projectSettingsPath({ projectId }),
     command: (userId) => {
       projectService().revokeInvitation(userId, formField(formData, 'invitationId'), {
         mutationId: formField(formData, 'mutationId'),
@@ -79,23 +83,17 @@ export async function revokeProjectInvitationAction(formData: FormData): Promise
   });
 }
 
-export async function updateProjectAction(formData: FormData): Promise<never> {
-  const projectId = formField(formData, 'projectId');
-  return runRedirectMutation({
-    formData,
-    errorPath: () => projectPanelPath(projectId, 'project'),
-    command: (userId) => {
-      projectService().updateProject(userId, projectId, {
+export async function updateProjectAction(formData: FormData) {
+  return runInteractiveMutation({
+    validationEvent: 'project_autosave_validation_failed',
+    command: ({ userId }) => ({
+      result: projectService().updateProject(userId, formField(formData, 'projectId'), {
         mutationId: formField(formData, 'mutationId'),
         expectedVersion: integerFormField(formData, 'expectedVersion'),
         name: formField(formData, 'name'),
-      });
-      return {
-        path: projectPanelPath(projectId, 'project'),
-        message: '项目名称已更新',
-        refreshPaths: [PROJECTS_PATH],
-      };
-    },
+      }),
+      refreshPaths: [PROJECTS_PATH, '/submissions'],
+    }),
   });
 }
 
@@ -103,7 +101,7 @@ export async function deleteProjectAction(formData: FormData): Promise<never> {
   const projectId = formField(formData, 'projectId');
   return runRedirectMutation({
     formData,
-    errorPath: () => projectPanelPath(projectId, 'project'),
+    errorPath: () => projectSettingsPath({ projectId }),
     command: (userId) => {
       projectService().deleteProject(userId, projectId, {
         mutationId: formField(formData, 'mutationId'),
@@ -123,7 +121,7 @@ export async function removeProjectMemberAction(formData: FormData): Promise<nev
   const projectId = formField(formData, 'projectId');
   return runRedirectMutation({
     formData,
-    errorPath: () => projectPanelPath(projectId, 'collaboration'),
+    errorPath: () => projectSettingsPath({ projectId }),
     command: (userId) => {
       projectService().removeMember(userId, projectId, formField(formData, 'userId'), {
         mutationId: formField(formData, 'mutationId'),
@@ -140,7 +138,7 @@ function invitationReturnPath(value: string): string {
 
 function projectSuccess(projectId: string, message: string) {
   return {
-    path: projectPanelPath(projectId, 'collaboration'),
+    path: projectSettingsPath({ projectId }),
     message,
     refreshPaths: [PROJECTS_PATH],
   };
