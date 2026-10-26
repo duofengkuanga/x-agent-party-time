@@ -84,7 +84,7 @@ export function SubmissionWorkspace({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { sidebarWidth, sidebarResizing, resizerHandlers } =
     useSidebarWidth(initialSidebarWidth);
-  const [includeClosed, setIncludeClosed] = useState(true);
+  const [includeClosed, setIncludeClosed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
