@@ -1,2 +1,2 @@
-export const XAPT_VERSION = '0.5.10';
+export const XAPT_VERSION = '0.5.11';
 export const MINIMUM_CODEX_VERSION = '0.145.0';
