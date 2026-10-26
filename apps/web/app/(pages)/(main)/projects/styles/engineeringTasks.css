@@ -1,4 +1,4 @@
-/* Engineering directory: four equal task entry points. */
+/* Inline engineering management forms. */
 .engineering-list .engineering-card {
   align-items: center;
   background: transparent;
@@ -160,16 +160,16 @@
   font-size: 9px;
 }
 
-.bug-dialog .engineering-member-list form {
+.project-inline-form .engineering-member-list form {
   display: block;
   padding: 0;
 }
 
-.bug-dialog .engineering-member-list button,
-.bug-dialog .engineering-member-add button,
-.bug-dialog .engineering-information-form button,
-.bug-dialog .engineering-task__form-actions button,
-.bug-dialog .engineering-task__archive button {
+.project-inline-form .engineering-member-list button,
+.project-inline-form .engineering-member-add button,
+.project-inline-form .engineering-information-form button,
+.project-inline-form .engineering-task__form-actions button,
+.project-inline-form .engineering-task__archive button {
   background: transparent;
   border: 1px solid var(--strong-line);
   color: var(--ink);
@@ -181,7 +181,7 @@
   white-space: nowrap;
 }
 
-.bug-dialog .engineering-member-add form {
+.project-inline-form .engineering-member-add form {
   align-items: end;
   display: grid;
   gap: 14px;
@@ -189,7 +189,7 @@
   padding: 0;
 }
 
-.bug-dialog .engineering-information-form {
+.project-inline-form .engineering-information-form {
   display: grid;
   gap: 18px;
   grid-template-columns: minmax(0, 1fr);
@@ -313,8 +313,8 @@
   border-bottom: 1px dashed var(--line);
 }
 
-.bug-dialog .engineering-environment-row > form,
-.bug-dialog .engineering-environment-create > form {
+.project-inline-form .engineering-environment-row > form,
+.project-inline-form .engineering-environment-create > form {
   display: grid;
   gap: 16px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -329,7 +329,9 @@
   justify-content: flex-end;
 }
 
-.bug-dialog .engineering-task__form-actions button.engineering-task__danger {
+.project-inline-form
+  .engineering-task__form-actions
+  button.engineering-task__danger {
   border-color: var(--line);
   color: var(--muted);
   margin-right: auto;
@@ -341,7 +343,7 @@
   padding-top: 14px;
 }
 
-.bug-dialog
+.project-inline-form
   .engineering-environment-create
   > form.engineering-environment-batch-form {
   display: block;
@@ -412,7 +414,7 @@
   content: '−';
 }
 
-.bug-dialog .engineering-task__archive > form {
+.project-inline-form .engineering-task__archive > form {
   align-items: center;
   background: var(--paper-deep);
   display: flex;

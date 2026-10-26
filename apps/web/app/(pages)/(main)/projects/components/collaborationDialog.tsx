@@ -7,13 +7,13 @@ import {
   revokeProjectInvitationAction,
   updateProjectAction,
 } from '@/app/actions/projects/projects';
-import { ProjectDialogEffects } from './projectDialogEffects';
 import { Dialog } from './dialog';
 import { DialogFeedback, ProjectFields } from '../engineering/settingsFields';
 import { InvitationForm } from './invitationForm';
 import { ProjectDeleteControl } from './projectDeleteControl';
 import { randomUUID } from 'node:crypto';
 import { projectSettingsPath } from './routeState';
+import { SaveButton } from './saveButton';
 
 export function CollaborationDialog({
   error,
@@ -38,11 +38,9 @@ export function CollaborationDialog({
   );
   return (
     <Dialog
-      className="project-collaboration-dialog"
+      className="project-collaboration-settings"
       closeHref={projectSettingsPath({ projectId })}
       title={`${summary.project.name} · 成员与邀请`}
-      kicker="私密项目"
-      overlayClassName=""
     >
       <DialogFeedback error={error} success={success} />
       <div className="collaboration-ledger">
@@ -63,16 +61,22 @@ export function CollaborationDialog({
                   {membership.role === 'OWNER' ? '项目负责人' : '项目成员'}
                 </em>
                 {owner && membership.role !== 'OWNER' ? (
-                  <form action={removeProjectMemberAction}>
-                    <ProjectFields projectId={projectId} />
-                    <input name="userId" type="hidden" value={user.id} />
-                    <input
-                      name="expectedVersion"
-                      type="hidden"
-                      value={membership.version}
-                    />
-                    <button type="submit">移除</button>
-                  </form>
+                  <details className="project-inline-confirmation">
+                    <summary>移除</summary>
+                    <p>
+                      移除后，这位成员将失去项目访问权限。活动职责会阻止移除。
+                    </p>
+                    <form action={removeProjectMemberAction}>
+                      <ProjectFields projectId={projectId} />
+                      <input name="userId" type="hidden" value={user.id} />
+                      <input
+                        name="expectedVersion"
+                        type="hidden"
+                        value={membership.version}
+                      />
+                      <button type="submit">确认移除</button>
+                    </form>
+                  </details>
                 ) : null}
               </article>
             ))}
@@ -119,20 +123,24 @@ export function CollaborationDialog({
                       <small>@{invitedUser.username}</small>
                     </div>
                     <span>等待接受</span>
-                    <form action={revokeProjectInvitationAction}>
-                      <ProjectFields projectId={projectId} />
-                      <input
-                        name="invitationId"
-                        type="hidden"
-                        value={invitation.id}
-                      />
-                      <input
-                        name="expectedVersion"
-                        type="hidden"
-                        value={invitation.version}
-                      />
-                      <button type="submit">撤销</button>
-                    </form>
+                    <details className="project-inline-confirmation">
+                      <summary>撤销</summary>
+                      <p>撤销后，对方将无法接受这次邀请。</p>
+                      <form action={revokeProjectInvitationAction}>
+                        <ProjectFields projectId={projectId} />
+                        <input
+                          name="invitationId"
+                          type="hidden"
+                          value={invitation.id}
+                        />
+                        <input
+                          name="expectedVersion"
+                          type="hidden"
+                          value={invitation.version}
+                        />
+                        <button type="submit">确认撤销</button>
+                      </form>
+                    </details>
                   </article>
                 ))}
               </div>
@@ -161,10 +169,8 @@ export function ProjectSettingsDialog({
   if (summary.membership.role !== 'OWNER') return null;
   return (
     <Dialog
-      className="project-name-dialog"
+      className="project-name-settings"
       closeHref={projectSettingsPath({ projectId })}
-      kicker="项目基础信息"
-      overlayClassName=""
       title={`${summary.project.name} · 项目设置`}
     >
       <DialogFeedback error={error} success={success} />
@@ -188,9 +194,7 @@ export function ProjectSettingsDialog({
         </label>
         <div className="dialog-actions">
           <Link href={projectSettingsPath({ projectId })}>取消</Link>
-          <button className="repair-primary" type="submit">
-            保存项目名称
-          </button>
+          <SaveButton className="repair-primary">保存项目名称</SaveButton>
         </div>
       </form>
       <ProjectDeleteControl
@@ -211,62 +215,48 @@ export function InvitationDialog({
   success?: string;
 }) {
   return (
-    <div className="repair-overlay" role="presentation">
-      <section
-        aria-labelledby="project-inbox-title"
-        aria-modal="true"
-        className="bug-dialog project-inbox-dialog"
-        role="dialog"
-        tabIndex={-1}
-      >
-        <ProjectDialogEffects closeHref="/projects" />
-        <header>
-          <div>
-            <p className="repair-kicker">项目邀请</p>
-            <h2 id="project-inbox-title">项目邀请</h2>
-          </div>
-          <Link aria-label="关闭项目邀请" href="/projects">
-            ×
-          </Link>
-        </header>
-        <DialogFeedback error={error} success={success} />
-        {invitations.length ? (
-          <div className="project-inbox-list">
-            {invitations.map(
-              ({ invitation, invitedByDisplayName, projectName }) => (
-                <article key={invitation.id}>
+    <Dialog
+      className="project-invitation-settings"
+      closeHref="/projects"
+      title="项目邀请"
+    >
+      <DialogFeedback error={error} success={success} />
+      {invitations.length ? (
+        <div className="project-inbox-list">
+          {invitations.map(
+            ({ invitation, invitedByDisplayName, projectName }) => (
+              <article key={invitation.id}>
+                <div>
+                  <strong>{projectName}</strong>
+                  <span>邀请人：{invitedByDisplayName}</span>
+                </div>
+                <em>{invitationStatus(invitation.status)}</em>
+                {invitation.status === 'PENDING' ? (
                   <div>
-                    <strong>{projectName}</strong>
-                    <span>邀请人：{invitedByDisplayName}</span>
+                    <InvitationForm
+                      decision="REJECT"
+                      invitationId={invitation.id}
+                      label="拒绝"
+                      version={invitation.version}
+                    />
+                    <InvitationForm
+                      decision="ACCEPT"
+                      invitationId={invitation.id}
+                      label="接受邀请"
+                      version={invitation.version}
+                    />
                   </div>
-                  <em>{invitationStatus(invitation.status)}</em>
-                  {invitation.status === 'PENDING' ? (
-                    <div>
-                      <InvitationForm
-                        decision="REJECT"
-                        invitationId={invitation.id}
-                        label="拒绝"
-                        version={invitation.version}
-                      />
-                      <InvitationForm
-                        decision="ACCEPT"
-                        invitationId={invitation.id}
-                        label="接受邀请"
-                        version={invitation.version}
-                      />
-                    </div>
-                  ) : null}
-                </article>
-              ),
-            )}
-          </div>
-        ) : (
-          <p className="collaboration-empty collaboration-empty--large">
-            暂时没有项目邀请。
-          </p>
-        )}
-      </section>
-    </div>
+                ) : null}
+              </article>
+            ),
+          )}
+        </div>
+      ) : (
+        <p className="collaboration-empty collaboration-empty--large">
+          暂时没有项目邀请。
+        </p>
+      )}
+    </Dialog>
   );
 }
 

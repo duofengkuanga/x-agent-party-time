@@ -19,8 +19,17 @@ import {
   CollaborationDialog,
 } from './collaborationDialog';
 
-import { EngineeringDialog } from '../engineering/engineeringDialog';
-import { EngineeringDetail } from '../engineering/engineeringSettings';
+import {
+  EngineeringDialog,
+  EngineeringMemberManagement,
+} from '../engineering/engineeringDialog';
+import {
+  EngineeringDetail,
+  EngineeringEnvironmentManagement,
+  EngineeringInformationManagement,
+} from '../engineering/engineeringSettings';
+import { EngineeringTabs } from './engineeringTabs';
+import { DialogFeedback } from '../engineering/settingsFields';
 
 export const metadata: Metadata = {
   title: '我的项目 — Agent Party Time',
@@ -80,6 +89,11 @@ export default async function ProjectSettingsPage({
   const engineering = selected
     ? engineeringService().listEngineering(user.id, selected.project.id)
     : [];
+  const activeEngineering =
+    engineering.find(({ id }) => id === route.engineeringId) ?? engineering[0];
+  const creatingEngineering =
+    panel === 'engineering' && route.engineeringId === 'new';
+  const engineeringMode = panel === 'engineering' ? route.mode : undefined;
   const pendingInvitations =
     selected && owner
       ? projectService()
@@ -104,6 +118,13 @@ export default async function ProjectSettingsPage({
             {route.success}
           </p>
         ) : null}
+        {!selected && panel === 'invitations' ? (
+          <InvitationDialog
+            error={route.error}
+            invitations={invitations}
+            success={route.success}
+          />
+        ) : null}
         {selected ? (
           <>
             <header className="project-overview__heading">
@@ -123,6 +144,21 @@ export default async function ProjectSettingsPage({
                 <Link href="/submissions">进入提测</Link>
               </nav>
             </header>
+            {panel === 'invitations' ? (
+              <InvitationDialog
+                error={route.error}
+                invitations={invitations}
+                success={route.success}
+              />
+            ) : null}
+            {panel === 'project' ? (
+              <ProjectSettingsDialog
+                error={route.error}
+                projectId={selected.project.id}
+                success={route.success}
+                userId={user.id}
+              />
+            ) : null}
             <section
               className="project-overview__members"
               aria-label="项目成员"
@@ -140,26 +176,35 @@ export default async function ProjectSettingsPage({
                     : ''}
                 </Link>
               </div>
-              <ul>
-                {members.map(({ membership, user: member }) => (
-                  <li key={member.id}>
-                    <span
-                      className="project-overview__avatar"
-                      aria-hidden="true"
-                    >
-                      {member.displayName.slice(0, 1)}
-                    </span>
-                    <span>
-                      <strong>
-                        {member.displayName}
-                        {member.id === user.id ? '（你）' : ''}
-                      </strong>
-                      <small>@{member.username}</small>
-                    </span>
-                    {membership.role === 'OWNER' ? <em>负责人</em> : null}
-                  </li>
-                ))}
-              </ul>
+              {panel === 'collaboration' ? (
+                <CollaborationDialog
+                  error={route.error}
+                  projectId={selected.project.id}
+                  success={route.success}
+                  userId={user.id}
+                />
+              ) : (
+                <ul>
+                  {members.map(({ membership, user: member }) => (
+                    <li key={member.id}>
+                      <span
+                        className="project-overview__avatar"
+                        aria-hidden="true"
+                      >
+                        {member.displayName.slice(0, 1)}
+                      </span>
+                      <span>
+                        <strong>
+                          {member.displayName}
+                          {member.id === user.id ? '（你）' : ''}
+                        </strong>
+                        <small>@{member.username}</small>
+                      </span>
+                      {membership.role === 'OWNER' ? <em>负责人</em> : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </section>
             <section
               className="project-overview__engineering"
@@ -179,21 +224,82 @@ export default async function ProjectSettingsPage({
                 ) : null}
               </div>
               {engineering.length ? (
-                <div className="project-overview__engineering-list">
-                  {engineering.map((item) => (
-                    <EngineeringDetail
-                      key={item.id}
-                      bindingRequestId={
-                        route.engineeringId === item.id
-                          ? route.bindingRequestId
-                          : undefined
-                      }
-                      engineeringId={item.id}
-                      owner={owner}
-                      projectId={selected.project.id}
-                      userId={user.id}
-                    />
-                  ))}
+                <EngineeringTabs
+                  engineering={engineering.map(({ id, name, type }) => ({
+                    id,
+                    name,
+                    type,
+                  }))}
+                  projectId={selected.project.id}
+                  selectedId={
+                    creatingEngineering ? undefined : activeEngineering?.id
+                  }
+                />
+              ) : null}
+              {creatingEngineering ? (
+                <div id="project-engineering-panel">
+                  <EngineeringDialog
+                    error={route.error}
+                    projectId={selected.project.id}
+                    success={route.success}
+                    userId={user.id}
+                  />
+                </div>
+              ) : activeEngineering ? (
+                <div
+                  role="tabpanel"
+                  id="project-engineering-panel"
+                  aria-labelledby={`engineering-tab-${activeEngineering.id}`}
+                  tabIndex={0}
+                >
+                  <EngineeringDetail
+                    key={activeEngineering.id}
+                    bindingRequestId={
+                      route.engineeringId === activeEngineering.id
+                        ? route.bindingRequestId
+                        : undefined
+                    }
+                    engineeringId={activeEngineering.id}
+                    owner={owner}
+                    projectId={selected.project.id}
+                    userId={user.id}
+                    feedback={
+                      engineeringMode ? (
+                        <DialogFeedback
+                          error={route.error}
+                          success={route.success}
+                        />
+                      ) : null
+                    }
+                    informationEditor={
+                      engineeringMode === 'information' && owner ? (
+                        <EngineeringInformationManagement
+                          engineeringId={activeEngineering.id}
+                          projectId={selected.project.id}
+                          userId={user.id}
+                        />
+                      ) : null
+                    }
+                    membersEditor={
+                      engineeringMode === 'members' && owner ? (
+                        <EngineeringMemberManagement
+                          engineeringId={activeEngineering.id}
+                          projectId={selected.project.id}
+                          projectMembers={members}
+                          userId={user.id}
+                        />
+                      ) : null
+                    }
+                    environmentsEditor={
+                      engineeringMode === 'environments' && owner ? (
+                        <EngineeringEnvironmentManagement
+                          engineeringId={activeEngineering.id}
+                          projectId={selected.project.id}
+                          userId={user.id}
+                        />
+                      ) : null
+                    }
+                  />
                 </div>
               ) : (
                 <div className="project-overview__empty">
@@ -217,40 +323,6 @@ export default async function ProjectSettingsPage({
           </>
         ) : null}
       </ProjectSettingsControls>
-
-      {panel === 'invitations' ? (
-        <InvitationDialog
-          error={route.error}
-          invitations={invitations}
-          success={route.success}
-        />
-      ) : null}
-      {selected && panel === 'project' ? (
-        <ProjectSettingsDialog
-          error={route.error}
-          projectId={selected.project.id}
-          success={route.success}
-          userId={user.id}
-        />
-      ) : null}
-      {selected && panel === 'collaboration' ? (
-        <CollaborationDialog
-          error={route.error}
-          projectId={selected.project.id}
-          success={route.success}
-          userId={user.id}
-        />
-      ) : null}
-      {selected && panel === 'engineering' && editing ? (
-        <EngineeringDialog
-          engineeringId={route.engineeringId}
-          error={route.error}
-          mode={route.mode}
-          projectId={selected.project.id}
-          success={route.bindingRequestId ? undefined : route.success}
-          userId={user.id}
-        />
-      ) : null}
     </>
   );
 }

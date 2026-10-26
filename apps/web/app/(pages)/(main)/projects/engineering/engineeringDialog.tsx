@@ -9,76 +9,41 @@ import {
 import { projectPanelPath } from '@/app/(pages)/(main)/projects/components/routeState';
 import { EngineeringCreateEnvironments } from './engineeringCreateEnvironments';
 import { Dialog } from '../components/dialog';
+import { SaveButton } from '../components/saveButton';
 import {
   DialogFeedback,
   ProjectFields,
   EngineeringTaskHeading,
   EngineeringFields,
 } from './settingsFields';
-import {
-  EngineeringEnvironmentManagement,
-  EngineeringInformationManagement,
-} from './engineeringSettings';
 
 export function EngineeringDialog({
-  engineeringId,
   error,
-  mode,
   projectId,
   success,
   userId,
 }: {
-  engineeringId?: string;
   error?: string;
-  mode?: string;
   projectId: string;
   success?: string;
   userId: string;
 }) {
   const projects = projectService();
-  const engineering = engineeringService();
   const project = projects.getProject(userId, projectId);
-  const items = engineering.listEngineering(userId, projectId);
+  if (project.membership.role !== 'OWNER') return null;
   const members = projects.listMembers(userId, projectId);
-  const selected =
-    engineeringId && engineeringId !== 'new'
-      ? items.find((candidate) => candidate.id === engineeringId)
-      : undefined;
-  const owner = project.membership.role === 'OWNER';
 
   return (
     <Dialog
-      title={engineeringId === 'new' ? '新建工程' : '编辑工程'}
-      kicker={project.project.name}
+      title="新建工程"
       closeHref={projectPanelPath(projectId, 'engineering')}
     >
       <DialogFeedback error={error} success={success} />
-      {engineeringId === 'new' && owner ? (
-        <EngineeringCreateForm
-          projectId={projectId}
-          projectMembers={members}
-          userId={userId}
-        />
-      ) : selected && mode === 'members' && owner ? (
-        <EngineeringMemberManagement
-          engineeringId={selected.id}
-          projectId={projectId}
-          projectMembers={members}
-          userId={userId}
-        />
-      ) : selected && mode === 'environments' && owner ? (
-        <EngineeringEnvironmentManagement
-          engineeringId={selected.id}
-          projectId={projectId}
-          userId={userId}
-        />
-      ) : selected && mode === 'information' && owner ? (
-        <EngineeringInformationManagement
-          engineeringId={selected.id}
-          projectId={projectId}
-          userId={userId}
-        />
-      ) : null}
+      <EngineeringCreateForm
+        projectId={projectId}
+        projectMembers={members}
+        userId={userId}
+      />
     </Dialog>
   );
 }
@@ -97,12 +62,6 @@ function EngineeringCreateForm({
   );
   return (
     <form action={createEngineeringAction} className="engineering-editor">
-      <div className="engineering-editor__heading">
-        <div>
-          <strong>新建工程</strong>
-          <small>配置工程成员与测试环境；仓库由首次本机 Agent 绑定确认。</small>
-        </div>
-      </div>
       <ProjectFields projectId={projectId} />
       <input
         name="creatorMembershipMutationId"
@@ -178,15 +137,15 @@ function EngineeringCreateForm({
         <Link href={projectPanelPath(projectId, 'engineering')} replace>
           返回项目
         </Link>
-        <button className="repair-primary" type="submit">
+        <SaveButton className="repair-primary" pendingLabel="正在创建…">
           创建工程
-        </button>
+        </SaveButton>
       </div>
     </form>
   );
 }
 
-function EngineeringMemberManagement({
+export function EngineeringMemberManagement({
   engineeringId,
   projectId,
   projectMembers,
@@ -204,10 +163,10 @@ function EngineeringMemberManagement({
   );
 
   return (
-    <div className="engineering-task">
+    <div className="engineering-task project-inline-form">
       <EngineeringTaskHeading
         label="成员管理"
-        name={workspace.engineering.name}
+        engineeringId={engineeringId}
         projectId={projectId}
       />
 
@@ -223,19 +182,26 @@ function EngineeringMemberManagement({
                 <strong>{user.displayName}</strong>
                 <small>@{user.username}</small>
               </span>
-              <form action={removeEngineeringMemberAction}>
-                <EngineeringFields
-                  engineeringId={engineeringId}
-                  projectId={projectId}
-                />
-                <input name="userId" type="hidden" value={user.id} />
-                <input
-                  name="expectedVersion"
-                  type="hidden"
-                  value={membership.version}
-                />
-                <button type="submit">移出工程</button>
-              </form>
+              <details className="project-inline-confirmation">
+                <summary>移出工程</summary>
+                <p>
+                  移出后，这位成员将不能为此工程创建本机 Agent
+                  绑定。活动职责会阻止移出。
+                </p>
+                <form action={removeEngineeringMemberAction}>
+                  <EngineeringFields
+                    engineeringId={engineeringId}
+                    projectId={projectId}
+                  />
+                  <input name="userId" type="hidden" value={user.id} />
+                  <input
+                    name="expectedVersion"
+                    type="hidden"
+                    value={membership.version}
+                  />
+                  <button type="submit">确认移出工程</button>
+                </form>
+              </details>
             </li>
           ))}
         </ul>

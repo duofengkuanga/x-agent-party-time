@@ -68,7 +68,8 @@
   padding: 6px 11px;
 }
 
-.project-settings :where(a):not([aria-current]):hover {
+.project-settings
+  :where(a):not([aria-current]):not([aria-selected='true']):hover {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
@@ -613,4 +614,239 @@
   .project-inbox-list article > div:last-child {
     justify-content: flex-start;
   }
+}
+
+.project-engineering-tabs {
+  border-bottom: 1px solid var(--strong-line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-bottom: 16px;
+}
+
+.project-engineering-tabs a {
+  align-items: center;
+  border-bottom: 3px solid transparent;
+  display: inline-flex;
+  gap: 8px;
+  margin-bottom: -1px;
+  min-height: 46px;
+  min-width: 0;
+  padding: 10px 14px;
+}
+
+.project-engineering-tabs a[aria-selected='true'] {
+  background: var(--paper-deep);
+  border-bottom-color: var(--accent);
+  font-weight: 800;
+}
+
+.project-engineering-tabs small {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.project-engineering-tabs span {
+  overflow-wrap: anywhere;
+}
+
+.project-engineering-tabs a:hover small {
+  color: inherit;
+}
+
+.project-settings [role='tabpanel']:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.project-inline-settings {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  margin-top: 20px;
+  min-width: 0;
+}
+
+.project-inline-settings__heading {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 16px 22px;
+}
+
+.project-inline-settings__heading h3 {
+  font-size: 14px;
+  margin: 0;
+}
+
+.project-inline-settings__close {
+  border: 1px solid var(--line);
+  color: var(--muted);
+  padding: 6px 10px;
+}
+
+.project-inline-settings > form {
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+}
+
+.project-inline-settings > form.engineering-editor {
+  gap: 0;
+  padding: 0;
+}
+
+:is(.project-inline-settings, .project-inline-form) label {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+:is(.project-inline-settings, .project-inline-form) label > span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+:is(.project-inline-settings, .project-inline-form)
+  :where(input:not([type='hidden']):not([type='checkbox']), select, textarea) {
+  background-color: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 0;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  min-height: 40px;
+  min-width: 0;
+  padding: 8px 10px;
+  width: 100%;
+}
+
+:is(.project-inline-settings, .project-inline-form)
+  :where(input, textarea)::placeholder {
+  color: var(--muted);
+}
+
+.project-inline-form .engineering-task__heading {
+  align-items: center;
+  border-bottom-color: var(--line);
+  padding: 14px 22px;
+}
+
+.project-inline-form .engineering-task__heading strong {
+  font-size: 12px;
+}
+
+.project-inline-form .engineering-task__section {
+  padding-block: 16px;
+}
+
+.project-engineering > .project-inline-form {
+  border-bottom: 1px solid var(--line);
+}
+
+.project-engineering__body[data-editing-environments] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.project-engineering__body[data-editing-environments] > section:first-child {
+  padding: 0;
+}
+
+.project-engineering__body[data-editing-environments] > section + section {
+  border-left: 0;
+  border-top: 1px solid var(--line);
+}
+
+.project-inline-form .engineering-environment-create {
+  padding-top: 16px;
+}
+
+.project-inline-form .engineering-environment-create > summary {
+  border: 1px solid var(--strong-line);
+  padding: 8px 12px;
+}
+
+.binding-delete-confirmation {
+  background: var(--paper-deep);
+  border-left: 2px solid var(--danger);
+  max-width: 420px;
+  padding: 12px;
+}
+
+.binding-delete-confirmation p {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.7;
+  margin: 0 0 12px;
+}
+
+.binding-delete-confirmation > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media (max-width: 760px) {
+  .project-inline-settings .collaboration-ledger {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .project-inline-settings .collaboration-ledger > section {
+    border-right: 0;
+  }
+
+  .project-inline-form .engineering-environment-row > form,
+  .project-inline-settings .engineering-editor__grid,
+  .project-inline-settings .engineering-environments > article {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.project-inline-form .engineering-information-form__fields {
+  grid-template-columns: minmax(0, 1.4fr) minmax(100px, 0.65fr) minmax(0, 1fr);
+}
+
+@media (max-width: 760px) {
+  .project-inline-form .engineering-information-form__fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.project-inline-confirmation {
+  max-width: 360px;
+}
+
+.project-inline-confirmation > summary {
+  border: 1px solid var(--strong-line);
+  cursor: pointer;
+  font-size: 11px;
+  list-style: none;
+  padding: 8px 10px;
+  width: fit-content;
+}
+
+.project-inline-confirmation > summary:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.project-inline-confirmation > p {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.7;
+  margin: 10px 0;
+}
+
+.project-inline-confirmation[open] {
+  background: var(--paper-deep);
+  padding: 12px;
+}
+
+.project-inline-form
+  .engineering-task__form-actions
+  > .project-inline-confirmation {
+  margin-right: auto;
+  order: -1;
 }

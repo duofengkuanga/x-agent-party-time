@@ -169,13 +169,13 @@
   }
 }
 
-.project-name-dialog label > small {
+.project-name-settings label > small {
   color: var(--muted);
   font-size: 9px;
   line-height: 1.6;
 }
 
-.project-name-dialog .dialog-actions {
+.project-name-settings .dialog-actions {
   grid-column: 1 / -1;
 }
 
@@ -197,7 +197,7 @@
   margin: 0 0 12px;
 }
 
-.bug-dialog form.project-delete-form {
+.project-inline-settings form.project-delete-form {
   display: block;
   padding: 0;
 }

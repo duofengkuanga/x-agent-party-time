@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { PlatformError } from '@/server/platform/errors/index';
 import { runnerService } from '@/server/runtime/runner';
@@ -21,6 +22,7 @@ import { BindingDeleteForm } from './bindingDeleteForm';
 import { AutoRefresh } from '@/app/(pages)/(main)/components/autoRefresh';
 import { EngineeringTaskHeading, EngineeringFields } from './settingsFields';
 import { engineeringViewPath } from '../components/routeState';
+import { SaveButton } from '../components/saveButton';
 
 export function EngineeringEnvironmentManagement({
   engineeringId,
@@ -34,10 +36,10 @@ export function EngineeringEnvironmentManagement({
   const workspace = engineeringService().getWorkspace(userId, engineeringId);
 
   return (
-    <div className="engineering-task engineering-task--environments">
+    <div className="engineering-task engineering-task--environments project-inline-form">
       <EngineeringTaskHeading
         label="环境管理"
-        name={workspace.engineering.name}
+        engineeringId={engineeringId}
         projectId={projectId}
       />
 
@@ -80,14 +82,18 @@ export function EngineeringEnvironmentManagement({
                 </label>
                 <DeploymentFields deployment={environment.deployment} />
                 <div className="engineering-task__form-actions">
-                  <button
-                    className="engineering-task__danger"
-                    formAction={deleteEnvironmentAction}
-                    type="submit"
-                  >
-                    删除环境
-                  </button>
-                  <button type="submit">保存环境</button>
+                  <SaveButton>保存环境</SaveButton>
+                  <details className="project-inline-confirmation">
+                    <summary>删除环境</summary>
+                    <p>删除后无法恢复此环境。已用于提测的环境不能删除。</p>
+                    <button
+                      className="engineering-task__danger"
+                      formAction={deleteEnvironmentAction}
+                      type="submit"
+                    >
+                      确认删除环境
+                    </button>
+                  </details>
                 </div>
               </form>
             </details>
@@ -98,7 +104,8 @@ export function EngineeringEnvironmentManagement({
         )}
       </section>
 
-      <section className="engineering-environment-create">
+      <details className="engineering-environment-create">
+        <summary>添加测试环境</summary>
         <form
           action={createEnvironmentAction}
           className="engineering-environment-batch-form"
@@ -113,7 +120,7 @@ export function EngineeringEnvironmentManagement({
             submitLabel="保存测试环境"
           />
         </form>
-      </section>
+      </details>
     </div>
   );
 }
@@ -132,10 +139,10 @@ export function EngineeringInformationManagement({
   const identifierLocked = service.isIdentifierLocked(userId, engineeringId);
 
   return (
-    <div className="engineering-task">
+    <div className="engineering-task project-inline-form">
       <EngineeringTaskHeading
         label="信息管理"
-        name={workspace.engineering.name}
+        engineeringId={engineeringId}
         projectId={projectId}
       />
 
@@ -149,7 +156,7 @@ export function EngineeringInformationManagement({
               <strong>工程信息</strong>
               <small>维护工程在提测与缺陷协作中展示的基础信息。</small>
             </div>
-            <button type="submit">保存工程信息</button>
+            <SaveButton>保存工程信息</SaveButton>
           </header>
           <EngineeringFields
             engineeringId={engineeringId}
@@ -206,10 +213,8 @@ export function EngineeringInformationManagement({
       </section>
 
       {!workspace.engineering.archivedAt ? (
-        <section className="engineering-task__archive">
-          <div className="engineering-task__section-title">
-            <strong>工程归档</strong>
-          </div>
+        <details className="engineering-task__archive">
+          <summary>归档工程</summary>
           <form action={archiveEngineeringAction}>
             <EngineeringFields
               engineeringId={engineeringId}
@@ -221,9 +226,9 @@ export function EngineeringInformationManagement({
               value={workspace.engineering.version}
             />
             <p>归档后保留历史记录，并停止继续使用这个工程。</p>
-            <button type="submit">归档工程</button>
+            <button type="submit">确认归档工程</button>
           </form>
-        </section>
+        </details>
       ) : (
         <p className="engineering-task__empty">这个工程已经归档。</p>
       )}
@@ -234,12 +239,20 @@ export function EngineeringInformationManagement({
 export function EngineeringDetail({
   bindingRequestId,
   engineeringId,
+  feedback,
+  informationEditor,
+  membersEditor,
+  environmentsEditor,
   owner,
   projectId,
   userId,
 }: {
   bindingRequestId?: string;
   engineeringId: string;
+  feedback?: ReactNode;
+  informationEditor?: ReactNode;
+  membersEditor?: ReactNode;
+  environmentsEditor?: ReactNode;
   owner: boolean;
   projectId: string;
   userId: string;
@@ -286,7 +299,7 @@ export function EngineeringDetail({
           <small>{workspace.engineering.identifier}</small>
           {workspace.engineering.archivedAt ? <span>已归档</span> : null}
         </div>
-        {owner ? (
+        {owner && !informationEditor ? (
           <Link
             href={engineeringViewPath(projectId, engineeringId, 'information')}
             replace
@@ -297,6 +310,8 @@ export function EngineeringDetail({
         ) : null}
       </header>
 
+      {feedback}
+      {informationEditor}
       <dl>
         <div>
           <dt>仓库地址</dt>
@@ -312,7 +327,7 @@ export function EngineeringDetail({
                     .join('、')
                 : '暂未配置工程成员'}
             </span>
-            {owner ? (
+            {owner && !membersEditor ? (
               <Link
                 href={engineeringViewPath(projectId, engineeringId, 'members')}
                 replace
@@ -325,46 +340,56 @@ export function EngineeringDetail({
         </div>
       </dl>
 
-      <div className="project-engineering__body">
+      {membersEditor}
+      <div
+        className="project-engineering__body"
+        data-editing-environments={environmentsEditor ? true : undefined}
+      >
         <section
           className="engineering-detail__environments"
           aria-label={`${workspace.engineering.name}测试环境`}
         >
-          <div className="collaboration-section-title">
-            <h5>
-              测试环境 <small>{workspace.environments.length}</small>
-            </h5>
-            {owner ? (
-              <Link
-                href={engineeringViewPath(
-                  projectId,
-                  engineeringId,
-                  'environments',
-                )}
-                replace
-                scroll={false}
-              >
-                管理环境
-              </Link>
-            ) : null}
-          </div>
-          {workspace.environments.length ? (
-            workspace.environments.map((environment) => (
-              <article key={environment.id}>
-                <div>
-                  <strong>{environment.name}</strong>
-                  <small>{deploymentLabel(environment.deployment.kind)}</small>
-                  {'command' in environment.deployment ? (
-                    <details>
-                      <summary>部署命令</summary>
-                      <code>{environment.deployment.command}</code>
-                    </details>
-                  ) : null}
-                </div>
-              </article>
-            ))
-          ) : (
-            <p className="collaboration-empty">还没有测试环境。</p>
+          {environmentsEditor || (
+            <>
+              <div className="collaboration-section-title">
+                <h5>
+                  测试环境 <small>{workspace.environments.length}</small>
+                </h5>
+                {owner ? (
+                  <Link
+                    href={engineeringViewPath(
+                      projectId,
+                      engineeringId,
+                      'environments',
+                    )}
+                    replace
+                    scroll={false}
+                  >
+                    管理环境
+                  </Link>
+                ) : null}
+              </div>
+              {workspace.environments.length ? (
+                workspace.environments.map((environment) => (
+                  <article key={environment.id}>
+                    <div>
+                      <strong>{environment.name}</strong>
+                      <small>
+                        {deploymentLabel(environment.deployment.kind)}
+                      </small>
+                      {'command' in environment.deployment ? (
+                        <details>
+                          <summary>部署命令</summary>
+                          <code>{environment.deployment.command}</code>
+                        </details>
+                      ) : null}
+                    </div>
+                  </article>
+                ))
+              ) : (
+                <p className="collaboration-empty">还没有测试环境。</p>
+              )}
+            </>
           )}
         </section>
 

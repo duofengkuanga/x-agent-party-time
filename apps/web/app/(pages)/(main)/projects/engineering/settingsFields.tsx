@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import Link from 'next/link';
-import { projectPanelPath } from '../components/routeState';
+import { engineeringSettingsPath } from '../components/routeState';
 
 export function DialogFeedback({
   error,
@@ -29,26 +29,22 @@ export function DialogFeedback({
 
 export function EngineeringTaskHeading({
   label,
-  name,
+  engineeringId,
   projectId,
-  status,
 }: {
   label: string;
-  name: string;
+  engineeringId: string;
   projectId: string;
-  status?: string;
 }) {
   return (
     <div className="engineering-task__heading">
-      <div>
-        <span>
-          {label}
-          {status ? ` · ${status}` : ''}
-        </span>
-        <h3>{name}</h3>
-      </div>
-      <Link href={projectPanelPath(projectId, 'engineering')} replace>
-        返回项目
+      <strong>{label}</strong>
+      <Link
+        href={engineeringSettingsPath(projectId, engineeringId)}
+        replace
+        scroll={false}
+      >
+        取消编辑
       </Link>
     </div>
   );

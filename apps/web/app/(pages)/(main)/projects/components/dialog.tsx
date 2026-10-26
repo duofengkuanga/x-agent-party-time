@@ -1,47 +1,34 @@
 import Link from 'next/link';
-import { ProjectDialogEffects } from './projectDialogEffects';
 
 export function Dialog({
   children,
-  className = 'engineering-catalog-dialog',
+  className = 'project-engineering-create',
   closeHref,
-  kicker,
-  overlayClassName = 'engineering-catalog-overlay',
   title,
 }: {
   children: React.ReactNode;
   className?: string;
   closeHref: string;
-  kicker: string;
-  overlayClassName?: string;
   title: string;
 }) {
   return (
-    <div className={`repair-overlay ${overlayClassName}`} role="presentation">
-      <ProjectDialogEffects closeHref={closeHref} />
-      <section
-        aria-labelledby="project-dialog-title"
-        aria-modal="true"
-        className={`bug-dialog ${className}`}
-        role="dialog"
-        tabIndex={-1}
-      >
-        <header className="engineering-dialog__header">
-          <div>
-            <p className="repair-kicker">{kicker}</p>
-            <h2 id="project-dialog-title">{title}</h2>
-          </div>
-          <Link
-            aria-label={`关闭${title}`}
-            className="engineering-dialog__close"
-            href={closeHref}
-            replace
-          >
-            ×
-          </Link>
-        </header>
-        {children}
-      </section>
-    </div>
+    <section
+      aria-label={title}
+      className={`project-inline-settings ${className}`}
+    >
+      <header className="project-inline-settings__heading">
+        <h3>{title}</h3>
+        <Link
+          aria-label={`收起${title}`}
+          className="project-inline-settings__close"
+          href={closeHref}
+          replace
+          scroll={false}
+        >
+          收起
+        </Link>
+      </header>
+      {children}
+    </section>
   );
 }
