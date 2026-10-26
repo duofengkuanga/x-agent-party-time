@@ -1,23 +1,56 @@
 'use client';
 
 import Link from 'next/link';
-import { useRef, type KeyboardEvent } from 'react';
-import { engineeringSettingsPath } from './routeState';
+import { useRouter, useSearchParams } from 'next/navigation';
+import {
+  useRef,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactNode,
+} from 'react';
+import { engineeringCreatePath, engineeringSettingsPath } from './routeState';
 
 export function EngineeringTabs({
   engineering,
   projectId,
-  selectedId,
+  creationPanel,
 }: {
   engineering: Array<{
     id: string;
     name: string;
     type: 'FRONTEND' | 'BACKEND';
+    panel: ReactNode;
   }>;
   projectId: string;
-  selectedId?: string;
+  creationPanel: ReactNode;
 }) {
   const tabs = useRef<HTMLDivElement>(null);
+  const search = useSearchParams();
+  const router = useRouter();
+  const creating =
+    search.get('engineering') === 'new' && Boolean(creationPanel);
+  const selected = creating
+    ? undefined
+    : (engineering.find(({ id }) => id === search.get('engineering')) ??
+      engineering[0]);
+  const localSwitch = search.get('panel') !== 'invitations';
+
+  function selectTab(event: MouseEvent<HTMLAnchorElement>) {
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    )
+      return;
+    event.preventDefault();
+    const href = event.currentTarget.href;
+    if (!localSwitch) router.push(href, { scroll: false });
+    else if (href !== window.location.href)
+      window.history.pushState(null, '', href);
+  }
 
   function moveFocus(event: KeyboardEvent<HTMLDivElement>) {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -38,33 +71,82 @@ export function EngineeringTabs({
   }
 
   return (
-    <div
-      aria-label="工程"
-      className="project-engineering-tabs"
-      onKeyDown={moveFocus}
-      ref={tabs}
-      role="tablist"
-    >
-      {engineering.map((item) => (
-        <Link
-          aria-controls="project-engineering-panel"
-          aria-selected={selectedId === item.id}
-          href={engineeringSettingsPath(projectId, item.id)}
-          id={`engineering-tab-${item.id}`}
-          key={item.id}
-          role="tab"
-          scroll={false}
-          tabIndex={
-            selectedId === item.id ||
-            (!selectedId && item.id === engineering[0]?.id)
-              ? 0
-              : -1
-          }
+    <>
+      {engineering.length ? (
+        <div className="project-engineering-toolbar">
+          <div
+            aria-label="工程"
+            className="project-engineering-tabs"
+            onKeyDown={moveFocus}
+            ref={tabs}
+            role="tablist"
+          >
+            {engineering.map((item) => (
+              <a
+                aria-controls="project-engineering-panel"
+                aria-selected={selected?.id === item.id}
+                href={engineeringSettingsPath(projectId, item.id)}
+                id={`engineering-tab-${item.id}`}
+                key={item.id}
+                role="tab"
+                onClick={selectTab}
+                tabIndex={
+                  selected?.id === item.id ||
+                  (!selected && item.id === engineering[0]?.id)
+                    ? 0
+                    : -1
+                }
+              >
+                <small>{item.type === 'FRONTEND' ? '前端' : '后端'}</small>
+                <span>{item.name}</span>
+              </a>
+            ))}
+          </div>
+          {creationPanel && !creating ? (
+            <Link
+              className="repair-primary project-engineering-create-link"
+              href={engineeringCreatePath(projectId)}
+              prefetch={false}
+            >
+              新建工程
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
+      {creating ? (
+        <div id="project-engineering-panel">{creationPanel}</div>
+      ) : selected ? (
+        <div
+          role="tabpanel"
+          id="project-engineering-panel"
+          aria-labelledby={`engineering-tab-${selected.id}`}
+          key={selected.id}
+          tabIndex={0}
         >
-          <small>{item.type === 'FRONTEND' ? '前端' : '后端'}</small>
-          <span>{item.name}</span>
-        </Link>
-      ))}
-    </div>
+          {selected.panel}
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+export function ProjectRouteFeedback() {
+  const search = useSearchParams();
+  if (search.get('engineering') === 'new') return null;
+  const error = search.get('error');
+  const success = search.get('success');
+  return (
+    <>
+      {error ? (
+        <p className="project-settings__error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {success ? (
+        <p className="notice notice-success" role="status">
+          {success}
+        </p>
+      ) : null}
+    </>
   );
 }

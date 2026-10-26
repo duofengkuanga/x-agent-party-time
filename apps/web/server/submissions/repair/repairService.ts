@@ -1,4 +1,4 @@
-import { DeploymentMethodSchema } from '@/contracts/projects/engineering';
+import { EffectiveEnvironmentDeploymentSchema } from '@/contracts/projects/engineering';
 import { requireSubmissionAccess } from '@/server/submissions/shared/access';
 import {
   isTerminal,
@@ -99,7 +99,7 @@ export class RepairService {
         bugId,
       );
       if (!environment) throw new PlatformError('NOT_FOUND', '缺陷对应的测试环境不存在');
-      const deployment = DeploymentMethodSchema.parse(
+      const deployment = EffectiveEnvironmentDeploymentSchema.parse(
         JSON.parse(environment.deployment_json),
       );
       this.db.run(

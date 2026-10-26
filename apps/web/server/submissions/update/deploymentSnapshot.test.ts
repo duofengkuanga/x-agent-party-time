@@ -1,6 +1,8 @@
 import { expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { testDatabases } from '@/testing/database';
+import { snapshotItemSource } from '../submissionItems';
+import { SubmissionQueries } from '../submissionQueries';
 import { completeSuccessfulExecution } from '@/testing/submissions/execution';
 import {
   batchEntries,
@@ -13,6 +15,37 @@ import {
 } from './updateFixture';
 
 const setup = updateFixture(testDatabases());
+
+test('持续集成保留的备用脚本不进入提测或修复执行快照', async () => {
+  const f = await setup();
+  f.database.run('UPDATE platform_environment SET deployment_json = ? WHERE id = ?', [
+    JSON.stringify({ kind: 'CI_CD', scriptCommand: 'bun run deploy:remembered' }),
+    f.item.environment_id,
+  ]);
+  const workspace = new SubmissionQueries(f.database).getWorkspace(
+    f.users.developer.id,
+    f.submission.id,
+  );
+  const item = workspace.submission.items[0]!;
+  const source = snapshotItemSource(f.database, f.submission.projectId, {
+    engineeringId: item.engineering.id,
+    responsibleUserId: f.users.developer.id,
+    bindingId: item.technical!.bindingId,
+    environmentId: f.item.environment_id,
+    targetBranch: item.targetBranch,
+  });
+  expect(JSON.parse(source.deployment_json)).toEqual({ kind: 'CI_CD' });
+  expect(item.technical!.deployment).toEqual({ kind: 'CI_CD' });
+  const bug = f.createBug('使用持续集成的缺陷');
+  expect(
+    JSON.parse(
+      f.database.get<{ deployment_json: string }>(
+        'SELECT deployment_json FROM submission_bug_deployment WHERE bug_id = ?',
+        bug.id,
+      )!.deployment_json,
+    ),
+  ).toEqual({ kind: 'CI_CD' });
+});
 
 test('登记不冻结配置，首次修复读取最新部署，同工程不同配置串行分批', async () => {
   const f = await setup();

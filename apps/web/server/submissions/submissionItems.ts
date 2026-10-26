@@ -1,3 +1,4 @@
+import { EffectiveEnvironmentDeploymentSchema } from '@/contracts/projects/engineering';
 import type { AppDatabase } from '@/server/database/index';
 import { PlatformError } from '@/server/platform/errors/index';
 import type {
@@ -94,7 +95,12 @@ export function snapshotItemSource(
       'VALIDATION_FAILED',
       '提测项仓库、负责人、绑定、Agent 或环境配置无效',
     );
-  return source;
+  return {
+    ...source,
+    deployment_json: JSON.stringify(
+      EffectiveEnvironmentDeploymentSchema.parse(JSON.parse(source.deployment_json)),
+    ),
+  };
 }
 
 /** Caller owns the transaction; an item and its environment use are installed together. */

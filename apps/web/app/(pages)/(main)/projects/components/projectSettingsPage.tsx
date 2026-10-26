@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { redirect, RedirectType } from 'next/navigation';
 import { requireCurrentUser } from '@/app/auth';
 import { engineeringService, projectService } from '@/server/runtime/services';
+import { runnerService } from '@/server/runtime/runner';
 import { updateProjectAction } from '@/app/actions/projects/projects';
 import {
   normalizeProjectSettingsRoute,
@@ -23,9 +24,10 @@ import {
   EngineeringEnvironmentManagement,
   EngineeringInformationManagement,
 } from '../engineering/engineeringSettings';
-import { EngineeringTabs } from './engineeringTabs';
+import { EngineeringTabs, ProjectRouteFeedback } from './engineeringTabs';
 import { AutoSaveBoundary, AutoSaveForm } from './autoSaveForm';
 import { ProjectDeleteControl } from './projectDeleteControl';
+import { ProjectMembersControl } from './projectMembersControl';
 
 export const metadata: Metadata = {
   title: '我的项目 — Agent Party Time',
@@ -53,11 +55,13 @@ export default async function ProjectSettingsPage({
   const requestedProject = projects.find(
     ({ project }) => project.id === requestedRoute.projectId,
   );
+  const engineeringReader = engineeringService();
+  const requestedEngineering = requestedProject
+    ? engineeringReader.listEngineering(user.id, requestedProject.project.id)
+    : [];
   const engineeringIds =
-    requestedProject && requestedRoute.panel === 'engineering'
-      ? engineeringService()
-          .listEngineering(user.id, requestedProject.project.id)
-          .map(({ id }) => id)
+    requestedRoute.panel === 'engineering'
+      ? requestedEngineering.map(({ id }) => id)
       : undefined;
   const route = normalizeProjectSettingsRoute(requestedRoute, {
     projects: projects.map(({ project, membership }) => ({
@@ -76,12 +80,62 @@ export default async function ProjectSettingsPage({
     ? projectService().listMembers(user.id, selected.project.id)
     : [];
   const engineering = selected
-    ? engineeringService().listEngineering(user.id, selected.project.id)
+    ? selected.project.id === requestedProject?.project.id
+      ? requestedEngineering
+      : engineeringReader.listEngineering(user.id, selected.project.id)
     : [];
-  const activeEngineering =
-    engineering.find(({ id }) => id === route.engineeringId) ?? engineering[0];
   const creatingEngineering =
     route.panel === 'engineering' && route.engineeringId === 'new';
+
+  const availableRunners = engineering.length
+    ? runnerService()
+        .listRunners(user.id)
+        .filter(({ online, runner }) => online && !runner.revokedAt)
+    : [];
+  const engineeringPanels = engineering.map((item) => {
+    const workspace = engineeringReader.getWorkspace(user.id, item.id);
+    return {
+      id: item.id,
+      name: workspace.engineering.name,
+      type: workspace.engineering.type,
+      panel: (
+        <EngineeringDetail
+          key={item.id}
+          bindingRequestId={
+            route.engineeringId === item.id ? route.bindingRequestId : undefined
+          }
+          workspace={workspace}
+          runners={availableRunners}
+          owner={owner}
+          userId={user.id}
+          informationEditor={
+            owner ? (
+              <EngineeringInformationManagement
+                workspace={workspace}
+                identifierLocked={engineeringReader.isIdentifierLocked(
+                  user.id,
+                  item.id,
+                )}
+              />
+            ) : null
+          }
+          membersEditor={
+            owner ? (
+              <EngineeringMemberManagement
+                workspace={workspace}
+                projectMembers={members}
+              />
+            ) : null
+          }
+          environmentsEditor={
+            owner ? (
+              <EngineeringEnvironmentManagement workspace={workspace} />
+            ) : null
+          }
+        />
+      ),
+    };
+  });
 
   return (
     <AutoSaveBoundary>
@@ -90,16 +144,7 @@ export default async function ProjectSettingsPage({
         projects={projects}
         selectedProjectId={selected?.project.id}
       >
-        {!creatingEngineering && route.error ? (
-          <p className="project-settings__error" role="alert">
-            {route.error}
-          </p>
-        ) : null}
-        {!creatingEngineering && route.success ? (
-          <p className="notice notice-success" role="status">
-            {route.success}
-          </p>
-        ) : null}
+        <ProjectRouteFeedback />
         {route.panel === 'invitations' ? (
           <InvitationDialog invitations={invitations} />
         ) : null}
@@ -134,6 +179,16 @@ export default async function ProjectSettingsPage({
               </div>
               <nav aria-label="项目操作">
                 <span className="project-auto-save-note">修改后自动保存</span>
+                <ProjectMembersControl
+                  key={selected.project.id}
+                  count={members.length}
+                  projectName={selected.project.name}
+                >
+                  <CollaborationDialog
+                    projectId={selected.project.id}
+                    userId={user.id}
+                  />
+                </ProjectMembersControl>
                 <Link href="/submissions">进入提测</Link>
               </nav>
               {owner ? (
@@ -147,105 +202,26 @@ export default async function ProjectSettingsPage({
               ) : null}
             </header>
             <section
-              className="project-overview__members"
-              aria-label="项目成员"
-            >
-              <div className="project-overview__section-heading">
-                <h3>
-                  项目成员 <span>{members.length}</span>
-                </h3>
-              </div>
-              <CollaborationDialog
-                projectId={selected.project.id}
-                userId={user.id}
-              />
-            </section>
-            <section
               className="project-overview__engineering"
               aria-label="项目工程"
             >
-              <div className="project-overview__section-heading">
-                <h3>
-                  工程 <span>{engineering.length}</span>
-                </h3>
-                {owner && engineering.length ? (
-                  <Link
-                    className="repair-primary"
-                    href={engineeringCreatePath(selected.project.id)}
-                  >
-                    新建工程
-                  </Link>
-                ) : null}
-              </div>
-              {engineering.length ? (
+              {engineering.length || creatingEngineering ? (
                 <EngineeringTabs
-                  engineering={engineering.map(({ id, name, type }) => ({
-                    id,
-                    name,
-                    type,
-                  }))}
+                  engineering={engineeringPanels}
                   projectId={selected.project.id}
-                  selectedId={
-                    creatingEngineering ? undefined : activeEngineering?.id
+                  creationPanel={
+                    owner ? (
+                      <EngineeringDialog
+                        error={creatingEngineering ? route.error : undefined}
+                        projectId={selected.project.id}
+                        success={
+                          creatingEngineering ? route.success : undefined
+                        }
+                        userId={user.id}
+                      />
+                    ) : null
                   }
                 />
-              ) : null}
-              {creatingEngineering ? (
-                <div id="project-engineering-panel">
-                  <EngineeringDialog
-                    error={route.error}
-                    projectId={selected.project.id}
-                    success={route.success}
-                    userId={user.id}
-                  />
-                </div>
-              ) : activeEngineering ? (
-                <div
-                  role="tabpanel"
-                  id="project-engineering-panel"
-                  aria-labelledby={`engineering-tab-${activeEngineering.id}`}
-                  tabIndex={0}
-                >
-                  <EngineeringDetail
-                    key={activeEngineering.id}
-                    bindingRequestId={
-                      route.engineeringId === activeEngineering.id
-                        ? route.bindingRequestId
-                        : undefined
-                    }
-                    engineeringId={activeEngineering.id}
-                    owner={owner}
-                    projectId={selected.project.id}
-                    userId={user.id}
-                    informationEditor={
-                      owner ? (
-                        <EngineeringInformationManagement
-                          engineeringId={activeEngineering.id}
-                          projectId={selected.project.id}
-                          userId={user.id}
-                        />
-                      ) : null
-                    }
-                    membersEditor={
-                      owner ? (
-                        <EngineeringMemberManagement
-                          engineeringId={activeEngineering.id}
-                          projectMembers={members}
-                          userId={user.id}
-                        />
-                      ) : null
-                    }
-                    environmentsEditor={
-                      owner ? (
-                        <EngineeringEnvironmentManagement
-                          engineeringId={activeEngineering.id}
-                          projectId={selected.project.id}
-                          userId={user.id}
-                        />
-                      ) : null
-                    }
-                  />
-                </div>
               ) : (
                 <div className="project-overview__empty">
                   <h4>为 {selected.project.name} 添加第一个工程</h4>

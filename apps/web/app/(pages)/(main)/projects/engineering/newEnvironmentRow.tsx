@@ -21,10 +21,16 @@ export function NewEnvironmentRow({
     >
       <input name="engineeringId" type="hidden" value={engineeringId} />
       <label>
-        <span>新环境名称</span>
-        <input autoFocus maxLength={120} name="name" required />
+        <input
+          aria-label="新环境名称"
+          autoFocus
+          maxLength={120}
+          name="name"
+          placeholder="新环境名称"
+          required
+        />
       </label>
-      <DeploymentFields />
+      <DeploymentFields compact />
       <div className="environment-direct-form__hint">
         <small>填写完整后自动添加</small>
         <button onClick={() => setAdding(false)} type="button">

@@ -1,3 +1,4 @@
+import { EffectiveEnvironmentDeploymentSchema } from '@/contracts/projects/engineering';
 import { parseRow, type DatabaseRow } from '@/server/database/rowMapper';
 import { submissionCloseBlocker } from '@/server/submissions/lifecycle/submissionClosure';
 import { environmentAccessForItem } from './environmentAccess';
@@ -287,7 +288,9 @@ function mapItem(row: SubmissionItemRow): SubmissionItem {
     environment: {
       id: row.environment_id,
       name: row.environment_name,
-      deployment: JSON.parse(row.deployment_json),
+      deployment: EffectiveEnvironmentDeploymentSchema.parse(
+        JSON.parse(row.deployment_json),
+      ),
     },
     createdAt: row.created_at,
   });

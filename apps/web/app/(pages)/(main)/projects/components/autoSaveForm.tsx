@@ -7,9 +7,10 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  useTransition,
   type ReactNode,
 } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import type { InteractiveActionResult } from '@/app/actions/actionTransport';
 import { messageOf } from '../../components/actionError';
 import {
@@ -24,13 +25,51 @@ type SaveController = {
 };
 const SaveContext = createContext<Set<SaveController> | null>(null);
 
+type ProjectNavigation = { projectId: string; phase: 'saving' | 'loading' };
+type NavigationTarget = { href: string; projectId?: string };
+const ProjectNavigationContext = createContext<ProjectNavigation | null>(null);
+
+export function useProjectNavigation() {
+  return useContext(ProjectNavigationContext);
+}
+
 export function AutoSaveBoundary({ children }: { children: ReactNode }) {
   const [controllers] = useState(() => new Set<SaveController>());
   const [navigationError, setNavigationError] = useState<string | null>(null);
-  const destination = useRef<string | null>(null);
+  const [projectNavigation, setProjectNavigation] =
+    useState<ProjectNavigation | null>(null);
+  const [routePending, startRouteTransition] = useTransition();
+  const transitionObserved = useRef(false);
+  const destination = useRef<NavigationTarget | null>(null);
   const navigating = useRef(false);
   const router = useRouter();
+  const currentProjectId = useSearchParams().get('project');
+
   useEffect(() => {
+    if (!projectNavigation || projectNavigation.phase !== 'loading') return;
+    if (currentProjectId === projectNavigation.projectId) {
+      setProjectNavigation(null);
+      destination.current = null;
+    } else if (routePending) transitionObserved.current = true;
+    else if (transitionObserved.current) {
+      setProjectNavigation(null);
+      setNavigationError('项目加载未完成，请重新选择项目。');
+    }
+  }, [currentProjectId, projectNavigation, routePending]);
+
+  useEffect(() => {
+    function navigate(target: NavigationTarget) {
+      const url = new URL(target.href);
+      const current = new URL(window.location.href);
+      if (target.projectId)
+        setProjectNavigation({ projectId: target.projectId, phase: 'loading' });
+      if (url.origin === current.origin)
+        startRouteTransition(() =>
+          router.push(url.pathname + url.search + url.hash, { scroll: false }),
+        );
+      else window.location.assign(target.href);
+    }
+
     function beforeNavigate(event: MouseEvent) {
       const link =
         event.target instanceof Element
@@ -47,26 +86,48 @@ export function AutoSaveBoundary({ children }: { children: ReactNode }) {
         link.hasAttribute('download')
       )
         return;
-      setNavigationError(null);
-      if (![...controllers].some((controller) => controller.hasChanges()))
+      const target: NavigationTarget = {
+        href: link.href,
+        projectId: link.dataset.projectId,
+      };
+      if (
+        target.projectId === currentProjectId &&
+        !destination.current?.projectId
+      ) {
+        event.preventDefault();
         return;
+      }
+      setNavigationError(null);
+      const dirty = [...controllers].some((controller) =>
+        controller.hasChanges(),
+      );
+      if (!dirty && !target.projectId) return;
       event.preventDefault();
-      destination.current = link.href;
+      destination.current = target;
+      if (target.projectId) {
+        transitionObserved.current = false;
+        setProjectNavigation({
+          projectId: target.projectId,
+          phase: dirty ? 'saving' : 'loading',
+        });
+      }
+      if (!dirty) {
+        navigate(target);
+        return;
+      }
       if (navigating.current) return;
       navigating.current = true;
       void Promise.all([...controllers].map((controller) => controller.flush()))
         .then((results) => {
-          const href = destination.current;
-          if (href && results.every(Boolean)) {
-            const url = new URL(href);
-            if (url.origin === window.location.origin)
-              router.push(url.pathname + url.search + url.hash, {
-                scroll: false,
-              });
-            else window.location.assign(href);
+          const pending = destination.current;
+          if (pending && results.every(Boolean)) navigate(pending);
+          else {
+            setProjectNavigation(null);
+            setNavigationError('修改尚未保存，请先处理标出的字段。');
           }
         })
         .catch((error) => {
+          setProjectNavigation(null);
           setNavigationError(messageOf(error, '暂时无法切换页面，请重试。'));
         })
         .finally(() => {
@@ -76,15 +137,18 @@ export function AutoSaveBoundary({ children }: { children: ReactNode }) {
     }
     document.addEventListener('click', beforeNavigate, true);
     return () => document.removeEventListener('click', beforeNavigate, true);
-  }, [controllers, router]);
+  }, [controllers, currentProjectId, router, startRouteTransition]);
+
   return (
     <SaveContext.Provider value={controllers}>
-      {navigationError ? (
-        <p className="project-navigation-error" role="alert">
-          {navigationError}
-        </p>
-      ) : null}
-      {children}
+      <ProjectNavigationContext.Provider value={projectNavigation}>
+        {navigationError ? (
+          <p className="project-navigation-error" role="alert">
+            {navigationError}
+          </p>
+        ) : null}
+        {children}
+      </ProjectNavigationContext.Provider>
     </SaveContext.Provider>
   );
 }

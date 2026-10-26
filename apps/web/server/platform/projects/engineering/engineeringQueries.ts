@@ -4,6 +4,7 @@ import type { AppDatabase } from '@/server/database/index';
 import { PlatformError } from '@/server/platform/errors/index';
 import {
   EngineeringIdSchema,
+  EnvironmentDeploymentSettingsSchema,
   EngineeringMemberSchema,
   EngineeringMembershipSchema,
   EngineeringSchema,
@@ -214,15 +215,20 @@ export function mapMembership(row: EngineeringMembershipRow): EngineeringMembers
 }
 
 export function mapEnvironment(row: EnvironmentRow): TestEnvironment {
-  let deployment: unknown;
+  let settings;
   try {
-    deployment = JSON.parse(row.deployment_json);
+    settings = EnvironmentDeploymentSettingsSchema.parse(JSON.parse(row.deployment_json));
   } catch (error) {
-    throw new PlatformError('INTERNAL_ERROR', '环境部署配置无效', {
-      cause: error,
-    });
+    throw new PlatformError('INTERNAL_ERROR', '环境部署配置无效', { cause: error });
   }
-  return parseRow(TestEnvironmentSchema, { ...row, deployment });
+  const deployment =
+    settings.kind === 'LOCAL_SCRIPT' ? settings : { kind: 'CI_CD' as const };
+  const scriptCommand = settings.kind === 'CI_CD' ? settings.scriptCommand : undefined;
+  return parseRow(TestEnvironmentSchema, {
+    ...row,
+    deployment,
+    ...(scriptCommand === undefined ? {} : { script_command: scriptCommand }),
+  });
 }
 
 export function requireBindingEngineering(

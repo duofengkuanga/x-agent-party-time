@@ -85,6 +85,7 @@ export function EngineeringCreateEnvironments({
           <DeploymentFields
             commandName={`command:${environment.key}`}
             kindName={`deploymentKind:${environment.key}`}
+            scriptCommandName={`scriptCommand:${environment.key}`}
           />
         </article>
       ))}

@@ -29,6 +29,19 @@ export const DeploymentMethodSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('CI_CD') }),
 ]);
 
+// An environment keeps its script while CI is selected; execution still uses DeploymentMethodSchema.
+export const EnvironmentDeploymentSettingsSchema = z.discriminatedUnion('kind', [
+  DeploymentMethodSchema.options[0],
+  DeploymentMethodSchema.options[1].extend({
+    scriptCommand: DeploymentMethodSchema.options[0].shape.command.optional(),
+  }),
+]);
+
+export const EffectiveEnvironmentDeploymentSchema =
+  EnvironmentDeploymentSettingsSchema.transform((settings) =>
+    settings.kind === 'LOCAL_SCRIPT' ? settings : { kind: 'CI_CD' as const },
+  );
+
 const EngineeringBaseSchema = z.object({
   id: EngineeringIdSchema,
   projectId: ProjectIdSchema,
@@ -63,6 +76,7 @@ export const TestEnvironmentSchema = z.object({
   engineeringId: EngineeringIdSchema,
   name: EnvironmentNameSchema,
   deployment: DeploymentMethodSchema,
+  scriptCommand: DeploymentMethodSchema.options[0].shape.command.optional(),
   version: z.number().int().positive(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),

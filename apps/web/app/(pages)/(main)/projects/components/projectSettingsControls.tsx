@@ -6,6 +6,7 @@ import { useFormStatus } from 'react-dom';
 import { createProjectAction } from '@/app/actions/projects/projects';
 import type { ProjectSummary } from '@/contracts/projects/project';
 import { projectSettingsPath } from './routeState';
+import { useProjectNavigation } from './autoSaveForm';
 
 export function ProjectSettingsControls({
   children,
@@ -18,6 +19,14 @@ export function ProjectSettingsControls({
   projects: ProjectSummary[];
   selectedProjectId?: string;
 }) {
+  const navigation = useProjectNavigation();
+  const switching = Boolean(
+    navigation && navigation.projectId !== selectedProjectId,
+  );
+  const highlightedProjectId = navigation?.projectId ?? selectedProjectId;
+  const loadingProject = projects.find(
+    ({ project }) => project.id === navigation?.projectId,
+  );
   const [showCreate, setShowCreate] = useState(false);
   const [search, setSearch] = useState('');
   useEffect(() => {
@@ -84,8 +93,9 @@ export function ProjectSettingsControls({
                   <li key={project.id}>
                     <Link
                       aria-current={
-                        selectedProjectId === project.id ? 'page' : undefined
+                        highlightedProjectId === project.id ? 'page' : undefined
                       }
+                      data-project-id={project.id}
                       href={projectSettingsPath({ projectId: project.id })}
                       scroll={false}
                     >
@@ -129,18 +139,41 @@ export function ProjectSettingsControls({
       <section
         className="project-settings__content"
         aria-label="项目与工程信息"
+        aria-busy={switching}
         key={selectedProjectId}
       >
-        {children}
-        {!projects.length ? (
-          <div className="project-settings__empty">
-            <h2>从一个项目开始</h2>
-            <p>把成员、工程和测试环境放在一起，随后绑定你的本机 Agent。</p>
-            <button onClick={() => setShowCreate(true)} type="button">
-              新建项目
-            </button>
+        {switching ? (
+          <div className="project-loading">
+            <h2>{loadingProject?.project.name}</h2>
+            <p role="status">
+              {navigation?.phase === 'saving'
+                ? '正在保存当前修改…'
+                : '正在加载项目内容…'}
+            </p>
+            <div className="project-loading__skeleton" aria-hidden="true">
+              <span />
+              <span />
+              <div />
+              <div />
+            </div>
           </div>
         ) : null}
+        <div
+          className="project-settings__loaded"
+          hidden={switching}
+          inert={switching}
+        >
+          {children}
+          {!projects.length ? (
+            <div className="project-settings__empty">
+              <h2>从一个项目开始</h2>
+              <p>把成员、工程和测试环境放在一起，随后绑定你的本机 Agent。</p>
+              <button onClick={() => setShowCreate(true)} type="button">
+                新建项目
+              </button>
+            </div>
+          ) : null}
+        </div>
       </section>
     </main>
   );

@@ -5,6 +5,8 @@ import type { MutationStore } from '@/server/platform/mutations/store';
 import {
   DeploymentMethodSchema,
   EnvironmentIdSchema,
+  EnvironmentDeploymentSettingsSchema,
+  type DeploymentMethod,
   EnvironmentNameSchema,
   TestEnvironmentSchema,
   type TestEnvironment,
@@ -17,6 +19,7 @@ import {
 
 export type EnvironmentInput = Pick<TestEnvironment, 'name' | 'deployment'> & {
   mutationId: string;
+  scriptCommand?: string;
 };
 
 const DeleteEnvironmentResultSchema = z.object({
@@ -54,6 +57,7 @@ export class EnvironmentService {
   ): TestEnvironment {
     const name = EnvironmentNameSchema.parse(input.name);
     const deployment = DeploymentMethodSchema.parse(input.deployment);
+    const settings = environmentDeploymentSettings(deployment, input.scriptCommand);
     return this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
@@ -78,7 +82,7 @@ export class EnvironmentService {
           id,
           engineeringId,
           name,
-          JSON.stringify(deployment),
+          JSON.stringify(settings),
           createdAt,
           createdAt,
         )!;
@@ -125,6 +129,11 @@ export class EnvironmentService {
         );
         if (engineering.archivedAt)
           throw new PlatformError('INVALID_TRANSITION', '已归档工程的环境不能修改');
+        const settings = environmentDeploymentSettings(
+          deployment,
+          input.scriptCommand,
+          current,
+        );
         const updatedAt = this.now().toISOString();
         const update = this.db.get<EnvironmentRow>(
           `UPDATE platform_environment
@@ -132,7 +141,7 @@ export class EnvironmentService {
                  updated_at = ?
              WHERE id = ? AND version = ? RETURNING *`,
           name,
-          JSON.stringify(deployment),
+          JSON.stringify(settings),
           updatedAt,
           environmentId,
           input.expectedVersion,
@@ -205,4 +214,21 @@ export function validateEnvironments(
     new Set(environments.map(({ mutationId }) => mutationId)).size !== environments.length
   )
     throw new PlatformError('VALIDATION_FAILED', '测试环境的操作标识不能重复');
+}
+
+function environmentDeploymentSettings(
+  deployment: DeploymentMethod,
+  scriptCommand?: string,
+  current?: TestEnvironment,
+) {
+  if (deployment.kind === 'LOCAL_SCRIPT') return deployment;
+  const remembered =
+    scriptCommand ??
+    (current?.deployment.kind === 'LOCAL_SCRIPT'
+      ? current.deployment.command
+      : current?.scriptCommand);
+  return EnvironmentDeploymentSettingsSchema.parse({
+    kind: 'CI_CD',
+    ...(remembered === undefined ? {} : { scriptCommand: remembered }),
+  });
 }

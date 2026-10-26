@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import Link from 'next/link';
-import { engineeringService, projectService } from '@/server/runtime/services';
+import { projectService } from '@/server/runtime/services';
+import type { EngineeringWorkspace } from '@/contracts/projects/engineering';
 import { createEngineeringAction } from '@/app/actions/projects/engineering';
 import { projectPanelPath } from '@/app/(pages)/(main)/projects/components/routeState';
 import { EngineeringCreateEnvironments } from './engineeringCreateEnvironments';
@@ -138,15 +139,13 @@ function EngineeringCreateForm({
 }
 
 export function EngineeringMemberManagement({
-  engineeringId,
+  workspace,
   projectMembers,
-  userId,
 }: {
-  engineeringId: string;
+  workspace: EngineeringWorkspace;
   projectMembers: ReturnType<ReturnType<typeof projectService>['listMembers']>;
-  userId: string;
 }) {
-  const workspace = engineeringService().getWorkspace(userId, engineeringId);
+  const engineeringId = workspace.engineering.id;
   return (
     <div className="engineering-members-direct" aria-label="工程成员">
       {projectMembers.map(({ user }) => (

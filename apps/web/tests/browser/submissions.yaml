@@ -76,6 +76,36 @@ cases:
       - hidden: '.repair-overlay'
       - eval: "['projectDeleteAtTop','projectDeleteInitiallyDisabled','projectDeleteWrongNameDisabled','projectDeleteCancelFocus'].every(key=>sessionStorage.getItem(key)==='true')"
 
+  - name: project selection shows its target immediately while the request is pending
+    steps:
+      - open: __BASE_URL__/projects
+      - click: '.project-settings__primary-action'
+      - fill:
+          { sel: '#project-create-form input[name="name"]', text: 项目加载验收 }
+      - click: '#project-create-form button[type="submit"]'
+      - wait: '.project-overview__empty'
+      - eval: 'document.documentElement.dataset.testReloading="true";window.location.reload();true'
+      - wait: 'html:not([data-test-reloading]) .project-overview__empty'
+      - wait: { load: networkidle }
+      - click: '.project-settings__primary-action'
+      - wait: '#project-create-form'
+      - click: '.project-settings__primary-action'
+      - wait: 'body:not(:has(#project-create-form))'
+      - eval: >-
+          window.projectLoadFetch=window.fetch;window.projectLoadSeen=[];window.fetch=(...args)=>{const input=args[0],url=new URL(typeof input==='string'?input:input instanceof Request?input.url:String(input),location.href);window.projectLoadSeen.push({path:url.pathname,project:url.searchParams.get('project'),rsc:url.searchParams.has('_rsc')});
+          return url.pathname==='/projects'&&url.searchParams.get('project')==='__PROJECT_ID__'
+          ?new Promise((resolve,reject)=>{window.releaseProjectLoad=()=>window.projectLoadFetch(...args).then(resolve,reject);})
+          :window.projectLoadFetch(...args);};true
+      - click: '.project-settings__list a[href="/projects?project=__PROJECT_ID__"]'
+      - eval: >-
+          (()=>{sessionStorage.setItem('projectPendingFeedback',String(!!document.querySelector('.project-settings__content[aria-busy=true] .project-loading')
+          &&document.querySelector('.project-settings__list [aria-current=page]')?.getAttribute('href')==='/projects?project=__PROJECT_ID__'));
+          window.fetch=window.projectLoadFetch;if(!window.releaseProjectLoad)throw new Error('Project request was not held: '+JSON.stringify(window.projectLoadSeen));window.releaseProjectLoad();return true;})()
+      - wait: '.project-engineering[aria-label="浏览器前端工程"]'
+    assert:
+      - eval: 'sessionStorage.getItem("projectPendingFeedback")==="true"'
+      - hidden: '.project-loading'
+
   - name: project overview switches engineering tabs without dialogs
     steps:
       - open: __BASE_URL__/projects?project=__PROJECT_ID__
@@ -90,7 +120,7 @@ cases:
       - hidden: '.repair-overlay'
       - hidden: '.auto-save-form'
       - hidden: '.project-engineering a[href*="mode="]'
-      - text: { sel: '.project-overview__members', contains: 浏览器测试执行人 }
+      - text: { sel: '.project-members-toggle', contains: 项目成员 }
       - text:
           {
             sel: '[role="tab"][aria-selected="true"]',
@@ -103,6 +133,41 @@ cases:
           const a=sidebar.getBoundingClientRect(),b=content.getBoundingClientRect();
           return a.right<=b.left+1&&Math.abs(a.top-b.top)<1
           &&getComputedStyle(content).overflowY==='auto';})()
+
+  - name: engineering tab switching does not refetch the project page
+    steps:
+      - open: __BASE_URL__/projects?project=__PROJECT_ID__
+      - wait: '.project-engineering-tabs'
+      - eval: 'performance.clearResourceTimings();true'
+      - click: '.project-engineering-tabs a:nth-child(2)'
+      - wait: '.project-engineering[aria-label="浏览器后端工程"]'
+    assert:
+      - eval: 'performance.getEntriesByType("resource").every(entry=>!entry.name.includes("_rsc="))'
+      - text:
+          {
+            sel: '[role="tab"][aria-selected="true"]',
+            contains: 浏览器后端工程,
+          }
+
+  - name: engineering tab selection follows browser back and forward
+    steps:
+      - open: __BASE_URL__/projects?project=__PROJECT_ID__
+      - wait: '.project-engineering-tabs'
+      - click: '.project-engineering-tabs a:nth-child(2)'
+      - wait: '.project-engineering[aria-label="浏览器后端工程"]'
+      - click: '.project-engineering-tabs a:nth-child(3)'
+      - wait: '.project-engineering[aria-label="浏览器追加工程"]'
+      - eval: 'window.history.back();true'
+      - wait: '.project-engineering[aria-label="浏览器后端工程"]'
+      - eval: 'window.history.forward();true'
+      - wait: '.project-engineering[aria-label="浏览器追加工程"]'
+    assert:
+      - text:
+          {
+            sel: '[role="tab"][aria-selected="true"]',
+            contains: 浏览器追加工程,
+          }
+      - count: { sel: '[role="tabpanel"]', eq: 1 }
 
   - name: engineering tabs support keyboard navigation
     steps:
@@ -184,6 +249,10 @@ cases:
           }
       - click: '.engineering-editor > .dialog-actions button[type="submit"]'
       - wait: '.engineering-identity-form'
+      - click: '.engineering-type-choice label:has(input[value="BACKEND"])'
+      - wait: '.engineering-identity-form[data-save-state="saved"]'
+      - click: '.engineering-type-choice label:has(input[value="FRONTEND"])'
+      - wait: '.engineering-identity-form[data-save-state="saved"]'
       - eval: >-
           sessionStorage.setItem('directControls',String(!document.querySelector('a[href*="mode="],a[href*="panel=project"],a[href*="panel=collaboration"],.auto-save-form button[type=submit],[role=dialog],.repair-overlay')));true
       - fill:
@@ -195,20 +264,16 @@ cases:
             text: 'bun run deploy:integration',
           }
       - wait: '.environment-direct-row .auto-save-form[data-save-state="saved"]'
-      - eval: >-
-          (()=>{const select=document.querySelector('.environment-direct-row select[name=deploymentKind]');
-          select.value='CI_CD';select.dispatchEvent(new Event('change',{bubbles:true}));return true;})()
+      - click: '.environment-direct-row .deployment-kind-choice label:has(input[value="CI_CD"])'
       - wait: '.environment-direct-row .auto-save-form[data-save-state="saved"]'
       - wait: 'body:not(:has(.environment-direct-row input[name="command"]))'
-      - eval: >-
-          (()=>{const select=document.querySelector('.environment-direct-row select[name=deploymentKind]');
-          select.value='LOCAL_SCRIPT';select.dispatchEvent(new Event('change',{bubbles:true}));return true;})()
+      - eval: 'document.documentElement.dataset.testReloading="true";window.location.reload();true'
+      - wait: 'html:not([data-test-reloading]) .environment-direct-row'
+      - wait: { load: networkidle }
+      - click: '.environment-direct-row .deployment-kind-choice label:has(input[value="LOCAL_SCRIPT"])'
       - wait: '.environment-direct-row input[name="command"]'
-      - fill:
-          {
-            sel: '.environment-direct-row input[name="command"]',
-            text: 'bun run deploy:integration',
-          }
+      - eval: >-
+          (()=>{if(document.querySelector('.environment-direct-row input[name=command]').value!=='bun run deploy:integration') throw new Error('Switching deployment mode discarded the saved script command');return true;})()
       - wait: '.environment-direct-row .auto-save-form[data-save-state="saved"]'
       - click: '.environment-add'
       - fill:
@@ -227,7 +292,7 @@ cases:
       - wait: '.engineering-member-toggle[aria-busy="false"] input:not(:checked)'
       - click: '.engineering-member-toggle input'
       - wait: '.engineering-member-toggle[aria-busy="false"] input:checked'
-      - click: '.project-overview__engineering > .project-overview__section-heading a'
+      - click: '.project-engineering-create-link'
       - wait: '.engineering-editor input[name="name"]'
       - fill:
           { sel: '.engineering-editor input[name="name"]', text: 切换目标工程 }
@@ -308,6 +373,23 @@ cases:
           &&[...document.querySelectorAll('.environment-direct-row input[name=name]')].some(input=>input.value==='集成环境')
           &&[...document.querySelectorAll('.environment-direct-row input[name=command]')].some(input=>input.value==='bun run deploy:integration')
           &&['directControls','navigationWaitsForSave','failedDraftPreserved'].every(key=>sessionStorage.getItem(key)==='true')
+
+  - name: project members open in a dialog next to the submission action
+    steps:
+      - open: __BASE_URL__/projects?project=__PROJECT_ID__
+      - wait: '.project-members-toggle'
+      - click: '.project-members-toggle'
+      - wait: '.project-members-modal[open]'
+      - eval: >-
+          sessionStorage.setItem('membersDialog',String(document.querySelector('.project-members-modal').matches(':modal')
+          &&document.querySelector('.project-members-modal').textContent.includes('浏览器测试执行人')
+          &&document.querySelector('.project-members-toggle').getBoundingClientRect().right<=document.querySelector('.project-overview__heading a[href="/submissions"]').getBoundingClientRect().left));true
+      - press: Escape
+      - wait: 'body:not(:has(.project-members-modal[open]))'
+    assert:
+      - eval: 'sessionStorage.getItem("membersDialog")==="true" && document.activeElement===document.querySelector(".project-members-toggle")'
+      - hidden: '.project-overview__engineering > .project-overview__section-heading'
+      - eval: 'document.querySelector(".engineering-binding-strip").getBoundingClientRect().bottom<=document.querySelector(".engineering-context").getBoundingClientRect().top+1'
 
   - name: project invitations stay inside the project page
     steps:

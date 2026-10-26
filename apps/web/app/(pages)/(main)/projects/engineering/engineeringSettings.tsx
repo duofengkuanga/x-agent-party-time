@@ -2,11 +2,11 @@ import { randomUUID } from 'node:crypto';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { PlatformError } from '@/server/platform/errors/index';
-import { runnerService } from '@/server/runtime/runner';
+import type { RunnerStatus } from '@agent-party-time/runner-contract';
+import type { EngineeringWorkspace } from '@/contracts/projects/engineering';
 import {
   bindingRequestService,
   bindingService,
-  engineeringService,
 } from '@/server/runtime/services';
 import {
   createEngineeringBindingAction,
@@ -23,15 +23,11 @@ import { AutoSaveForm } from '../components/autoSaveForm';
 import { NewEnvironmentRow } from './newEnvironmentRow';
 
 export function EngineeringEnvironmentManagement({
-  engineeringId,
-  projectId,
-  userId,
+  workspace,
 }: {
-  engineeringId: string;
-  projectId: string;
-  userId: string;
+  workspace: EngineeringWorkspace;
 }) {
-  const workspace = engineeringService().getWorkspace(userId, engineeringId);
+  const { id: engineeringId, projectId } = workspace.engineering;
   return (
     <div className="environment-direct-list">
       {workspace.environments.map((environment) => (
@@ -46,16 +42,20 @@ export function EngineeringEnvironmentManagement({
               projectId={projectId}
             />
             <input name="environmentId" type="hidden" value={environment.id} />
-            <label>
-              <span>环境名称</span>
+            <label className="environment-direct-name">
               <input
+                aria-label="环境名称"
                 defaultValue={environment.name}
                 maxLength={120}
                 name="name"
                 required
               />
             </label>
-            <DeploymentFields deployment={environment.deployment} />
+            <DeploymentFields
+              compact
+              deployment={environment.deployment}
+              scriptCommand={environment.scriptCommand}
+            />
           </AutoSaveForm>
           <details className="project-inline-confirmation environment-direct-delete">
             <summary>删除环境</summary>
@@ -86,17 +86,14 @@ export function EngineeringEnvironmentManagement({
 }
 
 export function EngineeringInformationManagement({
-  engineeringId,
-  projectId,
-  userId,
+  workspace,
+  identifierLocked,
 }: {
-  engineeringId: string;
-  projectId: string;
-  userId: string;
+  workspace: EngineeringWorkspace;
+  identifierLocked: boolean;
 }) {
-  const service = engineeringService();
-  const { engineering } = service.getWorkspace(userId, engineeringId);
-  const identifierLocked = service.isIdentifierLocked(userId, engineeringId);
+  const { engineering } = workspace;
+  const { id: engineeringId, projectId } = engineering;
   return (
     <AutoSaveForm
       className="engineering-identity-form"
@@ -105,58 +102,89 @@ export function EngineeringInformationManagement({
     >
       <EngineeringFields engineeringId={engineeringId} projectId={projectId} />
       <label className="engineering-identity-form__name">
-        <span>工程名称</span>
         <input
+          aria-label="工程名称"
           defaultValue={engineering.name}
           maxLength={120}
           name="name"
           required
         />
       </label>
-      <label>
-        <span>归属</span>
-        <select defaultValue={engineering.type} name="type">
-          <option value="FRONTEND">前端</option>
-          <option value="BACKEND">后端</option>
-        </select>
-      </label>
-      <label>
-        <span>稳定标识</span>
-        <input
-          defaultValue={engineering.identifier}
-          maxLength={40}
-          name="identifier"
-          pattern="[a-z\p{Script=Han}][a-z0-9\p{Script=Han}]*(?:-[a-z0-9\p{Script=Han}]+)*"
-          readOnly={identifierLocked}
-          required
-        />
-        {identifierLocked ? <small>已用于提测，不可修改</small> : null}
-      </label>
+      <div className="engineering-type-choice">
+        <span className="engineering-field-label">归属</span>
+        <div aria-label="工程归属" role="radiogroup">
+          {(
+            [
+              { value: 'FRONTEND', label: '前端' },
+              { value: 'BACKEND', label: '后端' },
+            ] as const
+          ).map((option) => (
+            <label key={option.value}>
+              <input
+                defaultChecked={engineering.type === option.value}
+                name="type"
+                type="radio"
+                value={option.value}
+              />
+              <span>{option.label}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+      {identifierLocked ? (
+        <div className="engineering-identifier-readonly">
+          <span className="engineering-field-label">
+            稳定标识{' '}
+            <span className="engineering-readonly-badge">已用于提测</span>
+          </span>
+          <output
+            aria-label="稳定标识，已用于提测，不可修改"
+            title="已用于提测，不可修改"
+          >
+            {engineering.identifier}
+          </output>
+          <input
+            name="identifier"
+            type="hidden"
+            value={engineering.identifier}
+          />
+        </div>
+      ) : (
+        <label className="engineering-identity-form__identifier">
+          <span>稳定标识</span>
+          <input
+            defaultValue={engineering.identifier}
+            maxLength={40}
+            name="identifier"
+            pattern="[a-z\p{Script=Han}][a-z0-9\p{Script=Han}]*(?:-[a-z0-9\p{Script=Han}]+)*"
+            required
+          />
+        </label>
+      )}
     </AutoSaveForm>
   );
 }
 
 export function EngineeringDetail({
   bindingRequestId,
-  engineeringId,
+  workspace,
+  runners,
   informationEditor,
   membersEditor,
   environmentsEditor,
   owner,
-  projectId,
   userId,
 }: {
   bindingRequestId?: string;
-  engineeringId: string;
+  workspace: EngineeringWorkspace;
+  runners: RunnerStatus[];
   informationEditor?: ReactNode;
   membersEditor?: ReactNode;
   environmentsEditor?: ReactNode;
   owner: boolean;
-  projectId: string;
   userId: string;
 }) {
-  const service = engineeringService();
-  const workspace = service.getWorkspace(userId, engineeringId);
+  const { id: engineeringId, projectId } = workspace.engineering;
   let bindingRequest: ReturnType<
     ReturnType<typeof bindingRequestService>['getRequest']
   > | null = null;
@@ -173,9 +201,6 @@ export function EngineeringDetail({
   }
   const bindings = bindingService().listBindings(userId, engineeringId);
   const assigned = new Set(workspace.members.map(({ user }) => user.id));
-  const runners = runnerService()
-    .listRunners(userId)
-    .filter(({ online, runner }) => online && !runner.revokedAt);
   const currentBinding = bindings.find(({ user }) => user.id === userId);
   const repositoryLabel =
     workspace.engineering.repositoryState === 'CONFIRMED'
@@ -201,7 +226,104 @@ export function EngineeringDetail({
         )}
       </header>
 
-      <dl>
+      <section
+        className="engineering-detail__bindings engineering-binding-strip"
+        aria-label={`${workspace.engineering.name}本机 Agent 绑定`}
+      >
+        <div className="collaboration-section-title">
+          <h5>
+            本机 Agent 绑定 <small>{bindings.length}</small>
+          </h5>
+        </div>
+        {bindings.length ? (
+          <ul>
+            {bindings.map(({ binding, runner, user }) => (
+              <li key={binding.id}>
+                <span>
+                  <strong>{runner.name}</strong>
+                  <small>{user.displayName}</small>
+                </span>
+                <em>
+                  {runner.revokedAt
+                    ? '已撤销'
+                    : runner.lastSeenAt
+                      ? '已绑定'
+                      : '未连接'}
+                </em>
+                {binding.userId === userId ? (
+                  <BindingDeleteForm
+                    bindingId={binding.id}
+                    engineeringId={engineeringId}
+                    mutationId={randomUUID()}
+                    projectId={projectId}
+                  />
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="collaboration-empty">还没有开发人员绑定本机 Agent。</p>
+        )}
+        {bindingRequest && bindingRequest.state !== 'SUCCEEDED' ? (
+          <div
+            className="engineering-binding-request"
+            data-state={bindingRequest.state}
+          >
+            <AutoRefresh
+              active={['PENDING', 'PROCESSING'].includes(bindingRequest.state)}
+            />
+            <strong>{bindingRequestLabel(bindingRequest.state)}</strong>
+            <p>
+              {bindingRequest.errorMessage ??
+                bindingRequestMessage(bindingRequest.state)}
+            </p>
+          </div>
+        ) : null}
+        {currentBinding ? null : bindingRequest &&
+          ['PENDING', 'PROCESSING'].includes(
+            bindingRequest.state,
+          ) ? null : assigned.has(userId) && runners.length ? (
+          <div className="engineering-binding-disclosure">
+            <form
+              action={createEngineeringBindingAction}
+              className="engineering-binding-form"
+            >
+              <EngineeringFields
+                engineeringId={engineeringId}
+                projectId={projectId}
+              />
+              <label>
+                <span>选择本机 Agent</span>
+                <select name="runnerId" required>
+                  {runners.map(({ runner }) => (
+                    <option key={runner.id} value={runner.id}>
+                      {runner.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button type="submit">绑定本机 Agent</button>
+            </form>
+          </div>
+        ) : assigned.has(userId) ? (
+          <div className="collab-form__blocked">
+            <div>
+              <strong>需要先连接本机 Agent</strong>
+              <p>连接完成后再为当前工程建立绑定。</p>
+            </div>
+            <Link href="/agents">我的 Agent</Link>
+          </div>
+        ) : (
+          <div className="collab-form__blocked">
+            <div>
+              <strong>你还不是工程成员</strong>
+              <p>由项目负责人把你加入工程后，才能创建本机 Agent 绑定。</p>
+            </div>
+          </div>
+        )}
+      </section>
+
+      <dl className="engineering-context">
         <div>
           <dt>仓库地址</dt>
           <dd>{repositoryLabel}</dd>
@@ -264,107 +386,6 @@ export function EngineeringDetail({
                 <p className="collaboration-empty">还没有测试环境。</p>
               )}
             </>
-          )}
-        </section>
-
-        <section
-          className="engineering-detail__bindings"
-          aria-label={`${workspace.engineering.name}本机 Agent 绑定`}
-        >
-          <div className="collaboration-section-title">
-            <h5>
-              本机 Agent 绑定 <small>{bindings.length}</small>
-            </h5>
-          </div>
-          {bindings.length ? (
-            <ul>
-              {bindings.map(({ binding, runner, user }) => (
-                <li key={binding.id}>
-                  <span>
-                    <strong>{runner.name}</strong>
-                    <small>{user.displayName}</small>
-                  </span>
-                  <em>
-                    {runner.revokedAt
-                      ? '已撤销'
-                      : runner.lastSeenAt
-                        ? '已绑定'
-                        : '未连接'}
-                  </em>
-                  {binding.userId === userId ? (
-                    <BindingDeleteForm
-                      bindingId={binding.id}
-                      engineeringId={engineeringId}
-                      mutationId={randomUUID()}
-                      projectId={projectId}
-                    />
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="collaboration-empty">
-              还没有开发人员绑定本机 Agent。
-            </p>
-          )}
-          {bindingRequest && bindingRequest.state !== 'SUCCEEDED' ? (
-            <div
-              className="engineering-binding-request"
-              data-state={bindingRequest.state}
-            >
-              <AutoRefresh
-                active={['PENDING', 'PROCESSING'].includes(
-                  bindingRequest.state,
-                )}
-              />
-              <strong>{bindingRequestLabel(bindingRequest.state)}</strong>
-              <p>
-                {bindingRequest.errorMessage ??
-                  bindingRequestMessage(bindingRequest.state)}
-              </p>
-            </div>
-          ) : null}
-          {currentBinding ? null : bindingRequest &&
-            ['PENDING', 'PROCESSING'].includes(
-              bindingRequest.state,
-            ) ? null : assigned.has(userId) && runners.length ? (
-            <div className="engineering-binding-disclosure">
-              <form
-                action={createEngineeringBindingAction}
-                className="engineering-binding-form"
-              >
-                <EngineeringFields
-                  engineeringId={engineeringId}
-                  projectId={projectId}
-                />
-                <label>
-                  <span>选择本机 Agent</span>
-                  <select name="runnerId" required>
-                    {runners.map(({ runner }) => (
-                      <option key={runner.id} value={runner.id}>
-                        {runner.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button type="submit">绑定本机 Agent</button>
-              </form>
-            </div>
-          ) : assigned.has(userId) ? (
-            <div className="collab-form__blocked">
-              <div>
-                <strong>需要先连接本机 Agent</strong>
-                <p>连接完成后再为当前工程建立绑定。</p>
-              </div>
-              <Link href="/agents">我的 Agent</Link>
-            </div>
-          ) : (
-            <div className="collab-form__blocked">
-              <div>
-                <strong>你还不是工程成员</strong>
-                <p>由项目负责人把你加入工程后，才能创建本机 Agent 绑定。</p>
-              </div>
-            </div>
           )}
         </section>
       </div>

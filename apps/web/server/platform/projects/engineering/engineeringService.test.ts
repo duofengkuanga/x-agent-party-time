@@ -47,6 +47,58 @@ async function setup() {
 }
 
 describe('EngineeringService', () => {
+  test('切换部署方式时持久保留脚本，持续集成只使用当前部署方式', async () => {
+    const { database, project, service, users } = await setup();
+    const engineering = service.createEngineering(users.owner.id, project.id, {
+      mutationId: randomUUID(),
+      name: '记忆脚本工程',
+      identifier: 'script-memory',
+      type: 'FRONTEND',
+    });
+    const environment = service.createEnvironment(users.owner.id, engineering.id, {
+      mutationId: randomUUID(),
+      name: '测试环境',
+      deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:first' },
+    });
+    const switched = service.updateEnvironment(users.owner.id, environment.id, {
+      mutationId: randomUUID(),
+      expectedVersion: environment.version,
+      name: environment.name,
+      deployment: { kind: 'CI_CD' },
+    });
+    expect(switched.deployment).toEqual({ kind: 'CI_CD' });
+    expect(switched.scriptCommand).toBe('bun run deploy:first');
+    const reloaded = new EngineeringService(database).getWorkspace(
+      users.owner.id,
+      engineering.id,
+    ).environments[0]!;
+    expect(reloaded.scriptCommand).toBe('bun run deploy:first');
+    const changed = service.updateEnvironment(users.owner.id, environment.id, {
+      mutationId: randomUUID(),
+      expectedVersion: reloaded.version,
+      name: environment.name,
+      deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:second' },
+    });
+    expect(changed.scriptCommand).toBeUndefined();
+    const latest = service.updateEnvironment(users.owner.id, environment.id, {
+      mutationId: randomUUID(),
+      expectedVersion: changed.version,
+      name: environment.name,
+      deployment: { kind: 'CI_CD' },
+      scriptCommand: 'bun run deploy:latest-draft',
+    });
+    expect(latest.deployment).toEqual({ kind: 'CI_CD' });
+    expect(latest.scriptCommand).toBe('bun run deploy:latest-draft');
+    expect(
+      JSON.parse(
+        database.get<{ deployment_json: string }>(
+          'SELECT deployment_json FROM platform_environment WHERE id = ?',
+          environment.id,
+        )!.deployment_json,
+      ),
+    ).toEqual({ kind: 'CI_CD', scriptCommand: 'bun run deploy:latest-draft' });
+  });
+
   test('工程初始化原子创建创建者成员、额外成员与多个环境', async () => {
     const { project, service, users } = await setup();
     const engineering = service.createEngineeringSetup(users.owner.id, project.id, {
