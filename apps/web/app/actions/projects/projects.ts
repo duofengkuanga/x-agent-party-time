@@ -97,23 +97,17 @@ export async function updateProjectAction(formData: FormData) {
   });
 }
 
-export async function deleteProjectAction(formData: FormData): Promise<never> {
-  const projectId = formField(formData, 'projectId');
-  return runRedirectMutation({
-    formData,
-    errorPath: () => projectSettingsPath({ projectId }),
-    command: (userId) => {
-      projectService().deleteProject(userId, projectId, {
+export async function deleteProjectAction(formData: FormData) {
+  return runInteractiveMutation({
+    validationEvent: 'project_delete_validation_failed',
+    command: ({ userId }) => ({
+      result: projectService().deleteProject(userId, formField(formData, 'projectId'), {
         mutationId: formField(formData, 'mutationId'),
         expectedVersion: integerFormField(formData, 'expectedVersion'),
         confirmationName: formField(formData, 'confirmationName'),
-      });
-      return {
-        path: PROJECTS_PATH,
-        message: '项目已删除',
-        refreshPaths: [PROJECTS_PATH, '/submissions'],
-      };
-    },
+      }),
+      refreshPaths: [PROJECTS_PATH, '/submissions'],
+    }),
   });
 }
 

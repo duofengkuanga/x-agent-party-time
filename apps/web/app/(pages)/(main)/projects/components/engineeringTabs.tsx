@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   useEffect,
@@ -10,12 +9,13 @@ import {
   type MouseEvent,
   type ReactNode,
 } from 'react';
-import { engineeringCreatePath, engineeringSettingsPath } from './routeState';
+import { engineeringSettingsPath } from './routeState';
 
 export function EngineeringTabs({
   engineering,
   projectId,
-  creationPanel,
+  projectName,
+  canManage,
 }: {
   engineering: Array<{
     id: string;
@@ -25,17 +25,22 @@ export function EngineeringTabs({
     archiveControl: ReactNode;
   }>;
   projectId: string;
-  creationPanel: ReactNode;
+  projectName: string;
+  canManage: boolean;
 }) {
   const tabs = useRef<HTMLDivElement>(null);
+  const lastSelected = useRef(engineering[0]?.id);
   const search = useSearchParams();
   const router = useRouter();
-  const creating =
-    search.get('engineering') === 'new' && Boolean(creationPanel);
-  const selected = creating
-    ? undefined
-    : (engineering.find(({ id }) => id === search.get('engineering')) ??
-      engineering[0]);
+  const requestedEngineering = search.get('engineering');
+  const selected =
+    engineering.find(({ id }) => id === requestedEngineering) ??
+    engineering.find(({ id }) => id === lastSelected.current) ??
+    engineering[0];
+  useEffect(() => {
+    if (selected && requestedEngineering !== 'new')
+      lastSelected.current = selected.id;
+  }, [selected?.id, requestedEngineering]);
   const localSwitch = search.get('panel') !== 'invitations';
 
   function selectTab(event: MouseEvent<HTMLAnchorElement>) {
@@ -105,21 +110,14 @@ export function EngineeringTabs({
               </a>
             ))}
           </div>
-          {creationPanel && !creating ? (
-            <Link
-              className="repair-primary project-engineering-create-link"
-              href={engineeringCreatePath(projectId)}
-              prefetch={false}
-            >
-              新建工程
-            </Link>
+          {selected?.archiveControl ? (
+            <div className="project-engineering-toolbar__actions">
+              {selected.archiveControl}
+            </div>
           ) : null}
-          {selected?.archiveControl}
         </div>
       ) : null}
-      {creating ? (
-        <div id="project-engineering-panel">{creationPanel}</div>
-      ) : selected ? (
+      {selected ? (
         <div
           role="tabpanel"
           id="project-engineering-panel"
@@ -129,7 +127,16 @@ export function EngineeringTabs({
         >
           {selected.panel}
         </div>
-      ) : null}
+      ) : (
+        <div className="project-overview__empty">
+          <h4>为 {projectName} 添加第一个工程</h4>
+          <p>
+            {canManage
+              ? '加入工程后，就能配置工程成员和测试环境。'
+              : '项目负责人添加工程后，你可以在这里查看工程信息。'}
+          </p>
+        </div>
+      )}
     </>
   );
 }

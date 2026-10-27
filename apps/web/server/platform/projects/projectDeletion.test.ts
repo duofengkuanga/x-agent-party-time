@@ -37,6 +37,25 @@ async function setup() {
 }
 
 describe('项目删除', () => {
+  test('删除入口查询复用实际删除条件，且不会修改项目数据', async () => {
+    const { database, projects, project, users } = await setup();
+    const before = database.all('SELECT * FROM platform_mutation');
+    expect(projects.canDeleteProject(users.owner.id, project.id)).toBe(true);
+    expectRowCount(database, 'platform_project').toBe(1);
+    expect(database.all('SELECT * FROM platform_mutation')).toEqual(before);
+    expect(() => projects.canDeleteProject(users.member.id, project.id)).toThrow(
+      expect.objectContaining({ code: 'PERMISSION_DENIED' }),
+    );
+    const fixture = await delivery();
+    expect(
+      createProjectService(fixture.database).canDeleteProject(
+        fixture.users.owner.id,
+        fixture.project.id,
+      ),
+    ).toBe(false);
+    expectRowCount(fixture.database, 'test_submission').toBe(1);
+  });
+
   test('负责人确认后原子删除成员、邀请、工程、环境和绑定，重试幂等且不影响其他项目', async () => {
     const { database, projects, project, users } = await setup();
     const other = projects.createProject(users.owner.id, {
@@ -155,6 +174,7 @@ describe('项目删除', () => {
       randomUUID(),
     );
     const input = { ...mutation(project.version), confirmationName: project.name };
+    expect(projects.canDeleteProject(users.owner.id, project.id)).toBe(false);
     expect(() => projects.deleteProject(users.owner.id, project.id, input)).toThrow(
       '正在建立本机绑定',
     );
@@ -163,6 +183,7 @@ describe('项目删除', () => {
       '2000-01-01T00:00:00.000Z',
       request.id,
     ]);
+    expect(projects.canDeleteProject(users.owner.id, project.id)).toBe(true);
     projects.deleteProject(users.owner.id, project.id, input);
     expectRowCount(database, 'platform_binding_request').toBe(0);
   });
@@ -193,6 +214,7 @@ describe('项目删除', () => {
       'CANCEL_REQUESTED',
     ]) {
       database.run('UPDATE platform_execution SET state = ?', [state]);
+      expect(projects.canDeleteProject(users.owner.id, project.id)).toBe(false);
       expect(() =>
         projects.deleteProject(users.owner.id, project.id, {
           ...mutation(project.version),
@@ -239,6 +261,7 @@ describe('项目删除', () => {
       },
     );
     const input = { ...mutation(project.version), confirmationName: project.name };
+    expect(projects.canDeleteProject(users.owner.id, project.id)).toBe(false);
     expect(() => projects.deleteProject(users.owner.id, project.id, input)).toThrow(
       '未完成的本机善后任务',
     );
@@ -251,6 +274,7 @@ describe('项目删除', () => {
       'SELECT count(*) count FROM platform_execution',
     )!.count;
     expect(executionCount).toBeGreaterThan(0);
+    expect(projects.canDeleteProject(users.owner.id, project.id)).toBe(true);
     projects.deleteProject(users.owner.id, project.id, input);
     for (const table of [
       'platform_project',
@@ -301,6 +325,7 @@ describe('项目删除', () => {
       [randomUUID(), randomUUID(), randomUUID()],
     );
     const before = database.all('SELECT * FROM platform_mutation');
+    expect(projects.canDeleteProject(users.owner.id, project.id)).toBe(false);
     expect(() =>
       projects.deleteProject(users.owner.id, project.id, {
         ...mutation(project.version),

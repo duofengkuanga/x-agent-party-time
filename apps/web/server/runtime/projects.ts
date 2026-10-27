@@ -3,7 +3,10 @@ import type { AppDatabase } from '@/server/database';
 import { ProjectService } from '@/server/platform/projects/projectService';
 import { BindingService } from '@/server/platform/projects/engineering/bindingService';
 import { projectMemberHasEngineeringResponsibilities } from '@/server/platform/projects/engineering/responsibilities';
-import { deleteProjectSubmissionRecords } from '@/server/submissions/projectDeletion';
+import {
+  deleteProjectSubmissionRecords,
+  prepareProjectSubmissionDeletion,
+} from '@/server/submissions/projectDeletion';
 import {
   projectMemberHasSubmissionResponsibilities,
   submissionReferencesBinding,
@@ -21,7 +24,12 @@ export function createProjectService(
     (projectId, userId) =>
       projectMemberHasEngineeringResponsibilities(db, projectId, userId) ||
       projectMemberHasSubmissionResponsibilities(db, projectId, userId),
-    [(projectId) => deleteProjectSubmissionRecords(db, projectId)],
+    [
+      {
+        prepare: (projectId) => prepareProjectSubmissionDeletion(db, projectId),
+        deleteRecords: (projectId) => deleteProjectSubmissionRecords(db, projectId),
+      },
+    ],
   );
 }
 

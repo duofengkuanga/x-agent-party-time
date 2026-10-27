@@ -146,16 +146,6 @@
   width: fit-content;
 }
 
-.environment-direct-delete > button[aria-expanded='true']:not(:hover) {
-  background: var(--paper-deep);
-}
-
-.environment-direct-delete > button[aria-expanded='true']:hover {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-
 .environment-direct-row:has([data-save-state='error'])
   .environment-direct-delete {
   margin: 10px 0 0 auto;
@@ -164,43 +154,6 @@
 
 .environment-direct-list [data-save-state='error'] .auto-save-form__status {
   padding-right: 0;
-}
-
-.environment-delete-popconfirm {
-  background: var(--panel);
-  border: 1px solid var(--strong-line);
-  box-shadow: var(--shadow);
-  color: var(--ink);
-  inset: auto;
-  margin: 0;
-  max-height: calc(100dvh - 24px);
-  overflow: auto;
-  padding: 14px;
-  position: fixed;
-  width: min(288px, calc(100vw - 24px));
-}
-
-.environment-delete-popconfirm::backdrop {
-  background: transparent;
-}
-
-.environment-delete-popconfirm > strong {
-  font-size: 12px;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-}
-
-.environment-delete-popconfirm > p {
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.7;
-  margin: 8px 0 14px;
-}
-
-.environment-delete-popconfirm__actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
 }
 
 .environment-direct-list .environment-direct-form--new {

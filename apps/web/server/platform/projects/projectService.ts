@@ -22,7 +22,11 @@ import {
   type DeleteProjectResult,
 } from '../../../contracts/projects/project';
 import { ProjectInvitations } from './projectInvitations';
-import { deleteProjectRecords, type ProjectDeletionParticipant } from './projectDeletion';
+import {
+  deleteProjectRecords,
+  planProjectDeletion,
+  type ProjectDeletionParticipant,
+} from './projectDeletion';
 
 const PROJECT_HIDDEN_MESSAGE = '项目不存在或无权访问';
 type ProjectRow = DatabaseRow<Project>;
@@ -226,6 +230,23 @@ export class ProjectService {
         };
       },
     });
+  }
+
+  canDeleteProject(actorUserId: string, projectId: string): boolean {
+    this.requireOwner(actorUserId, ProjectIdSchema.parse(projectId));
+    try {
+      planProjectDeletion(
+        this.db,
+        projectId,
+        this.now().toISOString(),
+        this.deletionParticipants,
+      );
+      return true;
+    } catch (error) {
+      if (error instanceof PlatformError && error.code === 'RESOURCE_CONFLICT')
+        return false;
+      throw error;
+    }
   }
 
   deleteProject(

@@ -11,12 +11,8 @@ type EnvironmentDraft = {
 
 export function EngineeringCreateEnvironments({
   initialMutationId,
-  saveContext = '创建工程时一起保存',
-  submitLabel,
 }: {
   initialMutationId: string;
-  saveContext?: string;
-  submitLabel?: string;
 }) {
   const [environments, setEnvironments] = useState<EnvironmentDraft[]>([
     { key: initialMutationId, name: '测试环境' },
@@ -38,40 +34,22 @@ export function EngineeringCreateEnvironments({
   }
 
   return (
-    <section className="engineering-environments">
-      <div className="collaboration-section-title engineering-environments__title">
-        <div>
-          <span>测试环境与更新方式</span>
-          <small>
-            {environments.length} 个，{saveContext}
-          </small>
-        </div>
+    <section className="engineering-join-environments">
+      <header>
+        <h3>环境配置</h3>
         <button onClick={addEnvironment} type="button">
-          添加测试环境
+          ＋ 添加环境
         </button>
-      </div>
+      </header>
 
       {environments.map((environment, index) => (
-        <article key={environment.key}>
+        <article className="engineering-join-environment" key={environment.key}>
           <input name="environmentKey" type="hidden" value={environment.key} />
           <input
             name={`environmentMutationId:${environment.key}`}
             type="hidden"
             value={environment.key}
           />
-          <header className="engineering-environment-card__header field-wide">
-            <strong>测试环境 {index + 1}</strong>
-            {environments.length > 1 ? (
-              <button
-                aria-label={`移除测试环境 ${index + 1}`}
-                className="engineering-remove-environment"
-                onClick={() => removeEnvironment(environment.key)}
-                type="button"
-              >
-                移除
-              </button>
-            ) : null}
-          </header>
           <label>
             <span>环境名称</span>
             <input
@@ -83,18 +61,23 @@ export function EngineeringCreateEnvironments({
             />
           </label>
           <DeploymentFields
+            compact
             commandName={`command:${environment.key}`}
             kindName={`deploymentKind:${environment.key}`}
             scriptCommandName={`scriptCommand:${environment.key}`}
           />
+          {environments.length > 1 ? (
+            <button
+              aria-label={`移除环境 ${index + 1}`}
+              className="engineering-remove-environment"
+              onClick={() => removeEnvironment(environment.key)}
+              type="button"
+            >
+              ×
+            </button>
+          ) : null}
         </article>
       ))}
-
-      {submitLabel ? (
-        <div className="engineering-environments__submit">
-          <button type="submit">{submitLabel}</button>
-        </div>
-      ) : null}
     </section>
   );
 }

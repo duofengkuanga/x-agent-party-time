@@ -51,7 +51,7 @@ export async function createEngineeringAction(formData: FormData): Promise<never
     });
     return {
       path: engineeringSettingsPath(projectId, engineering.id),
-      message: '工程已创建',
+      message: '工程已加入',
     };
   });
 }
@@ -76,18 +76,20 @@ export async function updateEngineeringAction(formData: FormData) {
   });
 }
 
-export async function archiveEngineeringAction(formData: FormData): Promise<never> {
-  const ids = engineeringIds(formData);
-  const errorPath = engineeringSettingsPath(ids.projectId, ids.engineeringId);
-  return runEngineeringRedirect(formData, errorPath, (userId) => {
-    engineeringService().archiveEngineering(userId, ids.engineeringId, {
-      mutationId: formField(formData, 'mutationId'),
-      expectedVersion: integerFormField(formData, 'expectedVersion'),
-    });
-    return {
-      path: engineeringSettingsPath(ids.projectId, ids.engineeringId),
-      message: '工程已归档，历史数据仍然保留',
-    };
+export async function archiveEngineeringAction(formData: FormData) {
+  return runInteractiveMutation({
+    validationEvent: 'engineering_archive_validation_failed',
+    command: ({ userId }) => ({
+      result: engineeringService().archiveEngineering(
+        userId,
+        formField(formData, 'engineeringId'),
+        {
+          mutationId: formField(formData, 'mutationId'),
+          expectedVersion: integerFormField(formData, 'expectedVersion'),
+        },
+      ),
+      refreshPaths: REFRESH_PATHS,
+    }),
   });
 }
 
@@ -165,15 +167,20 @@ export async function updateEnvironmentAction(formData: FormData) {
   });
 }
 
-export async function deleteEnvironmentAction(formData: FormData): Promise<never> {
-  const ids = engineeringIds(formData);
-  const path = engineeringSettingsPath(ids.projectId, ids.engineeringId);
-  return runEngineeringRedirect(formData, path, (userId) => {
-    engineeringService().deleteEnvironment(userId, formField(formData, 'environmentId'), {
-      mutationId: formField(formData, 'mutationId'),
-      expectedVersion: integerFormField(formData, 'expectedVersion'),
-    });
-    return { path, message: '测试环境已删除' };
+export async function deleteEnvironmentAction(formData: FormData) {
+  return runInteractiveMutation({
+    validationEvent: 'environment_delete_validation_failed',
+    command: ({ userId }) => ({
+      result: engineeringService().deleteEnvironment(
+        userId,
+        formField(formData, 'environmentId'),
+        {
+          mutationId: formField(formData, 'mutationId'),
+          expectedVersion: integerFormField(formData, 'expectedVersion'),
+        },
+      ),
+      refreshPaths: REFRESH_PATHS,
+    }),
   });
 }
 
@@ -191,13 +198,6 @@ function runEngineeringRedirect(
       refreshPaths: REFRESH_PATHS,
     }),
   });
-}
-
-function engineeringIds(formData: FormData) {
-  return {
-    projectId: formField(formData, 'projectId'),
-    engineeringId: formField(formData, 'engineeringId'),
-  };
 }
 
 function deploymentField(formData: FormData, key?: string): DeploymentMethod {

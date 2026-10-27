@@ -89,7 +89,7 @@ export function ProjectSettingsControls({
             </label>
             <nav aria-label="切换项目">
               <ol className="project-settings__list">
-                {matchingProjects.map(({ project, membership }) => (
+                {matchingProjects.map(({ project }) => (
                   <li key={project.id}>
                     <Link
                       aria-current={
@@ -107,11 +107,6 @@ export function ProjectSettingsControls({
                       </span>
                       <span className="project-settings__project-copy">
                         <strong>{project.name}</strong>
-                        <small>
-                          {membership.role === 'OWNER'
-                            ? '项目负责人'
-                            : '项目成员'}
-                        </small>
                       </span>
                       <span
                         className="project-settings__selected-mark"

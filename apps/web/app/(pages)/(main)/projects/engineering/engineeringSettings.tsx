@@ -1,21 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import type { ReactNode } from 'react';
-import Link from 'next/link';
-import { PlatformError } from '@/server/platform/errors/index';
-import type { RunnerStatus } from '@agent-party-time/runner-contract';
 import type { EngineeringWorkspace } from '@/contracts/projects/engineering';
 import {
-  bindingRequestService,
-  bindingService,
-} from '@/server/runtime/services';
-import {
-  createEngineeringBindingAction,
   updateEngineeringAction,
   updateEnvironmentAction,
 } from '@/app/actions/projects/engineering';
 import { DeploymentFields } from '@/app/(pages)/(main)/projects/engineering/deploymentFields';
-import { BindingDeleteForm } from './bindingDeleteForm';
-import { AutoRefresh } from '@/app/(pages)/(main)/components/autoRefresh';
 import { EngineeringFields } from './settingsFields';
 import { AutoSaveForm } from '../components/autoSaveForm';
 import { NewEnvironmentRow } from './newEnvironmentRow';
@@ -92,15 +82,7 @@ export function EngineeringInformationManagement({
       version={engineering.version}
     >
       <EngineeringFields engineeringId={engineeringId} projectId={projectId} />
-      <label className="engineering-identity-form__name">
-        <input
-          aria-label="工程名称"
-          defaultValue={engineering.name}
-          maxLength={120}
-          name="name"
-          required
-        />
-      </label>
+      <input name="name" type="hidden" value={engineering.name} />
       <div className="engineering-type-choice">
         <span className="engineering-field-label">归属</span>
         <div aria-label="工程归属" role="radiogroup">
@@ -157,44 +139,17 @@ export function EngineeringInformationManagement({
 }
 
 export function EngineeringDetail({
-  bindingRequestId,
   workspace,
-  runners,
   informationEditor,
   membersEditor,
   environmentsEditor,
-  userId,
 }: {
-  bindingRequestId?: string;
   workspace: EngineeringWorkspace;
-  runners: RunnerStatus[];
   informationEditor?: ReactNode;
   membersEditor?: ReactNode;
   environmentsEditor?: ReactNode;
-  userId: string;
 }) {
-  const { id: engineeringId, projectId } = workspace.engineering;
-  let bindingRequest: ReturnType<
-    ReturnType<typeof bindingRequestService>['getRequest']
-  > | null = null;
-  if (bindingRequestId) {
-    try {
-      bindingRequest = bindingRequestService().getRequest(
-        userId,
-        bindingRequestId,
-      );
-    } catch (error) {
-      if (!(error instanceof PlatformError && error.code === 'NOT_FOUND'))
-        throw error;
-    }
-  }
-  const bindings = bindingService().listBindings(userId, engineeringId);
-  const assigned = new Set(workspace.members.map(({ user }) => user.id));
-  const currentBinding = bindings.find(({ user }) => user.id === userId);
-  const repositoryLabel =
-    workspace.engineering.repositoryState === 'CONFIRMED'
-      ? workspace.engineering.repositoryUrl
-      : '等待首次本机 Agent 绑定确认仓库';
+  const { id: engineeringId } = workspace.engineering;
 
   return (
     <article
@@ -204,135 +159,34 @@ export function EngineeringDetail({
     >
       <header className="project-engineering__heading">
         {informationEditor || (
-          <div>
-            <span className="project-engineering__type">
-              {workspace.engineering.type === 'FRONTEND' ? '前端' : '后端'}
-            </span>
-            <h4>{workspace.engineering.name}</h4>
-            <small>{workspace.engineering.identifier}</small>
-            {workspace.engineering.archivedAt ? <span>已归档</span> : null}
-          </div>
-        )}
-      </header>
-
-      <section
-        className="engineering-detail__bindings engineering-binding-strip"
-        aria-label={`${workspace.engineering.name}本机 Agent 绑定`}
-      >
-        <div className="collaboration-section-title">
-          <h5>
-            本机 Agent 绑定 <small>{bindings.length}</small>
-          </h5>
-        </div>
-        {bindings.length ? (
-          <ul>
-            {bindings.map(({ binding, runner, user }) => (
-              <li key={binding.id}>
-                <span>
-                  <strong>{runner.name}</strong>
-                  <small>{user.displayName}</small>
-                </span>
-                <em>
-                  {runner.revokedAt
-                    ? '已撤销'
-                    : runner.lastSeenAt
-                      ? '已绑定'
-                      : '未连接'}
-                </em>
-                {binding.userId === userId ? (
-                  <BindingDeleteForm
-                    bindingId={binding.id}
-                    engineeringId={engineeringId}
-                    mutationId={randomUUID()}
-                    projectId={projectId}
-                  />
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="collaboration-empty">还没有开发人员绑定本机 Agent。</p>
-        )}
-        {bindingRequest && bindingRequest.state !== 'SUCCEEDED' ? (
-          <div
-            className="engineering-binding-request"
-            data-state={bindingRequest.state}
-          >
-            <AutoRefresh
-              active={['PENDING', 'PROCESSING'].includes(bindingRequest.state)}
-            />
-            <strong>{bindingRequestLabel(bindingRequest.state)}</strong>
-            <p>
-              {bindingRequest.errorMessage ??
-                bindingRequestMessage(bindingRequest.state)}
-            </p>
-          </div>
-        ) : null}
-        {workspace.engineering.archivedAt ||
-        currentBinding ? null : bindingRequest &&
-          ['PENDING', 'PROCESSING'].includes(
-            bindingRequest.state,
-          ) ? null : assigned.has(userId) && runners.length ? (
-          <div className="engineering-binding-disclosure">
-            <form
-              action={createEngineeringBindingAction}
-              className="engineering-binding-form"
-            >
-              <EngineeringFields
-                engineeringId={engineeringId}
-                projectId={projectId}
-              />
-              <label>
-                <span>选择本机 Agent</span>
-                <select name="runnerId" required>
-                  {runners.map(({ runner }) => (
-                    <option key={runner.id} value={runner.id}>
-                      {runner.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button type="submit">绑定本机 Agent</button>
-            </form>
-          </div>
-        ) : assigned.has(userId) ? (
-          <div className="collab-form__blocked">
+          <div className="engineering-identity-summary">
             <div>
-              <strong>需要先连接本机 Agent</strong>
-              <p>连接完成后再为当前工程建立绑定。</p>
-            </div>
-            <Link href="/agents">我的 Agent</Link>
-          </div>
-        ) : (
-          <div className="collab-form__blocked">
-            <div>
-              <strong>你还不是工程成员</strong>
-              <p>由项目负责人把你加入工程后，才能创建本机 Agent 绑定。</p>
-            </div>
-          </div>
-        )}
-      </section>
-
-      <dl className="engineering-context">
-        <div>
-          <dt>仓库地址</dt>
-          <dd>{repositoryLabel}</dd>
-        </div>
-        <div>
-          <dt>工程成员</dt>
-          <dd>
-            {membersEditor || (
-              <span>
-                {workspace.members.length
-                  ? workspace.members
-                      .map(({ user }) => user.displayName)
-                      .join('、')
-                  : '暂未配置工程成员'}
+              <span className="engineering-field-label">归属</span>
+              <span className="engineering-heading-value">
+                {workspace.engineering.type === 'FRONTEND' ? '前端' : '后端'}
               </span>
-            )}
-          </dd>
+            </div>
+            <div>
+              <span className="engineering-field-label">稳定标识</span>
+              <span className="engineering-heading-value">
+                {workspace.engineering.identifier}
+              </span>
+            </div>
+          </div>
+        )}
+        <div className="engineering-heading-members">
+          <span className="engineering-field-label">工程成员</span>
+          {membersEditor || (
+            <span className="engineering-heading-value">
+              {workspace.members.length
+                ? workspace.members
+                    .map(({ user }) => user.displayName)
+                    .join('、')
+                : '暂未配置工程成员'}
+            </span>
+          )}
         </div>
-      </dl>
+      </header>
 
       <div className="project-engineering__body">
         <section
@@ -377,28 +231,4 @@ export function EngineeringDetail({
 }
 function deploymentLabel(kind: 'LOCAL_SCRIPT' | 'CI_CD'): string {
   return kind === 'LOCAL_SCRIPT' ? '本地脚本' : '持续集成';
-}
-
-function bindingRequestLabel(
-  state: 'PENDING' | 'PROCESSING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED',
-): string {
-  return {
-    PENDING: '等待 Agent 响应',
-    PROCESSING: '等待选择仓库',
-    SUCCEEDED: '工程绑定已完成',
-    FAILED: '工程绑定未完成',
-    CANCELLED: '工程绑定已取消',
-  }[state];
-}
-
-function bindingRequestMessage(
-  state: 'PENDING' | 'PROCESSING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED',
-): string {
-  return {
-    PENDING: '等待本机 Agent 领取请求。',
-    PROCESSING: '请在本机选择要绑定的 Git 仓库。',
-    SUCCEEDED: '工程绑定已完成。',
-    FAILED: '请根据提示重新发起工程绑定。',
-    CANCELLED: '如需继续，请重新发起工程绑定。',
-  }[state];
 }

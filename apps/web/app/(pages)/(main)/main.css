@@ -21,6 +21,9 @@
 @import './submissions/styles/testerBugDetail.css';
 @import './submissions/styles/developerBugDetail.css';
 @import './projects/styles/projectControls.css';
+@import './projects/styles/actionPopconfirm.css';
+@import './projects/styles/projectActions.css';
+@import './projects/styles/engineeringCreateModal.css';
 @import './agents/styles/agents.css';
 @import './agents/styles/agentConnect.css';
 @import './submissions/styles/updates.css';

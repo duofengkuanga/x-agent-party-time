@@ -1,0 +1,50 @@
+.project-settings-shell {
+  --project-action-width: 104px;
+  --project-action-height: 36px;
+  --project-action-gap: 12px;
+}
+
+.project-overview__heading > nav {
+  gap: var(--project-action-gap);
+}
+
+.project-engineering-toolbar__actions {
+  display: grid;
+  flex: 0 0 auto;
+  gap: var(--project-action-gap);
+  grid-template-columns: var(--project-action-width);
+  margin: 0 0 8px auto;
+}
+
+.project-engineering-toolbar__actions > form {
+  margin: 0;
+  min-width: 0;
+}
+
+.project-overview__heading .project-members-toggle,
+.project-overview__heading nav > a[href='/submissions'],
+.project-overview__heading .project-engineering-create-trigger,
+.project-engineering-toolbar__actions .engineering-archive-trigger {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 500;
+  height: var(--project-action-height);
+  justify-content: center;
+  line-height: 18px;
+  margin: 0;
+  min-height: var(--project-action-height);
+  padding: 0 10px;
+  width: var(--project-action-width);
+}
+
+.project-engineering-create-trigger[aria-expanded='true']:not(:hover) {
+  background: var(--paper-deep);
+}
+
+.project-engineering-create-trigger[aria-expanded='true']:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}

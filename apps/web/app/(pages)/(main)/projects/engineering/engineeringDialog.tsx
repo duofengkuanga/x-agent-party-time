@@ -1,11 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import Link from 'next/link';
 import { projectService } from '@/server/runtime/services';
 import type { EngineeringWorkspace } from '@/contracts/projects/engineering';
 import { createEngineeringAction } from '@/app/actions/projects/engineering';
-import { projectPanelPath } from '@/app/(pages)/(main)/projects/components/routeState';
 import { EngineeringCreateEnvironments } from './engineeringCreateEnvironments';
-import { Dialog } from '../components/dialog';
+import { EngineeringCreateCancel } from './engineeringCreateModal';
 import { SaveButton } from '../components/saveButton';
 import { EngineeringMemberToggle } from './engineeringMemberToggle';
 import { DialogFeedback, ProjectFields } from './settingsFields';
@@ -27,17 +25,14 @@ export function EngineeringDialog({
   const members = projects.listMembers(userId, projectId);
 
   return (
-    <Dialog
-      title="新建工程"
-      closeHref={projectPanelPath(projectId, 'engineering')}
-    >
+    <div className="project-inline-settings project-engineering-create">
       <DialogFeedback error={error} success={success} />
       <EngineeringCreateForm
         projectId={projectId}
         projectMembers={members}
         userId={userId}
       />
-    </Dialog>
+    </div>
   );
 }
 
@@ -50,9 +45,6 @@ function EngineeringCreateForm({
   projectMembers: ReturnType<ReturnType<typeof projectService>['listMembers']>;
   userId: string;
 }) {
-  const additionalMembers = projectMembers.filter(
-    ({ user }) => user.id !== userId,
-  );
   return (
     <form action={createEngineeringAction} className="engineering-editor">
       <ProjectFields projectId={projectId} />
@@ -61,14 +53,14 @@ function EngineeringCreateForm({
         type="hidden"
         value={randomUUID()}
       />
-      <div className="engineering-editor__grid">
-        <label className="field-wide">
+      <div className="engineering-join-fields">
+        <label>
           <span>工程名称</span>
           <input
             autoComplete="off"
             maxLength={120}
             name="name"
-            placeholder="例如：商城前端"
+            placeholder="例如：soil-web"
             required
           />
         </label>
@@ -90,48 +82,48 @@ function EngineeringCreateForm({
             maxLength={40}
             name="identifier"
             pattern="[a-z\p{Script=Han}][a-z0-9\p{Script=Han}]*(?:-[a-z0-9\p{Script=Han}]+)*"
-            placeholder="例如：大屏或 soil-dashboard"
+            placeholder="例如：土壤前端"
             required
           />
           <small id="engineering-create-identifier-format">
-            支持中文、小写字母、数字和单个连字符，需以中文或小写字母开头。
+            以中文或小写字母开头，可包含数字与单个连字符。
           </small>
         </label>
-        <div className="engineering-editor__setup-note field-wide">
-          <span>仓库识别</span>
-          <strong>首次创建本机 Agent 绑定后自动确认</strong>
-          <small>
-            这里不填写远程仓库地址，避免网页配置与本机实际仓库不一致。
-          </small>
-        </div>
-        {additionalMembers.length ? (
-          <fieldset className="field-wide">
-            <legend>工程成员 / 选填</legend>
-            {additionalMembers.map(({ user }) => (
-              <label className="inline-check" key={user.id}>
-                <input name="memberUserId" type="checkbox" value={user.id} />
-                <span>
-                  {user.displayName} · @{user.username}
-                </span>
+        <fieldset className="engineering-join-members">
+          <legend>工程成员</legend>
+          <div>
+            {projectMembers.map(({ user }) => (
+              <label key={user.id} title={`@${user.username}`}>
                 <input
-                  name={`memberMutationId:${user.id}`}
-                  type="hidden"
-                  value={randomUUID()}
+                  defaultChecked={user.id === userId}
+                  disabled={user.id === userId}
+                  name={user.id === userId ? undefined : 'memberUserId'}
+                  type="checkbox"
+                  value={user.id}
                 />
+                <span>
+                  {user.displayName}
+                  {user.id === userId ? '（你）' : ''}
+                </span>
+                {user.id !== userId ? (
+                  <input
+                    name={`memberMutationId:${user.id}`}
+                    type="hidden"
+                    value={randomUUID()}
+                  />
+                ) : null}
               </label>
             ))}
-          </fieldset>
-        ) : null}
+          </div>
+        </fieldset>
       </div>
 
       <EngineeringCreateEnvironments initialMutationId={randomUUID()} />
 
       <div className="dialog-actions">
-        <Link href={projectPanelPath(projectId, 'engineering')} replace>
-          返回项目
-        </Link>
-        <SaveButton className="repair-primary" pendingLabel="正在创建…">
-          创建工程
+        <EngineeringCreateCancel />
+        <SaveButton className="repair-primary" pendingLabel="正在加入…">
+          加入工程
         </SaveButton>
       </div>
     </form>

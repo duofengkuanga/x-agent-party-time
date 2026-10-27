@@ -1,8 +1,8 @@
 import type { AppDatabase } from '@/server/database/index';
 import { PlatformError } from '@/server/platform/errors/index';
 
-/** Submission records participate in the caller's project-deletion transaction. */
-export function deleteProjectSubmissionRecords(
+/** Checks submission constraints without changing any records. */
+export function prepareProjectSubmissionDeletion(
   db: AppDatabase,
   projectId: string,
 ): string[] {
@@ -49,6 +49,11 @@ export function deleteProjectSubmissionRecords(
       '项目仍有进行中的本机任务，请等待任务结束后再删除',
     );
 
+  return executions.map(({ id }) => id);
+}
+
+/** Submission records participate in the caller's project-deletion transaction. */
+export function deleteProjectSubmissionRecords(db: AppDatabase, projectId: string): void {
   const relations = db.all<{ id: string }>(
     `SELECT relation.id FROM submission_bug_relation relation
      WHERE relation.source_bug_id IN (
@@ -88,5 +93,4 @@ export function deleteProjectSubmissionRecords(
        WHERE id = ? AND source_bug_id IS NULL AND target_bug_id IS NULL`,
       [id],
     );
-  return executions.map(({ id }) => id);
 }

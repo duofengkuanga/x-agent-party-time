@@ -4,14 +4,12 @@ import Link from 'next/link';
 import { redirect, RedirectType } from 'next/navigation';
 import { requireCurrentUser } from '@/app/auth';
 import { engineeringService, projectService } from '@/server/runtime/services';
-import { runnerService } from '@/server/runtime/runner';
 import { updateProjectAction } from '@/app/actions/projects/projects';
 import {
   normalizeProjectSettingsRoute,
   parseProjectSettingsRoute,
   projectSettingsPath,
   projectSettingsRouteChanged,
-  engineeringCreatePath,
 } from './routeState';
 import { ProjectSettingsControls } from './projectSettingsControls';
 import { InvitationDialog, CollaborationDialog } from './collaborationDialog';
@@ -29,6 +27,7 @@ import { AutoSaveBoundary, AutoSaveForm } from './autoSaveForm';
 import { ProjectDeleteControl } from './projectDeleteControl';
 import { ProjectMembersControl } from './projectMembersControl';
 import { EngineeringArchiveControl } from '../engineering/engineeringArchiveControl';
+import { EngineeringCreateControl } from '../engineering/engineeringCreateControl';
 
 export const metadata: Metadata = {
   title: '我的项目 — Agent Party Time',
@@ -88,11 +87,6 @@ export default async function ProjectSettingsPage({
   const creatingEngineering =
     route.panel === 'engineering' && route.engineeringId === 'new';
 
-  const availableRunners = engineering.length
-    ? runnerService()
-        .listRunners(user.id)
-        .filter(({ online, runner }) => online && !runner.revokedAt)
-    : [];
   const engineeringPanels = engineering.map((item) => {
     const workspace = engineeringReader.getWorkspace(user.id, item.id);
     const canEdit = owner && !workspace.engineering.archivedAt;
@@ -110,12 +104,7 @@ export default async function ProjectSettingsPage({
       panel: (
         <EngineeringDetail
           key={item.id}
-          bindingRequestId={
-            route.engineeringId === item.id ? route.bindingRequestId : undefined
-          }
           workspace={workspace}
-          runners={availableRunners}
-          userId={user.id}
           informationEditor={
             canEdit ? (
               <EngineeringInformationManagement
@@ -160,7 +149,6 @@ export default async function ProjectSettingsPage({
           <>
             <header className="project-overview__heading">
               <div>
-                <p>{owner ? '项目负责人' : '项目成员'}</p>
                 {owner ? (
                   <AutoSaveForm
                     className="project-name-direct"
@@ -185,8 +173,30 @@ export default async function ProjectSettingsPage({
                   <h2>{selected.project.name}</h2>
                 )}
               </div>
+              {owner &&
+              projectService().canDeleteProject(
+                user.id,
+                selected.project.id,
+              ) ? (
+                <ProjectDeleteControl
+                  mutationId={randomUUID()}
+                  project={selected.project}
+                />
+              ) : null}
               <nav aria-label="项目操作">
                 <span className="project-auto-save-note">修改后自动保存</span>
+                {owner ? (
+                  <EngineeringCreateControl
+                    initialEngineeringId={engineering[0]?.id}
+                    projectId={selected.project.id}
+                  >
+                    <EngineeringDialog
+                      error={creatingEngineering ? route.error : undefined}
+                      projectId={selected.project.id}
+                      userId={user.id}
+                    />
+                  </EngineeringCreateControl>
+                ) : null}
                 <ProjectMembersControl
                   key={selected.project.id}
                   count={members.length}
@@ -199,55 +209,17 @@ export default async function ProjectSettingsPage({
                 </ProjectMembersControl>
                 <Link href="/submissions">进入提测</Link>
               </nav>
-              {owner ? (
-                <details className="project-delete-disclosure">
-                  <summary>删除项目</summary>
-                  <ProjectDeleteControl
-                    mutationId={randomUUID()}
-                    project={selected.project}
-                  />
-                </details>
-              ) : null}
             </header>
             <section
               className="project-overview__engineering"
               aria-label="项目工程"
             >
-              {engineering.length || creatingEngineering ? (
-                <EngineeringTabs
-                  engineering={engineeringPanels}
-                  projectId={selected.project.id}
-                  creationPanel={
-                    owner ? (
-                      <EngineeringDialog
-                        error={creatingEngineering ? route.error : undefined}
-                        projectId={selected.project.id}
-                        success={
-                          creatingEngineering ? route.success : undefined
-                        }
-                        userId={user.id}
-                      />
-                    ) : null
-                  }
-                />
-              ) : (
-                <div className="project-overview__empty">
-                  <h4>为 {selected.project.name} 添加第一个工程</h4>
-                  <p>
-                    {owner
-                      ? '添加工程后，就能配置成员和测试环境，并绑定本机 Agent。'
-                      : '项目负责人添加工程后，你可以在这里查看工程信息。'}
-                  </p>
-                  {owner ? (
-                    <Link
-                      className="repair-primary"
-                      href={engineeringCreatePath(selected.project.id)}
-                    >
-                      新建工程
-                    </Link>
-                  ) : null}
-                </div>
-              )}
+              <EngineeringTabs
+                engineering={engineeringPanels}
+                projectId={selected.project.id}
+                projectName={selected.project.name}
+                canManage={Boolean(owner)}
+              />
             </section>
           </>
         ) : null}
