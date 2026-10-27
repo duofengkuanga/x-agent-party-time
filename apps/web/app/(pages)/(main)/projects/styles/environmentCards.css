@@ -1,0 +1,239 @@
+.environment-direct-list,
+.environment-card-grid {
+  align-items: stretch;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+}
+
+.environment-direct-row,
+.environment-direct-form--new {
+  background: color-mix(in srgb, var(--panel), transparent 40%);
+  border: 1px solid var(--line);
+  min-width: 0;
+  padding: 16px;
+  position: relative;
+}
+
+.environment-direct-row {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.environment-direct-list .environment-direct-form {
+  align-content: start;
+  align-items: start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 30px 30px minmax(80px, 1fr) minmax(26px, auto);
+  position: relative;
+}
+
+.environment-direct-list .environment-direct-name input {
+  border-color: transparent;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 28px;
+  min-height: 30px;
+  padding: 0;
+}
+
+.environment-direct-list .environment-direct-name input:hover {
+  border-bottom-color: var(--line);
+}
+
+.environment-direct-list .environment-direct-name input:focus-visible {
+  border-color: var(--accent);
+  outline-offset: 2px;
+}
+
+.environment-direct-list .deployment-kind-choice {
+  background: transparent;
+  height: 30px;
+  max-width: 224px;
+  width: 100%;
+}
+
+.environment-direct-list .deployment-kind-choice label > span {
+  font-size: 10px;
+}
+
+.environment-direct-list .deployment-kind-choice input:focus-visible + span {
+  outline-width: 1px;
+}
+
+.environment-direct-list .field-wide,
+.environment-direct-list .engineering-environment-note {
+  background: var(--paper-deep);
+  border: 1px solid var(--line);
+  grid-column: 1;
+  grid-row: 3;
+  min-height: 80px;
+  padding: 8px 10px;
+}
+
+.environment-direct-list .field-wide {
+  gap: 2px;
+  grid-template-rows: 14px minmax(26px, auto) auto;
+}
+
+.environment-direct-list .field-wide > span,
+.environment-direct-list .field-wide > small {
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.environment-direct-list .field-wide input {
+  background: transparent;
+  border: 0;
+  font-size: 12px;
+  line-height: 20px;
+  min-height: 26px;
+  padding: 0;
+}
+
+.environment-direct-list .field-wide:focus-within {
+  border-color: var(--accent);
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.environment-direct-list .field-wide input:focus-visible {
+  background: transparent;
+  outline: 0;
+}
+
+.environment-direct-list .engineering-environment-note {
+  align-content: center;
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.environment-direct-list .engineering-environment-note strong {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.environment-direct-list .engineering-environment-note span {
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.environment-direct-list .auto-save-form__status {
+  align-self: center;
+  grid-column: 1;
+  grid-row: 4;
+  margin: 0;
+  min-height: 26px;
+  padding-right: 72px;
+}
+
+.environment-direct-list button {
+  font-size: 11px;
+  line-height: 18px;
+  min-height: 28px;
+  padding: 4px 10px;
+}
+
+.environment-direct-delete {
+  bottom: 16px;
+  margin: 0;
+  position: absolute;
+  right: 16px;
+  width: fit-content;
+}
+
+.environment-direct-delete > summary {
+  border: 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 18px;
+  padding: 4px 0;
+}
+
+.environment-direct-delete > summary:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.environment-direct-delete[open],
+.environment-direct-row:has([data-save-state='error'])
+  .environment-direct-delete {
+  margin: 10px 0 0 auto;
+  position: static;
+}
+
+.environment-direct-list [data-save-state='error'] .auto-save-form__status {
+  padding-right: 0;
+}
+
+.environment-direct-list .environment-direct-form--new {
+  border-style: dashed;
+}
+
+.environment-direct-form__hint {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  grid-column: 1;
+  grid-row: 4;
+  justify-content: space-between;
+  min-height: 26px;
+}
+
+.environment-direct-form__hint small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.environment-direct-form__hint button {
+  margin-left: auto;
+  position: relative;
+  z-index: 1;
+}
+
+.environment-direct-form--new:not([data-save-state='idle'])
+  .environment-direct-form__hint
+  small {
+  visibility: hidden;
+}
+
+.environment-direct-list
+  .environment-direct-form--new[data-save-state='error']
+  .auto-save-form__status {
+  grid-row: 5;
+}
+
+.environment-direct-list > .environment-add {
+  border-style: dashed;
+  color: var(--muted);
+  justify-self: stretch;
+  min-height: 236px;
+}
+
+.environment-direct-list > .environment-add:hover {
+  color: #fff;
+}
+
+.project-engineering
+  .engineering-detail__environments
+  article.environment-view-card {
+  background: color-mix(in srgb, var(--panel), transparent 40%);
+  border: 1px solid var(--line);
+  display: block;
+  margin: 0;
+  min-height: 140px;
+  padding: 16px;
+}
+
+.environment-view-card h5 {
+  font-size: 16px;
+  margin: 0 0 8px;
+}
+
+.environment-view-card details {
+  margin-top: 12px;
+}

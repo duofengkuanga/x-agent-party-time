@@ -20,7 +20,7 @@ export function NewEnvironmentRow({
       save={createEnvironmentAction}
     >
       <input name="engineeringId" type="hidden" value={engineeringId} />
-      <label>
+      <label className="environment-direct-name">
         <input
           aria-label="新环境名称"
           autoFocus
@@ -34,7 +34,7 @@ export function NewEnvironmentRow({
       <div className="environment-direct-form__hint">
         <small>填写完整后自动添加</small>
         <button onClick={() => setAdding(false)} type="button">
-          取消新增
+          取消
         </button>
       </div>
     </AutoSaveForm>

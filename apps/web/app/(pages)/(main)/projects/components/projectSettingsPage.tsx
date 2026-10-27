@@ -28,6 +28,7 @@ import { EngineeringTabs, ProjectRouteFeedback } from './engineeringTabs';
 import { AutoSaveBoundary, AutoSaveForm } from './autoSaveForm';
 import { ProjectDeleteControl } from './projectDeleteControl';
 import { ProjectMembersControl } from './projectMembersControl';
+import { EngineeringArchiveControl } from '../engineering/engineeringArchiveControl';
 
 export const metadata: Metadata = {
   title: '我的项目 — Agent Party Time',
@@ -94,10 +95,18 @@ export default async function ProjectSettingsPage({
     : [];
   const engineeringPanels = engineering.map((item) => {
     const workspace = engineeringReader.getWorkspace(user.id, item.id);
+    const canEdit = owner && !workspace.engineering.archivedAt;
     return {
       id: item.id,
       name: workspace.engineering.name,
       type: workspace.engineering.type,
+      archiveControl: owner ? (
+        <EngineeringArchiveControl
+          key={item.id}
+          engineering={workspace.engineering}
+          mutationId={randomUUID()}
+        />
+      ) : null,
       panel: (
         <EngineeringDetail
           key={item.id}
@@ -106,10 +115,9 @@ export default async function ProjectSettingsPage({
           }
           workspace={workspace}
           runners={availableRunners}
-          owner={owner}
           userId={user.id}
           informationEditor={
-            owner ? (
+            canEdit ? (
               <EngineeringInformationManagement
                 workspace={workspace}
                 identifierLocked={engineeringReader.isIdentifierLocked(
@@ -120,7 +128,7 @@ export default async function ProjectSettingsPage({
             ) : null
           }
           membersEditor={
-            owner ? (
+            canEdit ? (
               <EngineeringMemberManagement
                 workspace={workspace}
                 projectMembers={members}
@@ -128,7 +136,7 @@ export default async function ProjectSettingsPage({
             ) : null
           }
           environmentsEditor={
-            owner ? (
+            canEdit ? (
               <EngineeringEnvironmentManagement workspace={workspace} />
             ) : null
           }

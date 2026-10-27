@@ -3,7 +3,9 @@
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
+  useEffect,
   useRef,
+  useState,
   type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
@@ -20,6 +22,7 @@ export function EngineeringTabs({
     name: string;
     type: 'FRONTEND' | 'BACKEND';
     panel: ReactNode;
+    archiveControl: ReactNode;
   }>;
   projectId: string;
   creationPanel: ReactNode;
@@ -111,6 +114,7 @@ export function EngineeringTabs({
               新建工程
             </Link>
           ) : null}
+          {selected?.archiveControl}
         </div>
       ) : null}
       {creating ? (
@@ -132,9 +136,36 @@ export function EngineeringTabs({
 
 export function ProjectRouteFeedback() {
   const search = useSearchParams();
-  if (search.get('engineering') === 'new') return null;
   const error = search.get('error');
   const success = search.get('success');
+  const [notice, setNotice] = useState<{ message: string } | null>(() =>
+    success ? { message: success } : null,
+  );
+
+  useEffect(() => {
+    if (!success) return;
+    setNotice({ message: success });
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('success') === success) {
+      url.searchParams.delete('success');
+      window.history.replaceState(
+        null,
+        '',
+        url.pathname + url.search + url.hash,
+      );
+    }
+  }, [success]);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(
+      () => setNotice((current) => (current === notice ? null : current)),
+      3000,
+    );
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
+  if (search.get('engineering') === 'new') return null;
   return (
     <>
       {error ? (
@@ -142,9 +173,9 @@ export function ProjectRouteFeedback() {
           {error}
         </p>
       ) : null}
-      {success ? (
+      {notice ? (
         <p className="notice notice-success" role="status">
-          {success}
+          {notice.message}
         </p>
       ) : null}
     </>

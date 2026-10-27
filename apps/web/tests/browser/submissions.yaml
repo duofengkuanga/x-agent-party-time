@@ -70,16 +70,24 @@ cases:
           { sel: 'input[name="confirmationName"]', text: 删除项目浏览器验收 }
       - click: '.project-delete-form button[type="submit"]'
       - wait: '.notice-success'
+      - eval: 'sessionStorage.setItem("deleteSuccessShown",String(document.querySelector(".notice-success").textContent.includes("项目已删除")));true'
+      - wait: 'body:not(:has(.notice-success))'
+      - eval: 'sessionStorage.setItem("deleteSuccessConsumed",String(!new URL(location.href).searchParams.has("success")));document.documentElement.dataset.feedbackReloading="true";location.reload();true'
+      - wait: 'html:not([data-feedback-reloading]) .project-settings__content'
     assert:
-      - text: { sel: '.notice-success', contains: 项目已删除 }
+      - hidden: '.notice-success'
+      - eval: 'sessionStorage.getItem("deleteSuccessShown")==="true" && sessionStorage.getItem("deleteSuccessConsumed")==="true"'
       - hidden: '[role="dialog"]'
       - hidden: '.repair-overlay'
       - eval: "['projectDeleteAtTop','projectDeleteInitiallyDisabled','projectDeleteWrongNameDisabled','projectDeleteCancelFocus'].every(key=>sessionStorage.getItem(key)==='true')"
 
   - name: project selection shows its target immediately while the request is pending
     steps:
-      - open: __BASE_URL__/projects
+      - open: __BASE_URL__/projects?project=__PROJECT_ID__
+      - wait: '.project-settings__primary-action'
+      - wait: { load: networkidle }
       - click: '.project-settings__primary-action'
+      - wait: '#project-create-form'
       - fill:
           { sel: '#project-create-form input[name="name"]', text: 项目加载验收 }
       - click: '#project-create-form button[type="submit"]'
@@ -288,6 +296,34 @@ cases:
           }
       - wait: '.environment-direct-row:nth-child(2)'
       - wait: 'body:not(:has(.environment-direct-form--new))'
+      - click: '.environment-direct-row:first-child .deployment-kind-choice label:has(input[value="CI_CD"])'
+      - wait: '.environment-direct-row:first-child .auto-save-form[data-save-state="saved"]'
+      - click: '.environment-add'
+      - wait: '.environment-direct-form--new'
+      - eval: >-
+          (()=>{const cards=[...document.querySelectorAll('.environment-direct-list > *')].map(card=>card.getBoundingClientRect());
+          const footers=[...document.querySelectorAll('.environment-direct-delete > summary,.environment-direct-form__hint button')].map(el=>el.getBoundingClientRect());
+          sessionStorage.setItem('mixedEnvironmentCardsAligned',String(cards.length===3&&cards.every(card=>Math.abs(card.top-cards[0].top)<1&&Math.abs(card.height-cards[0].height)<1)
+          &&footers.every(footer=>Math.abs(footer.bottom-footers[0].bottom)<3)));return true;})()
+      - click: '.environment-direct-row:first-child .environment-direct-delete > summary'
+      - eval: >-
+          (()=>{const card=document.querySelector('.environment-direct-row:first-child');
+          sessionStorage.setItem('environmentConfirmationFits',String(card.querySelector('details[open]').getBoundingClientRect().bottom<=card.getBoundingClientRect().bottom));return true;})()
+      - click: '.environment-direct-row:first-child .environment-direct-delete > summary'
+      - fill:
+          {
+            sel: '.environment-direct-form--new input[name="name"]',
+            text: 未完成的环境,
+          }
+      - wait: '.environment-direct-form--new[data-save-state="error"]'
+      - eval: >-
+          (()=>{const form=document.querySelector('.environment-direct-form--new');
+          const error=form.querySelector('[role=alert]').getBoundingClientRect();
+          const cancel=form.querySelector('.environment-direct-form__hint button').getBoundingClientRect();
+          sessionStorage.setItem('environmentErrorReadable',String(error.top>=cancel.bottom&&error.bottom<=form.getBoundingClientRect().bottom));return true;})()
+      - click: '.environment-direct-form__hint button'
+      - click: '.environment-direct-row:first-child .deployment-kind-choice label:has(input[value="LOCAL_SCRIPT"])'
+      - wait: '.environment-direct-row:first-child .auto-save-form[data-save-state="saved"]'
       - click: '.engineering-member-toggle input'
       - wait: '.engineering-member-toggle[aria-busy="false"] input:not(:checked)'
       - click: '.engineering-member-toggle input'
@@ -367,12 +403,69 @@ cases:
       - hidden: '.repair-overlay'
       - hidden: '.auto-save-form button[type="submit"]'
       - count: { sel: '.environment-direct-row', eq: 2 }
+      - hidden: '.engineering-detail__environments > .collaboration-section-title'
+      - eval: >-
+          (()=>{const cards=[...document.querySelectorAll('.environment-direct-row')].map(card=>card.getBoundingClientRect());
+          return Math.abs(cards[0].top-cards[1].top)<1&&cards[0].right<cards[1].left&&cards[0].width<500;})()
       - eval: >-
           document.querySelector('.project-name-direct input[name=name]').value==='自动保存验收'
           &&document.querySelector('.engineering-identity-form input[name=name]').value==='连续输入最终名称'
           &&[...document.querySelectorAll('.environment-direct-row input[name=name]')].some(input=>input.value==='集成环境')
           &&[...document.querySelectorAll('.environment-direct-row input[name=command]')].some(input=>input.value==='bun run deploy:integration')
-          &&['directControls','navigationWaitsForSave','failedDraftPreserved'].every(key=>sessionStorage.getItem(key)==='true')
+          &&['directControls','mixedEnvironmentCardsAligned','environmentConfirmationFits','environmentErrorReadable','navigationWaitsForSave','failedDraftPreserved'].every(key=>sessionStorage.getItem(key)==='true')
+
+  - name: engineering archive stays beside creation and preserves engineering information
+    steps:
+      - open: __BASE_URL__/projects
+      - click: '.project-settings__primary-action'
+      - fill:
+          { sel: '#project-create-form input[name="name"]', text: 工程归档验收 }
+      - click: '#project-create-form button[type="submit"]'
+      - wait: '.project-overview__empty'
+      - click: '.project-overview__empty a'
+      - wait: '.engineering-editor input[name="name"]'
+      - fill:
+          { sel: '.engineering-editor input[name="name"]', text: 归档保留配置 }
+      - fill:
+          {
+            sel: '.engineering-editor input[name="identifier"]',
+            text: archive-web,
+          }
+      - eval: >-
+          (()=>{const select=document.querySelector('.engineering-editor select[name=type]');
+          select.value='FRONTEND';select.dispatchEvent(new Event('change',{bubbles:true}));return true;})()
+      - fill:
+          {
+            sel: '.engineering-environments input[name^="command:"]',
+            text: 'bun run deploy:archive',
+          }
+      - click: '.engineering-editor > .dialog-actions button[type="submit"]'
+      - wait: '.engineering-identity-form'
+      - eval: >-
+          sessionStorage.setItem('archiveBesideCreation',String(document.querySelector('.project-engineering-create-link').getBoundingClientRect().right
+          <=document.querySelector('.engineering-archive-trigger').getBoundingClientRect().left));true
+      - click: '.engineering-archive-trigger'
+      - wait: '.engineering-archive-confirmation'
+      - eval: >-
+          sessionStorage.setItem('archiveInline',String(!document.querySelector('dialog[open],[role=dialog],.engineering-archive-direct')
+          &&document.querySelector('.engineering-archive-confirmation').textContent.includes('保留工程配置及历史提测记录')));true
+      - click: '.engineering-archive-confirmation button[type="button"]'
+      - eval: >-
+          sessionStorage.setItem('archiveCancelFocus',String(!document.querySelector('.engineering-archive-confirmation')
+          &&document.activeElement===document.querySelector('.engineering-archive-trigger')));true
+      - click: '.engineering-archive-trigger'
+      - click: '.engineering-archive-confirmation button[type="submit"]'
+      - wait: '.engineering-archive-trigger:disabled'
+    assert:
+      - text: { sel: '.engineering-archive-trigger', contains: 已归档 }
+      - text:
+          { sel: '[role="tab"][aria-selected="true"]', contains: 归档保留配置 }
+      - text:
+          { sel: '.environment-view-card', contains: bun run deploy:archive }
+      - hidden: '.engineering-identity-form'
+      - hidden: '.environment-direct-form'
+      - eval: >-
+          ['archiveBesideCreation','archiveInline','archiveCancelFocus'].every(key=>sessionStorage.getItem(key)==='true')
 
   - name: project members open in a dialog next to the submission action
     steps:

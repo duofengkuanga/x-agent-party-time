@@ -15,6 +15,7 @@
 @import './projects/styles/collaborationDirectory.css';
 @import './projects/styles/projectDirectory.css';
 @import './projects/styles/directEditing.css';
+@import './projects/styles/environmentCards.css';
 @import './submissions/styles/bugStorage.css';
 @import './submissions/styles/bugDetails.css';
 @import './submissions/styles/testerBugDetail.css';

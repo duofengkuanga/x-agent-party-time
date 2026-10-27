@@ -83,15 +83,18 @@ export function DeploymentFields({
           />
           <small>
             {compact
-              ? '由本机 Agent 执行；密钥请使用环境变量'
+              ? '由本机 Agent 执行，密钥使用环境变量'
               : '不要填写令牌、密码或密钥；请在 Agent 本机使用环境变量。'}
           </small>
         </label>
+      ) : compact ? (
+        <div className="engineering-environment-note">
+          <strong>由外部流水线部署</strong>
+          <span>完成后由负责人确认结果</span>
+        </div>
       ) : (
         <p className="engineering-environment-note">
-          {compact
-            ? '部署后需由负责人手动确认'
-            : '外部 CI/CD 完成构建与部署后，由开发人员回到系统确认结果。'}
+          外部 CI/CD 完成构建与部署后，由开发人员回到系统确认结果。
         </p>
       )}
     </>

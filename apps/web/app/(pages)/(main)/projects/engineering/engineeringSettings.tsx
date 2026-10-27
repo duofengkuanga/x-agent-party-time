@@ -10,7 +10,6 @@ import {
 } from '@/server/runtime/services';
 import {
   createEngineeringBindingAction,
-  archiveEngineeringAction,
   deleteEnvironmentAction,
   updateEngineeringAction,
   updateEnvironmentAction,
@@ -31,7 +30,12 @@ export function EngineeringEnvironmentManagement({
   return (
     <div className="environment-direct-list">
       {workspace.environments.map((environment) => (
-        <div className="environment-direct-row" key={environment.id}>
+        <div
+          aria-label={environment.name}
+          className="environment-direct-row"
+          key={environment.id}
+          role="group"
+        >
           <AutoSaveForm
             className="environment-direct-form"
             save={updateEnvironmentAction}
@@ -172,7 +176,6 @@ export function EngineeringDetail({
   informationEditor,
   membersEditor,
   environmentsEditor,
-  owner,
   userId,
 }: {
   bindingRequestId?: string;
@@ -181,7 +184,6 @@ export function EngineeringDetail({
   informationEditor?: ReactNode;
   membersEditor?: ReactNode;
   environmentsEditor?: ReactNode;
-  owner: boolean;
   userId: string;
 }) {
   const { id: engineeringId, projectId } = workspace.engineering;
@@ -279,7 +281,8 @@ export function EngineeringDetail({
             </p>
           </div>
         ) : null}
-        {currentBinding ? null : bindingRequest &&
+        {workspace.engineering.archivedAt ||
+        currentBinding ? null : bindingRequest &&
           ['PENDING', 'PROCESSING'].includes(
             bindingRequest.state,
           ) ? null : assigned.has(userId) && runners.length ? (
@@ -350,38 +353,31 @@ export function EngineeringDetail({
           aria-label={`${workspace.engineering.name}测试环境`}
         >
           {environmentsEditor ? (
-            <>
-              <div className="collaboration-section-title">
-                <h5>
-                  测试环境 <small>{workspace.environments.length}</small>
-                </h5>
-              </div>
-              {environmentsEditor}
-            </>
+            environmentsEditor
           ) : (
             <>
-              <div className="collaboration-section-title">
-                <h5>
-                  测试环境 <small>{workspace.environments.length}</small>
-                </h5>
-              </div>
               {workspace.environments.length ? (
-                workspace.environments.map((environment) => (
-                  <article key={environment.id}>
-                    <div>
-                      <strong>{environment.name}</strong>
-                      <small>
-                        {deploymentLabel(environment.deployment.kind)}
-                      </small>
-                      {'command' in environment.deployment ? (
-                        <details>
-                          <summary>部署命令</summary>
-                          <code>{environment.deployment.command}</code>
-                        </details>
-                      ) : null}
-                    </div>
-                  </article>
-                ))
+                <div className="environment-card-grid">
+                  {workspace.environments.map((environment) => (
+                    <article
+                      className="environment-view-card"
+                      key={environment.id}
+                    >
+                      <div>
+                        <h5>{environment.name}</h5>
+                        <small>
+                          {deploymentLabel(environment.deployment.kind)}
+                        </small>
+                        {'command' in environment.deployment ? (
+                          <details>
+                            <summary>部署命令</summary>
+                            <code>{environment.deployment.command}</code>
+                          </details>
+                        ) : null}
+                      </div>
+                    </article>
+                  ))}
+                </div>
               ) : (
                 <p className="collaboration-empty">还没有测试环境。</p>
               )}
@@ -389,24 +385,6 @@ export function EngineeringDetail({
           )}
         </section>
       </div>
-      {owner && !workspace.engineering.archivedAt ? (
-        <details className="engineering-archive-direct">
-          <summary>归档工程</summary>
-          <p>归档后保留历史记录，并停止继续使用这个工程。</p>
-          <form action={archiveEngineeringAction}>
-            <EngineeringFields
-              engineeringId={engineeringId}
-              projectId={projectId}
-            />
-            <input
-              name="expectedVersion"
-              type="hidden"
-              value={workspace.engineering.version}
-            />
-            <button type="submit">确认归档工程</button>
-          </form>
-        </details>
-      ) : null}
     </article>
   );
 }
