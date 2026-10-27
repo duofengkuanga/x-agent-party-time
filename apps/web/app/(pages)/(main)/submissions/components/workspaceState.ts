@@ -36,6 +36,13 @@ export function workspaceReducer(
         syncState: 'connected',
       };
     case 'REPLACE_SNAPSHOT':
+      if (
+        !state.snapshot ||
+        state.snapshot.submission.submission.id !==
+          action.snapshot.submission.submission.id ||
+        action.snapshot.revision < state.snapshot.revision
+      )
+        return state;
       return {
         snapshot: action.snapshot,
         submissions: action.snapshot.submissions,
@@ -46,16 +53,17 @@ export function workspaceReducer(
     case 'UPDATE_SUBMISSION':
       return {
         ...state,
-        snapshot: state.snapshot
-          ? {
-              ...state.snapshot,
-              revision: action.submission.workspaceRevision,
-              submission: {
-                ...state.snapshot.submission,
-                submission: action.submission,
-              },
-            }
-          : null,
+        snapshot:
+          state.snapshot?.submission.submission.id === action.submission.id
+            ? {
+                ...state.snapshot,
+                revision: action.submission.workspaceRevision,
+                submission: {
+                  ...state.snapshot.submission,
+                  submission: action.submission,
+                },
+              }
+            : state.snapshot,
         submissions: state.submissions.map((summary) =>
           summary.submission.id === action.submission.id
             ? { ...summary, submission: action.submission }

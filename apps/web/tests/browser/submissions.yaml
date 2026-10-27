@@ -2344,3 +2344,46 @@ cases:
             sel: '[role="tabpanel"]:not([hidden]) .collab-observation__panel',
             contains: 无权读取,
           }
+
+  - name: closing the last submission clears its board and closed selection keeps its filter
+    steps:
+      - eval: "[...document.querySelectorAll('button')].find(button=>button.textContent?.includes('退出登录'))?.click(); true"
+      - wait: 'input[name="username"]'
+      - open: __BASE_URL__/login?next=/submissions/__CLOSABLE_SUBMISSION_ID__
+      - wait: { load: networkidle }
+      - fill: { sel: 'input[name="username"]', text: __CLOSABLE_USERNAME__ }
+      - fill: { sel: 'input[name="password"]', text: __PASSWORD__ }
+      - click: '.auth-submit'
+      - wait: '.collab-bug-card'
+      - click: '.collab-check input'
+      - eval: 'document.documentElement.dataset.closedFilterReload="true";location.reload();true'
+      - wait: 'html:not([data-closed-filter-reload]) .collab-bug-card'
+      - wait: { load: networkidle }
+      - eval: >-
+          (()=>{if(!document.querySelector('.collab-check input').checked)throw new Error('Closed filter was lost after refresh');return true;})()
+      - click: '.collab-check input'
+      - click: 'button[aria-label="查看最后一张待关闭提测单详情"]'
+      - wait: '.collab-rail__detail-footer button:not(:disabled)'
+      - click: '.collab-rail__detail-footer button'
+      - wait: '.collab-empty-stage'
+      - wait: '.collab-check input:not(:disabled)'
+      - eval: >-
+          sessionStorage.setItem('lastSubmissionCleared',String(!document.querySelector('.collab-board,.collab-bug-card')&&document.querySelectorAll('.collab-submission-card').length===0));true
+      - click: '.collab-check input'
+      - wait: '.collab-submission-card__select'
+      - click: '.collab-submission-card__select'
+      - wait: '.collab-bug-card'
+      - wait: { load: networkidle }
+      - eval: >-
+          sessionStorage.setItem('closedSelectionKeepsFilter',String(document.querySelector('.collab-check input').checked
+          &&document.querySelectorAll('.collab-submission-card').length===1));true
+      - click: '.collab-check input'
+      - wait: '.collab-empty-stage'
+      - wait: '.collab-check input:not(:disabled)'
+    assert:
+      - hidden: '.collab-bug-card'
+      - hidden: '.collab-board'
+      - count: { sel: '.collab-submission-card', eq: 0 }
+      - eval: 'location.pathname==="/submissions"'
+      - eval: >-
+          ['lastSubmissionCleared','closedSelectionKeepsFilter'].every(key=>sessionStorage.getItem(key)==='true')

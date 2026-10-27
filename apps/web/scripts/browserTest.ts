@@ -25,6 +25,8 @@ try {
     .replaceAll('__BASE_URL__', baseUrl)
     .replaceAll('__PROJECT_ID__', fixture.projectId)
     .replaceAll('__SUBMISSION_ID__', fixture.submissionId)
+    .replaceAll('__CLOSABLE_SUBMISSION_ID__', fixture.closableSubmissionId)
+    .replaceAll('__CLOSABLE_USERNAME__', fixture.closableUsername)
     .replaceAll('__DEVELOPER_USERNAME__', fixture.developerUsername)
     .replaceAll('__USERNAME__', fixture.username)
     .replaceAll('__PASSWORD__', fixture.password);

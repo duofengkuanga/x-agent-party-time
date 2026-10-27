@@ -17,6 +17,8 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 
 export type BrowserFixture = {
+  closableSubmissionId: string;
+  closableUsername: string;
   developerUsername: string;
   password: string;
   projectId: string;
@@ -542,7 +544,41 @@ export async function seedBrowserFixture(home: string): Promise<BrowserFixture> 
     for (const bug of linkedDone.bugs)
       db.run("UPDATE submission_bug SET stage = 'DONE' WHERE id = ?", [bug.id]);
 
+    const closable = await deliveryProject(db, {
+      name: '关闭状态回归项目',
+      prefix: 'browser-close',
+      password,
+      sources: [
+        {
+          name: '关闭回归工程',
+          type: 'FRONTEND',
+          identifier: 'close-web',
+          environment: '关闭回归环境',
+          deployment: { kind: 'CI_CD' },
+          repository: 'https://example.com/close.git',
+          branch: 'feature/close',
+        },
+      ],
+      title: '最后一张待关闭提测单',
+      description: '验证关闭后的选中项与历史筛选',
+    });
+    const closedBug = createSubmissionWorkflow(db).bugs.createBug(
+      closable.users.tester.id,
+      closable.submission.id,
+      {
+        mutationId: randomUUID(),
+        submissionItemId: closable.items[0]!.id,
+        title: '关闭后应隐藏的任务',
+        operationPath: '完成后关闭提测单',
+        actualResultAttachmentIds: [],
+        expectedResultAttachmentIds: [],
+      },
+    );
+    db.run("UPDATE submission_bug SET stage = 'DONE' WHERE id = ?", [closedBug.bug.id]);
+
     return {
+      closableSubmissionId: closable.submission.id,
+      closableUsername: closable.users.tester.username,
       developerUsername: developer.username,
       password,
       projectId: project.id,

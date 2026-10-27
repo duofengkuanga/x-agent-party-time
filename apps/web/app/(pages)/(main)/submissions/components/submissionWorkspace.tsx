@@ -1,7 +1,7 @@
 'use client';
 
 import { messageOf } from '@/app/(pages)/(main)/components/actionError';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   useCallback,
   useEffect,
@@ -61,14 +61,25 @@ export function SubmissionWorkspace({
   initialSidebarWidth: number;
 }) {
   const router = useRouter();
-  const [{ snapshot, submissions, syncState }, dispatch] = useReducer(
-    workspaceReducer,
-    {
+  const search = useSearchParams();
+  const closedFilter = search.get('includeClosed');
+  const [includeClosed, setIncludeClosed] = useState(
+    closedFilter === '1' ||
+      (closedFilter !== '0' &&
+        initialSnapshot?.submission.submission.status === 'CLOSED'),
+  );
+  const [{ snapshot: receivedSnapshot, submissions, syncState }, dispatch] =
+    useReducer(workspaceReducer, {
       snapshot: initialSnapshot,
       submissions: initialSubmissions,
       syncState: 'connected',
-    },
-  );
+    });
+  const snapshot =
+    receivedSnapshot &&
+    (includeClosed ||
+      receivedSnapshot.submission.submission.status === 'ACTIVE')
+      ? receivedSnapshot
+      : null;
   const [showCreateSubmission, setShowCreateSubmission] = useState(false);
   const creationDrafts = useRef(new Map<string, SubmissionDraft>());
   const draftKey = `${currentUser.id}:${snapshot?.submission.submission.projectId ?? 'new'}`;
@@ -84,24 +95,31 @@ export function SubmissionWorkspace({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { sidebarWidth, sidebarResizing, resizerHandlers } =
     useSidebarWidth(initialSidebarWidth);
-  const [includeClosed, setIncludeClosed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [catalogPending, startCatalogTransition] = useTransition();
   const snapshotRef = useRef(initialSnapshot);
-  const refreshInFlight = useRef<Promise<void> | null>(null);
+  const refreshInFlight = useRef<{
+    submissionId: string;
+    promise: Promise<void>;
+  } | null>(null);
   const requestedRevision = useRef(initialSnapshot?.revision ?? 0);
   const selectedId = snapshot?.submission.submission.id ?? null;
 
   const refreshSnapshot = useCallback(
     async (minimumRevision = 0) => {
-      if (!selectedId) return;
+      if (
+        !selectedId ||
+        snapshotRef.current?.submission.submission.id !== selectedId
+      )
+        return;
       requestedRevision.current = Math.max(
         requestedRevision.current,
         minimumRevision,
       );
-      if (refreshInFlight.current) return refreshInFlight.current;
+      if (refreshInFlight.current?.submissionId === selectedId)
+        return refreshInFlight.current.promise;
       const refresh = (async () => {
         dispatch({ type: 'SET_SYNC_STATE', syncState: 'syncing' });
         try {
@@ -112,6 +130,8 @@ export function SubmissionWorkspace({
               { cache: 'no-store' },
             );
             const body = await response.json();
+            if (snapshotRef.current?.submission.submission.id !== selectedId)
+              return;
             if (!response.ok) {
               setError(body.error?.message ?? '无法刷新提测工作区');
               dispatch({ type: 'SET_SYNC_STATE', syncState: 'reconnecting' });
@@ -124,17 +144,24 @@ export function SubmissionWorkspace({
           setError(null);
           dispatch({ type: 'SET_SYNC_STATE', syncState: 'connected' });
         } catch (requestError) {
+          if (snapshotRef.current?.submission.submission.id !== selectedId)
+            return;
           setError(messageOf(requestError, '无法刷新提测工作区'));
           dispatch({ type: 'SET_SYNC_STATE', syncState: 'reconnecting' });
         } finally {
-          refreshInFlight.current = null;
+          if (refreshInFlight.current?.submissionId === selectedId)
+            refreshInFlight.current = null;
         }
       })();
-      refreshInFlight.current = refresh;
+      refreshInFlight.current = { submissionId: selectedId, promise: refresh };
       return refresh;
     },
     [selectedId],
   );
+
+  useEffect(() => {
+    if (closedFilter !== null) setIncludeClosed(closedFilter === '1');
+  }, [closedFilter]);
 
   useEffect(() => {
     snapshotRef.current = initialSnapshot;
@@ -145,6 +172,19 @@ export function SubmissionWorkspace({
       submissions: initialSubmissions,
     });
   }, [initialSnapshot, initialSubmissions]);
+
+  useEffect(() => {
+    if (!receivedSnapshot || snapshot) return;
+    setShowDetails(false);
+    const next = submissions.find(
+      ({ submission }) => submission.status === 'ACTIVE',
+    );
+    startTransition(() =>
+      router.replace(
+        next ? `/submissions/${next.submission.id}` : '/submissions',
+      ),
+    );
+  }, [receivedSnapshot, snapshot, submissions, router, startTransition]);
 
   useEffect(() => {
     if (!notice) return;
@@ -179,7 +219,16 @@ export function SubmissionWorkspace({
 
   function selectSubmission(submissionId: string) {
     if (submissionId === selectedId) return;
-    router.push(`/submissions/${submissionId}`);
+    router.push(
+      `/submissions/${submissionId}${includeClosed ? '?includeClosed=1' : ''}`,
+    );
+  }
+
+  function changeClosedFilter(value: boolean) {
+    setIncludeClosed(value);
+    const url = new URL(window.location.href);
+    url.searchParams.set('includeClosed', value ? '1' : '0');
+    window.history.replaceState(null, '', url.pathname + url.search + url.hash);
   }
 
   function openSubmissionComposer() {
@@ -235,13 +284,13 @@ export function SubmissionWorkspace({
       <div
         className="collab-layout"
         data-sidebar-collapsed={sidebarCollapsed ? 'true' : undefined}
-        data-sidebar-mode={showDetails ? 'detail' : 'list'}
+        data-sidebar-mode={showDetails && snapshot ? 'detail' : 'list'}
         data-sidebar-resizing={sidebarResizing ? 'true' : undefined}
         style={layoutStyle}
       >
         <SubmissionRail
           collapsed={sidebarCollapsed}
-          detailOpen={showDetails}
+          detailOpen={showDetails && Boolean(snapshot)}
           includeClosed={includeClosed}
           onBackToList={() => setShowDetails(false)}
           onCloseSubmission={() => {
@@ -261,7 +310,7 @@ export function SubmissionWorkspace({
             );
           }}
           onCreate={openSubmissionComposer}
-          onIncludeClosedChange={setIncludeClosed}
+          onIncludeClosedChange={changeClosedFilter}
           onOpenDetails={(id) => {
             selectSubmission(id);
             setShowDetails(true);

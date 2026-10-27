@@ -169,6 +169,7 @@ export function SubmissionRail({
             <label className="collab-check">
               <input
                 checked={includeClosed}
+                disabled={updating}
                 onChange={(event) =>
                   onIncludeClosedChange(event.target.checked)
                 }
@@ -190,7 +191,7 @@ export function SubmissionRail({
                       submission.id === selectedId ? 'page' : undefined
                     }
                     className="collab-submission-card__select"
-                    href={`/submissions/${submission.id}`}
+                    href={`/submissions/${submission.id}${includeClosed ? '?includeClosed=1' : ''}`}
                   >
                     <span className="collab-submission-list__meta">
                       <b>
