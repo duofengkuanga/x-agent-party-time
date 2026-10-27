@@ -265,6 +265,7 @@ Web 按页面入口、服务端实现和共享数据契约组织。项目、工�
 
 ```text
 apps/web/
+├── instrumentation.ts          Next 启动钩子；Bun 开发模式下按秒采样堆统计
 ├── app/
 │   ├── (pages)/
 │   │   ├── login/

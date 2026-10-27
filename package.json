@@ -22,7 +22,7 @@
     "build:app": "bun --cwd apps/web build",
     "start:app": "bun --cwd apps/web start",
     "seed:app": "bun --cwd apps/web seed",
-    "format:check": "prettier --check README.md .prettierrc.json package.json tsconfigBase.json 'scripts/**/*.ts' 'packages/**/package.json' 'packages/**/tsconfig.json' 'packages/**/src/**/*.ts' 'apps/**/{app,server,contracts,scripts,testing}/**/*.{ts,tsx,css}' 'apps/xapt/src/**/*.ts' 'apps/**/{package.json,tsconfig.json,next.config.mjs}'",
+    "format:check": "prettier --check README.md .prettierrc.json package.json tsconfigBase.json 'scripts/**/*.ts' 'packages/**/package.json' 'packages/**/tsconfig.json' 'packages/**/src/**/*.ts' 'apps/**/{app,server,contracts,scripts,testing}/**/*.{ts,tsx,css}' 'apps/xapt/src/**/*.ts' 'apps/**/{package.json,tsconfig.json,next.config.mjs,instrumentation.ts}'",
     "test": "bun test",
     "test:browser": "bun apps/web/scripts/browserTest.ts",
     "check:deps": "bun install --frozen-lockfile",
