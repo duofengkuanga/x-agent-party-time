@@ -10,7 +10,6 @@ import {
 } from '@/server/runtime/services';
 import {
   createEngineeringBindingAction,
-  deleteEnvironmentAction,
   updateEngineeringAction,
   updateEnvironmentAction,
 } from '@/app/actions/projects/engineering';
@@ -20,6 +19,7 @@ import { AutoRefresh } from '@/app/(pages)/(main)/components/autoRefresh';
 import { EngineeringFields } from './settingsFields';
 import { AutoSaveForm } from '../components/autoSaveForm';
 import { NewEnvironmentRow } from './newEnvironmentRow';
+import { EnvironmentDeleteControl } from './environmentDeleteControl';
 
 export function EngineeringEnvironmentManagement({
   workspace,
@@ -61,27 +61,14 @@ export function EngineeringEnvironmentManagement({
               scriptCommand={environment.scriptCommand}
             />
           </AutoSaveForm>
-          <details className="project-inline-confirmation environment-direct-delete">
-            <summary>删除环境</summary>
-            <p>删除后无法恢复此环境。已用于提测的环境不能删除。</p>
-            <form action={deleteEnvironmentAction}>
-              <EngineeringFields
-                engineeringId={engineeringId}
-                projectId={projectId}
-              />
-              <input
-                name="environmentId"
-                type="hidden"
-                value={environment.id}
-              />
-              <input
-                name="expectedVersion"
-                type="hidden"
-                value={environment.version}
-              />
-              <button type="submit">确认删除环境</button>
-            </form>
-          </details>
+          <EnvironmentDeleteControl
+            engineeringId={engineeringId}
+            environmentId={environment.id}
+            environmentName={environment.name}
+            expectedVersion={environment.version}
+            mutationId={randomUUID()}
+            projectId={projectId}
+          />
         </div>
       ))}
       <NewEnvironmentRow engineeringId={engineeringId} />
