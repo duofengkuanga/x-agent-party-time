@@ -1,5 +1,5 @@
 import { deleteEnvironmentAction } from '@/app/actions/projects/engineering';
-import { ActionPopconfirm } from '../components/actionPopconfirm';
+import { ActionPopconfirm } from '../../components/actionPopconfirm';
 
 export function EnvironmentDeleteControl({
   engineeringId,

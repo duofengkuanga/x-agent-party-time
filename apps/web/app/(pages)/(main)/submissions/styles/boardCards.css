@@ -554,32 +554,9 @@
   position: relative;
 }
 
-.collab-pass-confirm:has(.collab-pass-confirm__panel) {
+.collab-pass-confirm:has(.popconfirm--inline) {
   flex-basis: 100%;
   width: 100%;
-}
-
-.collab-pass-confirm__panel {
-  background: var(--panel);
-  border: 1px solid var(--strong-line);
-  box-shadow: 3px 3px 0 color-mix(in srgb, var(--ink), transparent 80%);
-  box-sizing: border-box;
-  display: grid;
-  font-size: 11px;
-  gap: 10px;
-  line-height: 1.5;
-  padding: 10px;
-  position: relative;
-  max-width: 300px;
-  width: 100%;
-  z-index: 4;
-}
-
-.collab-pass-confirm__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  justify-content: flex-end;
 }
 
 .collab-bug-card select {

@@ -48,3 +48,16 @@
   border-color: var(--accent);
   color: #fff;
 }
+
+.project-overview__heading > .project-delete-control {
+  border: 0;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+}
+
+.project-delete-control > button {
+  font-size: 11px;
+  min-height: 34px;
+  padding: 6px 11px;
+}

@@ -298,6 +298,8 @@ packages/
 
 `(pages)` 与 `(main)` 是不进入网址的路由分组。用户页面为 `/projects`、`/agents`、`/agents/connect`、`/submissions` 和 `/submissions/[submissionId]`。共享 Shell 只在 `(main)/layout.tsx` 挂载，登录页面保持独立。组件、交互逻辑和业务样式就近放在对应页面目录；`main.css` 保持既有样式引入顺序。目录按职责划分，页面入口、Server Components、Actions 和 HTTP handlers 可以在服务器运行。
 
+轻量二次确认复用 `(main)/components/popconfirm.tsx`：调用方维护 `open`、`pending`、`error` 和业务回调，并决定确认后何时关闭；组件统一处理定位、布局变化、取消、Esc、点击外部及焦点恢复。默认在按钮旁浮出；`presentation="inline"` 用于卡片内展开，避免窄卡片溢出。`pending` 禁用所有按钮，`disabled` 只禁用触发和确认，仍可取消。Server Action 表单使用同目录的 `ActionPopconfirm`，隐藏字段作为子节点传入，提交与路由刷新不进入纯确认组件。需要展示环境冲突等完整资料的对话框继续由各业务维护。
+
 网页操作使用 `app/actions/`，明确的 HTTP 接口使用 `app/api/`；两个入口都校验身份并调用服务端实现，不重复业务规则。浏览器组件只通过 Actions 或 HTTP 调用服务端，使用 `contracts/` 的纯数据定义。原 `/api/cooking/*` 接口改为 `/api/submissions/*`，工作区接口为 `/api/submissions/[submissionId]/workspace`。xapt 的连接页面与缺陷维护调用同步使用新地址，不保留旧入口转发。
 
 `server/platform/projects/` 拥有 Project、成员和邀请，其 `engineering/` 拥有工程、环境配置、Binding 和绑定申请。提测期间的环境占用、切换、部署确认与提测引用检查归 `server/submissions/`。通用模块不导入提测业务，也不查询提测表；生产与场景测试通过 `server/runtime/projects.ts` 接入提测的成员职责、绑定引用与删除参与者。删除参与者与项目删除处于同一事务。

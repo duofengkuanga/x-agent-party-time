@@ -1,6 +1,6 @@
 import type { Project } from '../../../../../contracts/projects/project';
 import { deleteProjectAction } from '../../../../actions/projects/projects';
-import { ActionPopconfirm } from './actionPopconfirm';
+import { ActionPopconfirm } from '../../components/actionPopconfirm';
 
 export function ProjectDeleteControl({
   mutationId,

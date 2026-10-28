@@ -1,6 +1,6 @@
 import type { Engineering } from '@/contracts/projects/engineering';
 import { archiveEngineeringAction } from '@/app/actions/projects/engineering';
-import { ActionPopconfirm } from '../components/actionPopconfirm';
+import { ActionPopconfirm } from '../../components/actionPopconfirm';
 
 export function EngineeringArchiveControl({
   engineering,

@@ -1,0 +1,83 @@
+.popconfirm[role='dialog'] {
+  background: var(--panel);
+  border: 1px solid var(--strong-line);
+  box-sizing: border-box;
+  color: var(--ink);
+  margin: 0;
+}
+
+.popconfirm--popover {
+  box-shadow: var(--shadow);
+  inset: auto;
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  padding: 14px;
+  position: fixed;
+  width: min(288px, calc(100vw - 24px));
+}
+
+.popconfirm::backdrop {
+  background: transparent;
+}
+
+.popconfirm > .popconfirm__title {
+  display: block;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.popconfirm > .popconfirm__description,
+.popconfirm > .popconfirm__error {
+  color: var(--muted);
+  display: block;
+  font-size: 11px;
+  line-height: 1.7;
+  margin: 8px 0 14px;
+}
+
+.popconfirm > .popconfirm__error {
+  color: var(--danger);
+}
+
+.popconfirm__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.popconfirm--popover button {
+  font-size: 11px;
+  min-height: 28px;
+  padding: 4px 10px;
+}
+
+.popconfirm.popconfirm--inline {
+  box-shadow: 3px 3px 0 color-mix(in srgb, var(--ink), transparent 80%);
+  display: grid;
+  font-size: 11px;
+  gap: 10px;
+  line-height: 1.5;
+  max-width: 300px;
+  padding: 10px;
+  position: relative;
+  width: 100%;
+  z-index: 4;
+}
+
+.popconfirm--inline > .popconfirm__title {
+  font: inherit;
+}
+.popconfirm--inline > .popconfirm__actions {
+  gap: 6px;
+}
+
+.popconfirm__trigger[aria-expanded='true']:not(:hover) {
+  background: var(--paper-deep);
+}
+.popconfirm__trigger[aria-expanded='true']:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
