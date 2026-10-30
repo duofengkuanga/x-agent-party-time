@@ -1,7 +1,15 @@
 import { testDirectories } from '../testing/directories';
 import type { ExecutionWorkspace } from '@agent-party-time/execution-contract';
 import { describe, expect, test } from 'bun:test';
-import { lstat, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import {
+  lstat,
+  mkdir,
+  readFile,
+  readlink,
+  realpath,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
 
 import { join } from 'node:path';
 import { xaptPaths } from '../platform/paths';
@@ -146,7 +154,7 @@ describe('GitExecutionWorkspaceManager', () => {
     );
   });
 
-  test('worktree 的依赖与忽略内容独立复制，复用不覆盖本地修改', async () => {
+  test('worktree 通过软链复用依赖与忽略内容，复用保留已有文件和目录', async () => {
     const { root, binding } = await createRepository({
       ignoreLocalFiles: true,
     });
@@ -162,29 +170,47 @@ describe('GitExecutionWorkspaceManager', () => {
     const manager = new GitExecutionWorkspaceManager(paths);
     const repair = cwd(await manager.prepare(binding, repairWorkspace('mirror-1')));
 
-    expect((await lstat(join(repair, 'node_modules'))).isSymbolicLink()).toBe(false);
-    expect((await lstat(join(repair, '.env.local'))).isSymbolicLink()).toBe(false);
+    expect((await lstat(join(repair, 'node_modules'))).isSymbolicLink()).toBe(true);
+    expect(await readlink(join(repair, 'node_modules'))).toBe(
+      join(binding, 'node_modules'),
+    );
+    expect((await lstat(join(repair, '.env.local'))).isSymbolicLink()).toBe(true);
     expect(await readFile(join(repair, 'node_modules', 'dep.js'), 'utf8')).toBe('dep\n');
-    expect((await lstat(join(repair, 'cache', '.DS_Store'))).isSymbolicLink()).toBe(
-      false,
+    expect(await realpath(join(repair, 'cache', '.DS_Store'))).toBe(
+      await realpath(join(binding, 'cache', '.DS_Store')),
     );
     expect(await output(['git', '-C', repair, 'status', '--porcelain'])).toBe('');
 
-    await writeFile(join(repair, '.env.local'), 'LOCAL=1\n');
-    await writeFile(join(repair, 'node_modules', 'dep.js'), 'repair-only\n');
-    const update = cwd(await manager.prepare(binding, updateWorkspace('copy-update')));
+    const update = cwd(await manager.prepare(binding, updateWorkspace('linked-update')));
+    expect(await readlink(join(update, 'node_modules'))).toBe(
+      join(binding, 'node_modules'),
+    );
     expect(await readFile(join(update, 'node_modules', 'dep.js'), 'utf8')).toBe('dep\n');
+    await writeFile(join(update, 'node_modules', 'dep.js'), 'shared\n');
+    expect(await readFile(join(repair, 'node_modules', 'dep.js'), 'utf8')).toBe(
+      'shared\n',
+    );
+    expect(await readFile(join(binding, 'node_modules', 'dep.js'), 'utf8')).toBe(
+      'shared\n',
+    );
+
+    // A resumed workspace may already own private content; never replace it with a link.
+    await rm(join(repair, '.env.local'));
+    await writeFile(join(repair, '.env.local'), 'LOCAL=1\n');
+    await rm(join(repair, 'node_modules'));
+    await mkdir(join(repair, 'node_modules'));
+    await writeFile(join(repair, 'node_modules', 'dep.js'), 'repair-only\n');
     expect(await readFile(join(binding, '.env.local'), 'utf8')).toBe('SECRET=1\n');
     const reused = cwd(await manager.prepare(binding, repairWorkspace('mirror-1')));
     expect(reused).toBe(repair);
     expect(await readFile(join(repair, '.env.local'), 'utf8')).toBe('LOCAL=1\n');
-    // Existing managed links are detached before a resumed task may run in parallel.
-    await rm(join(repair, 'node_modules'), { recursive: true });
-    await symlink(join(binding, 'node_modules'), join(repair, 'node_modules'));
-    await manager.prepare(binding, repairWorkspace('mirror-1'));
     expect((await lstat(join(repair, 'node_modules'))).isSymbolicLink()).toBe(false);
-    await writeFile(join(repair, 'node_modules', 'dep.js'), 'resumed-only\n');
-    expect(await readFile(join(binding, 'node_modules', 'dep.js'), 'utf8')).toBe('dep\n');
+    expect(await readFile(join(repair, 'node_modules', 'dep.js'), 'utf8')).toBe(
+      'repair-only\n',
+    );
+    expect(await readlink(join(update, 'node_modules'))).toBe(
+      join(binding, 'node_modules'),
+    );
   });
 
   test('removeWorkspaces 先全量校验再删除，force 覆盖未提交修改', async () => {

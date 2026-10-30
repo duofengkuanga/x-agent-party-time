@@ -199,7 +199,7 @@ bun test apps/web/server/submissions/update/updateConcurrency.test.ts apps/web/s
 AGENT_PARTY_TIME_BROWSER_SUITE=queuedUpdates bun run test:browser
 ```
 
-工作区准备会将主仓库的 Git 忽略项复制到各自工作区，支持时使用文件克隆，避免依赖安装、缓存和构建写入互相污染；复用工作区保留已有本地内容，原有托管软链接在执行前转换为独立副本。这会增加磁盘占用。复制保留依赖内部的软链接；工程仍需为并发验证配置独立端口和测试数据，部署脚本应使用当前执行工作区的产物，不能转而读取主仓库的构建目录。
+工作区准备通过软链接复用主仓库的 Git 忽略项，避免启动时递归复制依赖和缓存；复用工作区保留已有文件、目录和链接。Repair 分支与 Update Detached 工作区仍隔离 Git 源码，但软链指向的依赖、缓存和构建产物共享可写，更新中的安装、测试和构建也可能修改它们，因此不保证这些内容的并发隔离。工程需为并发验证配置独立端口和测试数据，并避免并发改写共享目录；部署脚本应使用当前执行工作区的产物。
 
 ## Repair Handoff 真实会话验收
 

@@ -1,6 +1,5 @@
 import type { ExecutionWorkspace, JsonValue } from '@agent-party-time/execution-contract';
-import { createHash, randomUUID } from 'node:crypto';
-import { constants } from 'node:fs';
+import { createHash } from 'node:crypto';
 import {
   chmod,
   mkdir,
@@ -9,12 +8,6 @@ import {
   realpath,
   appendFile,
   symlink,
-  cp,
-  lstat,
-  readlink,
-  rename,
-  rm,
-  unlink,
 } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { z } from 'zod';
@@ -418,41 +411,20 @@ async function mirrorIgnoredRepositoryContents(
 ): Promise<void> {
   const entries = await ignoredRepositoryEntries(repositoryPath);
   if (entries.length === 0) return;
-  const copies = await Promise.allSettled(
+  const links = await Promise.allSettled(
     entries.map(async (entry) => {
       const source = join(repositoryPath, entry);
       const target = join(worktreePath, entry);
       // 被忽略文件可能位于主工程里未跟踪的父目录下（如 cache/.DS_Store），
       // worktree 里没有该父目录，先补建（空目录不会出现在 git status）。
       await mkdir(dirname(target), { recursive: true });
-      const existing = await lstat(target).catch((error: NodeJS.ErrnoException) => {
-        if (error.code === 'ENOENT') return null;
-        throw error;
+      // Ignored contents are shared; preserve any content already owned by this worktree.
+      await symlink(source, target).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== 'EEXIST') throw error;
       });
-      if (existing && (!existing.isSymbolicLink() || (await readlink(target)) !== source))
-        return;
-      const temporary = `${target}.xapt-${randomUUID()}`;
-      try {
-        // Clone regular files when supported; dependency-internal relative links
-        // keep resolving within this private copy instead of the source checkout.
-        await cp(await realpath(source), temporary, {
-          recursive: true,
-          verbatimSymlinks: true,
-          mode: constants.COPYFILE_FICLONE,
-        });
-        if (existing) await unlink(target);
-        try {
-          await rename(temporary, target);
-        } catch (error) {
-          if (existing) await symlink(source, target);
-          throw error;
-        }
-      } finally {
-        await rm(temporary, { recursive: true, force: true });
-      }
     }),
   );
-  const failed = copies.find((copy) => copy.status === 'rejected');
+  const failed = links.find((link) => link.status === 'rejected');
   if (failed?.status === 'rejected') throw failed.reason;
   // 符号链接目录不会被带斜杠的忽略规则匹配，追加不带斜杠的条目到仓库公共
   // .git/info/exclude，避免 git status 显示为未跟踪。注意：worktree 私有
@@ -496,7 +468,7 @@ async function ignoredRepositoryEntries(repositoryPath: string): Promise<string[
     ),
   ];
   // Git can report both an ignored directory and a nested ignored file.
-  // Copy each subtree once so sibling jobs never create its destination early.
+  // Link each subtree once so sibling jobs never create its destination early.
   return entries.filter(
     (entry) =>
       !entries.some((parent) => parent !== entry && entry.startsWith(`${parent}/`)),
