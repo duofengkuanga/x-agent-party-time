@@ -18,7 +18,7 @@ import { xaptPaths } from '../platform/paths';
 import { LocalStateStore } from '../state/store';
 import type { AuthenticatedRunnerSession } from '../agent/connection';
 import type { RunnerExecutionHttp } from '../agent/serverHttp';
-import type { AttachmentMaterializer } from './attachments';
+import type { AttachmentMaterializer, MaterializedAttachment } from './attachments';
 import type {
   CodexExecutionInput,
   CodexExecutor,
@@ -68,6 +68,8 @@ export async function createFixture(
     workspace?: ClaimedExecution['workspace'];
     resultAssertions?: ExecutionResultAssertion[];
     resultValidationFailure?: ExecutionResultVerificationError;
+    prepareWorkspace?: () => Promise<void>;
+    attachments?: MaterializedAttachment[];
   } = {},
 ) {
   const home = await createTestDirectory();
@@ -113,16 +115,38 @@ export async function createFixture(
     ...identity,
     path: join(home, 'skills', identity.bundleHash),
   });
+  const observations: ObservationService[] = [];
+  const observe = () => {
+    const observation = new ObservationService(
+      join(paths.state, 'observations'),
+      files,
+      state,
+      {
+        send: async (_session, batch) => ({
+          batchId: batch.batchId,
+          digest: batch.digest,
+          accepted: true,
+          duplicate: false,
+        }),
+      },
+      () => now,
+    );
+    observations.push(observation);
+    return observation;
+  };
   const build = () =>
     new ExecutionService(
       http,
       state,
       files,
       {
-        materialize: async () => [],
+        materialize: async () => options.attachments ?? [],
       } as unknown as AttachmentMaterializer,
       {
-        prepare: async () => ({ kind: 'EXECUTE', cwd: repositoryPath }),
+        prepare: async () => {
+          await options.prepareWorkspace?.();
+          return { kind: 'EXECUTE', cwd: repositoryPath };
+        },
         resolve: async () => {
           if (options.workspaceResolveFailure) throw options.workspaceResolveFailure;
           return repositoryPath;
@@ -140,20 +164,7 @@ export async function createFixture(
           if (options.resultValidationFailure) throw options.resultValidationFailure;
         },
       } as ExecutionResultVerifier,
-      new ObservationService(
-        join(paths.state, 'observations'),
-        files,
-        state,
-        {
-          send: async (_session, batch) => ({
-            batchId: batch.batchId,
-            digest: batch.digest,
-            accepted: true,
-            duplicate: false,
-          }),
-        },
-        () => now,
-      ),
+      observe(),
       () => now,
       () => `00000000-0000-4000-8000-${String(nextId++).padStart(12, '0')}`,
     );
@@ -167,6 +178,8 @@ export async function createFixture(
     verifiedBaselines,
     service: build(),
     restartedService: build,
+    shutdownObservations: () =>
+      Promise.all(observations.map((entry) => entry.shutdown())),
     setNow(value: string) {
       now = new Date(value);
     },

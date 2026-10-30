@@ -7,8 +7,11 @@ import {
 } from '../state/schemas';
 import type { LocalStateStore } from '../state/store';
 
+export type ExecutionLease = { lost: Promise<never>; stop: () => Promise<void> };
+
 /** Durable phase records and the live lease belong to the same execution. */
 export class ExecutionRecovery {
+  private readonly writes = new Map<string, Promise<void>>();
   constructor(
     private readonly http: RunnerExecutionHttp,
     private readonly state: LocalStateStore,
@@ -31,15 +34,17 @@ export class ExecutionRecovery {
     phase: ExecutionRecoveryState['phase'],
     sessionId: string | null,
   ): Promise<void> {
-    return this.state.saveExecution({
-      schemaVersion: EXECUTION_STATE_SCHEMA_VERSION,
-      executionId: execution.id,
-      bindingId: execution.bindingId,
-      phase,
-      sessionId,
-      claimedExecution: execution,
-      updatedAt: this.now().toISOString(),
-    });
+    return this.writeExecution(execution.id, () =>
+      this.state.saveExecution({
+        schemaVersion: EXECUTION_STATE_SCHEMA_VERSION,
+        executionId: execution.id,
+        bindingId: execution.bindingId,
+        phase,
+        sessionId,
+        claimedExecution: execution,
+        updatedAt: this.now().toISOString(),
+      }),
+    );
   }
 
   async recoverInterrupted(): Promise<boolean> {
@@ -56,48 +61,72 @@ export class ExecutionRecovery {
     expiresAt: string,
   ): Promise<void> {
     execution.lease.expiresAt = expiresAt;
-    const recovery = (await this.state.loadExecutions()).find(
-      ({ executionId }) => executionId === execution.id,
-    );
-    if (!recovery) return;
-    await this.state.saveExecution({
-      ...recovery,
-      claimedExecution: {
-        ...recovery.claimedExecution,
-        lease: { ...recovery.claimedExecution.lease, expiresAt },
-      },
-      updatedAt: this.now().toISOString(),
+    await this.writeExecution(execution.id, async () => {
+      const recovery = (await this.state.loadExecutions()).find(
+        ({ executionId }) => executionId === execution.id,
+      );
+      if (!recovery) return;
+      await this.state.saveExecution({
+        ...recovery,
+        claimedExecution: {
+          ...recovery.claimedExecution,
+          lease: { ...recovery.claimedExecution.lease, expiresAt },
+        },
+        updatedAt: this.now().toISOString(),
+      });
     });
+  }
+
+  private writeExecution(executionId: string, write: () => Promise<void>): Promise<void> {
+    const previous = this.writes.get(executionId) ?? Promise.resolve();
+    const pending = previous.catch(() => undefined).then(write);
+    const finished = pending.finally(() => {
+      if (this.writes.get(executionId) === finished) this.writes.delete(executionId);
+    });
+    this.writes.set(executionId, finished);
+    return finished;
   }
 
   keepLease(
     session: AuthenticatedRunnerSession,
     execution: ClaimedExecution,
     controller: AbortController,
-  ): { lost: Promise<never>; stop: () => void } {
+  ): ExecutionLease {
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let inFlight: Promise<void> | undefined;
     let rejectLost!: (error: Error) => void;
     let stopped = false;
     const lost = new Promise<never>((_resolve, reject) => {
       rejectLost = reject;
     });
+    // Loss can happen while preparation is still pending. The caller checks the
+    // abort signal before starting and races this promise once the turn exists.
+    void lost.catch(() => undefined);
     const renew = async () => {
-      if (stopped) return;
+      if (stopped || controller.signal.aborted) return;
       try {
         const status = await this.renew(session, execution);
+        if (stopped || controller.signal.aborted) return;
         if (status.cancellationRequested) throw new Error('服务端已请求取消');
-        timer = setTimeout(renew, 5_000);
+        schedule();
       } catch (error) {
+        if (stopped) return;
         controller.abort();
         rejectLost(error instanceof Error ? error : new Error('任务领取凭据已失效'));
       }
     };
-    timer = setTimeout(renew, 5_000);
+    const schedule = () => {
+      timer = setTimeout(() => {
+        inFlight = renew();
+      }, 5_000);
+    };
+    schedule();
     return {
       lost,
-      stop: () => {
+      stop: async () => {
         stopped = true;
         if (timer) clearTimeout(timer);
+        await inFlight;
       },
     };
   }

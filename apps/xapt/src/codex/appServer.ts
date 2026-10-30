@@ -118,10 +118,12 @@ export class CodexAppServerExecutor implements CodexExecutor {
     input: CodexExecutionInput,
     signal: AbortSignal,
   ): Promise<StartedCodexExecution> {
+    signal.throwIfAborted();
     this.observer = input.observe;
     await this.ensureStarted();
     let threadId = input.taskId;
     try {
+      signal.throwIfAborted();
       if (threadId) {
         await this.request('thread/resume', {
           threadId,
@@ -139,6 +141,7 @@ export class CodexAppServerExecutor implements CodexExecutor {
         );
         threadId = requiredString(asRecord(response.thread), 'id');
       }
+      signal.throwIfAborted();
       const response = asRecord(
         await this.request('turn/start', {
           threadId,

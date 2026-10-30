@@ -19,7 +19,7 @@ import type { LocalStateStore } from '../state/store';
 import type { AttachmentMaterializer } from './attachments';
 import { ExecutionOutbox } from './outbox';
 import { ExecutionPreparation } from './preparation';
-import { ExecutionRecovery } from './recovery';
+import { ExecutionRecovery, type ExecutionLease } from './recovery';
 import { failureMessage } from './failureMessage';
 import {
   ExecutionResultVerificationError,
@@ -179,10 +179,14 @@ export class ExecutionService {
     });
     const previous = this.bindingTails.get(execution.bindingId);
     const persisted = this.recovery.recordPhase(execution, 'CLAIMED', null);
+    const controller = new AbortController();
+    this.controllers.set(execution.id, controller);
+    const lease = this.recovery.keepLease(session, execution, controller);
     let task!: Promise<void>;
     task = Promise.all([persisted, previous ?? Promise.resolve()])
       .then(async () => {
         if (this.forceStopping) return;
+        controller.signal.throwIfAborted();
         observation.record({
           name: 'phase.finished',
           source: 'xapt',
@@ -192,7 +196,7 @@ export class ExecutionService {
         });
         this.runningExecutionIds.add(execution.id);
         try {
-          await this.execute(session, execution, observation);
+          await this.execute(session, execution, observation, controller, lease);
         } finally {
           this.runningExecutionIds.delete(execution.id);
         }
@@ -200,7 +204,9 @@ export class ExecutionService {
       .catch(() => {
         this.recoveryRequired = true;
       })
-      .finally(() => {
+      .finally(async () => {
+        await lease.stop();
+        this.controllers.delete(execution.id);
         this.observations.close(execution.id);
         this.tasks.delete(execution.id);
         if (this.bindingTails.get(execution.bindingId) === task)
@@ -214,9 +220,15 @@ export class ExecutionService {
     session: AuthenticatedRunnerSession,
     execution: ClaimedExecution,
     observation: ExecutionObservation,
+    controller: AbortController,
+    lease: ExecutionLease,
   ): Promise<void> {
+    const failStart = async (failure: ExecutionFailure) => {
+      await lease.stop();
+      await this.reportStartFailure(session, execution, failure);
+    };
     if (execution.cancellationRequested) {
-      await this.reportStartFailure(session, execution, {
+      await failStart({
         code: 'CANCELLED_BY_REQUEST',
         message: '处理任务已取消，不再启动本机任务',
         retryable: false,
@@ -225,7 +237,7 @@ export class ExecutionService {
     }
     const turn = execution.codexTurn;
     if (!turn) {
-      await this.reportStartFailure(session, execution, {
+      await failStart({
         code: 'CODEX_START_FAILED',
         message: '任务缺少 Codex 输入',
         retryable: false,
@@ -238,14 +250,15 @@ export class ExecutionService {
         turn.taskId,
         observation,
       );
-      if (synchronization.kind === 'FAILED')
-        await this.reportStartFailure(session, execution, synchronization.failure);
+      controller.signal.throwIfAborted();
+      if (synchronization.kind === 'FAILED') await failStart(synchronization.failure);
       else
         await this.completeImmediateExecution(
           session,
           execution,
           turn.taskId,
           synchronization.result,
+          lease,
         );
       return;
     }
@@ -255,8 +268,9 @@ export class ExecutionService {
       turn,
       observation,
     );
+    controller.signal.throwIfAborted();
     if (prepared.kind === 'FAILED') {
-      await this.reportStartFailure(session, execution, prepared.failure);
+      await failStart(prepared.failure);
       return;
     }
     if (prepared.kind === 'WORKSPACE_COMPLETED') {
@@ -266,9 +280,10 @@ export class ExecutionService {
           execution,
           `xapt-workspace:${execution.id}`,
           prepared.result,
+          lease,
         );
       } catch {
-        await this.reportStartFailure(session, execution, {
+        await failStart({
           code: 'REPOSITORY_NOT_FOUND',
           message: '无法准备隔离的本机 Git 工作区',
           retryable: true,
@@ -283,8 +298,6 @@ export class ExecutionService {
       resultAssertions,
       resultBaseline,
     } = prepared;
-    const controller = new AbortController();
-    this.controllers.set(execution.id, controller);
     let recoveredInteraction = execution.recoveredInteraction;
     let releaseStartGate!: () => void;
     const startGate = new Promise<void>((resolve) => {
@@ -308,7 +321,9 @@ export class ExecutionService {
               ? { name: resolvedSkill.skillName, path: resolvedSkill.path }
               : null,
           outputSchema: turn.outputJsonSchema,
-          attachments: materialized,
+          // Reclaimed executions already sent these paths to the same session.
+          // Materialization above restores the files at their original paths.
+          attachments: execution.sessionId ? [] : materialized,
           taskId: turn.kind === 'CONTINUATION' ? turn.taskId : null,
           observe: protocolObserver(observation, createCommandClassifier(repositoryPath)),
           onManualHandoff:
@@ -354,9 +369,10 @@ export class ExecutionService {
         },
         controller.signal,
       );
+      // The turn can end while its START acknowledgement is still in flight.
+      void started.completion.catch(() => undefined);
     } catch (error) {
-      this.controllers.delete(execution.id);
-      await this.reportStartFailure(session, execution, {
+      await failStart({
         code: 'CODEX_START_FAILED',
         message:
           error instanceof CodexAppServerError
@@ -381,13 +397,12 @@ export class ExecutionService {
     ) {
       releaseStartGate();
       controller.abort();
-      this.controllers.delete(execution.id);
+      await started.completion.catch(() => undefined);
       return;
     }
     startAccepted = true;
     releaseStartGate();
     await this.recovery.recordPhase(execution, 'RUNNING', started.sessionId);
-    const lease = this.recovery.keepLease(session, execution, controller);
     let request: CompleteExecutionRequest;
     try {
       const result = await Promise.race([started.completion, lease.lost]);
@@ -420,7 +435,6 @@ export class ExecutionService {
           handoffEntry,
           started.completion.finally(lease.stop),
         );
-        this.controllers.delete(execution.id);
         return;
       }
       request = {
@@ -440,11 +454,10 @@ export class ExecutionService {
         },
       };
     } finally {
-      lease.stop();
+      await lease.stop();
     }
     await this.recovery.recordPhase(execution, 'OUTCOME_PENDING', started.sessionId);
     await this.outbox.persistAndDeliver(session, 'OUTCOME', execution.id, request);
-    this.controllers.delete(execution.id);
   }
 
   private async handleInteraction(
@@ -509,6 +522,7 @@ export class ExecutionService {
     execution: ClaimedExecution,
     sessionId: string,
     result: JsonValue,
+    lease: ExecutionLease,
   ): Promise<void> {
     if (
       !(await this.outbox.persistAndDeliver(session, 'START', execution.id, {
@@ -519,6 +533,7 @@ export class ExecutionService {
       }))
     )
       return;
+    await lease.stop();
     await this.outbox.persistAndDeliver(session, 'OUTCOME', execution.id, {
       leaseToken: execution.lease.token,
       sessionId,
