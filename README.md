@@ -201,6 +201,8 @@ AGENT_PARTY_TIME_BROWSER_SUITE=queuedUpdates bun run test:browser
 
 工作区准备通过软链接复用主仓库的 Git 忽略项，避免启动时递归复制依赖和缓存；复用工作区保留已有文件、目录和链接。Repair 分支与 Update Detached 工作区仍隔离 Git 源码，但软链指向的依赖、缓存和构建产物共享可写，更新中的安装、测试和构建也可能修改它们，因此不保证这些内容的并发隔离。工程需为并发验证配置独立端口和测试数据，并避免并发改写共享目录；部署脚本应使用当前执行工作区的产物。
 
+xapt 托管的 Codex 执行默认使用 `medium` 推理档，模型仍沿用本机 Codex 配置；新任务与平台恢复均显式传入档位。该设置不修改 `~/.codex`，也不改变普通手动创建的 Codex 会话。验证脚本可通过执行器参数选择其他档位进行对照；耗时比较须同时记录实际模型、档位、构建缓存情况与验收覆盖。
+
 ## Repair Handoff 真实会话验收
 
 `eval:handoff` 创建隔离的 Node、Python 工程及本地假远端，实际运行 Codex Repair 和 Update，核对完整提交、结构化结果、验收命令和 Push。它不会连接真实部署，保留每阶段的输入、Schema、Skill Bundle Hash、事件、结果及命令轨迹。

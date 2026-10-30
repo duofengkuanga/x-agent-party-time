@@ -112,6 +112,7 @@ rl.on('line', (line) => {
       approvalPolicy: 'on-request',
       approvalsReviewer: 'auto_review',
       sandbox: 'danger-full-access',
+      config: { model_reasoning_effort: 'medium' },
     });
   }
   const turns = requests.filter((entry) => entry.method === 'turn/start');
@@ -119,7 +120,10 @@ rl.on('line', (line) => {
     const params = turn.params as {
       input: Array<{ type: string; text?: string }>;
       outputSchema: unknown;
+      effort: string;
     };
+    expect(params.effort).toBe('medium');
+    expect(params).not.toHaveProperty('model');
     const persistedSchema = params.input.at(-1);
     expect(persistedSchema?.type).toBe('text');
     expect(persistedSchema?.text).toContain('终态输出 JSON Schema');
@@ -155,6 +159,28 @@ rl.on('line', (line) => {
     },
   ]);
   await executor.close();
+
+  const higherEffort = new CodexAppServerExecutor(executable, undefined, 'high');
+  const higherTurn = await higherEffort.begin(
+    {
+      ...baseInput,
+      executionId: '00000000-0000-4000-8000-000000000604',
+      text: '只返回 JSON',
+      skill: null,
+      attachments: [],
+      taskId: null,
+    },
+    new AbortController().signal,
+  );
+  expect(await higherTurn.completion).toEqual({ summary: 'ok' });
+  await higherEffort.close();
+  const higherRequests = (await readFile(requestLog, 'utf8'))
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line));
+  expect(
+    higherRequests.filter((entry) => entry.method === 'turn/start').at(-1).params.effort,
+  ).toBe('high');
 
   await new AppServerInitializer().initialize(executable);
   const probeRequests = (await readFile(requestLog, 'utf8'))

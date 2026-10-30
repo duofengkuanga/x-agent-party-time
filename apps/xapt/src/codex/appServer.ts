@@ -77,6 +77,7 @@ export class CodexAppServerExecutor implements CodexExecutor {
   constructor(
     private readonly executable = 'codex',
     private readonly spawnProcess: typeof spawn = spawn,
+    private readonly reasoningEffort: 'low' | 'medium' | 'high' | 'xhigh' = 'medium',
   ) {}
 
   static async probe(executable: string, timeoutMs = 5_000): Promise<void> {
@@ -99,7 +100,11 @@ export class CodexAppServerExecutor implements CodexExecutor {
     input: CodexExecutionInput,
     signal: AbortSignal,
   ): Promise<StartedCodexExecution> {
-    const operation = new CodexAppServerExecutor(this.executable, this.spawnProcess);
+    const operation = new CodexAppServerExecutor(
+      this.executable,
+      this.spawnProcess,
+      this.reasoningEffort,
+    );
     this.operations.add(operation);
     const release = async () => {
       await operation.close();
@@ -129,6 +134,7 @@ export class CodexAppServerExecutor implements CodexExecutor {
           threadId,
           cwd: input.repositoryPath,
           approvalPolicy: input.approvalPolicy,
+          config: { model_reasoning_effort: this.reasoningEffort },
           ...XAPT_THREAD_SECURITY,
         });
       } else {
@@ -136,6 +142,7 @@ export class CodexAppServerExecutor implements CodexExecutor {
           await this.request('thread/start', {
             cwd: input.repositoryPath,
             approvalPolicy: input.approvalPolicy,
+            config: { model_reasoning_effort: this.reasoningEffort },
             ...XAPT_THREAD_SECURITY,
           }),
         );
@@ -147,6 +154,7 @@ export class CodexAppServerExecutor implements CodexExecutor {
           threadId,
           input: codexUserInput(input),
           outputSchema: input.outputSchema,
+          effort: this.reasoningEffort,
         }),
       );
       const turnId = requiredString(asRecord(response.turn), 'id');

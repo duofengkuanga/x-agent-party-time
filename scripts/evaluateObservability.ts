@@ -61,7 +61,7 @@ const preregistration = {
       : ['baseline', 'optimized'],
   performanceSample: false,
   realTargets: false,
-  installationConfiguration: '继承当前 Codex；只记录协议实际返回的模型和档位',
+  installationConfiguration: '模型继承当前 Codex，执行器使用 medium；记录协议实际值',
   codexVersion,
 };
 await writeFile(
