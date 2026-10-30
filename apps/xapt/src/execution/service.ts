@@ -6,6 +6,7 @@ import type {
   JsonValue,
 } from '@agent-party-time/execution-contract';
 import { serializeDeterministicJson } from '@agent-party-time/execution-contract';
+import { executionsConflict } from '@agent-party-time/execution-contract/scheduling';
 import type { OutboxEntry } from '../state/schemas';
 import { randomUUID } from 'node:crypto';
 import type { AuthenticatedRunnerSession } from '../agent/connection';
@@ -43,7 +44,7 @@ export class ExecutionService {
   private readonly preparation: ExecutionPreparation;
   private readonly recovery: ExecutionRecovery;
   private readonly tasks = new Map<string, Promise<void>>();
-  private readonly bindingTails = new Map<string, Promise<void>>();
+  private readonly scheduledExecutions = new Map<string, ClaimedExecution>();
   private readonly controllers = new Map<string, AbortController>();
   private readonly runningExecutionIds = new Set<string>();
   private waitingInteractionCount = 0;
@@ -177,13 +178,15 @@ export class ExecutionService {
       phase: 'local_wait',
       correlation: { intervalId: waitId },
     });
-    const previous = this.bindingTails.get(execution.bindingId);
+    const previous = [...this.scheduledExecutions.values()]
+      .filter((entry) => executionsConflict(entry, execution))
+      .map((entry) => this.tasks.get(entry.id)!);
     const persisted = this.recovery.recordPhase(execution, 'CLAIMED', null);
     const controller = new AbortController();
     this.controllers.set(execution.id, controller);
     const lease = this.recovery.keepLease(session, execution, controller);
     let task!: Promise<void>;
-    task = Promise.all([persisted, previous ?? Promise.resolve()])
+    task = Promise.all([persisted, ...previous])
       .then(async () => {
         if (this.forceStopping) return;
         controller.signal.throwIfAborted();
@@ -209,11 +212,10 @@ export class ExecutionService {
         this.controllers.delete(execution.id);
         this.observations.close(execution.id);
         this.tasks.delete(execution.id);
-        if (this.bindingTails.get(execution.bindingId) === task)
-          this.bindingTails.delete(execution.bindingId);
+        this.scheduledExecutions.delete(execution.id);
       });
     this.tasks.set(execution.id, task);
-    this.bindingTails.set(execution.bindingId, task);
+    this.scheduledExecutions.set(execution.id, execution);
   }
 
   private async execute(

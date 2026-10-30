@@ -15,7 +15,6 @@ import {
 import { migrateServerDatabase } from './migrateServer';
 import { SCHEMA_31_TABLE_NAMES } from './schema31Migration';
 import { ExecutionService } from '@/server/platform/execution/service';
-import { PLATFORM_SCHEMA } from '@/server/database/platformSchema';
 import { projectAttemptResult } from '@/server/submissions/repair/results';
 import { projectUpdateAttemptResult } from '@/server/submissions/update/results';
 import { RepairExecutionResultSchema } from '@/contracts/submissions/repair';
@@ -26,12 +25,13 @@ const opened: Database[] = [];
 afterEach(() => opened.splice(0).forEach((db) => db.close()));
 const legacySql = readFileSync(join(import.meta.dir, 'fixtures/serverV27.sql'), 'utf8');
 const schema30 = readFileSync(join(import.meta.dir, 'fixtures/serverV30.sql'), 'utf8');
+const schema31 = readFileSync(join(import.meta.dir, 'fixtures/serverV31.sql'), 'utf8');
 
-function copyCurrentToLegacy(directory: string, version: 27 | 28 | 29 | 30) {
+function copyCurrentToLegacy(directory: string, version: 27 | 28 | 29 | 30 | 31) {
   const path = join(directory, `legacy${version}.sqlite`);
   const db = new AppDatabase(path, { create: true });
   opened.push(db);
-  let sql = version === 27 ? legacySql : schema30;
+  let sql = version === 27 ? legacySql : version === 31 ? schema31 : schema30;
   if (version === 28 || version === 29) {
     const observationStart = sql.indexOf('CREATE TABLE platform_observation_');
     if (observationStart < 0) throw new Error('旧 Schema 缺少归因表边界');
@@ -52,9 +52,10 @@ function copyCurrentToLegacy(directory: string, version: 27 | 28 | 29 | 30) {
     );
   }
   db.exec('DETACH DATABASE seed');
-  db.exec(
-    "UPDATE platform_execution SET owner_namespace='cooking' WHERE owner_namespace='submissions'",
-  );
+  if (version < 31)
+    db.exec(
+      "UPDATE platform_execution SET owner_namespace='cooking' WHERE owner_namespace='submissions'",
+    );
   db.exec(`PRAGMA user_version=${version}`);
   return { db, path };
 }
@@ -147,7 +148,7 @@ test('预检只读；迁移备份并逐字段保留全部旧数据、关联和�
   expectOriginalFacts(f.db, before);
   expect(result.rewrittenResults).toBeGreaterThan(0);
   expect(f.db.get<{ user_version: number }>('PRAGMA user_version')).toEqual({
-    user_version: 31,
+    user_version: 32,
   });
   expect(f.db.all('PRAGMA foreign_key_check')).toEqual([]);
   const handoffs = JSON.parse(
@@ -239,7 +240,7 @@ test('提交前故障回滚全部 DDL；备份和旧数据均可重新打开', a
     this: Database,
     sql: string,
   ) {
-    if (sql === 'PRAGMA user_version=31') throw new Error('模拟提交前故障');
+    if (sql === 'PRAGMA user_version=32') throw new Error('模拟提交前故障');
     return originalExec.call(this, sql);
   });
   try {
@@ -257,9 +258,9 @@ test('提交前故障回滚全部 DDL；备份和旧数据均可重新打开', a
 
 test('Schema 28 同样支持保留数据升级，最新版本重复执行无副作用', async () => {
   const f = await legacyFixture();
-  const start = PLATFORM_SCHEMA.indexOf('CREATE TABLE platform_execution (');
-  const end = PLATFORM_SCHEMA.indexOf('CREATE TABLE platform_execution_attachment (');
-  const ddl = PLATFORM_SCHEMA.slice(start, end);
+  const start = schema30.indexOf('CREATE TABLE platform_execution (');
+  const end = schema30.indexOf('CREATE TABLE platform_execution_attachment (');
+  const ddl = schema30.slice(start, end);
   const split = ddl.indexOf('CREATE UNIQUE INDEX');
   f.db.exec(
     ddl
@@ -312,6 +313,40 @@ test('运行时只接受最新结果契约，无修改结果仍正常显示', ()
   ).toThrow();
 });
 
+test('Schema31 离线升级并发索引，完整保留活动执行且可幂等重跑', async () => {
+  const f = await setup();
+  const { started } = await startCandidateUpdate(
+    f,
+    '并发升级',
+    'repair-index',
+    ['a'.repeat(40)],
+    'update-index',
+  );
+  const { db, path } = copyCurrentToLegacy(f.directory, 31);
+  const before = originalRows(db);
+  expect(migrateServerDatabase(path).status).toBe('ready');
+  expect(originalRows(db)).toEqual(before);
+  const report = migrateServerDatabase(path, true);
+  expect(report).toMatchObject({
+    from: 31,
+    to: 32,
+    rewrittenResults: 0,
+    status: 'migrated',
+  });
+  expect(originalRows(db)).toEqual(before);
+  expect(new ExecutionService(db).get(started.executionId).state).toBe('RUNNING');
+  expect(
+    db.get<{ sql: string }>(
+      "SELECT sql FROM sqlite_master WHERE name = 'platform_execution_binding_reservation'",
+    )!.sql,
+  ).toContain('$.isolation');
+  const backup = new Database(report.backupPath!, { readonly: true });
+  opened.push(backup);
+  expect(originalRows(backup)).toEqual(before);
+  expect(backup.query('PRAGMA user_version').get()).toEqual({ user_version: 31 });
+  expect(migrateServerDatabase(path, true).status).toBe('current');
+});
+
 test('Schema29保留活动执行并升级归因存储与模块命名', async () => {
   const f = await setup();
   const { started } = await startCandidateUpdate(
@@ -348,7 +383,7 @@ test('Schema30逐字段保留活动流程、幂等回执和归因记录，只更
   expect(originalRows(db)).toEqual(before);
   const report = migrateServerDatabase(path, true);
   expect(report.from).toBe(30);
-  expect(report.to).toBe(31);
+  expect(report.to).toBe(32);
   expect(report.rewrittenResults).toBe(0);
   expectOriginalFacts(db, before);
   expect(db.all("SELECT name FROM sqlite_master WHERE name GLOB 'cooking_*'")).toEqual(

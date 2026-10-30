@@ -14,11 +14,16 @@ let server: Bun.Subprocess | undefined;
 let browserSession: string | undefined;
 let exitCode = 1;
 try {
-  const fixture = await seedBrowserFixture(home);
+  const suiteName = process.env.AGENT_PARTY_TIME_BROWSER_SUITE ?? 'submissions';
+  if (!['submissions', 'queuedUpdates'].includes(suiteName))
+    throw new Error('浏览器测试套件不存在');
+  const fixture = await seedBrowserFixture(home, {
+    queuedUpdates: suiteName === 'queuedUpdates',
+  });
   const port = await reservePort();
   const baseUrl = `http://127.0.0.1:${port}`;
   nextDistDir = `.next-browser-${port}`;
-  const templatePath = join(webRoot, 'tests/browser/submissions.yaml');
+  const templatePath = join(webRoot, `tests/browser/${suiteName}.yaml`);
   const suitePath = join(home, 'submissions.browser.yaml');
   const template = await readFile(templatePath, 'utf8');
   const suite = selectBrowserCase(template, process.env.AGENT_PARTY_TIME_BROWSER_CASE)

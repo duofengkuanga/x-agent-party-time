@@ -45,6 +45,10 @@ const schema30 = readFileSync(
   new URL('./fixtures/serverV30.sql', import.meta.url),
   'utf8',
 );
+const schema31 = readFileSync(
+  new URL('./fixtures/serverV31.sql', import.meta.url),
+  'utf8',
+);
 const quote = (name: string) => `"${name.replaceAll('"', '""')}"`;
 
 function schemaObjects(db: Database): SchemaObject[] {
@@ -59,7 +63,7 @@ function schemaObjects(db: Database): SchemaObject[] {
 function assertSchema(db: Database, version: number): void {
   const reference = new Database(':memory:');
   try {
-    let sql = version < 31 ? schema30 : targetSchema;
+    let sql = version < 31 ? schema30 : version === 31 ? schema31 : targetSchema;
     if (version < 30) sql = sql.replace(OBSERVATION_SCHEMA, '');
     if (version < 29) sql = sql.replace('  handoffs_json TEXT NOT NULL,\n', '');
     if (version === 27) sql = sql.replace(",\n    'HANDED_OFF'", '');
@@ -236,7 +240,7 @@ export function migrateServerDatabase(
   databasePath: string,
   apply = false,
 ): MigrationReport {
-  if (SERVER_SCHEMA_VERSION !== 31) throw new Error('此迁移只适用于 Server Schema 31。');
+  if (SERVER_SCHEMA_VERSION !== 32) throw new Error('此迁移只适用于 Server Schema 32。');
   const path = realpathSync(databasePath);
   if (!statSync(path).isFile()) throw new Error('请指定现有数据库文件。');
   const db = new AppDatabase(
@@ -251,22 +255,22 @@ export function migrateServerDatabase(
     transaction = true;
     const version = db.query<{ user_version: number }, []>('PRAGMA user_version').get()!
       .user_version;
-    if (![27, 28, 29, 30, 31].includes(version))
+    if (![27, 28, 29, 30, 31, 32].includes(version))
       throw new Error(`不支持从版本 ${version} 迁移；原数据已保留。`);
     assertSchema(db, version);
     assertIntegrity(db);
     if (version < 29) assertSettled(db);
     const before = snapshot(db);
     const report: MigrationReport = {
-      status: version === 31 ? 'current' : 'ready',
+      status: version === 32 ? 'current' : 'ready',
       database: path,
       from: version,
-      to: 31,
+      to: 32,
       backupPath: null,
       rewrittenResults: 0,
       tables: before.map(({ name, rows }) => ({ name, rows })),
     };
-    if (apply && version !== 31) {
+    if (apply && version !== 32) {
       report.backupPath = backupDatabase(path, before);
       const reference = new Database(':memory:');
       try {
@@ -282,16 +286,24 @@ export function migrateServerDatabase(
           const indexes = schemaObjects(current)
             .filter((row) => row.type === 'index' && renamedTables.has(row.tbl_name))
             .map((row) => row.sql);
-          renamed = migrateSchema31Names(db, indexes);
+          renamed = version < 31 ? migrateSchema31Names(db, indexes) : [];
+          db.exec('DROP INDEX platform_execution_binding_reservation');
+          for (const index of schemaObjects(current).filter((row) =>
+            [
+              'platform_execution_binding_reservation',
+              'platform_execution_workspace_reservation',
+            ].includes(row.name),
+          ))
+            db.exec(index.sql);
         } finally {
           current.close();
         }
         const rewrites = version < 29 ? rewriteHistoricalResults(db) : [];
-        assertSchema(db, 31);
+        assertSchema(db, 32);
         assertIntegrity(db);
-        assertUnchanged(db, before, [...renamed, ...rewrites], true);
+        assertUnchanged(db, before, [...renamed, ...rewrites], version < 31);
         report.rewrittenResults = rewrites.length;
-        db.exec('PRAGMA user_version=31');
+        db.exec('PRAGMA user_version=32');
         report.status = 'migrated';
       } finally {
         reference.close();

@@ -53,7 +53,8 @@ export class UpdateQueries {
         eligibleAt: row.eligible_at,
         availableActions:
           row.responsible_user_id === userId &&
-          environmentOwned(this.db, row.submission_item_id)
+          environmentOwned(this.db, row.submission_item_id) &&
+          !this.activeBatch(row.submission_item_id)
             ? (['FREEZE_NOW'] as const)
             : [],
       }));
@@ -297,6 +298,9 @@ export class UpdateQueries {
            AND bug.stage = 'WAITING_FOR_UPDATE'
            AND context.last_candidate_at IS NOT NULL
            AND context.pending_commits_json <> '[]'
+           AND NOT EXISTS (SELECT 1 FROM submission_update_batch_entry entry
+             JOIN submission_update_batch batch ON batch.id = entry.batch_id
+             WHERE entry.bug_id = bug.id AND batch.state <> 'COMPLETED')
          ORDER BY bug.short_id, bug.id`,
       submissionItemId,
     );
@@ -357,9 +361,14 @@ export class UpdateQueries {
 
   activeBatch(submissionItemId: string): BatchRow | undefined {
     return this.db.get(
-      `SELECT * FROM submission_update_batch
-         WHERE submission_item_id = ?
-           AND state IN ('READY', 'RUNNING', 'WAITING_EXTERNAL', 'FAILED')`,
+      `SELECT batch.* FROM submission_update_batch batch
+         JOIN submission_item item ON item.id = batch.submission_item_id
+         JOIN submission_item target ON target.id = ?
+         WHERE batch.state IN ('READY', 'RUNNING', 'WAITING_EXTERNAL', 'FAILED')
+           AND (item.id = target.id OR item.environment_id = target.environment_id
+             OR ((item.engineering_id = target.engineering_id OR item.repository_url = target.repository_url)
+               AND item.target_branch = target.target_branch))
+         ORDER BY batch.frozen_at, batch.id LIMIT 1`,
       submissionItemId,
     ) as BatchRow | undefined;
   }

@@ -140,12 +140,15 @@ CREATE TABLE platform_execution (
   finished_at TEXT
 ) STRICT;
 CREATE UNIQUE INDEX platform_execution_binding_reservation
-  ON platform_execution(binding_id)
+  ON platform_execution(binding_id, COALESCE(json_extract(workspace_json, '$.isolation'), 'EXCLUSIVE'))
   WHERE state IN (
     'CLAIMED',
     'RUNNING',
     'CANCEL_REQUESTED'
   );
+CREATE UNIQUE INDEX platform_execution_workspace_reservation
+  ON platform_execution(runner_id, json_extract(workspace_json, '$.key'))
+  WHERE workspace_json IS NOT NULL AND state IN ('CLAIMED', 'RUNNING', 'CANCEL_REQUESTED');
 CREATE INDEX platform_execution_runner_claim
   ON platform_execution(runner_id, state, created_at, id);
 CREATE INDEX platform_execution_lease_expiry

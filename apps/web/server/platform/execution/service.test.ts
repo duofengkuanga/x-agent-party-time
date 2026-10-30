@@ -12,6 +12,94 @@ import { bindingId, input } from './testFixture';
 
 const createDatabase = testDatabases();
 
+test('同工程的更新可越过待修复队列，与正在运行的修复并发', async () => {
+  const f = await setup();
+  const binding = bindingId(91);
+  const repair = (key: string) =>
+    f.executions.enqueue({
+      ...input(f.runnerId, binding, key),
+      workspace: { key, isolation: 'BRANCH_WORKTREE', baseRef: 'main', branch: key },
+    });
+  const first = repair('repair-first');
+  const next = repair('repair-next');
+  const running = (await f.executions.claim(f.runnerId, 1, 0))[0]!;
+  f.startClaimed(running, 'repair-session');
+  const update = f.executions.enqueue({
+    ...input(f.runnerId, binding, 'update'),
+    priority: 1,
+    workspace: { key: 'update', isolation: 'DETACHED_WORKTREE', baseRef: 'main' },
+  });
+  expect(f.executions.queueStatus(update.id).aheadCount).toBe(0);
+  expect((await f.executions.claim(f.runnerId, 2, 0)).map(({ id }) => id)).toEqual([
+    update.id,
+  ]);
+  expect(f.executions.get(first.id).state).toBe('RUNNING');
+  expect(f.executions.get(next.id).state).toBe('QUEUED');
+});
+
+test('修复最多使用两个 Agent 槽位，更新可使用预留槽位', async () => {
+  const f = await setup();
+  for (let n = 92; n < 95; n++)
+    f.executions.enqueue({
+      ...input(f.runnerId, bindingId(n), `branch-${n}`),
+      workspace: {
+        key: `branch-${n}`,
+        isolation: 'BRANCH_WORKTREE',
+        baseRef: 'main',
+        branch: `branch-${n}`,
+      },
+    });
+  expect(await f.executions.claim(f.runnerId, 3, 0)).toHaveLength(2);
+  const update = f.executions.enqueue({
+    ...input(f.runnerId, bindingId(95), 'update'),
+    priority: 1,
+    workspace: { key: 'update', isolation: 'DETACHED_WORKTREE', baseRef: 'main' },
+  });
+  expect((await f.executions.claim(f.runnerId, 1, 0))[0]?.id).toBe(update.id);
+});
+
+test('工作区等待同步审批保留通道，独立更新仍可并发且审批后能直接恢复', async () => {
+  const f = await setup();
+  const binding = bindingId(96);
+  const branch = (key: string) => ({
+    ...input(f.runnerId, binding, key),
+    workspace: {
+      key,
+      isolation: 'BRANCH_WORKTREE' as const,
+      baseRef: 'main',
+      branch: key,
+    },
+  });
+  const first = f.executions.enqueue(branch('first'));
+  const second = f.executions.enqueue(branch('second'));
+  const claimed = (await f.executions.claim(f.runnerId, 1, 0))[0]!;
+  f.startClaimed(claimed, 'approval-session');
+  const interaction = f.executions.openInteraction(f.runnerId, first.id, {
+    leaseToken: claimed.lease.token,
+    kind: 'APPROVAL',
+    method: 'item/commandExecution/requestApproval',
+    payload: { command: 'bun test' },
+  });
+  const update = f.executions.enqueue({
+    ...input(f.runnerId, binding, 'update'),
+    workspace: { key: 'update', isolation: 'DETACHED_WORKTREE', baseRef: 'main' },
+  });
+  expect((await f.executions.claim(f.runnerId, 2, 0)).map(({ id }) => id)).toEqual([
+    update.id,
+  ]);
+  f.executions.resolveInteraction(interaction.id, { decision: 'accept' });
+  expect(
+    await f.executions.waitInteraction(
+      f.runnerId,
+      first.id,
+      interaction.id,
+      claimed.lease.token,
+      0,
+    ),
+  ).toMatchObject({ laneAcquired: true });
+  expect(f.executions.get(second.id).state).toBe('QUEUED');
+});
+
 async function setup() {
   const { directory, database } = await createDatabase();
   const user = await seedTestUser(new AuthService(database), [

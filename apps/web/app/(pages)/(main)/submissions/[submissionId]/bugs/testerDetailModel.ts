@@ -36,7 +36,18 @@ export function testerBugStatus(
     return '测试环境正由其他提测使用，当前暂不可复测。';
   if (item && !item.environmentAccess.deploymentConfirmed)
     return `等待${responsible}确认测试环境，当前暂不可复测。`;
-  if (bug.stage === 'WAITING_FOR_UPDATE') return '修复已完成，测试环境更新后才能复测。';
+  if (bug.stage === 'WAITING_FOR_UPDATE') {
+    if (visual.state === 'FAILED') return `环境更新启动未完成，等待${responsible}处理。`;
+    if (
+      snapshot.updateBatches.some(
+        (batch) =>
+          batch.state === 'READY' &&
+          batch.entries.some((entry) => entry.bugId === bug.id),
+      )
+    )
+      return '修复已完成，更新已排队，测试环境更新后才能复测。';
+    return '修复已完成，测试环境更新后才能复测。';
+  }
   if (bug.stage === 'UPDATING') {
     const waitingForConfirmation = snapshot.updateBatches.some(
       (batch) =>

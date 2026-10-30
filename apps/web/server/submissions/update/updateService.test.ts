@@ -63,7 +63,7 @@ describe('UpdateService', () => {
     ).toBe(false);
   });
 
-  test('候选提交重算两分钟截止，重启后由惰性准备原子冻结', async () => {
+  test('候选提交重算五分钟截止，重启后由惰性准备原子冻结', async () => {
     const fixture = await setup();
     const first = fixture.createBug('支付按钮无响应');
     await completeNextRepair(fixture, 'repair-one', [
@@ -71,7 +71,7 @@ describe('UpdateService', () => {
     ]);
     expect(pending(fixture.database, fixture.item.id)).toEqual({
       last_candidate_at: '2026-07-27T10:00:00.000Z',
-      eligible_at: '2026-07-27T10:02:00.000Z',
+      eligible_at: '2026-07-27T10:05:00.000Z',
     });
 
     fixture.clock.set('2026-07-27T10:01:00.000Z');
@@ -82,7 +82,7 @@ describe('UpdateService', () => {
     ]);
     expect(pending(fixture.database, fixture.item.id)).toEqual({
       last_candidate_at: '2026-07-27T10:01:00.000Z',
-      eligible_at: '2026-07-27T10:03:00.000Z',
+      eligible_at: '2026-07-27T10:06:00.000Z',
     });
 
     const restarted = new UpdateService(
@@ -90,9 +90,9 @@ describe('UpdateService', () => {
       new ExecutionService(fixture.database, fixture.clock.now),
       fixture.clock.now,
     );
-    fixture.clock.set('2026-07-27T10:02:59.000Z');
+    fixture.clock.set('2026-07-27T10:05:59.000Z');
     expect(restarted.prepareDueExecutions()).toEqual([]);
-    fixture.clock.set('2026-07-27T10:03:00.000Z');
+    fixture.clock.set('2026-07-27T10:06:00.000Z');
     expect(restarted.prepareDueExecutions()).toHaveLength(1);
     expect(restarted.prepareDueExecutions()).toEqual([]);
 
@@ -108,8 +108,8 @@ describe('UpdateService', () => {
         ],
       },
     ]);
-    expect(currentBug(fixture.database, first.id).stage).toBe('UPDATING');
-    expect(currentBug(fixture.database, second.id).stage).toBe('UPDATING');
+    expect(currentBug(fixture.database, first.id).stage).toBe('WAITING_FOR_UPDATE');
+    expect(currentBug(fixture.database, second.id).stage).toBe('WAITING_FOR_UPDATE');
     expect(pending(fixture.database, fixture.item.id)).toBeNull();
   });
 
@@ -125,7 +125,7 @@ describe('UpdateService', () => {
       'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
     ]);
     expect(pending(fixture.database, fixture.item.id)?.eligible_at).toBe(
-      '2026-07-27T10:03:00.000Z',
+      '2026-07-27T10:06:00.000Z',
     );
 
     expect(() =>
@@ -135,7 +135,7 @@ describe('UpdateService', () => {
     ).toThrow(expect.objectContaining({ code: 'INVALID_TRANSITION' }));
     expect(pending(fixture.database, fixture.item.id)).toEqual({
       last_candidate_at: '2026-07-27T10:01:00.000Z',
-      eligible_at: '2026-07-27T10:03:00.000Z',
+      eligible_at: '2026-07-27T10:06:00.000Z',
     });
     expect(currentBug(fixture.database, first.id).stage).toBe('WAITING_FOR_UPDATE');
     expect(currentBug(fixture.database, second.id).stage).toBe('WAITING_FOR_UPDATE');
@@ -147,7 +147,7 @@ describe('UpdateService', () => {
     await completeNextRepair(fixture, 'repair-one', [
       'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     ]);
-    fixture.clock.set('2026-07-27T10:02:00.000Z');
+    fixture.clock.set('2026-07-27T10:05:00.000Z');
     const workspace = new SubmissionWorkspaceService(
       new SubmissionService(fixture.database),
       fixture.bugs,
@@ -160,7 +160,7 @@ describe('UpdateService', () => {
     expect(workspace.updateBatches[0]?.state).toBe('READY');
     expect(workspace.visualByBug[bug.id]).toEqual({
       state: 'QUEUED_FOR_ENGINEERING',
-      label: '等待工程执行通道（前方 0 项）',
+      label: '已排队，等待 Agent 启动',
       symbol: '…',
       aheadCount: 0,
     });
@@ -201,7 +201,7 @@ describe('UpdateService', () => {
     await completeNextRepair(fixture, 'repair-one', [
       'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     ]);
-    fixture.clock.set('2026-07-27T10:02:00.000Z');
+    fixture.clock.set('2026-07-27T10:05:00.000Z');
     const outsider = await seedTestUser(new AuthService(fixture.database), [
       'update-outsider',
       '项目外用户',
@@ -232,7 +232,7 @@ describe('UpdateService', () => {
     await completeNextRepair(fixture, 'repair-one', [
       'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     ]);
-    fixture.clock.set('2026-07-27T10:02:00.000Z');
+    fixture.clock.set('2026-07-27T10:05:00.000Z');
     const response = await handleExecutionClaim(
       new Request('http://update.test/api/runner/executions/claim', {
         method: 'POST',
@@ -251,7 +251,7 @@ describe('UpdateService', () => {
       executions: Array<{ id: string; priority: number }>;
     };
     expect(body.executions).toHaveLength(1);
-    expect(body.executions[0]?.priority).toBe(0);
+    expect(body.executions[0]?.priority).toBe(1);
     expect(latestBatch(fixture.database, fixture.item.id).state).toBe('READY');
   });
 
@@ -293,8 +293,8 @@ describe('UpdateService', () => {
     const nextBug = fixture.createBug('后续普通修复');
     const claimed = (await fixture.executions.claim(fixture.runner.id, 1, 0))[0]!;
     expect(claimed.id).toBe(frozen.executionId);
-    expect(claimed.priority).toBe(0);
-    expect(currentBug(fixture.database, first.id).stage).toBe('UPDATING');
+    expect(claimed.priority).toBe(1);
+    expect(currentBug(fixture.database, first.id).stage).toBe('WAITING_FOR_UPDATE');
     expect(currentBug(fixture.database, nextBug.id).stage).toBe('REPAIRING');
   });
 });

@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./scheduling": "./src/scheduling.ts",
     "./observability": "./src/observability/index.ts"
   },
   "scripts": {

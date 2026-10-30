@@ -26,7 +26,10 @@ export type BrowserFixture = {
   username: string;
 };
 
-export async function seedBrowserFixture(home: string): Promise<BrowserFixture> {
+export async function seedBrowserFixture(
+  home: string,
+  options: { queuedUpdates?: boolean } = {},
+): Promise<BrowserFixture> {
   const db = openDatabase(join(home, 'server', 'server.sqlite'));
   try {
     const password = 'browser-test-password';
@@ -496,43 +499,45 @@ export async function seedBrowserFixture(home: string): Promise<BrowserFixture> 
     const sharedBatch = updates.freezeNow(developer.id, items[1]!.id, {
       mutationId: randomUUID(),
     });
-    const sharedUpdate = (await executions.claim(paired.runner.id, 1, 0))[0]!;
-    if (sharedUpdate.id !== sharedBatch.executionId)
-      throw new Error('未领取到共享更新批次');
-    executions.start(paired.runner.id, sharedUpdate.id, {
-      kind: 'STARTED',
-      leaseToken: sharedUpdate.lease.token,
-      sessionId: 'browser-shared-update',
-      taskSkillBinding: fixtureSkillBinding('agent-party-time-integrate-update-batch'),
-    });
-    completeSuccessfulExecution(
-      { executions, runner: paired.runner },
-      {
-        executionId: sharedUpdate.id,
+    if (!options.queuedUpdates) {
+      const sharedUpdate = (await executions.claim(paired.runner.id, 1, 0))[0]!;
+      if (sharedUpdate.id !== sharedBatch.executionId)
+        throw new Error('未领取到共享更新批次');
+      executions.start(paired.runner.id, sharedUpdate.id, {
+        kind: 'STARTED',
         leaseToken: sharedUpdate.lease.token,
         sessionId: 'browser-shared-update',
-      },
-      {
-        result: {
-          handoffUse: {
-            adopted: ['沿用修复阶段已确认的测试入口'],
-            rechecked: [{ context: '构建参数', reason: '集成后的配置需要再次核实' }],
-            validationCommands: [
-              {
-                validationIndex: 0,
-                command: 'bun run check:delivery',
-                workingDirectory: '.',
-                reason: '一次入口覆盖测试与构建，未重复运行前置阶段',
-              },
-            ],
-          },
-          outcome: 'PUSHED',
-          completedActions: ['合入两条缺陷修复并推送目标分支'],
-          validations: [{ name: '共享批次构建', status: 'PASSED', detail: '' }],
-          warnings: [],
+        taskSkillBinding: fixtureSkillBinding('agent-party-time-integrate-update-batch'),
+      });
+      completeSuccessfulExecution(
+        { executions, runner: paired.runner },
+        {
+          executionId: sharedUpdate.id,
+          leaseToken: sharedUpdate.lease.token,
+          sessionId: 'browser-shared-update',
         },
-      },
-    );
+        {
+          result: {
+            handoffUse: {
+              adopted: ['沿用修复阶段已确认的测试入口'],
+              rechecked: [{ context: '构建参数', reason: '集成后的配置需要再次核实' }],
+              validationCommands: [
+                {
+                  validationIndex: 0,
+                  command: 'bun run check:delivery',
+                  workingDirectory: '.',
+                  reason: '一次入口覆盖测试与构建，未重复运行前置阶段',
+                },
+              ],
+            },
+            outcome: 'PUSHED',
+            completedActions: ['合入两条缺陷修复并推送目标分支'],
+            validations: [{ name: '共享批次构建', status: 'PASSED', detail: '' }],
+            warnings: [],
+          },
+        },
+      );
+    }
 
     const linkedDone = bugs.createLinkedBugs(tester.id, submission.id, {
       mutationId: randomUUID(),

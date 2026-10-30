@@ -41,7 +41,7 @@ describe('UpdateService', () => {
     await completeNextRepair(fixture, 'repair-later', [
       'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
     ]);
-    fixture.clock.set('2026-07-27T10:03:00.000Z');
+    fixture.clock.set('2026-07-27T10:06:00.000Z');
     expect(fixture.updates.prepareDueExecutions()).toEqual([]);
     expect(batchEntries(fixture.database, firstBatch.id)).toEqual([
       { bug_id: first.id, commits: ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'] },

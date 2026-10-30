@@ -67,7 +67,7 @@ export function isUpdateExecution(execution: Execution): boolean {
 
 export function batchStateLabel(state: BatchRow['state']): string {
   return {
-    READY: '等待 Agent',
+    READY: '已排队，等待 Agent 启动',
     RUNNING: '正在统一更新',
     WAITING_EXTERNAL: '等待外部部署结果',
     FAILED: '统一更新未完成',
@@ -90,7 +90,7 @@ export function updateVisual(
   if (batch.state === 'FAILED' || latest?.state === 'FAILED')
     return { state: 'FAILED', label: '统一更新未完成', symbol: '×' };
   if (batch.state === 'READY' || latest?.state === 'QUEUED')
-    return queueVisual(queue?.aheadCount);
+    return { ...queueVisual(queue?.aheadCount), label: '已排队，等待 Agent 启动' };
   if (latest?.state === 'WAITING_TO_RESUME')
     return { state: 'WAITING_TO_RESUME', label: '等待继续', symbol: 'Ⅱ' };
   if (latest && ['CLAIMED', 'RUNNING'].includes(latest.state))

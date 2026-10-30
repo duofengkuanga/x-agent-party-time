@@ -146,7 +146,7 @@ describe('更新遵守环境使用权', () => {
       view.submission.submission.projectId,
       { ...input, environmentTakeovers: conflicts },
     );
-    fixture.clock.set('2026-07-27T10:03:00.000Z');
+    fixture.clock.set('2026-07-27T10:06:00.000Z');
     expect(fixture.updates.prepareDueExecutions()).toEqual([]);
     expect(pending(fixture.database, fixture.item.id)).not.toBeNull();
     expect(

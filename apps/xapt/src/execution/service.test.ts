@@ -24,6 +24,31 @@ const commitAssertions = [
   { kind: 'GIT_COMMITS_CREATED' as const, resultPath: ['result', 'commits'] },
 ];
 
+test('同 Binding 的 Repair 与 Update 独立工作区并发执行', async () => {
+  const f = await createFixture({ deferredExecutor: true });
+  f.http.claimed = [
+    claimedExecution(null, executionId, bindingId, undefined, undefined, branchWorkspace),
+    claimedExecution(
+      null,
+      '00000000-0000-4000-8000-000000000312',
+      bindingId,
+      undefined,
+      undefined,
+      { key: 'update-one', isolation: 'DETACHED_WORKTREE', baseRef: 'origin/main' },
+    ),
+  ];
+  try {
+    await f.service.cycle(session);
+    await waitUntil(() => f.executor.inputs.length === 2);
+    expect(f.service.projection.activeExecutionCount).toBe(2);
+  } finally {
+    f.service.forceStop();
+    f.executor.resolveAll();
+    await f.service.waitForIdle();
+    await f.shutdownObservations();
+  }
+});
+
 async function cycleToIdle(
   fixture: Awaited<ReturnType<typeof createFixture>>,
 ): Promise<boolean> {

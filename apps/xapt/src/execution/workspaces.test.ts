@@ -1,7 +1,7 @@
 import { testDirectories } from '../testing/directories';
 import type { ExecutionWorkspace } from '@agent-party-time/execution-contract';
 import { describe, expect, test } from 'bun:test';
-import { mkdir, readFile, readlink, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 
 import { join } from 'node:path';
 import { xaptPaths } from '../platform/paths';
@@ -27,6 +27,36 @@ function updateWorkspace(id: string): ExecutionWorkspace {
 }
 
 describe('GitExecutionWorkspaceManager', () => {
+  test('更新只集成冻结提交，另一修复并发 Commit 后由下一批基于新目标分支集成', async () => {
+    const { root, binding } = await createRepository();
+    const manager = new GitExecutionWorkspaceManager(xaptPaths(root));
+    const first = cwd(await manager.prepare(binding, repairWorkspace('first')));
+    await writeFile(join(first, 'first.txt'), 'first\n');
+    await run(['git', '-C', first, 'add', 'first.txt']);
+    await run(['git', '-C', first, 'commit', '-m', 'first']);
+    const frozen = await output(['git', '-C', first, 'rev-parse', 'HEAD']);
+    const late = cwd(await manager.prepare(binding, repairWorkspace('late')));
+    const update = cwd(await manager.prepare(binding, updateWorkspace('first')));
+    await Promise.all([
+      run(['git', '-C', update, 'cherry-pick', frozen]),
+      (async () => {
+        await writeFile(join(late, 'late.txt'), 'late\n');
+        await run(['git', '-C', late, 'add', 'late.txt']);
+        await run(['git', '-C', late, 'commit', '-m', 'late']);
+      })(),
+    ]);
+    expect(
+      await output(['git', '-C', update, 'ls-tree', '--name-only', 'HEAD']),
+    ).not.toContain('late.txt');
+    const lateCommit = await output(['git', '-C', late, 'rev-parse', 'HEAD']);
+    await run(['git', '-C', update, 'push', 'origin', 'HEAD:main']);
+    expect(await output(['git', '-C', late, 'rev-parse', 'HEAD'])).toBe(lateCommit);
+    const next = cwd(await manager.prepare(binding, updateWorkspace('next')));
+    await run(['git', '-C', next, 'cherry-pick', lateCommit]);
+    expect(await readFile(join(next, 'first.txt'), 'utf8')).toBe('first\n');
+    expect(await readFile(join(next, 'late.txt'), 'utf8')).toBe('late\n');
+  });
+
   test('Repair 使用唯一分支，Update 使用 Detached HEAD 且目录互不串扰', async () => {
     const { root, source, binding } = await createRepository({
       ignoreLocalFiles: true,
@@ -116,7 +146,7 @@ describe('GitExecutionWorkspaceManager', () => {
     );
   });
 
-  test('新 worktree 镜像主工程被忽略内容，复用不覆盖已存在项', async () => {
+  test('worktree 的依赖与忽略内容独立复制，复用不覆盖本地修改', async () => {
     const { root, binding } = await createRepository({
       ignoreLocalFiles: true,
     });
@@ -132,20 +162,29 @@ describe('GitExecutionWorkspaceManager', () => {
     const manager = new GitExecutionWorkspaceManager(paths);
     const repair = cwd(await manager.prepare(binding, repairWorkspace('mirror-1')));
 
-    expect(await readlink(join(repair, 'node_modules'))).toBe(
-      join(binding, 'node_modules'),
-    );
-    expect(await readlink(join(repair, '.env.local'))).toBe(join(binding, '.env.local'));
+    expect((await lstat(join(repair, 'node_modules'))).isSymbolicLink()).toBe(false);
+    expect((await lstat(join(repair, '.env.local'))).isSymbolicLink()).toBe(false);
     expect(await readFile(join(repair, 'node_modules', 'dep.js'), 'utf8')).toBe('dep\n');
-    expect(await readlink(join(repair, 'cache', '.DS_Store'))).toBe(
-      join(binding, 'cache', '.DS_Store'),
+    expect((await lstat(join(repair, 'cache', '.DS_Store'))).isSymbolicLink()).toBe(
+      false,
     );
     expect(await output(['git', '-C', repair, 'status', '--porcelain'])).toBe('');
 
     await writeFile(join(repair, '.env.local'), 'LOCAL=1\n');
+    await writeFile(join(repair, 'node_modules', 'dep.js'), 'repair-only\n');
+    const update = cwd(await manager.prepare(binding, updateWorkspace('copy-update')));
+    expect(await readFile(join(update, 'node_modules', 'dep.js'), 'utf8')).toBe('dep\n');
+    expect(await readFile(join(binding, '.env.local'), 'utf8')).toBe('SECRET=1\n');
     const reused = cwd(await manager.prepare(binding, repairWorkspace('mirror-1')));
     expect(reused).toBe(repair);
     expect(await readFile(join(repair, '.env.local'), 'utf8')).toBe('LOCAL=1\n');
+    // Existing managed links are detached before a resumed task may run in parallel.
+    await rm(join(repair, 'node_modules'), { recursive: true });
+    await symlink(join(binding, 'node_modules'), join(repair, 'node_modules'));
+    await manager.prepare(binding, repairWorkspace('mirror-1'));
+    expect((await lstat(join(repair, 'node_modules'))).isSymbolicLink()).toBe(false);
+    await writeFile(join(repair, 'node_modules', 'dep.js'), 'resumed-only\n');
+    expect(await readFile(join(binding, 'node_modules', 'dep.js'), 'utf8')).toBe('dep\n');
   });
 
   test('removeWorkspaces 先全量校验再删除，force 覆盖未提交修改', async () => {

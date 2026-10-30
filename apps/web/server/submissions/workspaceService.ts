@@ -141,7 +141,13 @@ function deriveBugVisuals(
           throw new PlatformError('INTERNAL_ERROR', '修复中的缺陷缺少界面状态');
         return [bug.id, visual];
       }
-      if (bug.stage === 'WAITING_FOR_UPDATE')
+      if (bug.stage === 'WAITING_FOR_UPDATE') {
+        const frozen = updates.updateBatches.find(
+          (batch) =>
+            batch.state !== 'COMPLETED' &&
+            batch.entries.some((entry) => entry.bugId === bug.id),
+        );
+        if (frozen) return [bug.id, frozen.presentation.visual];
         return [
           bug.id,
           {
@@ -151,6 +157,7 @@ function deriveBugVisuals(
             aheadCount: 0,
           },
         ];
+      }
       if (bug.stage === 'UPDATING') {
         const batches = updates.updateBatches.filter(
           (batch) =>

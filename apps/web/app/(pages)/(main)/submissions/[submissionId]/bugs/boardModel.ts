@@ -104,6 +104,14 @@ export function bugLabel(bug: BugView): string {
 
 export function pendingDeliveryFor(bug: BugView, snapshot: SubmissionWorkspaceSnapshot) {
   if (bug.stage !== 'WAITING_FOR_UPDATE') return undefined;
+  if (
+    snapshot.updateBatches.some(
+      (batch) =>
+        batch.state !== 'COMPLETED' &&
+        batch.entries.some((entry) => entry.bugId === bug.id),
+    )
+  )
+    return undefined;
   const submissionItemId = bug.assignment?.submissionItemId;
   return submissionItemId
     ? snapshot.pendingDeliveries.find(
@@ -114,7 +122,7 @@ export function pendingDeliveryFor(bug: BugView, snapshot: SubmissionWorkspaceSn
 
 export function formatCountdown(remainingMs: number): string {
   const totalSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
-  if (totalSeconds <= 0) return '正在准备统一更新';
+  if (totalSeconds <= 0) return '等待更新通道';
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   if (minutes === 0) return `${seconds} 秒后开始更新`;

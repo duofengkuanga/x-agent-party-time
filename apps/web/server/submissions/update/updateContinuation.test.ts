@@ -64,7 +64,7 @@ describe('UpdateService', () => {
         kind: 'CONTINUATION',
         taskId: 'update-session',
       },
-      priority: 0,
+      priority: 1,
     });
     expect(continuation.codexTurn?.kind).toBe('CONTINUATION');
     if (continuation.codexTurn?.kind !== 'CONTINUATION') throw new Error('需要继续 Turn');

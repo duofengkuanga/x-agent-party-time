@@ -24,7 +24,7 @@ import { staleBatch } from './results';
 import { freezeRepairHandoffs } from './repairHandoffs';
 import { UPDATE_HANDOFF_TEXT_ASSERTION } from '@/contracts/submissions/handoff';
 
-const QUIET_WINDOW_MS = 2 * 60 * 1_000;
+const QUIET_WINDOW_MS = 5 * 60 * 1_000;
 
 export class UpdateDelivery {
   constructor(
@@ -75,7 +75,7 @@ export class UpdateDelivery {
       previousExecutionId: latest.execution_id,
       runnerId: source.runner_id,
       bindingId: source.binding_id,
-      priority: 0,
+      priority: 1,
       approvalPolicy: 'never',
       codexTurn: createContinuationCodexTurn({
         manualHandoff: 'EXTERNAL_SESSION',
@@ -118,6 +118,11 @@ export class UpdateDelivery {
       [execution.id, now, batchId, expectedVersion],
     );
     if (update.changes !== 1) throw staleBatch();
+    this.db.run(
+      `UPDATE submission_bug SET stage = 'WAITING_FOR_UPDATE', version = version + 1, updated_at = ?
+      WHERE stage = 'UPDATING' AND id IN (SELECT bug_id FROM submission_update_batch_entry WHERE batch_id = ?)`,
+      [now, batchId],
+    );
     const revision = this.writes.bumpRevision(batch.submission_id, now);
     return { executionId: execution.id, revision };
   }
@@ -264,7 +269,7 @@ export class UpdateDelivery {
       previousExecutionId: null,
       runnerId: source.runner_id,
       bindingId: source.binding_id,
-      priority: 0,
+      priority: 1,
       approvalPolicy: 'never',
       codexTurn: createInitialCodexTurn({
         manualHandoff: 'EXTERNAL_SESSION',
@@ -296,7 +301,7 @@ export class UpdateDelivery {
     );
     const bugUpdate = this.db.run(
       `UPDATE submission_bug
-         SET stage = 'UPDATING', version = version + 1, updated_at = ?
+         SET version = version + 1, updated_at = ?
          WHERE submission_item_id = ? AND stage = 'WAITING_FOR_UPDATE'
            AND id IN (
              SELECT bug_id FROM submission_update_batch_entry WHERE batch_id = ?
@@ -345,7 +350,10 @@ export class UpdateDelivery {
          WHERE bug.submission_item_id = ?
            AND bug.stage = 'WAITING_FOR_UPDATE'
            AND context.last_candidate_at IS NOT NULL
-           AND context.pending_commits_json <> '[]'`,
+           AND context.pending_commits_json <> '[]'
+           AND NOT EXISTS (SELECT 1 FROM submission_update_batch_entry entry
+             JOIN submission_update_batch batch ON batch.id = entry.batch_id
+             WHERE entry.bug_id = bug.id AND batch.state <> 'COMPLETED')`,
       submissionItemId,
     ) as { last_candidate_at: string | null };
     if (!latest.last_candidate_at) {

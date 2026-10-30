@@ -65,6 +65,13 @@ export class UpdateProjection {
          WHERE id = ? AND state = 'READY'`,
       [now, batch.id],
     );
+    this.db.run(
+      `UPDATE submission_bug SET stage = 'UPDATING', version = version + 1, updated_at = ?
+      WHERE stage = 'WAITING_FOR_UPDATE' AND id IN (
+        SELECT bug_id FROM submission_update_batch_entry WHERE batch_id = ?
+      )`,
+      [now, batch.id],
+    );
     this.auditForBatch(
       batch,
       'UPDATE_ATTEMPT_STARTED',

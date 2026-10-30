@@ -8,6 +8,11 @@ import {
   type ExecutionOutcome,
   type RunnerActivity,
 } from '@agent-party-time/execution-contract';
+import {
+  executionsConflict,
+  hasExecutionCapacity,
+  type ExecutionAccess,
+} from '@agent-party-time/execution-contract/scheduling';
 import { ACTIVE_STATES, LEASED_STATES, hashSecret, newLeaseExpiry } from './lease';
 import { projectTransaction, type ExecutionProjector } from './projection';
 import { ExecutionRecords, type ExecutionRow } from './records';
@@ -58,47 +63,16 @@ export class ExecutionQueue {
     const execution = this.records.getRow(executionId);
     if (execution.state !== 'QUEUED' && execution.state !== 'WAITING_TO_RESUME')
       return { state: execution.state, aheadCount: 0 };
-    const row = this.db.get(
-      `SELECT COUNT(*) count
-         FROM platform_execution earlier
-         WHERE earlier.binding_id = ?
-           AND earlier.id <> ?
-           AND (
-             earlier.state IN ('CLAIMED', 'RUNNING', 'CANCEL_REQUESTED')
-             OR (
-               earlier.state = 'WAITING_TO_RESUME'
-               AND (
-                 ? = 'QUEUED'
-                 OR COALESCE(
-                   earlier.resume_requested_at, earlier.created_at
-                 ) < COALESCE(?, ?)
-               )
-             )
-             OR (
-               earlier.state = 'QUEUED'
-               AND ? = 'QUEUED'
-               AND (
-                 earlier.created_at < ?
-                 OR (
-                   earlier.created_at = ?
-                   AND earlier.rowid < (
-                     SELECT rowid FROM platform_execution WHERE id = ?
-                   )
-                 )
-               )
-             )
-           )`,
-      execution.binding_id,
-      execution.id,
-      execution.state,
-      execution.resume_requested_at,
-      execution.created_at,
-      execution.state,
-      execution.created_at,
-      execution.created_at,
-      execution.id,
-    ) as { count: number };
-    return { state: execution.state, aheadCount: row.count };
+    const rows = this.schedulingRows(execution.runner_id);
+    const candidate = rows.find((row) => row.id === executionId)!;
+    const aheadCount = rows.filter(
+      (row) =>
+        row.id !== candidate.id &&
+        executionsConflict(row.access, candidate.access) &&
+        (occupiesLane(row) ||
+          (isQueued(row) && row.manual_available && compareSchedule(row, candidate) < 0)),
+    ).length;
+    return { state: execution.state, aheadCount };
   }
 
   tryAcquireResumeLane(executionId: string): boolean {
@@ -106,34 +80,37 @@ export class ExecutionQueue {
     return projectTransaction(this.db, this.project, (emit) => {
       const execution = this.records.getRow(executionId);
       if (execution.state === 'RUNNING') return true;
-      if (execution.state !== 'WAITING_TO_RESUME') return false;
-      const update = this.db.run(
-        `UPDATE platform_execution AS candidate
-           SET state = 'RUNNING', resume_requested_at = NULL
-           WHERE candidate.id = ?
-             AND candidate.state = 'WAITING_TO_RESUME'
-             AND candidate.lease_token_hash IS NOT NULL
-             AND candidate.lease_expires_at > ?
-             AND ${manualWorkspaceAvailable('candidate')}
-             AND NOT EXISTS (
-               SELECT 1 FROM platform_execution active
-               WHERE active.binding_id = candidate.binding_id
-                 AND active.id <> candidate.id
-                 AND active.state IN ('CLAIMED', 'RUNNING', 'CANCEL_REQUESTED')
-             )
-             AND NOT EXISTS (
-               SELECT 1 FROM platform_execution earlier
-               WHERE earlier.binding_id = candidate.binding_id
-                 AND earlier.id <> candidate.id
-                 AND earlier.state = 'WAITING_TO_RESUME'
-                 AND (COALESCE(earlier.resume_requested_at, earlier.created_at), earlier.rowid)
-                   < (COALESCE(candidate.resume_requested_at, candidate.created_at), candidate.rowid)
-             )`,
-        [executionId, this.now().toISOString()],
+      if (
+        execution.state !== 'WAITING_TO_RESUME' ||
+        !execution.lease_token_hash ||
+        !execution.lease_expires_at ||
+        execution.lease_expires_at <= this.now().toISOString()
+      )
+        return false;
+      const rows = this.schedulingRows(execution.runner_id);
+      const candidate = rows.find((row) => row.id === executionId)!;
+      const others = rows.filter((row) => row.id !== executionId);
+      if (
+        !candidate.manual_available ||
+        others.some(
+          (row) =>
+            executionsConflict(row.access, candidate.access) &&
+            (occupiesLane(row) ||
+              (row.state === 'WAITING_TO_RESUME' &&
+                row.manual_available &&
+                compareSchedule(row, candidate) < 0)),
+        ) ||
+        !hasExecutionCapacity(
+          candidate.access,
+          others.filter(holdsSlot).map((row) => row.access),
+        )
+      )
+        return false;
+      this.db.run(
+        "UPDATE platform_execution SET state = 'RUNNING', resume_requested_at = NULL WHERE id = ?",
+        [executionId],
       );
-      if (update.changes !== 1) return false;
-      const resumedExecution = this.records.get(executionId);
-      emit({ kind: 'RESUMED', execution: resumedExecution });
+      emit({ kind: 'RESUMED', execution: this.records.get(executionId) });
       return true;
     });
   }
@@ -142,70 +119,88 @@ export class ExecutionQueue {
     if (availableSlots === 0) return [];
     this.expireLeases();
     return this.db.transaction(() => {
-      const rows = this.db.all<ExecutionRow>(
-        `WITH ranked AS (
-             SELECT *, rowid queue_order,
-               ROW_NUMBER() OVER (
-                 PARTITION BY binding_id
-                 ORDER BY state = 'QUEUED',
-                   COALESCE(resume_requested_at, created_at), rowid
-               ) queue_rank
-             FROM platform_execution candidate
-             WHERE cancellation_requested = 0
-               AND state IN ('QUEUED', 'WAITING_TO_RESUME')
-               AND ${manualWorkspaceAvailable('candidate')}
-           )
-           SELECT candidate.* FROM ranked candidate
-           WHERE candidate.runner_id = ? AND candidate.queue_rank = 1
-             AND (candidate.state = 'QUEUED' OR candidate.lease_token_hash IS NULL)
-             AND NOT EXISTS (
-               SELECT 1 FROM platform_execution active
-               WHERE active.binding_id = candidate.binding_id
-                 AND active.state IN ('CLAIMED', 'RUNNING', 'CANCEL_REQUESTED')
-             )
-           ORDER BY candidate.state = 'QUEUED',
-             COALESCE(candidate.resume_requested_at, candidate.created_at),
-             candidate.queue_order
-           LIMIT ?`,
-        runnerId,
-        availableSlots,
-      );
-      return rows.map((row) => {
+      const rows = this.schedulingRows(runnerId);
+      const active = rows.filter(occupiesLane);
+      const occupied = rows.filter(holdsSlot).map((row) => row.access);
+      const queued = rows.filter((row) => isQueued(row) && row.manual_available);
+      const claimed: ClaimedExecution[] = [];
+      for (
+        let index = 0;
+        index < queued.length && claimed.length < availableSlots;
+        index++
+      ) {
+        const row = queued[index]!;
+        if (
+          (row.state === 'WAITING_TO_RESUME' && row.lease_token_hash) ||
+          active.some((entry) => executionsConflict(entry.access, row.access)) ||
+          queued
+            .slice(0, index)
+            .some((entry) => executionsConflict(entry.access, row.access)) ||
+          !hasExecutionCapacity(row.access, occupied)
+        )
+          continue;
         const recoveredInteraction =
           row.state === 'WAITING_TO_RESUME'
             ? this.records.latestInteraction(row.id)
             : undefined;
         const leaseToken = this.createLeaseToken();
         const expiresAt = newLeaseExpiry(this.now(), this.leaseDurationMs);
-        const claimedAt = this.now().toISOString();
         this.db.run(
-          `UPDATE platform_execution
-             SET state = 'CLAIMED', lease_token_hash = ?,
-                 lease_expires_at = ?, claimed_at = COALESCE(claimed_at, ?),
-                 resume_requested_at = NULL
-             WHERE id = ?
-               AND cancellation_requested = 0
-               AND state IN ('QUEUED', 'WAITING_TO_RESUME')`,
-          [hashSecret(leaseToken), expiresAt, claimedAt, row.id],
+          `UPDATE platform_execution SET state = 'CLAIMED', lease_token_hash = ?,
+             lease_expires_at = ?, claimed_at = COALESCE(claimed_at, ?),
+             resume_requested_at = NULL WHERE id = ?`,
+          [hashSecret(leaseToken), expiresAt, this.now().toISOString(), row.id],
         );
         const execution = this.records.get(row.id);
-        return ClaimedExecutionSchema.parse({
-          ...execution,
-          codexTurn: codexTurnForClaim(execution),
-          lease: { token: leaseToken, expiresAt },
-          outcome: null,
-          recoveredInteraction:
-            recoveredInteraction?.state === 'RESOLVED' &&
-            recoveredInteraction.resolution_json
-              ? {
-                  method: recoveredInteraction.method,
-                  payload: JSON.parse(recoveredInteraction.payload_json),
-                  resolution: JSON.parse(recoveredInteraction.resolution_json),
-                }
-              : null,
-        });
-      });
+        claimed.push(
+          ClaimedExecutionSchema.parse({
+            ...execution,
+            codexTurn: codexTurnForClaim(execution),
+            lease: { token: leaseToken, expiresAt },
+            outcome: null,
+            recoveredInteraction:
+              recoveredInteraction?.state === 'RESOLVED' &&
+              recoveredInteraction.resolution_json
+                ? {
+                    method: recoveredInteraction.method,
+                    payload: JSON.parse(recoveredInteraction.payload_json),
+                    resolution: JSON.parse(recoveredInteraction.resolution_json),
+                  }
+                : null,
+          }),
+        );
+        active.push(row);
+        occupied.push(row.access);
+      }
+      return claimed;
     })();
+  }
+
+  private schedulingRows(runnerId: string): ScheduledExecution[] {
+    return this.db
+      .all<SchedulingRow>(
+        `SELECT candidate.id, candidate.state, candidate.binding_id, candidate.priority,
+         candidate.workspace_json, candidate.lease_token_hash, candidate.lease_expires_at,
+         candidate.cancellation_requested, candidate.resume_requested_at, candidate.created_at,
+         COALESCE(candidate.session_id, json_extract(candidate.codex_turn_json, '$.taskId')) session_id,
+         candidate.rowid queue_order,
+         ${manualWorkspaceAvailable('candidate')} manual_available
+       FROM platform_execution candidate
+       WHERE candidate.runner_id = ? AND candidate.state IN (
+         'QUEUED', 'CLAIMED', 'RUNNING', 'CANCEL_REQUESTED',
+         'WAITING_TO_RESUME', 'WAITING_FOR_INTERACTION')`,
+        runnerId,
+      )
+      .map((row) => ({
+        ...row,
+        access: {
+          bindingId: row.binding_id,
+          workspace: row.workspace_json ? JSON.parse(row.workspace_json) : null,
+          sessionId: row.session_id,
+          codexTurn: null,
+        },
+      }))
+      .sort(compareSchedule);
   }
 
   expireLeases(): void {
@@ -315,4 +310,59 @@ function codexTurnForClaim(execution: Execution): CodexTurn | null {
     outputJsonSchema: turn.outputJsonSchema,
     resultAssertions: turn.resultAssertions,
   };
+}
+
+type SchedulingRow = Pick<
+  ExecutionRow,
+  | 'id'
+  | 'state'
+  | 'binding_id'
+  | 'priority'
+  | 'workspace_json'
+  | 'lease_token_hash'
+  | 'lease_expires_at'
+  | 'cancellation_requested'
+  | 'resume_requested_at'
+  | 'created_at'
+  | 'session_id'
+> & {
+  queue_order: number;
+  manual_available: number;
+};
+type ScheduledExecution = SchedulingRow & {
+  access: ExecutionAccess;
+};
+
+function occupiesLane(row: SchedulingRow): boolean {
+  return (
+    ['CLAIMED', 'RUNNING', 'CANCEL_REQUESTED'].includes(row.state) ||
+    (row.state === 'WAITING_FOR_INTERACTION' &&
+      Boolean(row.workspace_json) &&
+      Boolean(row.lease_token_hash) &&
+      Boolean(row.lease_expires_at))
+  );
+}
+function holdsSlot(row: SchedulingRow): boolean {
+  return (
+    Boolean(row.lease_token_hash) &&
+    Boolean(row.lease_expires_at) &&
+    LEASED_STATES.some((state) => state === row.state)
+  );
+}
+function isQueued(row: SchedulingRow): boolean {
+  return (
+    row.cancellation_requested === 0 &&
+    ['QUEUED', 'WAITING_TO_RESUME'].includes(row.state)
+  );
+}
+function compareSchedule(left: ScheduledExecution, right: ScheduledExecution): number {
+  return (
+    Number(left.state !== 'WAITING_TO_RESUME') -
+      Number(right.state !== 'WAITING_TO_RESUME') ||
+    right.priority - left.priority ||
+    (left.resume_requested_at ?? left.created_at).localeCompare(
+      right.resume_requested_at ?? right.created_at,
+    ) ||
+    left.queue_order - right.queue_order
+  );
 }

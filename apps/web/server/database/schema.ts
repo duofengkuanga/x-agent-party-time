@@ -6,7 +6,7 @@ import { SUBMISSION_SCHEMA } from './submissionSchema';
 import { BUG_DEPLOYMENT_SCHEMA } from './bugDeploymentSchema';
 import { OBSERVATION_SCHEMA } from './observationSchema';
 
-export const SERVER_SCHEMA_VERSION = 31;
+export const SERVER_SCHEMA_VERSION = 32;
 
 const SCHEMA =
   PLATFORM_SCHEMA +

@@ -16,8 +16,55 @@ import { mutation } from '@/testing/submissions/project';
 import { testDatabases } from '@/testing/database';
 import { testerBugStatus, latestTesterFeedback } from './testerDetailModel';
 import { BugBoard } from './bugBoard';
+import { pendingDeliveryFor } from './boardModel';
 
 const setup = lifecycleFixture(testDatabases());
+
+test('冻结等待启动不重复倒计时，启动失败向测试者显示负责人的下一步', async () => {
+  const f = await setup();
+  const flow = createSubmissionWorkflow(f.database, { now: f.clock.now });
+  const bug = createAndRequestBug(f, f.items[1]!.id, '等待启动');
+  await completeNextRepair(f, 'queued-repair', ['a'.repeat(40)]);
+  const batch = flow.updates.freezeNow(f.users.developer.id, f.items[1]!.id, {
+    mutationId: randomUUID(),
+  });
+  const claim = (await flow.executions.claim(f.runner.id, 1, 0))[0]!;
+  const later = createAndRequestBug(f, f.items[1]!.id, '下一批');
+  await completeNextRepair(f, 'later-repair', ['b'.repeat(40)]);
+  const queued = flow.workspace.getWorkspace(
+    f.users.tester.id,
+    f.submission.id,
+  );
+  const waiting = queued.bugs.find((entry) => entry.id === bug.id)!;
+  expect(waiting.stage).toBe('WAITING_FOR_UPDATE');
+  expect(testerBugStatus(waiting, queued)).toContain('更新已排队');
+  expect(pendingDeliveryFor(waiting, queued)).toBeUndefined();
+  expect(
+    pendingDeliveryFor(
+      queued.bugs.find((entry) => entry.id === later.id)!,
+      queued,
+    ),
+  ).toBeDefined();
+  flow.executions.start(f.runner.id, batch.executionId, {
+    kind: 'START_FAILED',
+    leaseToken: claim.lease.token,
+    failure: {
+      code: 'CODEX_START_FAILED',
+      message: '启动失败',
+      retryable: true,
+    },
+  });
+  const failed = flow.workspace.getWorkspace(
+    f.users.tester.id,
+    f.submission.id,
+  );
+  expect(
+    testerBugStatus(
+      failed.bugs.find((entry) => entry.id === bug.id)!,
+      failed,
+    ),
+  ).toContain('环境更新启动未完成');
+});
 
 test('同工程下一批待更新倒计时只显示在待更新缺陷卡片上', async () => {
   const fixture = await setup();
