@@ -6,7 +6,7 @@ import {
   type JsonObject,
   type JsonValue,
 } from '@agent-party-time/execution-contract';
-import Ajv from 'ajv';
+import Ajv, { type ErrorObject } from 'ajv';
 import { createHash } from 'node:crypto';
 import type { AuthenticatedRunnerSession } from '../agent/connection';
 import type { CodexExecutor } from '../codex/contract';
@@ -261,6 +261,47 @@ function verifySessionResultSchema(
   }
   if (!validate(result))
     throw new ExecutionResultVerificationError(
-      'Codex 会话的最新轮次不符合原任务结果约束',
+      `Codex 会话的最新轮次不符合原任务结果约束。具体问题：${formatSessionSchemaIssues(validate.errors ?? [])}`,
     );
+}
+
+function formatSessionSchemaIssues(errors: ErrorObject[]): string {
+  // Exclude variants whose literal discriminator does not match the result.
+  const unmatchedVariants = errors.flatMap((error) => {
+    if (
+      error.keyword !== 'const' &&
+      !(error.keyword === 'enum' && error.params.allowedValues?.length === 1)
+    )
+      return [];
+    const branch = error.schemaPath.match(/^(.*\/(?:anyOf|oneOf)\/\d+)\//u)?.[1];
+    return branch ? [branch] : [];
+  });
+  const leafErrors = errors.filter(
+    ({ keyword }) => keyword !== 'anyOf' && keyword !== 'oneOf',
+  );
+  const matchingErrors = leafErrors.filter(
+    ({ schemaPath }) =>
+      !unmatchedVariants.some((branch) => schemaPath.startsWith(`${branch}/`)),
+  );
+  return (matchingErrors.length ? matchingErrors : leafErrors)
+    .slice(0, 5)
+    .map((error) => {
+      const path = error.instancePath
+        .split('/')
+        .slice(1)
+        .map((segment) => segment.replace(/~1/gu, '/').replace(/~0/gu, '~'));
+      if (error.keyword === 'required') path.push(error.params.missingProperty);
+      const reasons: Record<string, string> = {
+        maxItems: `最多允许 ${error.params.limit} 项`,
+        minItems: `至少需要 ${error.params.limit} 项`,
+        required: '缺少必填字段',
+        additionalProperties: '存在未允许的字段',
+        enum: '取值不在允许范围内',
+        const: '取值不在允许范围内',
+        type: '类型不符合要求',
+      };
+      const reason = reasons[error.keyword] ?? '不符合字段约束';
+      return `${path.join('.') || '$'}: ${reason}`;
+    })
+    .join('；');
 }

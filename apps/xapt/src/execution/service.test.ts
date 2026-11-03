@@ -151,7 +151,7 @@ test('同步会话拒绝不符合原任务结果约束的结果', async () => {
     kind: 'START_FAILED',
     failure: {
       code: 'CODEX_EXECUTION_FAILED',
-      message: 'Codex 会话的最新轮次不符合原任务结果约束',
+      message: expect.stringContaining('result: 缺少必填字段'),
     },
   });
   expect(fixture.http.outcomes).toEqual([]);

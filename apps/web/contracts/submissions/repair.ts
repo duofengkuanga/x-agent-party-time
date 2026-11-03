@@ -79,26 +79,17 @@ const RepairExecutionResultValueSchema = z.union([
     .strictObject({
       ...CompletedRepairFields,
       completionKind: z.literal('TARGET_ALREADY_FIXED'),
+      changes: CompletedRepairFields.changes.max(0, '目标分支已修复时不得报告本次改动'),
+      commits: CompletedRepairFields.commits.max(
+        0,
+        '目标分支已修复时不得返回候选本地提交',
+      ),
+      manualOperations: ManualOperationsSchema.max(
+        0,
+        '目标分支已修复时不得报告待执行的人工操作',
+      ),
     })
     .superRefine((result, context) => {
-      if (result.changes.length > 0)
-        context.addIssue({
-          code: 'custom',
-          path: ['changes'],
-          message: '目标分支已修复时不得报告本次改动',
-        });
-      if (result.commits.length > 0)
-        context.addIssue({
-          code: 'custom',
-          path: ['commits'],
-          message: '目标分支已修复时不得返回候选本地提交',
-        });
-      if (result.manualOperations.length > 0)
-        context.addIssue({
-          code: 'custom',
-          path: ['manualOperations'],
-          message: '目标分支已修复时不得报告待执行的人工操作',
-        });
       if (
         !result.validations.some(({ status }) => status === 'PASSED') ||
         result.validations.some(({ status }) => status === 'FAILED')

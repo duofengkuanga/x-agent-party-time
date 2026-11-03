@@ -199,7 +199,14 @@ export class RepairProjection {
     if (!turnId) return;
     const parsed = RepairExecutionResultSchema.safeParse(result);
     if (!parsed.success) {
-      markInvalidExecutionResult(this.db, execution.id, INVALID_RESULT_MESSAGE);
+      markInvalidExecutionResult(
+        this.db,
+        execution.id,
+        `Codex 会话的最新轮次不符合原任务结果约束。具体问题：${formatRepairContractIssues(parsed.error.issues)}`.slice(
+          0,
+          1_000,
+        ),
+      );
       return;
     }
     const duplicate = this.db.get(
