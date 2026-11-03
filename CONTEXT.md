@@ -109,7 +109,7 @@ _Avoid_: Execution、Repair Task
 _Avoid_: Validation Certificate、Evidence Cache、Session Summary
 
 **Update Batch**:
-同一 Submission Item 中使用相同部署配置的一组待更新 Bug 在一个冻结时刻形成的原子集成、Push 和部署单位。
+一组待更新 Bug 在同一冻结时刻确定的集成、Push 和部署处理单元。在 PersonAgent 中按同一 Test Submission 跨 Engineering 组织；在 AgentParty 中按同一 Submission Item 及相同部署配置组织。
 _Avoid_: Deployment、Release
 
 **Verification**:
