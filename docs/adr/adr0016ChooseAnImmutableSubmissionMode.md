@@ -6,7 +6,7 @@ status: accepted
 
 PersonAgent 预期成为高频使用方式：一名开发负责人通过一个 Agent 同时处理参与工程，由另一名测试负责人验收。保留现有按工程分工的流程为 AgentParty，避免统一跨工程处理取代仍有需要的分工协作；两种模式的领域定义见根目录 [CONTEXT.md](../../CONTEXT.md)。
 
-新建提测默认选中 PersonAgent，创建前明确展示所选模式以及创建后不可更改的约束。模式属于本次提测，不由人数、电脑数或 Agent 数量自动推断；现有提测归为 AgentParty，继续原有流程。
+新建提测默认选中 PersonAgent，创建前明确展示所选模式以及创建后不可更改的约束。模式属于本次提测，不由人数、电脑数或 Agent 数量自动推断；现有提测归为 AgentParty，继续原有工程分工流程。两种模式的部署统一遵循 [ADR-0017](adr0017UseDeploymentScriptsForEveryEngineering.md)。
 
 PersonAgent 登记 Bug 时不要求测试判断前后端。一条 Bug 始终保留一个持续修复会话，即使涉及多个工程也不拆成多条 Bug；内部记录各工程的修改与交付进度，相关工程全部就绪后统一验收，返修继续原 Bug 的原会话。AgentParty 继续使用 [ADR-0012](adr0012SplitCrossEngineeringReportsIntoLinkedBugs.md) 的工程归属与关联 Bug 规则。
 
@@ -38,7 +38,7 @@ Repair 与 Update 可以并行执行：例如 A、B 已修好并冻结为更新�
 
 PersonAgent 按同一张 Test Submission 收集已修好的待更新 Bug，统一组织跨工程 Update Batch，不再按前后端分别组织更新批次。保留末次产生新候选后等待五分钟自动更新及“立即更新”入口，计时和操作范围改为该提测单；冻结时仍在修复的 Bug 留待后续批次，不因其未完成而阻止当前批次。
 
-本轮确认的 PersonAgent 场景中，前端和后端均通过各自配置的本地脚本部署，后端不走 CI/CD；该场景不需要外部流水线结果确认。两端都有改动时默认先部署后端，确认成功后再部署前端；后端部署失败则停止后续部署。只有一端有改动时仅部署该端。
+工程配置统一只填写部署脚本，PersonAgent 和 AgentParty 均不再提供 CI/CD 部署模式或外部流水线结果确认，见 ADR-0017。PersonAgent 两端都有改动时默认先部署后端，确认成功后再部署前端；后端部署失败则停止后续部署。只有一端有改动时仅部署该端。
 
 整个批次全部部署成功后，该批全部 Bug 统一进入待验证。某端部署失败时，即使部分 Bug 只涉及已成功部署的工程，也仍随批次等待，测试不对该批进行部分验收。
 
@@ -52,4 +52,4 @@ PersonAgent 按同一张 Test Submission 收集已修好的待更新 Bug，统�
 
 ## 实现状态
 
-本轮仅记录已确认的设计，不修改业务实现。上述产品流程待整体验证共同理解；Schema、跨工程 Execution 与工作区协议、结果校验、调度和恢复的具体改造清单尚未制定。模式不可变、PersonAgent 的负责人及 Agent 一致性、跨工程统一验收等约束的自动化检查均待实现。
+上述产品流程已由用户整体确认。本轮不修改业务实现；技术设计提案和待验证边界见 [PersonAgent 技术设计](../design/personAgentExecutionDesign.md)。模式不可变、PersonAgent 的负责人及 Agent 一致性、跨工程统一验收等约束的自动化检查均待实现。

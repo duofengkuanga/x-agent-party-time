@@ -25,7 +25,7 @@ _Avoid_: 全员单人模式、单工程模式
 _Avoid_: 必须多电脑模式、必须多 Agent 模式
 
 **Submission Item**:
-Test Submission 中某个 Engineering 的交付配置，确定负责人、Binding、目标分支和环境；活动提测中的部署方式读取环境当前配置，Bug 首次开始修复时固定其后续交付使用的部署方式。
+Test Submission 中某个 Engineering 的交付配置，确定负责人、Binding、目标分支和环境；部署使用该环境配置的本地脚本。
 _Avoid_: Engineering、子任务
 
 ## 本机执行
