@@ -13,8 +13,16 @@ _Avoid_: Workspace、团队空间
 _Avoid_: Repository、代码库
 
 **Test Submission**:
-一次已经确定参与者、工程、目标分支和环境的测试交付周期；活动期间可以追加工程。
+一次已经确定参与者、工程、目标分支、环境和协作模式的测试交付周期；创建后协作模式不可切换，AgentParty 活动期间可以追加工程。
 _Avoid_: Test Run、测试任务
+
+**PersonAgent**:
+由一名开发负责人和一个 Agent 覆盖全部参与工程、由另一名测试负责人验收的提测协作模式；每条 Bug 统一处理，可涉及多个 Engineering。
+_Avoid_: 全员单人模式、单工程模式
+
+**AgentParty**:
+按 Engineering 分别确定开发负责人和 Agent、分别修复与交付 Bug 的提测协作模式；不同工程可以共用负责人或 Agent。
+_Avoid_: 必须多电脑模式、必须多 Agent 模式
 
 **Submission Item**:
 Test Submission 中某个 Engineering 的交付配置，确定负责人、Binding、目标分支和环境；活动提测中的部署方式读取环境当前配置，Bug 首次开始修复时固定其后续交付使用的部署方式。
@@ -89,7 +97,7 @@ _Avoid_: Retry、Resume、Manual Repair Node
 ## 缺陷交付
 
 **Bug**:
-测试负责人在 Test Submission 中报告的实际结果与预期结果之间的偏差所对应的独立处理单元；确定归属后，一条 Bug 对应一个 Engineering，独立修复、交付和验收。同一次登记涉及多个 Engineering 时，对应多条相互关联的 Bug。
+测试负责人在 Test Submission 中报告的实际结果与预期结果之间的偏差所对应的独立处理单元。在 PersonAgent 中，一条 Bug 可涉及多个 Engineering，保留同一个持续修复会话与统一验收；在 AgentParty 中，确定归属后一条 Bug 对应一个 Engineering，跨工程登记生成相互关联的 Bug。
 _Avoid_: Issue、Ticket
 
 **Repair Attempt**:
