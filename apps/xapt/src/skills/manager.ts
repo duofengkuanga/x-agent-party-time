@@ -13,10 +13,7 @@ import {
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import type { XaptPaths } from '../platform/paths';
 
-export const XAPT_SKILL_NAMES = [
-  'agent-party-time-repair-bug',
-  'agent-party-time-integrate-update-batch',
-] as const;
+export const XAPT_SKILL_NAMES = ['XBugRepaire', 'XUpdate'] as const;
 
 export type XaptSkillName = (typeof XAPT_SKILL_NAMES)[number];
 
@@ -36,7 +33,7 @@ type DownloadedGeneration = {
 };
 
 export type SkillIdentity = {
-  skillName: XaptSkillName;
+  skillName: string;
   bundleHash: string;
   sourceRevision: string;
 };
@@ -52,12 +49,13 @@ export type SkillInstallResult = {
 
 type GenerationManifest = {
   sourceRevision: string;
-  skills: Record<XaptSkillName, string>;
+  skills: Record<string, string>;
 };
 
 const DEFAULT_REPOSITORY = 'duofengkuanga/x-skills';
 const COMMIT_PATTERN = /^[a-f0-9]{40}$/u;
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
+const SKILL_NAME_PATTERN = /^[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)*$/u;
 
 export class SkillBundleManager {
   constructor(
@@ -70,12 +68,17 @@ export class SkillBundleManager {
     try {
       const current = await this.currentManifest();
       if (current) {
-        for (const skillName of XAPT_SKILL_NAMES)
+        for (const skillName of XAPT_SKILL_NAMES) {
+          if (!current.skills[skillName])
+            throw new SkillBundleError(
+              `当前规则包缺少 ${skillName}，请运行 xapt skills update`,
+            );
           await this.resolveBound({
             skillName,
             bundleHash: current.skills[skillName],
             sourceRevision: current.sourceRevision,
           });
+        }
         return {
           installed: true,
           updated: false,
@@ -126,6 +129,10 @@ export class SkillBundleManager {
   async resolveCurrent(skillName: XaptSkillName): Promise<ResolvedSkill> {
     const manifest = await this.currentManifest();
     if (!manifest) throw new SkillBundleError('规则包尚未安装');
+    if (!manifest.skills[skillName])
+      throw new SkillBundleError(
+        `当前规则包缺少 ${skillName}，请运行 xapt skills update`,
+      );
     return await this.resolveBound({
       skillName,
       bundleHash: manifest.skills[skillName],
@@ -135,7 +142,8 @@ export class SkillBundleManager {
 
   async resolveBound(identity: SkillIdentity): Promise<ResolvedSkill> {
     if (
-      !XAPT_SKILL_NAMES.includes(identity.skillName) ||
+      !SKILL_NAME_PATTERN.test(identity.skillName) ||
+      identity.skillName.length > 120 ||
       !HASH_PATTERN.test(identity.bundleHash) ||
       !COMMIT_PATTERN.test(identity.sourceRevision)
     )
@@ -343,7 +351,7 @@ export function bundleHash(files: SkillFile[]): string {
   return hash.digest('hex');
 }
 
-function validateSkill(name: XaptSkillName, files: SkillFile[]): void {
+function validateSkill(name: string, files: SkillFile[]): void {
   const byPath = new Map(files.map((file) => [file.path, file]));
   const skill = byPath.get('SKILL.md');
   const openai = byPath.get('agents/openai.yaml');
@@ -389,13 +397,15 @@ async function readManifest(path: string): Promise<GenerationManifest> {
     throw new SkillBundleError('规则包版本清单无效');
   const skills = recordValue(value, 'skills');
   const result = Object.fromEntries(
-    XAPT_SKILL_NAMES.map((name) => {
+    Object.keys(skills).map((name) => {
+      if (!SKILL_NAME_PATTERN.test(name) || name.length > 120)
+        throw new SkillBundleError('规则包版本清单包含无效规则名称');
       const hash = recordString(skills, name);
       if (!HASH_PATTERN.test(hash))
         throw new SkillBundleError(`规则包版本的 ${name} 标识无效`);
       return [name, hash];
     }),
-  ) as Record<XaptSkillName, string>;
+  );
   if (Object.keys(skills).length !== XAPT_SKILL_NAMES.length)
     throw new SkillBundleError('规则包版本清单包含未知规则');
   return { sourceRevision: value.sourceRevision as string, skills: result };
@@ -406,7 +416,7 @@ async function validateGenerationLinks(
   manifest: GenerationManifest,
   paths: XaptPaths,
 ): Promise<void> {
-  for (const name of XAPT_SKILL_NAMES) {
+  for (const name of Object.keys(manifest.skills)) {
     const linkPath = join(generation, name);
     const link = await info(linkPath);
     if (!link?.isSymbolicLink()) throw new SkillBundleError(`规则包版本缺少 ${name}`);

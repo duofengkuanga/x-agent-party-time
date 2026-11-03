@@ -36,7 +36,7 @@ test('最后完成的修复重置五分钟；到期更新与仍在修复的任�
     kind: 'STARTED',
     leaseToken: repair.lease.token,
     sessionId: 'late',
-    taskSkillBinding: testSkillBinding('agent-party-time-repair-bug'),
+    taskSkillBinding: testSkillBinding('XBugRepaire'),
   });
   f.clock.set('2026-07-27T10:09:00.000Z');
   const [updateId] = f.updates.prepareDueExecutions();

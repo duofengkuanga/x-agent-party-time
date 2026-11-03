@@ -56,7 +56,7 @@ async function finishedBug(
     kind: 'STARTED',
     leaseToken: execution.lease.token,
     sessionId: `session-${source.id}`,
-    taskSkillBinding: testSkillBinding('agent-party-time-repair-bug'),
+    taskSkillBinding: testSkillBinding('XBugRepaire'),
   });
   f.executions.complete(f.runner.id, execution.id, {
     leaseToken: execution.lease.token,
@@ -117,7 +117,7 @@ describe('前后端关联 Bug', () => {
       kind: 'STARTED',
       leaseToken: target.lease.token,
       sessionId: 'collaboration-target',
-      taskSkillBinding: testSkillBinding('agent-party-time-repair-bug'),
+      taskSkillBinding: testSkillBinding('XBugRepaire'),
     });
     f.executions.complete(f.runner.id, target.id, {
       leaseToken: target.lease.token,
@@ -300,7 +300,7 @@ describe('前后端关联 Bug', () => {
       kind: 'STARTED',
       leaseToken: execution.lease.token,
       sessionId: 'waiting-session',
-      taskSkillBinding: testSkillBinding('agent-party-time-repair-bug'),
+      taskSkillBinding: testSkillBinding('XBugRepaire'),
     });
     f.executions.openInteraction(f.runner.id, execution.id, {
       leaseToken: execution.lease.token,
@@ -417,7 +417,7 @@ describe('前后端关联 Bug', () => {
       kind: 'STARTED',
       leaseToken: execution.lease.token,
       sessionId: 'source-session',
-      taskSkillBinding: testSkillBinding('agent-party-time-repair-bug'),
+      taskSkillBinding: testSkillBinding('XBugRepaire'),
     });
     f.executions.complete(f.runner.id, execution.id, {
       leaseToken: execution.lease.token,

@@ -36,8 +36,13 @@ if (!values['skills-root'] || !values['baseline-app'] || !values['baseline-skill
 const appRoot = resolve(import.meta.dir, '..');
 const skillsRoot = resolve(values['skills-root']);
 const evaluationRoot = await mkdtemp(join(tmpdir(), 'repair-handoff-eval-'));
-const repairSkill = 'agent-party-time-repair-bug';
-const updateSkill = 'agent-party-time-integrate-update-batch';
+const repairSkill = 'XBugRepaire';
+const updateSkill = 'XUpdate';
+// Historical comparison fixtures keep the invocation names at their pinned revision.
+const baselineSkillNames = {
+  repair: 'agent-party-time-repair-bug',
+  update: 'agent-party-time-integrate-update-batch',
+};
 const variants = values.variant === 'all' ? ['baseline', 'current'] : [values.variant!];
 const cases = values.case === 'all' ? ['node', 'python'] : [values.case!];
 if (
@@ -233,7 +238,12 @@ async function runAgent(
   options: { label?: string; persist?: boolean; resumeTaskId?: string } = {},
 ): Promise<PhaseReport> {
   const label = options.label ?? phase;
-  const skillName = phase === 'repair' ? repairSkill : updateSkill;
+  const skillName =
+    variant === 'baseline'
+      ? baselineSkillNames[phase]
+      : phase === 'repair'
+        ? repairSkill
+        : updateSkill;
   const skillRoot = join(worktree, '.agents/skills', skillName);
   await mkdir(join(skillRoot, 'agents'), { recursive: true });
   const files = await Promise.all(

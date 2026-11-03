@@ -43,7 +43,7 @@ test('成功修复的交接随候选冻结，更新只获得必要上下文', as
     kind: 'STARTED',
     leaseToken: repair!.lease.token,
     sessionId: 'handoff-repair',
-    taskSkillBinding: testSkillBinding('agent-party-time-repair-bug'),
+    taskSkillBinding: testSkillBinding('XBugRepaire'),
   });
   const result = {
     outcome: 'COMPLETED',

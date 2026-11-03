@@ -56,7 +56,7 @@ export function completeRepairExecution(
     kind: 'STARTED',
     leaseToken,
     sessionId,
-    taskSkillBinding: testSkillBinding('agent-party-time-repair-bug'),
+    taskSkillBinding: testSkillBinding('XBugRepaire'),
   });
   return completeSuccessfulExecution(
     scenario,

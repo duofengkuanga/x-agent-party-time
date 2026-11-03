@@ -130,7 +130,7 @@ export async function seedBrowserFixture(
         kind: 'STARTED',
         leaseToken: failedExecution.lease.token,
         sessionId: `browser-failed-${failedBug.id}`,
-        taskSkillBinding: fixtureSkillBinding('agent-party-time-repair-bug'),
+        taskSkillBinding: fixtureSkillBinding('XBugRepaire'),
       });
       executions.complete(paired.runner.id, failedExecution.id, {
         leaseToken: failedExecution.lease.token,
@@ -164,7 +164,7 @@ export async function seedBrowserFixture(
         kind: 'STARTED',
         leaseToken: claimed.lease.token,
         sessionId: `browser-session-${bug.id}`,
-        taskSkillBinding: fixtureSkillBinding('agent-party-time-repair-bug'),
+        taskSkillBinding: fixtureSkillBinding('XBugRepaire'),
       });
       executions.complete(paired.runner.id, claimed.id, {
         leaseToken: claimed.lease.token,
@@ -215,7 +215,7 @@ export async function seedBrowserFixture(
       kind: 'STARTED',
       leaseToken: rework.lease.token,
       sessionId: reworkSession,
-      taskSkillBinding: fixtureSkillBinding('agent-party-time-repair-bug'),
+      taskSkillBinding: fixtureSkillBinding('XBugRepaire'),
     });
     completeSuccessfulExecution(
       { executions, runner: paired.runner },
@@ -249,7 +249,7 @@ export async function seedBrowserFixture(
       kind: 'STARTED',
       leaseToken: scrollRepair.lease.token,
       sessionId: `browser-scroll-repair-${scrollBug.id}`,
-      taskSkillBinding: fixtureSkillBinding('agent-party-time-repair-bug'),
+      taskSkillBinding: fixtureSkillBinding('XBugRepaire'),
     });
     executions.complete(paired.runner.id, scrollRepair.id, {
       leaseToken: scrollRepair.lease.token,
@@ -292,7 +292,7 @@ export async function seedBrowserFixture(
       kind: 'STARTED',
       leaseToken: scrollUpdate.lease.token,
       sessionId: `browser-scroll-update-${scrollBug.id}`,
-      taskSkillBinding: fixtureSkillBinding('agent-party-time-integrate-update-batch'),
+      taskSkillBinding: fixtureSkillBinding('XUpdate'),
     });
     executions.complete(paired.runner.id, scrollUpdate.id, {
       leaseToken: scrollUpdate.lease.token,
@@ -435,7 +435,7 @@ export async function seedBrowserFixture(
       kind: 'STARTED',
       leaseToken: manualExecution.lease.token,
       sessionId: manualSession,
-      taskSkillBinding: fixtureSkillBinding('agent-party-time-repair-bug'),
+      taskSkillBinding: fixtureSkillBinding('XBugRepaire'),
     });
     const questions = ['是否确认移除区县大屏访问权限，并保留正常业务登录？'];
     executions.openInteraction(paired.runner.id, manualExecution.id, {
@@ -460,7 +460,7 @@ export async function seedBrowserFixture(
       kind: 'STARTED',
       leaseToken: claimed.lease.token,
       sessionId: `browser-interaction-${interactionBug.id}`,
-      taskSkillBinding: fixtureSkillBinding('agent-party-time-repair-bug'),
+      taskSkillBinding: fixtureSkillBinding('XBugRepaire'),
     });
     executions.openInteraction(paired.runner.id, claimed.id, {
       leaseToken: claimed.lease.token,
@@ -507,7 +507,7 @@ export async function seedBrowserFixture(
         kind: 'STARTED',
         leaseToken: sharedUpdate.lease.token,
         sessionId: 'browser-shared-update',
-        taskSkillBinding: fixtureSkillBinding('agent-party-time-integrate-update-batch'),
+        taskSkillBinding: fixtureSkillBinding('XUpdate'),
       });
       completeSuccessfulExecution(
         { executions, runner: paired.runner },

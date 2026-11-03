@@ -159,7 +159,7 @@ export async function completeUpdate(
     kind: 'STARTED',
     leaseToken: claimed.lease.token,
     sessionId: `update-${submissionItemId}`,
-    taskSkillBinding: testSkillBinding('agent-party-time-integrate-update-batch'),
+    taskSkillBinding: testSkillBinding('XUpdate'),
   });
   fixture.executions.complete(fixture.runner.id, claimed.id, {
     leaseToken: claimed.lease.token,

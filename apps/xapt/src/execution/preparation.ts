@@ -137,7 +137,7 @@ export class ExecutionPreparation {
       } else
         resolvedSkill = await observation.phase('skill', () =>
           this.skills.resolveBound({
-            skillName: turn.taskSkillBinding.skillName as XaptSkillName,
+            skillName: turn.taskSkillBinding.skillName,
             bundleHash: turn.taskSkillBinding.bundleHash,
             sourceRevision: turn.taskSkillBinding.sourceRevision,
           }),

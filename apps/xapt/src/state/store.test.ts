@@ -159,7 +159,7 @@ test('连接、Binding、Execution、Outbox 与安装状态可重启读取且不
       leaseToken: `lease-${'x'.repeat(32)}`,
       sessionId: 'session-one',
       taskSkillBinding: {
-        skillName: 'agent-party-time-repair-bug',
+        skillName: 'XBugRepaire',
         bundleHash: 'a'.repeat(64),
         sourceRevision: 'b'.repeat(40),
       },
@@ -359,7 +359,7 @@ function recoveryExecution(now: string): ClaimedExecution {
       kind: 'CONTINUATION',
       taskId: 'session-one',
       taskSkillBinding: {
-        skillName: 'agent-party-time-repair-bug',
+        skillName: 'XBugRepaire',
         bundleHash: 'a'.repeat(64),
         sourceRevision: 'b'.repeat(40),
       },

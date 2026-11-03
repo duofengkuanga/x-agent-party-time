@@ -273,7 +273,7 @@ export class UpdateDelivery {
       approvalPolicy: 'never',
       codexTurn: createInitialCodexTurn({
         manualHandoff: 'EXTERNAL_SESSION',
-        requiredSkillName: 'agent-party-time-integrate-update-batch',
+        requiredSkillName: 'XUpdate',
         executionBrief,
         resultAssertions: [UPDATE_HANDOFF_TEXT_ASSERTION],
         outputJsonSchema:

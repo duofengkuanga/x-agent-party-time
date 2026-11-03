@@ -342,7 +342,7 @@ describe('RepairService', () => {
     expect(execution.codexTurn).toMatchObject({
       kind: 'CONTINUATION',
       taskId: 'legacy-custom-session',
-      taskSkillBinding: testSkillBinding('agent-party-time-repair-bug'),
+      taskSkillBinding: testSkillBinding('XBugRepaire'),
       input: '继续完成上次未完成的任务。',
       resultAssertions: [
         {

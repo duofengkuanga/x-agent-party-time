@@ -39,7 +39,7 @@ export const bindingId = '00000000-0000-4000-8000-000000000302';
 const runnerId = '00000000-0000-4000-8000-000000000303';
 export const leaseToken = 'lease-token-at-least-thirty-two-characters';
 export const skillBinding = {
-  skillName: 'agent-party-time-repair-bug' as const,
+  skillName: 'XBugRepaire' as const,
   bundleHash: 'a'.repeat(64),
   sourceRevision: 'b'.repeat(40),
 };

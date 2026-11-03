@@ -45,7 +45,7 @@ describe('RepairService', () => {
       priority: 0,
       codexTurn: {
         kind: 'INITIAL',
-        requiredSkillName: 'agent-party-time-repair-bug',
+        requiredSkillName: 'XBugRepaire',
         taskSkillBinding: null,
         resultAssertions: [
           {

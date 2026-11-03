@@ -210,7 +210,7 @@ export async function startExecution(
     kind: 'STARTED',
     leaseToken: claimed.lease.token,
     sessionId,
-    taskSkillBinding: testSkillBinding('agent-party-time-integrate-update-batch'),
+    taskSkillBinding: testSkillBinding('XUpdate'),
   });
   return {
     executionId,

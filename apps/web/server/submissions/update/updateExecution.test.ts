@@ -89,7 +89,7 @@ describe('UpdateService', () => {
       kind: 'STARTED',
       leaseToken: reclaimed.lease.token,
       sessionId: 'lease-update-session',
-      taskSkillBinding: testSkillBinding('agent-party-time-integrate-update-batch'),
+      taskSkillBinding: testSkillBinding('XUpdate'),
     });
     expect(
       fixture.database.get(

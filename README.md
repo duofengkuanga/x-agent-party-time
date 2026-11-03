@@ -225,6 +225,8 @@ Repair Handoff 随候选提交冻结，包含历史验证入口、环境经验�
 
 Server Schema 32 沿用新交接契约。旧 Task 固定原 Skill Bundle，更新 Skill 不会改写旧任务；切换前完成或明确处置旧任务，并核对 Server、xapt 和 Skill Bundle 的组合。交接缺失、来源不匹配和冻结矛盾会明确阻止更新。
 
+新任务的 Skill 入口为 `XBugRepaire` 与 `XUpdate`。`XBugRepaire` 要求每个 Bug 在本地验证和提交后执行 `gitnexus-review`，无改动修复也需显式审查；`XUpdate` 核对每个候选的审查依据，并在组合多个修复、目标基线变化或集成修改时审查最终批次。执行机器需已安装官方 `gitnexus-review` Skill 与 GitNexus 工具；依赖缺失或审查未完成时不能报告成功。升级配套 Server/xapt 后运行 `xapt skills update` 使用新入口；旧 Task 继续按原名称与内容 Hash 恢复原 Bundle，不自动获得新规则。新规则的完整 Agent 行为验收范围见 `x-skills/evals/`，规则文本检查不能证明审查实际执行。
+
 操作失败时，先按提示区分处理方式：繁忙错误可以稍后重试；数据一致性或存储错误需要维护者检查；未知异常应先刷新确认当前状态，避免重复提交。
 
 内部异常的提示会附带诊断编号。维护者可在 Web 服务标准错误日志中搜索该编号，查找 `platform.unexpected_error` 事件，核对故障分类、操作名称（如有）和 SQLite 数字错误码。日志不记录原始异常消息、SQL、路径或凭据。

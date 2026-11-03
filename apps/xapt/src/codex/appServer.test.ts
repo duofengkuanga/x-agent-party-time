@@ -68,7 +68,7 @@ rl.on('line', (line) => {
           },
         ],
       }),
-      skill: { name: 'agent-party-time-repair-bug', path: '/tmp/repair-skill' },
+      skill: { name: 'XBugRepaire', path: '/tmp/repair-skill' },
       attachments: [
         {
           fileId: '00000000-0000-4000-8000-000000000603',
@@ -133,7 +133,7 @@ rl.on('line', (line) => {
   expect((turns[0]?.params as { input: unknown[] }).input.slice(0, -1)).toEqual([
     {
       type: 'text',
-      text: `$agent-party-time-repair-bug\n\n${JSON.stringify({
+      text: `$XBugRepaire\n\n${JSON.stringify({
         task: '只返回 JSON',
         attachments: [
           {
@@ -147,7 +147,7 @@ rl.on('line', (line) => {
     },
     {
       type: 'skill',
-      name: 'agent-party-time-repair-bug',
+      name: 'XBugRepaire',
       path: '/tmp/repair-skill/SKILL.md',
     },
   ]);

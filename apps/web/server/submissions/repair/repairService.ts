@@ -148,7 +148,7 @@ export class RepairService {
       approvalPolicy: 'never',
       codexTurn: createInitialCodexTurn({
         manualHandoff: 'EXTERNAL_SESSION',
-        requiredSkillName: 'agent-party-time-repair-bug',
+        requiredSkillName: 'XBugRepaire',
         executionBrief,
         outputJsonSchema: RepairOutputJsonSchema,
         resultAssertions: REPAIR_RESULT_ASSERTIONS,

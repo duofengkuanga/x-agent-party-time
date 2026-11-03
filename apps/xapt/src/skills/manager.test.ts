@@ -1,6 +1,6 @@
 import { testDirectories } from '../testing/directories';
 import { describe, expect, test } from 'bun:test';
-import { mkdir, readFile, readlink, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readlink, rm, symlink, writeFile } from 'node:fs/promises';
 
 import { join, resolve } from 'node:path';
 import { xaptPaths } from '../platform/paths';
@@ -48,11 +48,8 @@ describe('SkillBundleManager', () => {
       await readFile(join(namespaceTarget, 'manifest.json'), 'utf8'),
     ) as { sourceRevision: string; skills: Record<string, string> };
     expect(manifest.sourceRevision).toBe(revision);
-    expect(Object.keys(manifest.skills).sort()).toEqual([
-      'agent-party-time-integrate-update-batch',
-      'agent-party-time-repair-bug',
-    ]);
-    const repair = await manager.resolveCurrent('agent-party-time-repair-bug');
+    expect(Object.keys(manifest.skills).sort()).toEqual(['XBugRepaire', 'XUpdate']);
+    const repair = await manager.resolveCurrent('XBugRepaire');
     expect(repair.sourceRevision).toBe(revision);
     expect(repair.path).toBe(join(paths.skillBundles, repair.bundleHash));
   });
@@ -66,11 +63,11 @@ describe('SkillBundleManager', () => {
       githubFixture(() => generation(revision)),
     );
     await manager.update();
-    const before = await manager.resolveCurrent('agent-party-time-repair-bug');
+    const before = await manager.resolveCurrent('XBugRepaire');
 
     revision = 'c'.repeat(40);
     await manager.update();
-    const after = await manager.resolveCurrent('agent-party-time-repair-bug');
+    const after = await manager.resolveCurrent('XBugRepaire');
 
     expect(after.bundleHash).toBe(before.bundleHash);
     expect(after.sourceRevision).toBe(revision);
@@ -89,6 +86,68 @@ describe('SkillBundleManager', () => {
     expect(bound).toEqual(original);
   });
 
+  test('Skill 改名后新任务使用新名称，旧 Task 仍按原名称与 Hash 恢复', async () => {
+    const paths = xaptPaths(await temporaryHome());
+    const revision = 'd'.repeat(40);
+    const generationPath = join(paths.skillGenerations, revision);
+    const skills: Record<string, string> = {};
+    await mkdir(generationPath, { recursive: true });
+    for (const name of [
+      'agent-party-time-repair-bug',
+      'agent-party-time-integrate-update-batch',
+    ]) {
+      const files = [
+        {
+          path: 'SKILL.md',
+          bytes: bytes(`---\nname: ${name}\ndescription: Historical task.\n---\n`),
+        },
+        {
+          path: 'agents/openai.yaml',
+          bytes: bytes('policy:\n  allow_implicit_invocation: false\n'),
+        },
+      ];
+      const hash = bundleHash(files);
+      skills[name] = hash;
+      const bundle = join(paths.skillBundles, hash);
+      await mkdir(join(bundle, 'agents'), { recursive: true });
+      for (const file of files) await writeFile(join(bundle, file.path), file.bytes);
+      await symlink(join('..', '..', 'bundles', hash), join(generationPath, name));
+    }
+    await writeFile(
+      join(generationPath, 'manifest.json'),
+      JSON.stringify({ sourceRevision: revision, skills }),
+    );
+    await mkdir(paths.userSkills, { recursive: true });
+    await symlink(generationPath, paths.skillNamespaceLink);
+    const manager = new SkillBundleManager(
+      paths,
+      githubFixture(() => generation('a'.repeat(40))),
+    );
+    const identity = {
+      skillName: 'agent-party-time-repair-bug',
+      bundleHash: skills['agent-party-time-repair-bug']!,
+      sourceRevision: revision,
+    };
+    const original = await manager.resolveBound(identity);
+    expect(await manager.initialize()).toMatchObject({
+      installed: false,
+      warning: expect.stringContaining('xapt skills update'),
+    });
+    await expect(manager.resolveCurrent('XBugRepaire')).rejects.toThrow(
+      'xapt skills update',
+    );
+    await manager.update();
+    expect((await manager.resolveCurrent('XBugRepaire')).skillName).toBe('XBugRepaire');
+    expect((await manager.resolveCurrent('XUpdate')).skillName).toBe('XUpdate');
+    expect(await manager.resolveBound(identity)).toEqual(original);
+    await expect(
+      manager.resolveBound({ ...identity, skillName: 'XBugRepaire' }),
+    ).rejects.toThrow('不匹配');
+    await expect(
+      manager.resolveBound({ ...identity, skillName: '../outside' }),
+    ).rejects.toThrow('关联无效');
+  });
+
   test('任一 Skill 无效时不切换当前 generation', async () => {
     const home = await temporaryHome();
     const paths = xaptPaths(home);
@@ -100,9 +159,9 @@ describe('SkillBundleManager', () => {
     await manager.update();
     const previous = await readlink(paths.skillNamespaceLink);
     snapshot = generation('c'.repeat(40), {
-      'agent-party-time-integrate-update-batch': {
+      XUpdate: {
         'SKILL.md': 'invalid',
-        'agents/openai.yaml': openaiYaml('agent-party-time-integrate-update-batch'),
+        'agents/openai.yaml': openaiYaml('XUpdate'),
       },
     });
 
@@ -148,7 +207,7 @@ describe('SkillBundleManager', () => {
   test('拒绝仓库 Skill 目录内的软链接', async () => {
     const home = await temporaryHome();
     const snapshot = generation('a'.repeat(40));
-    snapshot.files['skills/agent-party-time-repair-bug/link'] = {
+    snapshot.files['skills/XBugRepaire/link'] = {
       content: '../outside',
       mode: '120000',
     };
@@ -168,7 +227,7 @@ describe('SkillBundleManager', () => {
       githubFixture(() => generation('a'.repeat(40))),
     );
     await manager.update();
-    const current = await manager.resolveCurrent('agent-party-time-repair-bug');
+    const current = await manager.resolveCurrent('XBugRepaire');
     await writeFile(join(current.path, 'SKILL.md'), 'tampered');
 
     await expect(manager.resolveBound(current)).rejects.toThrow('内容校验失败');
@@ -179,7 +238,7 @@ describe('SkillBundleManager', () => {
     await rm(original.path, { recursive: true });
 
     await expect(manager.resolveBound(original)).rejects.toThrow('规则包不存在');
-    expect(await manager.resolveCurrent('agent-party-time-repair-bug')).toEqual(current);
+    expect(await manager.resolveCurrent('XBugRepaire')).toEqual(current);
   });
 });
 
@@ -192,15 +251,15 @@ async function updatedRepairBundle() {
     githubFixture(() => snapshot),
   );
   await manager.update();
-  const original = await manager.resolveCurrent('agent-party-time-repair-bug');
+  const original = await manager.resolveCurrent('XBugRepaire');
   snapshot = generation('c'.repeat(40), {
-    'agent-party-time-repair-bug': {
-      'SKILL.md': `${skillMarkdown('agent-party-time-repair-bug')}\nUpdated.\n`,
-      'agents/openai.yaml': openaiYaml('agent-party-time-repair-bug'),
+    XBugRepaire: {
+      'SKILL.md': `${skillMarkdown('XBugRepaire')}\nUpdated.\n`,
+      'agents/openai.yaml': openaiYaml('XBugRepaire'),
     },
   });
   await manager.update();
-  const current = await manager.resolveCurrent('agent-party-time-repair-bug');
+  const current = await manager.resolveCurrent('XBugRepaire');
   return { paths, manager, original, current, snapshot };
 }
 
@@ -216,10 +275,7 @@ function generation(
   overrides: Partial<Record<XaptSkillName, Record<string, string>>> = {},
 ): FixtureGeneration {
   const files: Record<string, FixtureFile> = {};
-  for (const name of [
-    'agent-party-time-repair-bug',
-    'agent-party-time-integrate-update-batch',
-  ] as const) {
+  for (const name of ['XBugRepaire', 'XUpdate'] as const) {
     const values = overrides[name] ?? {
       'SKILL.md': skillMarkdown(name),
       'agents/openai.yaml': openaiYaml(name),

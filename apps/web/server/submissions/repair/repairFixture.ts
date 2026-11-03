@@ -137,7 +137,7 @@ export async function startLatest(
     kind: 'STARTED',
     leaseToken: claimed.lease.token,
     sessionId,
-    taskSkillBinding: testSkillBinding('agent-party-time-repair-bug'),
+    taskSkillBinding: testSkillBinding('XBugRepaire'),
   });
   return {
     executionId: claimed.id,

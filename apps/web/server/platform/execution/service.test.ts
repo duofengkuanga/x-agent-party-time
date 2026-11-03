@@ -503,14 +503,14 @@ describe('Execution lifecycle', () => {
     const queued = executions.enqueue({
       ...input(runnerId, bindingId(6), 'skill-binding'),
       codexTurn: createInitialCodexTurn({
-        requiredSkillName: 'agent-party-time-repair-bug',
+        requiredSkillName: 'XBugRepaire',
         executionBrief: { bug: { id: 'bug-1' } },
         outputJsonSchema: { type: 'object' },
       }),
     });
     const claimed = (await executions.claim(runnerId, 1, 0))[0]!;
     const binding = {
-      skillName: 'agent-party-time-repair-bug',
+      skillName: 'XBugRepaire',
       bundleHash: 'a'.repeat(64),
       sourceRevision: 'b'.repeat(40),
     };
