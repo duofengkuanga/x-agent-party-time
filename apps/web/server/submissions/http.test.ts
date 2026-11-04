@@ -187,6 +187,7 @@ function workspace(revision: number) {
 
 function submission(revision: number, now: string) {
   return {
+    mode: 'AGENT_PARTY' as const,
     id: submissionId,
     projectId: '00000000-0000-4000-8000-000000000502',
     title: '工作区提测',

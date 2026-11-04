@@ -166,8 +166,10 @@ export function BugForm({
   const [initial] = useState(() =>
     createBugFormDraft(bug, snapshot, savedDraft, preferredOwnership),
   );
+  const personAgent = snapshot.submission.submission.mode === 'PERSON_AGENT';
   const canEditReport = !bug || bug.availableActions.includes('EDIT_REPORT');
-  const canAssign = !bug || bug.availableActions.includes('ASSIGN');
+  const canAssign =
+    !personAgent && (!bug || bug.availableActions.includes('ASSIGN'));
   const frontendItems = snapshot.submission.items.filter(
     ({ engineering }) => engineering.type === 'FRONTEND',
   );
@@ -240,7 +242,8 @@ export function BugForm({
   );
   const canCreateAndRepair =
     !bug &&
-    (joint ? Boolean(frontItemId && backItemId) : Boolean(submissionItemId));
+    (personAgent ||
+      (joint ? Boolean(frontItemId && backItemId) : Boolean(submissionItemId)));
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -250,17 +253,20 @@ export function BugForm({
         'repair';
     startSaving(async () => {
       try {
-        const primaryItemId = joint
-          ? bug?.submissionItemId &&
-            [frontItemId, backItemId].includes(bug.submissionItemId)
-            ? bug.submissionItemId
-            : frontItemId
-          : submissionItemId;
-        const additionalSubmissionItemId = joint
-          ? primaryItemId === frontItemId
-            ? backItemId
-            : frontItemId
-          : undefined;
+        const primaryItemId = personAgent
+          ? (bug?.submissionItemId ?? '')
+          : joint
+            ? bug?.submissionItemId &&
+              [frontItemId, backItemId].includes(bug.submissionItemId)
+              ? bug.submissionItemId
+              : frontItemId
+            : submissionItemId;
+        const additionalSubmissionItemId =
+          !personAgent && joint
+            ? primaryItemId === frontItemId
+              ? backItemId
+              : frontItemId
+            : undefined;
         if (bug && !canEditReport) {
           const result = await assignBugAction(bug.id, {
             mutationId,
@@ -291,7 +297,7 @@ export function BugForm({
             'additionalSubmissionItemId',
             additionalSubmissionItemId,
           );
-        if (!bug && joint) {
+        if (!bug && !personAgent && joint) {
           formData.append('submissionItemIds', frontItemId);
           formData.append('submissionItemIds', backItemId);
         }
@@ -346,88 +352,94 @@ export function BugForm({
         id="collab-bug-form"
         onSubmit={submit}
       >
-        <fieldset disabled={!canAssign || saving}>
-          <legend>问题归属</legend>
-          {frontendItems.length > 0 &&
-          backendItems.length > 0 &&
-          canAssign &&
-          (!bug ||
-            (!bug.collaborationLocked &&
-              bug.stage === 'WAITING_FOR_REPAIR')) ? (
-            <label className="collab-joint-choice">
-              <input
-                type="checkbox"
-                checked={joint}
-                onChange={(event) => setJoint(event.target.checked)}
-              />
-              <span>
-                {bug
-                  ? '前端＋后端（保留本单，新增关联单）'
-                  : '前端＋后端（自动登记两张关联单）'}
-              </span>
-            </label>
-          ) : null}
-          {joint ? (
-            <>
-              <FormChoice
-                label="前端工程"
-                value={frontItemId}
-                onChange={setFrontItemId}
-                options={frontendItems.map((item) => ({
-                  value: item.id,
-                  label: `${item.engineering.name}（${item.engineering.identifier}）`,
-                }))}
-              />
-              <FormChoice
-                label="后端工程"
-                value={backItemId}
-                onChange={setBackItemId}
-                options={backendItems.map((item) => ({
-                  value: item.id,
-                  label: `${item.engineering.name}（${item.engineering.identifier}）`,
-                }))}
-              />
-              <p>两张单分别进入待修复，各自更新和验收。</p>
-            </>
-          ) : (
-            <label>
-              <span>具体工程</span>
-              {snapshot.submission.items.length === 1 && submissionItemId ? (
-                <output aria-label="具体工程" className="collab-form__value">
-                  {snapshot.submission.items[0]!.engineering.name}（
-                  {snapshot.submission.items[0]!.engineering.identifier}）
-                </output>
-              ) : (
-                <select
-                  onChange={(event) => setSubmissionItemId(event.target.value)}
-                  value={submissionItemId}
-                >
-                  <option value="">暂不确定</option>
-                  {frontendItems.length ? (
-                    <optgroup label="前端">
-                      {frontendItems.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.engineering.name}（{item.engineering.identifier}
-                          ）
-                        </option>
-                      ))}
-                    </optgroup>
-                  ) : null}
-                  {backendItems.length ? (
-                    <optgroup label="后端">
-                      {backendItems.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.engineering.name}（{item.engineering.identifier}
-                          ）
-                        </option>
-                      ))}
-                    </optgroup>
-                  ) : null}
-                </select>
-              )}
-            </label>
-          )}
-        </fieldset>
+        {!personAgent ? (
+          <fieldset disabled={!canAssign || saving}>
+            <legend>问题归属</legend>
+            {frontendItems.length > 0 &&
+            backendItems.length > 0 &&
+            canAssign &&
+            (!bug ||
+              (!bug.collaborationLocked &&
+                bug.stage === 'WAITING_FOR_REPAIR')) ? (
+              <label className="collab-joint-choice">
+                <input
+                  type="checkbox"
+                  checked={joint}
+                  onChange={(event) => setJoint(event.target.checked)}
+                />
+                <span>
+                  {bug
+                    ? '前端＋后端（保留本单，新增关联单）'
+                    : '前端＋后端（自动登记两张关联单）'}
+                </span>
+              </label>
+            ) : null}
+            {joint ? (
+              <>
+                <FormChoice
+                  label="前端工程"
+                  value={frontItemId}
+                  onChange={setFrontItemId}
+                  options={frontendItems.map((item) => ({
+                    value: item.id,
+                    label: `${item.engineering.name}（${item.engineering.identifier}）`,
+                  }))}
+                />
+                <FormChoice
+                  label="后端工程"
+                  value={backItemId}
+                  onChange={setBackItemId}
+                  options={backendItems.map((item) => ({
+                    value: item.id,
+                    label: `${item.engineering.name}（${item.engineering.identifier}）`,
+                  }))}
+                />
+                <p>两张单分别进入待修复，各自更新和验收。</p>
+              </>
+            ) : (
+              <label>
+                <span>具体工程</span>
+                {snapshot.submission.items.length === 1 && submissionItemId ? (
+                  <output aria-label="具体工程" className="collab-form__value">
+                    {snapshot.submission.items[0]!.engineering.name}（
+                    {snapshot.submission.items[0]!.engineering.identifier}）
+                  </output>
+                ) : (
+                  <select
+                    onChange={(event) =>
+                      setSubmissionItemId(event.target.value)
+                    }
+                    value={submissionItemId}
+                  >
+                    <option value="">暂不确定</option>
+                    {frontendItems.length ? (
+                      <optgroup label="前端">
+                        {frontendItems.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.engineering.name}（
+                            {item.engineering.identifier}）
+                          </option>
+                        ))}
+                      </optgroup>
+                    ) : null}
+                    {backendItems.length ? (
+                      <optgroup label="后端">
+                        {backendItems.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.engineering.name}（
+                            {item.engineering.identifier}）
+                          </option>
+                        ))}
+                      </optgroup>
+                    ) : null}
+                  </select>
+                )}
+              </label>
+            )}
+          </fieldset>
+        ) : (
+          <p>缺陷由本次提测的开发负责人统一处理。</p>
+        )}
         <fieldset disabled={!canEditReport || saving}>
           <legend>缺陷内容</legend>
           <label>

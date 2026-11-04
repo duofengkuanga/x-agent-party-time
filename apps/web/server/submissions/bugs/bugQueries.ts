@@ -1,7 +1,7 @@
 import { LifecycleQueries } from '@/server/submissions/lifecycle/lifecycleQueries';
 import { BugRelations, stageLabel } from './bugRelations';
 import { parseRow, type DatabaseRow } from '@/server/database/rowMapper';
-import { environmentReady } from '@/server/submissions/environmentAccess';
+import { deliveryEnvironmentAvailable } from '@/server/submissions/environmentAccess';
 import { AttachmentViewSchema } from '@/contracts/shared';
 import type { AppDatabase } from '@/server/database/index';
 import { PlatformError } from '@/server/platform/errors/index';
@@ -28,6 +28,7 @@ type BugRow = Omit<DatabaseRow<Bug>, 'report'> & {
 export type AccessRow = {
   submission_id: string;
   submission_status: 'ACTIVE' | 'CLOSED';
+  submission_mode: 'PERSON_AGENT' | 'AGENT_PARTY';
   tester_user_id: string;
   created_by_user_id: string;
   project_id: string;
@@ -117,9 +118,12 @@ export class BugQueries {
           ),
           presentation: {
             stageLabel: bug.transferredAt ? '已关闭（转交）' : stageLabel(bug.stage),
-            assignmentLabel: item
-              ? `${item.engineering_name}（${item.engineering_identifier}）`
-              : '暂未确定工程',
+            assignmentLabel:
+              access.submission_mode === 'PERSON_AGENT'
+                ? 'PersonAgent 统一处理'
+                : item
+                  ? `${item.engineering_name}（${item.engineering_identifier}）`
+                  : '暂未确定工程',
           },
         };
       });
@@ -168,7 +172,7 @@ export class BugQueries {
   requireAccess(userId: string, submissionId: string): AccessRow {
     const row = this.db.get(
       `SELECT submission.id submission_id,
-                submission.status submission_status,
+                submission.status submission_status, submission.mode submission_mode,
                 submission.tester_user_id,
                 submission.created_by_user_id,
                 submission.project_id,
@@ -311,7 +315,7 @@ export class BugQueries {
       bug.submissionItemId &&
       (linkedReview
         ? !linkedReview.blockedReason
-        : environmentReady(this.db, bug.submissionItemId))
+        : deliveryEnvironmentAvailable(this.db, bug.submissionItemId, true))
     )
       actions.push('VERIFY_PASS', 'VERIFY_FAIL');
     if (bug.stage === 'DONE' && !bug.archivedAt) {
@@ -376,7 +380,7 @@ export function canDeleteUnassignedBug(
 
 export function bugRoutingPolicy(db: AppDatabase, bug: Bug, actorUserId: string) {
   const source = db.get(
-    `SELECT item.engineering_type, item.responsible_user_id, submission.tester_user_id, submission.status
+    `SELECT item.engineering_type, item.responsible_user_id, submission.tester_user_id, submission.status, submission.mode
      FROM test_submission submission
      LEFT JOIN submission_item item ON item.id = ? WHERE submission.id = ?`,
     bug.submissionItemId,
@@ -386,7 +390,12 @@ export function bugRoutingPolicy(db: AppDatabase, bug: Bug, actorUserId: string)
     responsible_user_id: string | null;
     tester_user_id: string;
     status: string;
+    mode: string;
   };
+  if (source.mode === 'PERSON_AGENT') {
+    const reason = 'PersonAgent 的缺陷由整张提测单统一处理';
+    return { targets: [], transferReason: reason, collaborationReason: reason };
+  }
   const authorized =
     actorUserId === source.tester_user_id || actorUserId === source.responsible_user_id;
   const targets =

@@ -4,13 +4,21 @@ export const SUBMISSION_SCHEMA = `CREATE TABLE test_submission (
   title TEXT NOT NULL,
   requirement_description TEXT NOT NULL,
   tester_user_id TEXT NOT NULL REFERENCES platform_user(id) ON DELETE RESTRICT,
+  mode TEXT NOT NULL CHECK (mode IN ('PERSON_AGENT', 'AGENT_PARTY')),
+  person_agent_developer_id TEXT REFERENCES platform_user(id) ON DELETE RESTRICT,
+  person_agent_runner_id TEXT REFERENCES platform_runner(id) ON DELETE RESTRICT,
   status TEXT NOT NULL CHECK (status IN ('ACTIVE', 'CLOSED')),
   version INTEGER NOT NULL CHECK (version > 0),
   workspace_revision INTEGER NOT NULL CHECK (workspace_revision > 0),
   created_by_user_id TEXT NOT NULL REFERENCES platform_user(id) ON DELETE RESTRICT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  closed_at TEXT
+  closed_at TEXT,
+  CHECK (
+    (mode = 'PERSON_AGENT' AND person_agent_developer_id IS NOT NULL
+      AND person_agent_runner_id IS NOT NULL AND tester_user_id <> person_agent_developer_id)
+    OR (mode = 'AGENT_PARTY' AND person_agent_developer_id IS NULL AND person_agent_runner_id IS NULL)
+  )
 ) STRICT;
 CREATE INDEX test_submission_project
   ON test_submission(project_id, status, updated_at, id);
@@ -36,6 +44,7 @@ CREATE TABLE submission_item (
   environment_name TEXT NOT NULL,
   deployment_json TEXT,
   created_at TEXT NOT NULL,
+  target_branch_locked_at TEXT,
   UNIQUE(submission_id, engineering_id)
 ) STRICT;
 CREATE INDEX submission_item_responsible
@@ -191,7 +200,8 @@ CREATE TABLE submission_update_batch (
   historical_delivery_json TEXT CHECK (json_valid(historical_delivery_json)),
   frozen_at TEXT NOT NULL,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  person_agent_scope_json TEXT CHECK (json_valid(person_agent_scope_json))
 ) STRICT;
 CREATE UNIQUE INDEX submission_update_batch_active_item
   ON submission_update_batch(submission_item_id)
@@ -308,6 +318,7 @@ CREATE TABLE submission_cleanup (
   scope_json TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
+  expected_heads_json TEXT CHECK (json_valid(expected_heads_json)),
   UNIQUE(reason, subject_id, submission_item_id)
 ) STRICT;
 CREATE INDEX submission_cleanup_submission

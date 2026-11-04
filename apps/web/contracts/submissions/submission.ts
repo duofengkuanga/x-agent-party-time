@@ -1,3 +1,4 @@
+import { RunnerIdSchema } from '@agent-party-time/runner-contract';
 import { z } from 'zod';
 import { UserIdSchema, UserSchema } from '@/contracts/auth';
 import {
@@ -20,6 +21,8 @@ export const SubmissionItemIdSchema = z.uuid();
 const SubmissionTitleSchema = z.string().trim().min(1).max(160);
 const RequirementDescriptionSchema = z.string().trim().min(1).max(8_000);
 const TargetBranchSchema = z.string().trim().min(1).max(240);
+export const SubmissionModeSchema = z.enum(['PERSON_AGENT', 'AGENT_PARTY']);
+export type SubmissionMode = z.infer<typeof SubmissionModeSchema>;
 const SubmissionStatusSchema = z.enum(['ACTIVE', 'CLOSED']);
 
 export const TestSubmissionSchema = z.object({
@@ -28,6 +31,7 @@ export const TestSubmissionSchema = z.object({
   title: SubmissionTitleSchema,
   requirementDescription: RequirementDescriptionSchema,
   testerUserId: UserIdSchema,
+  mode: SubmissionModeSchema,
   status: SubmissionStatusSchema,
   version: z.number().int().positive(),
   workspaceRevision: z.number().int().positive(),
@@ -89,14 +93,27 @@ export const EnvironmentCommandSchema = z.object({
 });
 export type EnvironmentCommand = z.infer<typeof EnvironmentCommandSchema>;
 
-export const CreateSubmissionInputSchema = z.object({
-  mutationId: RequestMutationIdSchema,
-  title: SubmissionTitleSchema,
-  requirementDescription: RequirementDescriptionSchema,
-  testerUserId: UserIdSchema,
-  items: z.array(CreateSubmissionItemInputSchema).min(1).max(20),
-  environmentTakeovers: z.array(EnvironmentTakeoverSchema).max(20).optional(),
+const PersonAgentAssignmentSchema = z.strictObject({
+  responsibleUserId: UserIdSchema,
+  runnerId: RunnerIdSchema,
 });
+export type PersonAgentAssignment = z.infer<typeof PersonAgentAssignmentSchema>;
+
+export const CreateSubmissionInputSchema = z
+  .object({
+    mutationId: RequestMutationIdSchema,
+    title: SubmissionTitleSchema,
+    requirementDescription: RequirementDescriptionSchema,
+    testerUserId: UserIdSchema,
+    mode: SubmissionModeSchema,
+    personAgent: PersonAgentAssignmentSchema.optional(),
+    items: z.array(CreateSubmissionItemInputSchema).min(1).max(20),
+    environmentTakeovers: z.array(EnvironmentTakeoverSchema).max(20).optional(),
+  })
+  .refine(({ mode, personAgent }) => (mode === 'PERSON_AGENT') === Boolean(personAgent), {
+    message: '请选择 PersonAgent 的开发负责人和 Agent',
+    path: ['personAgent'],
+  });
 
 export const SubmissionSummarySchema = z.object({
   submission: TestSubmissionSchema,
@@ -181,6 +198,7 @@ export const SubmissionCreationCatalogSchema = z.array(
           z.object({
             id: BindingIdSchema,
             userId: UserIdSchema,
+            runnerId: RunnerIdSchema,
             runnerName: z.string().trim().min(1).max(120),
           }),
         ),

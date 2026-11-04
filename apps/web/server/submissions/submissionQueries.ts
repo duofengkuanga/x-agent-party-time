@@ -18,7 +18,10 @@ import {
 
 export const SUBMISSION_HIDDEN_MESSAGE = '提测单不存在或无权访问';
 
-export type SubmissionRow = DatabaseRow<TestSubmission>;
+export type SubmissionRow = DatabaseRow<TestSubmission> & {
+  person_agent_developer_id: string | null;
+  person_agent_runner_id: string | null;
+};
 
 export type SubmissionAccessRow = SubmissionRow & {
   project_name: string;
@@ -45,6 +48,7 @@ export type SubmissionItemRow = {
   responsible_user_created_at: string;
   binding_id: string;
   target_branch: string;
+  target_branch_locked_at: string | null;
   environment_id: string;
   environment_name: string;
   deployment_json: string | null;
@@ -124,7 +128,10 @@ export class SubmissionQueries {
           engineering_name: item.current_engineering_name,
           deployment_json: item.current_deployment_json,
         }),
-        hasBug: item.bug_count > 0,
+        branchLocked:
+          row.mode === 'PERSON_AGENT'
+            ? item.target_branch_locked_at !== null
+            : item.bug_count > 0,
         environmentAccess: environmentAccessForItem(this.db, userId, row, item).view,
       }));
     const canEdit =
@@ -143,7 +150,7 @@ export class SubmissionQueries {
         projectName: row.project_name,
         tester: mapUser('tester', row),
         createdBy: mapUser('creator', row),
-        items: items.map(({ item, hasBug, environmentAccess }) => ({
+        items: items.map(({ item, branchLocked, environmentAccess }) => ({
           id: item.id,
           submissionId: item.submissionId,
           engineering: {
@@ -168,7 +175,7 @@ export class SubmissionQueries {
               : null,
           environmentAccess,
           availableActions:
-            row.status === 'ACTIVE' && item.responsibleUser.id === userId && !hasBug
+            row.status === 'ACTIVE' && item.responsibleUser.id === userId && !branchLocked
               ? (['EDIT_TARGET_BRANCH'] as const)
               : [],
           createdAt: item.createdAt,

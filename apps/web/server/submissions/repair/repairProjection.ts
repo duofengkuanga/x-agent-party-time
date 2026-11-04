@@ -1,3 +1,4 @@
+import { isPersonAgentBug, personAgentRepairResultSchema } from './personAgentScope';
 import { TestSubmissionWriteStore } from '@/server/submissions/testSubmissionWriteStore';
 import {
   asDetails,
@@ -57,7 +58,11 @@ export class RepairProjection {
     if (!attempt || attempt.outcome_json) return;
     const context = this.queries.requireContext(attempt.bug_id);
     const now = this.now().toISOString();
-    const interpreted = this.interpret(execution, context);
+    const interpreted = this.interpret(
+      execution,
+      context,
+      isPersonAgentBug(this.db, attempt.bug_id),
+    );
     const deliveryRequired =
       interpreted.kind === 'COMPLETED' && interpreted.deliveryRequired;
     if (interpreted.kind === 'COMPLETED') {
@@ -197,7 +202,10 @@ export class RepairProjection {
     const turnId = typeof envelope.turnId === 'string' ? envelope.turnId : null;
     const result = envelope.result;
     if (!turnId) return;
-    const parsed = RepairExecutionResultSchema.safeParse(result);
+    const schema = isPersonAgentBug(this.db, sync.bug_id)
+      ? personAgentRepairResultSchema(execution.workspaces.length)
+      : RepairExecutionResultSchema;
+    const parsed = schema.safeParse(result);
     if (!parsed.success) {
       markInvalidExecutionResult(
         this.db,
@@ -251,6 +259,7 @@ export class RepairProjection {
   private interpret(
     execution: Execution,
     context: ContextRow,
+    personAgent: boolean,
   ):
     | {
         kind: 'COMPLETED';
@@ -272,7 +281,30 @@ export class RepairProjection {
         attemptOutcome: { outcome: 'HANDED_OFF', questions: execution.outcome.questions },
       };
     if (execution.outcome?.kind === 'SUCCEEDED') {
-      const parsed = RepairExecutionResultSchema.safeParse(execution.outcome.result);
+      if (personAgent) {
+        const grouped = personAgentRepairResultSchema(
+          execution.workspaces.length,
+        ).safeParse(execution.outcome.result);
+        if (grouped.success) {
+          const result = grouped.data.result;
+          if (result.outcome === 'FAILED')
+            return { kind: 'FAILED', attemptOutcome: result };
+          const repositories = Object.values(result.repositories);
+          const pendingCommits = repositories.flatMap(({ commits }) => commits);
+          return {
+            kind: 'COMPLETED',
+            deliveryRequired: pendingCommits.length > 0,
+            pendingCommits,
+            pendingManualOperations: repositories.flatMap(
+              ({ manualOperations }) => manualOperations,
+            ),
+            attemptOutcome: result,
+          };
+        }
+      }
+      const parsed = RepairExecutionResultSchema.safeParse(
+        personAgent ? null : execution.outcome.result,
+      );
       const result = parsed.success ? parsed.data.result : null;
       if (result?.outcome === 'COMPLETED') {
         const current = parseCommits(context.pending_commits_json);

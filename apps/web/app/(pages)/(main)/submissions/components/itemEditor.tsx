@@ -2,7 +2,10 @@
 
 import { createClientId } from '@/app/(pages)/(main)/components/clientId';
 import { FormChoice } from '@/app/(pages)/(main)/components/formChoice';
-import type { SubmissionCreationCatalog } from '../../../../../contracts/submissions/submission';
+import type {
+  SubmissionCreationCatalog,
+  PersonAgentAssignment,
+} from '../../../../../contracts/submissions/submission';
 
 type CatalogProject = SubmissionCreationCatalog[number];
 type CatalogEngineering = CatalogProject['engineerings'][number];
@@ -25,6 +28,7 @@ export function ItemEditor({
   selectedEngineeringIds,
   testerUserId,
   showHeading = true,
+  fixedAssignment,
 }: {
   draft: ItemDraft;
   index: number;
@@ -34,18 +38,28 @@ export function ItemEditor({
   selectedEngineeringIds: string[];
   testerUserId: string;
   showHeading?: boolean;
+  fixedAssignment?: PersonAgentAssignment;
 }) {
   const engineering = project.engineerings.find(
     ({ id }) => id === draft.engineeringId,
   );
   if (!engineering) return <p role="alert">工程配置已变化，请重新选择工程。</p>;
   const responsibleMembers = boundResponsibleMembers(engineering, testerUserId);
+  const runnerChoices = engineering.bindings.filter(
+    ({ userId }) => userId === draft.responsibleUserId,
+  );
   const environment = engineering.environments.find(
     ({ id }) => id === draft.environmentId,
   );
   const choices = project.engineerings.filter(
     (candidate) =>
       engineeringIsReady(candidate, testerUserId) &&
+      (!fixedAssignment ||
+        candidate.bindings.some(
+          ({ runnerId, userId }) =>
+            runnerId === fixedAssignment.runnerId &&
+            userId === fixedAssignment.responsibleUserId,
+        )) &&
       (candidate.id === draft.engineeringId ||
         !selectedEngineeringIds.includes(candidate.id)),
   );
@@ -76,23 +90,36 @@ export function ItemEditor({
             onChange(normalizeItemDraft(project, draft, testerUserId, id))
           }
         />
-        <FormChoice
-          label="开发负责人"
-          value={draft.responsibleUserId}
-          options={responsibleMembers.map((member) => ({
-            value: member.id,
-            label: member.displayName,
-          }))}
-          onChange={(responsibleUserId) =>
-            onChange({
-              ...draft,
-              responsibleUserId,
-              bindingId: engineering.bindings.find(
-                (candidate) => candidate.userId === responsibleUserId,
-              )!.id,
-            })
-          }
-        />
+        {fixedAssignment ? null : (
+          <>
+            <FormChoice
+              label="开发负责人"
+              value={draft.responsibleUserId}
+              options={responsibleMembers.map((member) => ({
+                value: member.id,
+                label: member.displayName,
+              }))}
+              onChange={(responsibleUserId) =>
+                onChange({
+                  ...draft,
+                  responsibleUserId,
+                  bindingId: engineering.bindings.find(
+                    (candidate) => candidate.userId === responsibleUserId,
+                  )!.id,
+                })
+              }
+            />
+            <FormChoice
+              label="Agent"
+              value={draft.bindingId}
+              options={runnerChoices.map((binding) => ({
+                value: binding.id,
+                label: binding.runnerName,
+              }))}
+              onChange={(bindingId) => onChange({ ...draft, bindingId })}
+            />
+          </>
+        )}
       </div>
       <div className="collab-create-item__delivery">
         <label>

@@ -56,7 +56,8 @@ export function planProjectDeletion(
 
   const executions = db.all<{ id: string; state: string }>(
     `SELECT execution.id, execution.state FROM platform_execution execution
-     JOIN platform_engineering_binding binding ON binding.id = execution.binding_id
+     JOIN json_each(execution.workspace_json) member
+     JOIN platform_engineering_binding binding ON binding.id = member.value ->> '$.bindingId'
      JOIN platform_engineering engineering ON engineering.id = binding.engineering_id
      WHERE engineering.project_id = ?`,
     projectId,

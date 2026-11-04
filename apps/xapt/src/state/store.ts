@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { basename, join } from 'node:path';
 import { resolve } from 'node:path';
 import type { ZodType } from 'zod';
@@ -7,6 +7,8 @@ import type { XaptPaths } from '../platform/paths';
 import {
   BINDING_STATE_SCHEMA_VERSION,
   BindingStateSchema,
+  DeploymentEvidenceSchema,
+  type DeploymentEvidence,
   CONNECTION_STATE_SCHEMA_VERSION,
   ConnectionStateSchema,
   EXECUTION_STATE_SCHEMA_VERSION,
@@ -169,25 +171,58 @@ export class LocalStateStore {
   async saveExecutionResultBaseline(
     executionId: string,
     baseline: ExecutionResultBaselineState['baseline'],
+    bindingId?: string,
   ): Promise<void> {
     const value = ExecutionResultBaselineStateSchema.parse({
       schemaVersion: RESULT_BASELINE_STATE_SCHEMA_VERSION,
       executionId,
       baseline,
     });
-    await this.writeState(join(this.paths.resultBaselines, `${executionId}.json`), value);
+    await this.writeState(this.resultBaselinePath(executionId, bindingId), value);
   }
 
   async loadExecutionResultBaseline(
     executionId: string,
+    bindingId?: string,
   ): Promise<ExecutionResultBaselineState['baseline'] | null> {
     const value = await this.readState(
-      join(this.paths.resultBaselines, `${executionId}.json`),
+      this.resultBaselinePath(executionId, bindingId),
       ExecutionResultBaselineStateSchema,
       RESULT_BASELINE_STATE_SCHEMA_VERSION,
       true,
     );
     return value?.baseline ?? null;
+  }
+
+  private resultBaselinePath(executionId: string, bindingId?: string): string {
+    const id = ExecutionResultBaselineStateSchema.shape.executionId.parse(executionId);
+    const member = bindingId
+      ? `.${LocalBindingSchema.shape.bindingId.parse(bindingId)}`
+      : '';
+    return join(this.paths.resultBaselines, `${id}${member}.json`);
+  }
+
+  async saveDeploymentEvidence(evidence: DeploymentEvidence): Promise<void> {
+    const value = DeploymentEvidenceSchema.parse(evidence);
+    await this.writeState(this.deploymentEvidencePath(value.workspaceKey), value);
+  }
+
+  async loadDeploymentEvidence(workspaceKey: string): Promise<DeploymentEvidence | null> {
+    return await this.readState(
+      this.deploymentEvidencePath(workspaceKey),
+      DeploymentEvidenceSchema,
+      1,
+      true,
+    );
+  }
+
+  async removeDeploymentEvidence(workspaceKey: string): Promise<void> {
+    await this.files.remove(this.deploymentEvidencePath(workspaceKey));
+  }
+
+  private deploymentEvidencePath(workspaceKey: string): string {
+    const key = createHash('sha256').update(workspaceKey).digest('hex');
+    return join(this.paths.state, 'deployment-evidence', `${key}.json`);
   }
 
   async saveOutbox(value: OutboxEntry): Promise<void> {

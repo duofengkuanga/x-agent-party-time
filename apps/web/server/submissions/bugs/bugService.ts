@@ -88,11 +88,27 @@ export class BugService {
         this.requireActive(access);
         if (actorUserId !== access.tester_user_id)
           throw new PlatformError('PERMISSION_DENIED', '只有测试负责人可以登记缺陷');
-        this.queries.requireItem(submissionId, parsed.submissionItemId);
+        const primary =
+          access.submission_mode === 'PERSON_AGENT'
+            ? this.db.get<{ id: string }>(
+                'SELECT id FROM submission_item WHERE submission_id = ? ORDER BY position LIMIT 1',
+                submissionId,
+              )
+            : null;
+        if (primary && parsed.submissionItemId && parsed.submissionItemId !== primary.id)
+          throw new PlatformError(
+            'VALIDATION_FAILED',
+            'PersonAgent 的缺陷由整张提测单统一处理',
+          );
+        const report = {
+          ...parsed,
+          submissionItemId: primary?.id ?? parsed.submissionItemId,
+        };
+        this.queries.requireItem(submissionId, report.submissionItemId);
         const attachmentIds = reportAttachmentIds(parsed);
         requireBindableFiles(this.db, actorUserId, attachmentIds);
         const now = this.now().toISOString();
-        const bugId = this.insertBug(actorUserId, submissionId, parsed, now);
+        const bugId = this.insertBug(actorUserId, submissionId, report, now);
         if (parsed.startRepair) this.startRepair(this.queries.requireBug(bugId), now);
         const revision = this.writes.bumpRevision(submissionId, now);
         const bug = this.queries.requireBug(bugId);
@@ -139,6 +155,11 @@ export class BugService {
         this.requireActive(access);
         if (actorUserId !== access.tester_user_id)
           throw new PlatformError('PERMISSION_DENIED', '只有测试负责人可以登记缺陷');
+        if (access.submission_mode === 'PERSON_AGENT')
+          throw new PlatformError(
+            'INVALID_TRANSITION',
+            'PersonAgent 的缺陷由整张提测单统一处理',
+          );
         const items = parsed.submissionItemIds.map((id) =>
           this.queries.requireItem(submissionId, id)!,
         );
@@ -209,7 +230,7 @@ export class BugService {
         id,
         this.queries.nextShortId(submissionId),
         submissionId,
-        input.submissionItemId,
+        input.submissionItemId ?? null,
         report.title,
         report.operationPath ?? null,
         report.actualResult ?? null,
@@ -360,6 +381,17 @@ export class BugService {
         if (actorUserId !== access.tester_user_id)
           throw new PlatformError('PERMISSION_DENIED', '只有测试负责人可以编辑缺陷报告');
         this.requireEditableReport(bug, parsed.expectedVersion);
+        if (access.submission_mode === 'PERSON_AGENT') {
+          if (
+            parsed.additionalSubmissionItemId ||
+            (parsed.submissionItemId && parsed.submissionItemId !== bug.submissionItemId)
+          )
+            throw new PlatformError(
+              'INVALID_TRANSITION',
+              'PersonAgent 的缺陷由整张提测单统一处理',
+            );
+          parsed.submissionItemId = bug.submissionItemId;
+        }
         this.requireAssignment(
           bug,
           parsed.submissionItemId,
@@ -427,6 +459,11 @@ export class BugService {
       parsed.mutationId,
       'BUG_ASSIGN',
       (bug, access, now) => {
+        if (access.submission_mode === 'PERSON_AGENT')
+          throw new PlatformError(
+            'INVALID_TRANSITION',
+            'PersonAgent 的缺陷由整张提测单统一处理',
+          );
         this.requireEditableReport(bug, parsed.expectedVersion);
         if (
           actorUserId !== access.tester_user_id &&

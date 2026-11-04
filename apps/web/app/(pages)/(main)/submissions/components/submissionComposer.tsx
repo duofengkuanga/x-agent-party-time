@@ -19,6 +19,7 @@ import {
 import type {
   EnvironmentConflict,
   SubmissionCreationCatalog,
+  SubmissionMode,
 } from '../../../../../contracts/submissions/submission';
 import { createSubmissionAction } from '../../../../actions/submissions/submissions';
 import {
@@ -65,6 +66,9 @@ export function SubmissionComposer({
     initial.requirementDescription,
   );
   const [testerUserId, setTesterUserId] = useState(initial.testerUserId);
+  const [mode, setMode] = useState<SubmissionMode>(
+    initial.mode ?? 'PERSON_AGENT',
+  );
   const [items, setItems] = useState<ItemDraft[]>(initial.items);
   useEffect(
     () =>
@@ -74,6 +78,7 @@ export function SubmissionComposer({
         title,
         requirementDescription,
         testerUserId,
+        mode,
         items,
       }),
     [
@@ -82,6 +87,7 @@ export function SubmissionComposer({
       title,
       requirementDescription,
       testerUserId,
+      mode,
       items,
       onDraftChange,
     ],
@@ -96,6 +102,33 @@ export function SubmissionComposer({
       catalog.find((candidate) => candidate.projectId === projectId) ?? null,
     [catalog, projectId],
   );
+
+  const primary = items[0];
+  const primaryBinding = project?.engineerings
+    .find(({ id }) => id === primary?.engineeringId)
+    ?.bindings.find(({ id }) => id === primary?.bindingId);
+  const assignment =
+    mode === 'PERSON_AGENT' && primaryBinding
+      ? {
+          responsibleUserId: primaryBinding.userId,
+          runnerId: primaryBinding.runnerId,
+        }
+      : undefined;
+  const selectedItems =
+    assignment && project
+      ? items.map((item) => ({
+          ...item,
+          responsibleUserId: assignment.responsibleUserId,
+          bindingId:
+            project.engineerings
+              .find(({ id }) => id === item.engineeringId)
+              ?.bindings.find(
+                ({ userId, runnerId }) =>
+                  userId === assignment.responsibleUserId &&
+                  runnerId === assignment.runnerId,
+              )?.id ?? '',
+        }))
+      : items;
 
   function changeProject(nextProjectId: string) {
     const nextProject =
@@ -148,7 +181,9 @@ export function SubmissionComposer({
     }
     if (
       !items.length ||
-      !items.every((item) => itemDraftIsValid(project, item, testerUserId))
+      !selectedItems.every((item) =>
+        itemDraftIsValid(project, item, testerUserId),
+      )
     ) {
       setError('请补全提测工程、开发负责人、Agent、目标分支和环境。');
       return;
@@ -183,7 +218,9 @@ export function SubmissionComposer({
         title,
         requirementDescription,
         testerUserId,
-        items: items.map(
+        mode,
+        personAgent: assignment,
+        items: selectedItems.map(
           ({
             engineeringId,
             responsibleUserId,
@@ -305,6 +342,24 @@ export function SubmissionComposer({
                     }))}
                   />
                 </div>
+                <FormChoice
+                  label="协作模式"
+                  value={mode}
+                  options={[
+                    {
+                      value: 'PERSON_AGENT',
+                      label: 'PersonAgent · 一位开发负责人和一个 Agent',
+                    },
+                    { value: 'AGENT_PARTY', label: 'AgentParty · 按工程分工' },
+                  ]}
+                  onChange={(value) => {
+                    setMode(
+                      value === 'AGENT_PARTY' ? 'AGENT_PARTY' : 'PERSON_AGENT',
+                    );
+                    setError(null);
+                  }}
+                />
+                <small>提测创建后，协作模式固定。</small>
                 <label>
                   <span>提测标题</span>
                   <input
@@ -333,7 +388,8 @@ export function SubmissionComposer({
                   <div className="collab-form__items">
                     {items.map((item, index) => (
                       <ItemEditor
-                        draft={item}
+                        draft={selectedItems[index] ?? item}
+                        fixedAssignment={index > 0 ? assignment : undefined}
                         index={index}
                         key={item.key}
                         onChange={(next) => {
@@ -425,7 +481,7 @@ export function SubmissionComposer({
                     !requirementDescription.trim() ||
                     !project ||
                     !items.length ||
-                    !items.every((item) =>
+                    !selectedItems.every((item) =>
                       itemDraftIsValid(project, item, testerUserId),
                     )
                   }

@@ -121,6 +121,7 @@ describe('更新遵守环境使用权', () => {
     const view = submissions.getWorkspace(fixture.users.owner.id, fixture.submission.id);
     const originalItem = view.submission.items[0]!;
     const input = {
+      mode: 'AGENT_PARTY' as const,
       mutationId: randomUUID(),
       title: '插队提测',
       requirementDescription: '切换环境',
@@ -198,6 +199,7 @@ test('脚本运行期间禁止切换；失败后允许切换但原批次不能�
   );
   const item = original.submission.items[0]!;
   const input = {
+    mode: 'AGENT_PARTY' as const,
     mutationId: randomUUID(),
     title: '等待环境',
     requirementDescription: '验证脚本部署保护',

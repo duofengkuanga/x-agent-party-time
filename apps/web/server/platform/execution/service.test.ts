@@ -3,7 +3,10 @@ import { LocalFileStore } from '@/server/platform/files/localFileStore';
 import { RunnerService } from '@/server/platform/runner/service';
 import { testDatabases } from '@/testing/database';
 import { seedTestUser } from '@/testing/users';
-import type { ClaimedExecution } from '@agent-party-time/execution-contract';
+import {
+  executionWorkspaces,
+  type ClaimedExecution,
+} from '@agent-party-time/execution-contract';
 import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { createInitialCodexTurn } from './codexTurn';
@@ -12,13 +15,56 @@ import { bindingId, input } from './testFixture';
 
 const createDatabase = testDatabases();
 
+test('任一成员工作区冲突都阻止领取整组，释放后一次领取全部工作区', async () => {
+  const f = await setup();
+  const primary = bindingId(91);
+  const secondary = bindingId(92);
+  const branch = (key: string) => ({
+    key,
+    isolation: 'BRANCH_WORKTREE' as const,
+    baseRef: 'main',
+    branch: key,
+  });
+  const blocker = f.executions.enqueue({
+    ...input(f.runnerId, secondary, 'blocking-repair'),
+    workspaces: [{ bindingId: secondary, workspace: branch('blocking-repair') }],
+  });
+  const [running] = await f.executions.claim(f.runnerId, 1, 0);
+  expect(running!.id).toBe(blocker.id);
+  f.startClaimed(running!, 'blocking-session');
+
+  const workspaces = [
+    { bindingId: primary, workspace: branch('repair-front') },
+    { bindingId: secondary, workspace: branch('repair-back') },
+  ];
+  const group = f.executions.enqueue({
+    ...input(f.runnerId, primary, 'grouped-repair'),
+    workspaces,
+  });
+  expect(f.executions.queueStatus(group.id).aheadCount).toBe(1);
+  expect(await f.executions.claim(f.runnerId, 3, 0)).toEqual([]);
+  f.executions.complete(f.runnerId, running!.id, {
+    leaseToken: running!.lease.token,
+    sessionId: 'blocking-session',
+    outcome: { kind: 'SUCCEEDED', result: {} },
+  });
+  expect(await f.executions.claim(f.runnerId, 3, 0)).toMatchObject([
+    { id: group.id, bindingId: primary, workspaces },
+  ]);
+});
+
 test('同工程的更新可越过待修复队列，与正在运行的修复并发', async () => {
   const f = await setup();
   const binding = bindingId(91);
   const repair = (key: string) =>
     f.executions.enqueue({
       ...input(f.runnerId, binding, key),
-      workspace: { key, isolation: 'BRANCH_WORKTREE', baseRef: 'main', branch: key },
+      workspaces: executionWorkspaces(binding, {
+        key,
+        isolation: 'BRANCH_WORKTREE',
+        baseRef: 'main',
+        branch: key,
+      }),
     });
   const first = repair('repair-first');
   const next = repair('repair-next');
@@ -27,7 +73,11 @@ test('同工程的更新可越过待修复队列，与正在运行的修复并�
   const update = f.executions.enqueue({
     ...input(f.runnerId, binding, 'update'),
     priority: 1,
-    workspace: { key: 'update', isolation: 'DETACHED_WORKTREE', baseRef: 'main' },
+    workspaces: executionWorkspaces(binding, {
+      key: 'update',
+      isolation: 'DETACHED_WORKTREE',
+      baseRef: 'main',
+    }),
   });
   expect(f.executions.queueStatus(update.id).aheadCount).toBe(0);
   expect((await f.executions.claim(f.runnerId, 2, 0)).map(({ id }) => id)).toEqual([
@@ -42,18 +92,22 @@ test('修复最多使用两个 Agent 槽位，更新可使用预留槽位', asyn
   for (let n = 92; n < 95; n++)
     f.executions.enqueue({
       ...input(f.runnerId, bindingId(n), `branch-${n}`),
-      workspace: {
+      workspaces: executionWorkspaces(bindingId(n), {
         key: `branch-${n}`,
         isolation: 'BRANCH_WORKTREE',
         baseRef: 'main',
         branch: `branch-${n}`,
-      },
+      }),
     });
   expect(await f.executions.claim(f.runnerId, 3, 0)).toHaveLength(2);
   const update = f.executions.enqueue({
     ...input(f.runnerId, bindingId(95), 'update'),
     priority: 1,
-    workspace: { key: 'update', isolation: 'DETACHED_WORKTREE', baseRef: 'main' },
+    workspaces: executionWorkspaces(bindingId(95), {
+      key: 'update',
+      isolation: 'DETACHED_WORKTREE',
+      baseRef: 'main',
+    }),
   });
   expect((await f.executions.claim(f.runnerId, 1, 0))[0]?.id).toBe(update.id);
 });
@@ -63,12 +117,12 @@ test('工作区等待同步审批保留通道，独立更新仍可并发且审�
   const binding = bindingId(96);
   const branch = (key: string) => ({
     ...input(f.runnerId, binding, key),
-    workspace: {
+    workspaces: executionWorkspaces(binding, {
       key,
       isolation: 'BRANCH_WORKTREE' as const,
       baseRef: 'main',
       branch: key,
-    },
+    }),
   });
   const first = f.executions.enqueue(branch('first'));
   const second = f.executions.enqueue(branch('second'));
@@ -82,7 +136,11 @@ test('工作区等待同步审批保留通道，独立更新仍可并发且审�
   });
   const update = f.executions.enqueue({
     ...input(f.runnerId, binding, 'update'),
-    workspace: { key: 'update', isolation: 'DETACHED_WORKTREE', baseRef: 'main' },
+    workspaces: executionWorkspaces(binding, {
+      key: 'update',
+      isolation: 'DETACHED_WORKTREE',
+      baseRef: 'main',
+    }),
   });
   expect((await f.executions.claim(f.runnerId, 2, 0)).map(({ id }) => id)).toEqual([
     update.id,
@@ -538,7 +596,7 @@ test('人工接管跨租约保留；相同工作区阻塞，同步和独立工�
   };
   const source = f.executions.enqueue({
     ...input(f.runnerId, bindingId(90), 'manual'),
-    workspace,
+    workspaces: executionWorkspaces(bindingId(90), workspace),
   });
   const claimed = (await f.executions.claim(f.runnerId, 1, 0))[0]!;
   f.startClaimed(claimed, 'manual-session');
@@ -551,11 +609,11 @@ test('人工接管跨租约保留；相同工作区阻塞，同步和独立工�
   });
   const same = f.executions.enqueue({
     ...input(f.runnerId, bindingId(90), 'same'),
-    workspace,
+    workspaces: executionWorkspaces(bindingId(90), workspace),
   });
   const independent = f.executions.enqueue({
     ...input(f.runnerId, bindingId(90), 'independent'),
-    workspace: { ...workspace, key: 'repair-two' },
+    workspaces: executionWorkspaces(bindingId(90), { ...workspace, key: 'repair-two' }),
   });
   f.setNow('2026-07-27T09:00:00.000Z');
   expect((await f.executions.claim(f.runnerId, 3, 0)).map((x) => x.id)).toEqual([
@@ -574,7 +632,7 @@ test('人工接管跨租约保留；相同工作区阻塞，同步和独立工�
   const sync = f.executions.enqueue({
     ...input(f.runnerId, bindingId(90), 'sync'),
     previousExecutionId: source.id,
-    workspace,
+    workspaces: executionWorkspaces(bindingId(90), workspace),
     codexTurn: { kind: 'READ_SESSION', taskId: 'manual-session', outputJsonSchema: {} },
   });
   const read = (await f.executions.claim(f.runnerId, 3, 0))[0]!;

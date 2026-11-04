@@ -13,6 +13,7 @@ describe('环境使用权切换', () => {
     const back = item(fixture, 'back', 'developerB', 'backB', 'main');
     const original = createSubmission(fixture, [front, back]);
     const input = {
+      mode: 'AGENT_PARTY' as const,
       mutationId: randomUUID(),
       title: '优先提测',
       requirementDescription: '优先验收前端',
@@ -99,6 +100,7 @@ describe('环境使用权切换', () => {
     ];
     const original = createSubmission(fixture, items);
     const input = {
+      mode: 'AGENT_PARTY' as const,
       mutationId: randomUUID(),
       title: '多环境接手',
       requirementDescription: '原子切换',
@@ -153,6 +155,7 @@ describe('环境使用权切换', () => {
     const items = [item(fixture, 'front', 'developerA', 'frontA', 'main')];
     const original = createSubmission(fixture, items);
     const input = {
+      mode: 'AGENT_PARTY' as const,
       mutationId: randomUUID(),
       title: '无权抢占',
       requirementDescription: '权限检查',

@@ -1,9 +1,6 @@
-import type { Execution } from './index';
+import type { Execution, ExecutionWorkspaceMember } from './index';
 
-export type ExecutionAccess = Pick<
-  Execution,
-  'bindingId' | 'workspace' | 'sessionId' | 'codexTurn'
->;
+export type ExecutionAccess = Pick<Execution, 'workspaces' | 'sessionId' | 'codexTurn'>;
 
 function taskId(execution: ExecutionAccess): string | null {
   return (
@@ -21,6 +18,15 @@ export function executionsConflict(
 ): boolean {
   const session = taskId(left);
   if (session && session === taskId(right)) return true;
+  return left.workspaces.some((a) =>
+    right.workspaces.some((b) => workspaceMembersConflict(a, b)),
+  );
+}
+
+function workspaceMembersConflict(
+  left: ExecutionWorkspaceMember,
+  right: ExecutionWorkspaceMember,
+): boolean {
   const a = left.workspace;
   const b = right.workspace;
   if (a && b && a.key === b.key) return true;
@@ -40,7 +46,9 @@ export function hasExecutionCapacity(
   active: readonly ExecutionAccess[],
 ): boolean {
   return (
-    candidate.workspace?.isolation !== 'BRANCH_WORKTREE' ||
-    active.filter((entry) => entry.workspace?.isolation === 'BRANCH_WORKTREE').length < 2
+    candidate.workspaces[0]?.workspace?.isolation !== 'BRANCH_WORKTREE' ||
+    active.filter(
+      (entry) => entry.workspaces[0]?.workspace?.isolation === 'BRANCH_WORKTREE',
+    ).length < 2
   );
 }

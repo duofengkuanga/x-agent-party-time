@@ -48,6 +48,7 @@ export function readSubmissionCreationCatalog(db: AppDatabase, userId: string) {
               .map(({ binding, runner }) => ({
                 id: binding.id,
                 userId: binding.userId,
+                runnerId: runner.id,
                 runnerName: runner.name,
               })),
           };

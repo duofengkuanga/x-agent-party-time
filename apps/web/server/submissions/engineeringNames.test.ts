@@ -64,6 +64,7 @@ test('工程改名在已有提测、缺陷、关联、流转目标和更新批�
     view.bugs.find(({ id }) => id === pair.bugs[1]!.id)?.relatedBugs[0]?.engineeringName,
   ).toBe('前端土壤大屏');
   const conflicts = f.service.environmentConflicts(f.users.owner.id, f.project.id, {
+    mode: 'AGENT_PARTY' as const,
     mutationId: randomUUID(),
     title: '环境检查',
     requirementDescription: '核查名称显示',
@@ -75,7 +76,9 @@ test('工程改名在已有提测、缺陷、关联、流转目标和更新批�
   app.bugs.requestRepair(f.users.tester.id, single.id, mutation(single.version));
   const runner = f.runners.runnerA.runner;
   const claimed = (await app.executions.claim(runner.id, 1, 0))[0]!;
-  expect(claimed.workspace).toMatchObject({ baseRef: 'origin/feature/front' });
+  expect(claimed.workspaces[0]!.workspace).toMatchObject({
+    baseRef: 'origin/feature/front',
+  });
   completeRepairExecution(
     { executions: app.executions, runner },
     claimed.id,

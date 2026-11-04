@@ -15,6 +15,7 @@ export type CodexExecutionInput = {
   approvalPolicy: ExecutionApprovalPolicy;
   executionId: string;
   repositoryPath: string;
+  workspaceDirectories?: Array<{ alias: string; path: string; baseCommit?: string }>;
   text: string;
   skill: { name: string; path: string } | null;
   outputSchema: JsonObject;

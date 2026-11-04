@@ -607,6 +607,7 @@ export class BugLifecycleCommands {
       source.id,
       context,
       attachmentIds,
+      true,
     );
     return {
       executionId,

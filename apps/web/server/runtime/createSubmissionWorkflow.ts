@@ -1,9 +1,11 @@
+import { deliveryEnvironmentAvailable } from '@/server/submissions/environmentAccess';
 import { randomUUID } from 'node:crypto';
 import { BugService } from '@/server/submissions/bugs/bugService';
 import { BugLifecycleCommands } from '@/server/submissions/lifecycle/bugLifecycleCommands';
 import { CleanupService } from '@/server/submissions/lifecycle/cleanupService';
 import { LifecycleQueries } from '@/server/submissions/lifecycle/lifecycleQueries';
 import { SubmissionClosure } from '@/server/submissions/lifecycle/submissionClosure';
+import { resolvePersonAgentRepair } from '@/server/submissions/repair/personAgentScope';
 import { RepairService } from '@/server/submissions/repair/repairService';
 import { SubmissionService } from '@/server/submissions/submissionService';
 import { TestSubmissionWriteStore } from '@/server/submissions/testSubmissionWriteStore';
@@ -80,6 +82,22 @@ export function createSubmissionWorkflow(
       UPDATE_BATCH: updates.projectExecution,
       CLEANUP: lifecycle.projectExecution,
     }),
+    (execution) => {
+      if (
+        execution.owner.namespace === 'submissions' &&
+        execution.owner.kind === 'UPDATE_BATCH'
+      ) {
+        const batch = db.get<{ submission_item_id: string }>(
+          `SELECT batch.submission_item_id FROM submission_update_attempt attempt
+            JOIN submission_update_batch batch ON batch.id = attempt.batch_id
+            WHERE attempt.id = ? AND batch.person_agent_scope_json IS NOT NULL`,
+          execution.owner.id,
+        );
+        if (batch && !deliveryEnvironmentAvailable(db, batch.submission_item_id))
+          return false;
+      }
+      return resolvePersonAgentRepair(db, execution, now);
+    },
   );
   const workspace = new SubmissionWorkspaceService(
     submissions,

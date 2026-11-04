@@ -80,12 +80,16 @@ describe('RepairService', () => {
           ],
         },
       },
-      workspace: {
-        key: `bug-repair:${fixture.requested.bug.id}`,
-        isolation: 'BRANCH_WORKTREE',
-        baseRef: 'origin/feature/payment',
-        branch: `apt/repair/${fixture.requested.bug.id}`,
-      },
+      workspaces: [
+        {
+          workspace: {
+            key: `bug-repair:${fixture.requested.bug.id}`,
+            isolation: 'BRANCH_WORKTREE',
+            baseRef: 'origin/feature/payment',
+            branch: `apt/repair/${fixture.requested.bug.id}`,
+          },
+        },
+      ],
     });
     expect(execution.codexTurn?.kind).toBe('INITIAL');
     if (execution.codexTurn?.kind !== 'INITIAL') throw new Error('需要首次 Turn');

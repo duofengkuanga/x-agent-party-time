@@ -57,7 +57,7 @@ test('只接受本次 Execution 创建且按顺序返回的真实 Commit', async
     verifier.verify(repository, assertions, baseline, {
       result: { commits: [`${shortCommit}${'0'.repeat(32)}`] },
     }),
-  ).rejects.toThrow(`Codex 返回的本地 Commit ${shortCommit}`);
+  ).rejects.toThrow('Codex 返回的本地 Commit 不存在');
   await expect(
     verifier.verify(repository, assertions, baseline, {
       result: { commits: [baseline!.gitHead] },
@@ -96,6 +96,24 @@ test('缺少原 Execution 基线时拒绝接受同步结果', async () => {
   ).rejects.toThrow('本机 Commit 结果校验缺少执行前基线');
 });
 
+test('拒绝把脏工作区或丢失基线的 Git 历史当成修复完成', async () => {
+  const repository = await gitRepository();
+  const verifier = new GitExecutionResultVerifier(new NodeCommandRunner());
+  await git(repository, ['commit', '--allow-empty', '-m', 'repair baseline']);
+  const baseline = await verifier.capture(repository, assertions);
+  await writeFile(join(repository, 'draft.txt'), 'unfinished\n');
+  const reported = { result: { commits: [] } };
+  await expect(
+    verifier.verify(repository, assertions, baseline, reported),
+  ).rejects.toThrow('未提交');
+  await git(repository, ['add', 'draft.txt']);
+  await git(repository, ['commit', '-m', 'save draft']);
+  await git(repository, ['switch', '--detach', 'HEAD~2']);
+  await expect(
+    verifier.verify(repository, assertions, baseline, reported),
+  ).rejects.toThrow('不包含执行前基线');
+});
+
 test('不声明提交的有效业务失败结果不要求 Commit 基线', async () => {
   const repository = await gitRepository();
   const verifier = new GitExecutionResultVerifier(new NodeCommandRunner());
@@ -110,6 +128,39 @@ test('不声明提交的有效业务失败结果不要求 Commit 基线', async 
         pendingActions: [],
       },
     }),
+  ).resolves.toBeUndefined();
+});
+
+test('更新结果核对远端目标的完整 SHA，未改动成员必须仍在原基线', async () => {
+  const repository = await gitRepository();
+  const remote = await createTestDirectory();
+  await git(remote, ['init', '--bare']);
+  await git(repository, ['remote', 'add', 'origin', remote]);
+  await git(repository, ['push', 'origin', 'HEAD:main']);
+  const verifier = new GitExecutionResultVerifier(new NodeCommandRunner());
+  const assertions: ExecutionResultAssertion[] = [
+    {
+      kind: 'GIT_DELIVERY_STATE',
+      workspaceBindingId: '00000000-0000-4000-8000-000000000101',
+      targetBranch: 'main',
+      resultPath: ['result', 'deliveries', 'repo-1'],
+    },
+  ];
+  const baseline = await verifier.capture(repository, assertions);
+  await git(repository, ['commit', '--allow-empty', '-m', 'integrated']);
+  const head = await git(repository, ['rev-parse', 'HEAD']);
+  const result = (state: string, commit?: string) => ({
+    result: { deliveries: { 'repo-1': { state, commit: commit ?? null } } },
+  });
+  await expect(
+    verifier.verify(repository, assertions, baseline, result('UNCHANGED')),
+  ).rejects.toThrow('未交付提交');
+  await expect(
+    verifier.verify(repository, assertions, baseline, result('DEPLOYED', head)),
+  ).rejects.toThrow('远端分支尚未确认');
+  await git(repository, ['push', 'origin', 'HEAD:main']);
+  await expect(
+    verifier.verify(repository, assertions, baseline, result('DEPLOYED', head)),
   ).resolves.toBeUndefined();
 });
 

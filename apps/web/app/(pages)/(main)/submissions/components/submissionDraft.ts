@@ -1,5 +1,8 @@
 import { createClientId } from '@/app/(pages)/(main)/components/clientId';
-import type { SubmissionCreationCatalog } from '../../../../../contracts/submissions/submission';
+import type {
+  SubmissionCreationCatalog,
+  SubmissionMode,
+} from '../../../../../contracts/submissions/submission';
 import {
   availableTesterMembers,
   createItemDraft,
@@ -10,6 +13,7 @@ import {
 
 export type SubmissionContext = { projectId: string; testerUserId: string } | null;
 export type SubmissionDraft = {
+  mode?: SubmissionMode;
   mutationId: string;
   projectId: string;
   testerUserId: string;
@@ -87,6 +91,7 @@ export function createSubmissionDraft(
     if (first) items.push(first);
   }
   return {
+    mode: saved?.mode ?? 'PERSON_AGENT',
     mutationId: saved?.mutationId ?? createClientId(),
     projectId: project?.projectId ?? '',
     testerUserId,

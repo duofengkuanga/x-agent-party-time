@@ -1,8 +1,10 @@
+import { attachDeploymentEvidence } from './deploymentEvidence';
 import {
   serializeDeterministicJson,
   type ClaimedExecution,
   type ExecutionFailure,
   type ExecutionResultAssertion,
+  type ExecutionWorkspaceMember,
   type JsonObject,
   type JsonValue,
 } from '@agent-party-time/execution-contract';
@@ -52,8 +54,14 @@ type PreparedExecution =
       repositoryPath: string;
       materialized: MaterializedAttachment[];
       resolvedSkill: ResolvedSkill;
-      resultAssertions: ExecutionResultAssertion[];
-      resultBaseline: ExecutionResultBaseline;
+      workspaceDirectories: Array<{ alias: string; path: string; baseCommit?: string }>;
+      verification: Array<{
+        repositoryPath: string;
+        bindingPath: string;
+        workspace: ExecutionWorkspaceMember['workspace'];
+        resultAssertions: ExecutionResultAssertion[];
+        resultBaseline: ExecutionResultBaseline;
+      }>;
     }
   | { kind: 'WORKSPACE_COMPLETED'; result: JsonValue }
   | { kind: 'FAILED'; failure: ExecutionFailure };
@@ -79,40 +87,70 @@ export class ExecutionPreparation {
   async prepare(
     session: AuthenticatedRunnerSession,
     execution: ClaimedExecution,
-    turn: InitialTurn,
+    turn: InitialTurn | null,
     observation: ExecutionObservation,
   ): Promise<PreparedExecution> {
-    const bindingPath = await this.state.resolveBinding(execution.bindingId);
-    if (!bindingPath) {
-      return failed({
-        code: 'BINDING_NOT_FOUND',
-        message: '本机未登记该关联',
-        retryable: true,
-      });
-    }
-    if ((await this.files.info(bindingPath))?.type !== 'directory') {
-      return failed({
-        code: 'REPOSITORY_NOT_FOUND',
-        message: '本机仓库目录不存在',
-        retryable: true,
-      });
-    }
-    let repositoryPath = bindingPath;
-    if (execution.workspace)
-      try {
-        const prepared = await observation.phase('workspace', () =>
-          this.workspaces.prepare(bindingPath, execution.workspace!),
-        );
-        if (prepared.kind === 'COMPLETED')
-          return { kind: 'WORKSPACE_COMPLETED', result: prepared.result };
-        repositoryPath = prepared.cwd;
-      } catch {
+    const members: Array<ExecutionWorkspaceMember & { bindingPath: string }> = [];
+    for (const member of execution.workspaces) {
+      const bindingPath = await this.state.resolveBinding(member.bindingId);
+      if (!bindingPath)
         return failed({
-          code: 'REPOSITORY_NOT_FOUND',
-          message: '无法准备隔离的本机 Git 工作区',
+          code: 'BINDING_NOT_FOUND',
+          message: '本机未登记所需的全部工程关联',
           retryable: true,
         });
-      }
+      if ((await this.files.info(bindingPath))?.type !== 'directory')
+        return failed({
+          code: 'REPOSITORY_NOT_FOUND',
+          message: '所需的本机仓库目录不存在',
+          retryable: true,
+        });
+      members.push({ ...member, bindingPath });
+    }
+    const repositories: Array<{ path: string; baseCommit?: string }> = [];
+    let cleanup: { result: JsonValue } | undefined;
+    try {
+      await observation.phase('workspace', async () => {
+        if (members.length > 1) {
+          const targets = new Set<string>();
+          for (const { bindingPath, workspace } of members) {
+            if (!workspace || workspace.isolation === 'CLEANUP_WORKTREES') continue;
+            const identity = await this.workspaces.repositoryIdentity(bindingPath);
+            const target = JSON.stringify([identity, workspace.baseRef]);
+            if (targets.has(target))
+              throw new Error('工作区组重复使用相同的仓库和目标分支');
+            targets.add(target);
+          }
+        }
+        for (const { bindingPath, workspace } of members) {
+          if (!workspace) {
+            repositories.push({ path: bindingPath });
+            continue;
+          }
+          const prepared = await this.workspaces.prepare(bindingPath, workspace);
+          if (prepared.kind === 'COMPLETED') cleanup ??= prepared;
+          else repositories.push({ path: prepared.cwd, baseCommit: prepared.baseCommit });
+        }
+      });
+      if (cleanup) return { kind: 'WORKSPACE_COMPLETED', result: cleanup.result };
+    } catch (error) {
+      return failed({
+        code: 'REPOSITORY_NOT_FOUND',
+        message:
+          error instanceof Error &&
+          (error.message.startsWith('旧修复工作区') ||
+            error.message === '工作区组重复使用相同的仓库和目标分支')
+            ? error.message
+            : '无法准备全部隔离的本机 Git 工作区，请核对仓库和目标分支',
+        retryable: true,
+      });
+    }
+    if (!turn)
+      return failed({
+        code: 'CODEX_START_FAILED',
+        message: '任务缺少 Codex 输入',
+        retryable: false,
+      });
     let materialized: MaterializedAttachment[];
     try {
       materialized = await observation.phase('attachments', () =>
@@ -173,13 +211,44 @@ export class ExecutionPreparation {
         retryable: false,
       });
     }
-    const resultAssertions = turn.resultAssertions ?? [];
-    let resultBaseline: ExecutionResultBaseline;
+    let verification: Extract<PreparedExecution, { kind: 'READY' }>['verification'];
     try {
-      resultBaseline = await observation.phase('baseline', () =>
-        this.resultVerifier.capture(repositoryPath, resultAssertions),
+      const assertions = assertionsByMember(
+        execution.workspaces,
+        turn.resultAssertions ?? [],
       );
-      await this.state.saveExecutionResultBaseline(execution.id, resultBaseline);
+      verification = await observation.phase('baseline', () =>
+        Promise.all(
+          members.map(async ({ bindingId, bindingPath, workspace }, index) => {
+            const { path: repositoryPath, baseCommit } = repositories[index]!;
+            const resultAssertions = assertions[index]!;
+            const memberId = index === 0 ? undefined : bindingId;
+            const resultBaseline =
+              (await this.state.loadExecutionResultBaseline(execution.id, memberId)) ??
+              (baseCommit &&
+              resultAssertions.some(
+                (assertion) =>
+                  (assertion.kind === 'GIT_COMMITS_CREATED' ||
+                    assertion.kind === 'GIT_DELIVERY_STATE') &&
+                  assertion.workspaceBindingId,
+              )
+                ? { gitHead: baseCommit }
+                : await this.resultVerifier.capture(repositoryPath, resultAssertions));
+            await this.state.saveExecutionResultBaseline(
+              execution.id,
+              resultBaseline,
+              index === 0 ? undefined : bindingId,
+            );
+            return {
+              repositoryPath,
+              bindingPath,
+              workspace,
+              resultAssertions,
+              resultBaseline,
+            };
+          }),
+        ),
+      );
     } catch (error) {
       return failed({
         code: 'CODEX_START_FAILED',
@@ -196,11 +265,22 @@ export class ExecutionPreparation {
     });
     return {
       kind: 'READY',
-      repositoryPath,
+      repositoryPath: repositories[0]!.path,
+      workspaceDirectories:
+        repositories.length > 1 ||
+        (turn.resultAssertions ?? []).some(
+          (assertion) =>
+            assertion.kind === 'GIT_COMMITS_CREATED' && assertion.workspaceBindingId,
+        )
+          ? repositories.map(({ path, baseCommit }, index) => ({
+              alias: `repo-${index + 1}`,
+              path,
+              baseCommit,
+            }))
+          : [],
       materialized,
       resolvedSkill,
-      resultAssertions,
-      resultBaseline,
+      verification,
     };
   }
 
@@ -216,40 +296,51 @@ export class ExecutionPreparation {
       verifySessionResultSchema(execution.codexTurn?.outputJsonSchema, completed.result);
       const resultAssertions = execution.codexTurn?.resultAssertions ?? [];
       verifyResultContent(resultAssertions, completed.result);
-      if (resultAssertions.some(({ kind }) => kind === 'GIT_COMMITS_CREATED')) {
-        const bindingPath = await this.state.resolveBinding(execution.bindingId);
+      const assertions = assertionsByMember(execution.workspaces, resultAssertions);
+      for (const [index, { bindingId, workspace }] of execution.workspaces.entries()) {
+        const rules = assertions[index]!;
+        if (
+          !rules.some(
+            ({ kind }) => kind === 'GIT_COMMITS_CREATED' || kind === 'GIT_DELIVERY_STATE',
+          )
+        )
+          continue;
+        const bindingPath = await this.state.resolveBinding(bindingId);
         if (!bindingPath)
           throw new ExecutionResultVerificationError(
             '本机未登记原任务关联，无法校验同步结果',
           );
-        if (!execution.workspace)
-          throw new ExecutionResultVerificationError(
-            '同步任务缺少原任务工作区，无法校验结果',
-          );
-        if (!execution.previousExecutionId)
-          throw new ExecutionResultVerificationError(
-            '同步任务缺少原执行关联，无法校验结果',
-          );
+        if (!workspace || !execution.previousExecutionId)
+          throw new ExecutionResultVerificationError('同步任务缺少原工作区或执行关联');
         let repositoryPath: string;
         try {
-          repositoryPath = await this.workspaces.resolve(
-            bindingPath,
-            execution.workspace,
-          );
+          repositoryPath = await this.workspaces.resolve(bindingPath, workspace);
         } catch {
           throw new ExecutionResultVerificationError(
             '原任务工作区不可用，无法校验同步结果',
           );
         }
-        const resultBaseline = await this.state.loadExecutionResultBaseline(
+        const baseline = await this.state.loadExecutionResultBaseline(
           execution.previousExecutionId,
+          index === 0 ? undefined : bindingId,
         );
         await this.resultVerifier.verify(
           repositoryPath,
-          resultAssertions,
-          resultBaseline,
+          rules,
+          baseline,
           completed.result,
         );
+        for (const assertion of rules)
+          if (assertion.kind === 'GIT_DELIVERY_STATE')
+            await attachDeploymentEvidence(
+              this.state,
+              {
+                repositoryPath,
+                workspaceKey: workspace.key,
+                assertion,
+              },
+              completed.result,
+            );
       }
       return {
         kind: 'READY',
@@ -267,6 +358,37 @@ export class ExecutionPreparation {
       });
     }
   }
+}
+
+function assertionsByMember(
+  members: ExecutionWorkspaceMember[],
+  assertions: ExecutionResultAssertion[],
+): ExecutionResultAssertion[][] {
+  const groups = members.map((): ExecutionResultAssertion[] => []);
+  for (const assertion of assertions) {
+    const binding =
+      assertion.kind === 'GIT_COMMITS_CREATED' || assertion.kind === 'GIT_DELIVERY_STATE'
+        ? assertion.workspaceBindingId
+        : undefined;
+    const index = binding
+      ? members.findIndex(({ bindingId }) => bindingId === binding)
+      : 0;
+    if (index < 0) throw new ExecutionResultVerificationError('结果约束引用了未知工作区');
+    groups[index]!.push(assertion);
+  }
+  if (
+    members.length > 1 &&
+    members[0]?.workspace?.isolation === 'BRANCH_WORKTREE' &&
+    groups.some(
+      (group) =>
+        !group.some(
+          (assertion) =>
+            assertion.kind === 'GIT_COMMITS_CREATED' && assertion.workspaceBindingId,
+        ),
+    )
+  )
+    throw new ExecutionResultVerificationError('修复结果约束必须覆盖全部工作区');
+  return groups;
 }
 
 function verifySessionResultSchema(

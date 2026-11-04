@@ -11,8 +11,13 @@ import type { SubmissionItemRow } from './submissionQueries';
 
 type ItemSnapshotSource = Omit<
   SubmissionItemRow,
-  'id' | 'submission_id' | 'target_branch' | 'created_at' | 'deployment_json'
-> & { deployment_json: string };
+  | 'id'
+  | 'submission_id'
+  | 'target_branch'
+  | 'target_branch_locked_at'
+  | 'created_at'
+  | 'deployment_json'
+> & { deployment_json: string; runner_id: string };
 
 export function environmentConflictsForSubmission(
   db: AppDatabase,
@@ -56,6 +61,7 @@ export function snapshotItemSource(
               responsible.display_name responsible_display_name,
               responsible.created_at responsible_user_created_at,
               binding.id binding_id,
+              runner.id runner_id,
               environment.id environment_id,
               environment.name environment_name,
               environment.deployment_json

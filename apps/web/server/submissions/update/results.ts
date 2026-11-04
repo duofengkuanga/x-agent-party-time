@@ -18,8 +18,37 @@ export function projectUpdateAttemptResult(outcomeJson: string, technical: boole
       outcome: 'HANDED_OFF' as const,
       questions: technical ? outcome.questions : null,
     };
+  const engineeringDeliveries =
+    technical && outcome.deliveries && typeof outcome.deliveries === 'object'
+      ? Object.entries(outcome.deliveries).map(([alias, value]) => {
+          const detail = value as {
+            state: string;
+            commit?: string;
+            evidence?: string;
+            receipt?: { artifactSha256?: string };
+          };
+          const labels: Record<string, string> = {
+            NOT_STARTED: '未开始',
+            VALIDATED: '验证通过',
+            PUSHED: '已确认推送',
+            DEPLOYED: '部署验收通过',
+            UNKNOWN: '等待核实',
+            FAILED: '执行失败',
+            UNCHANGED: '无改动',
+          };
+          return {
+            alias,
+            label: labels[detail.state] ?? '等待核实',
+            commit: detail.commit ?? null,
+            evidence: detail.evidence ?? null,
+            artifactSha256: detail.receipt?.artifactSha256 ?? null,
+          };
+        })
+      : null;
+  const engineering = engineeringDeliveries ? { engineeringDeliveries } : {};
   if (outcome.outcome === 'COMPLETED' || outcome.outcome === 'PUSH_CONFIRMED')
     return {
+      ...engineering,
       outcome: outcome.outcome,
       completedActions: stringArray(outcome.completedActions),
       validations: Array.isArray(outcome.validations) ? outcome.validations : [],
@@ -27,6 +56,7 @@ export function projectUpdateAttemptResult(outcomeJson: string, technical: boole
       handoffUse: technical ? UpdateHandoffUseSchema.parse(outcome.handoffUse) : null,
     };
   return {
+    ...engineering,
     outcome: 'FAILED' as const,
     failedStep:
       typeof outcome.failedStep === 'string' ? outcome.failedStep : '执行统一更新',

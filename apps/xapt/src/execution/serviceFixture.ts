@@ -4,6 +4,8 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import {
   serializeDeterministicJson,
+  executionWorkspaces,
+  type ExecutionWorkspace,
   type ClaimedExecution,
   type CompleteExecutionRequest,
   type Execution,
@@ -65,7 +67,7 @@ export async function createFixture(
     capturedBaseline?: { gitHead: string } | null;
     owner?: ClaimedExecution['owner'];
     approvalPolicy?: ClaimedExecution['approvalPolicy'];
-    workspace?: ClaimedExecution['workspace'];
+    workspace?: ExecutionWorkspace | null;
     resultAssertions?: ExecutionResultAssertion[];
     resultValidationFailure?: ExecutionResultVerificationError;
     prepareWorkspace?: () => Promise<void>;
@@ -143,11 +145,14 @@ export async function createFixture(
         materialize: async () => options.attachments ?? [],
       } as unknown as AttachmentMaterializer,
       {
-        prepare: async () => {
+        repositoryIdentity: async (path: string) => path,
+        prepare: async (repositoryPath: string, workspace: ExecutionWorkspace) => {
           await options.prepareWorkspace?.();
-          return { kind: 'EXECUTE', cwd: repositoryPath };
+          return workspace.isolation === 'CLEANUP_WORKTREES'
+            ? { kind: 'COMPLETED', result: workspace.completionResult }
+            : { kind: 'EXECUTE', cwd: repositoryPath };
         },
-        resolve: async () => {
+        resolve: async (repositoryPath: string) => {
           if (options.workspaceResolveFailure) throw options.workspaceResolveFailure;
           return repositoryPath;
         },
@@ -354,7 +359,7 @@ export function claimedExecution(
     id: 'task-1',
   },
   approvalPolicy: ClaimedExecution['approvalPolicy'] = 'on-request',
-  workspace: ClaimedExecution['workspace'] = null,
+  workspace: ExecutionWorkspace | null = null,
 ): ClaimedExecution {
   return {
     id,
@@ -367,7 +372,7 @@ export function claimedExecution(
     approvalPolicy,
     state: 'CLAIMED',
     codexTurn: taskId ? continuationTurn(taskId) : initialTurn(),
-    workspace,
+    workspaces: executionWorkspaces(localBindingId, workspace),
     attachments: [],
     sessionId: null,
     lease: {

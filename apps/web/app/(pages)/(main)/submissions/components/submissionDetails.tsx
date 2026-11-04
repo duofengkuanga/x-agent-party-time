@@ -70,6 +70,12 @@ export function SubmissionDetails({
           <dd>{view.projectName}</dd>
         </div>
         <div>
+          <dt>协作模式</dt>
+          <dd>
+            {submission.mode === 'PERSON_AGENT' ? 'PersonAgent' : 'AgentParty'}
+          </dd>
+        </div>
+        <div>
           <dt>提测状态</dt>
           <dd>{submission.status === 'ACTIVE' ? '进行中' : '已关闭'}</dd>
         </div>

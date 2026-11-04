@@ -87,6 +87,7 @@ export async function deliveryProject(
   });
   const submissions = new SubmissionService(database, options.now);
   const submission = submissions.createSubmission(users.owner.id, project.id, {
+    mode: 'AGENT_PARTY' as const,
     mutationId: randomUUID(),
     title: options.title,
     requirementDescription: options.description,

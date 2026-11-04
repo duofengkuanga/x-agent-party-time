@@ -33,7 +33,7 @@ test('各类持久化状态独立演进 Schema', () => {
   expect(IDENTITY_STATE_SCHEMA_VERSION).toBe(1);
   expect(BINDING_STATE_SCHEMA_VERSION).toBe(1);
   expect(INSTALL_STATE_SCHEMA_VERSION).toBe(1);
-  expect(EXECUTION_STATE_SCHEMA_VERSION).toBe(2);
+  expect(EXECUTION_STATE_SCHEMA_VERSION).toBe(3);
   expect(RESULT_BASELINE_STATE_SCHEMA_VERSION).toBe(1);
   expect(OUTBOX_STATE_SCHEMA_VERSION).toBe(2);
 });
@@ -366,7 +366,7 @@ function recoveryExecution(now: string): ClaimedExecution {
       input: '继续完成上次未完成的任务。',
       outputJsonSchema: { type: 'object' },
     },
-    workspace: null,
+    workspaces: [{ bindingId, workspace: null }],
     attachments: [],
     sessionId: 'session-one',
     lease: {

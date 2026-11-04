@@ -5,6 +5,7 @@ import type { BugRepairView } from '@/contracts/submissions/repair';
 import {
   resolveRepairInteractionAction,
   synchronizeRepairSessionAction,
+  retryRepairAction,
 } from '@/app/actions/submissions/repair';
 import { createClientId } from '@/app/(pages)/(main)/components/clientId';
 import type { BugView } from '../../../../../../contracts/submissions/bug';
@@ -178,6 +179,24 @@ export function RepairAttemptDetails({
               <h4>技术原因</h4>
               <code>{failed.failureCode}</code>
             </section>
+          ) : null}
+          {latest && repair?.availableActions.includes('RETRY_REPAIR') ? (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() =>
+                run(
+                  () =>
+                    retryRepairAction(bug.id, {
+                      mutationId: createClientId(),
+                      expectedVersion: bug.version,
+                    }),
+                  '修复已重新排队。',
+                )
+              }
+            >
+              重试修复
+            </button>
           ) : null}
           {latest && repair?.availableActions.includes('SYNC_SESSION') ? (
             <>

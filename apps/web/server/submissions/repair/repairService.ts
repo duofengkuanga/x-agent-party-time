@@ -1,8 +1,11 @@
+import { isPersonAgentBug } from './personAgentScope';
+import { executionWorkspaces } from '@agent-party-time/execution-contract';
 import { DeploymentScriptSchema } from '@/contracts/projects/engineering';
 import { requireSubmissionAccess } from '@/server/submissions/shared/access';
 import {
   isTerminal,
   requireTaskSkillBinding,
+  originalTaskExecution,
 } from '@/server/submissions/shared/executionState';
 import { TestSubmissionWriteStore } from '@/server/submissions/testSubmissionWriteStore';
 import type { AppDatabase } from '@/server/database/index';
@@ -32,6 +35,7 @@ import { RepairProjection } from './repairProjection';
 import {
   parseCommits,
   isFailedAttemptOutcome,
+  canRetryBeforeRepairStart,
   isSynchronizableAttempt,
   staleRepair,
 } from './results';
@@ -153,12 +157,12 @@ export class RepairService {
         outputJsonSchema: RepairOutputJsonSchema,
         resultAssertions: REPAIR_RESULT_ASSERTIONS,
       }),
-      workspace: {
+      workspaces: executionWorkspaces(repairContext.bindingId, {
         key: workspaceKey,
         isolation: 'BRANCH_WORKTREE',
         baseRef: `origin/${repairContext.targetBranch}`,
         branch: `apt/repair/${bugId}`,
-      },
+      }),
       attachmentIds: attachmentReferences.map(({ fileId }) => fileId),
     });
     this.db.run(
@@ -174,6 +178,7 @@ export class RepairService {
     bugId: string,
     lifecycleContext = '',
     attachmentIds: string[] = [],
+    rotateAfterDelivery = false,
   ): string {
     const repairContext = this.queries.inputForBug(bugId);
     const context = this.queries.requireContext(bugId);
@@ -183,19 +188,38 @@ export class RepairService {
     const attempt = latest.attempt + 1;
     const attemptId = this.createId();
     const executionId = this.createId();
-    if (!context.session_id)
+    const previousExecution = originalTaskExecution(
+      this.executions.get,
+      this.executions.get(latest.execution_id),
+    );
+    const retryInitial =
+      !context.session_id &&
+      isPersonAgentBug(this.db, bugId) &&
+      canRetryBeforeRepairStart(latest.outcome_json) &&
+      previousExecution.codexTurn?.kind === 'INITIAL';
+    if (!context.session_id && !retryInitial)
       throw new PlatformError('INVALID_TRANSITION', '原修复任务不存在，不能自动重建');
-    const previousExecution = this.executions.get(latest.execution_id);
-    const codexTurn = createContinuationCodexTurn({
-      manualHandoff: 'EXTERNAL_SESSION',
-      taskId: context.session_id,
-      taskSkillBinding: requireTaskSkillBinding(previousExecution, '修复'),
-      text: lifecycleContext
-        ? `继续完成上次未完成的任务。新增事实：${JSON.stringify({ lifecycleContext })}`
-        : '继续完成上次未完成的任务。',
-      outputJsonSchema: RepairOutputJsonSchema,
-      resultAssertions: REPAIR_RESULT_ASSERTIONS,
-    });
+    const workspaceKey =
+      rotateAfterDelivery && isPersonAgentBug(this.db, bugId)
+        ? `bug-repair:${bugId}:round:${attempt}`
+        : context.workspace_key;
+    if (workspaceKey !== context.workspace_key)
+      this.db.run(
+        'UPDATE submission_bug_repair_context SET workspace_key = ? WHERE bug_id = ?',
+        [workspaceKey, bugId],
+      );
+    const codexTurn = retryInitial
+      ? previousExecution.codexTurn
+      : createContinuationCodexTurn({
+          manualHandoff: 'EXTERNAL_SESSION',
+          taskId: context.session_id!,
+          taskSkillBinding: requireTaskSkillBinding(previousExecution, '修复'),
+          text: lifecycleContext
+            ? `继续完成上次未完成的任务。新增事实：${JSON.stringify({ lifecycleContext })}`
+            : '继续完成上次未完成的任务。',
+          outputJsonSchema: RepairOutputJsonSchema,
+          resultAssertions: REPAIR_RESULT_ASSERTIONS,
+        });
     const execution = this.executions.enqueue({
       id: executionId,
       owner: { namespace: 'submissions', kind: 'BUG_REPAIR', id: attemptId },
@@ -206,12 +230,14 @@ export class RepairService {
       priority: 0,
       approvalPolicy: 'never',
       codexTurn,
-      workspace: {
-        key: context.workspace_key,
-        isolation: 'BRANCH_WORKTREE',
-        baseRef: `origin/${repairContext.targetBranch}`,
-        branch: `apt/repair/${bugId}`,
-      },
+      workspaces: retryInitial
+        ? previousExecution.workspaces
+        : executionWorkspaces(repairContext.bindingId, {
+            key: workspaceKey,
+            isolation: 'BRANCH_WORKTREE',
+            baseRef: `origin/${repairContext.targetBranch}`,
+            branch: `apt/repair/${bugId}`,
+          }),
       attachmentIds,
     });
     const now = this.now().toISOString();
@@ -308,7 +334,10 @@ export class RepairService {
           throw new PlatformError('INVALID_TRANSITION', '当前没有可同步的人工处理会话');
         if (this.queries.hasActiveSessionSync(bugId))
           throw new PlatformError('RESOURCE_CONFLICT', '修复会话正在同步');
-        const previousExecution = this.executions.get(latest.execution_id);
+        const previousExecution = originalTaskExecution(
+          this.executions.get,
+          this.executions.get(latest.execution_id),
+        );
         if (!previousExecution.codexTurn)
           throw new PlatformError(
             'INVALID_TRANSITION',
@@ -322,7 +351,7 @@ export class RepairService {
           id: executionId,
           owner: { namespace: 'submissions', kind: 'SESSION_SYNC', id: syncId },
           attempt: 1,
-          previousExecutionId: latest.execution_id,
+          previousExecutionId: previousExecution.id,
           runnerId: repairContext.runnerId,
           bindingId: repairContext.bindingId,
           priority: 0,
@@ -333,7 +362,7 @@ export class RepairService {
             outputJsonSchema: previousExecution.codexTurn.outputJsonSchema,
             resultAssertions,
           },
-          workspace: previousExecution.workspace,
+          workspaces: previousExecution.workspaces,
           attachmentIds: [],
         });
         const now = this.now().toISOString();

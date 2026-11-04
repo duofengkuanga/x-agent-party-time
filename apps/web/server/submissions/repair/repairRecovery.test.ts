@@ -115,10 +115,14 @@ describe('RepairService', () => {
           { kind: 'GIT_COMMITS_CREATED', resultPath: ['result', 'commits'] },
         ],
       },
-      workspace: {
-        key: `bug-repair:${fixture.requested.bug.id}`,
-        isolation: 'BRANCH_WORKTREE',
-      },
+      workspaces: [
+        {
+          workspace: {
+            key: `bug-repair:${fixture.requested.bug.id}`,
+            isolation: 'BRANCH_WORKTREE',
+          },
+        },
+      ],
     });
     fixture.executions.start(fixture.runner.id, claimed.id, {
       kind: 'STARTED',

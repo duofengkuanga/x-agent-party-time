@@ -123,9 +123,7 @@ CREATE TABLE platform_execution (
   skill_source_revision TEXT CHECK (
     skill_source_revision IS NULL OR length(skill_source_revision) = 40
   ),
-  workspace_json TEXT CHECK (
-    workspace_json IS NULL OR json_valid(workspace_json)
-  ),
+  workspace_json TEXT NOT NULL CHECK (json_type(workspace_json) = 'array'),
   session_id TEXT,
   lease_token_hash TEXT,
   lease_expires_at TEXT,
@@ -140,15 +138,15 @@ CREATE TABLE platform_execution (
   finished_at TEXT
 ) STRICT;
 CREATE UNIQUE INDEX platform_execution_binding_reservation
-  ON platform_execution(binding_id, COALESCE(json_extract(workspace_json, '$.isolation'), 'EXCLUSIVE'))
+  ON platform_execution(binding_id, COALESCE(json_extract(workspace_json, '$[0].workspace.isolation'), 'EXCLUSIVE'))
   WHERE state IN (
     'CLAIMED',
     'RUNNING',
     'CANCEL_REQUESTED'
   );
 CREATE UNIQUE INDEX platform_execution_workspace_reservation
-  ON platform_execution(runner_id, json_extract(workspace_json, '$.key'))
-  WHERE workspace_json IS NOT NULL AND state IN ('CLAIMED', 'RUNNING', 'CANCEL_REQUESTED');
+  ON platform_execution(runner_id, json_extract(workspace_json, '$[0].workspace.key'))
+  WHERE state IN ('CLAIMED', 'RUNNING', 'CANCEL_REQUESTED');
 CREATE INDEX platform_execution_runner_claim
   ON platform_execution(runner_id, state, created_at, id);
 CREATE INDEX platform_execution_lease_expiry

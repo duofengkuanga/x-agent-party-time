@@ -294,9 +294,9 @@ describe('删除未使用工程绑定', () => {
     database.run(
       `INSERT INTO test_submission(
            id, project_id, title, requirement_description, tester_user_id,
-           status, version, workspace_revision, created_by_user_id,
+           mode, status, version, workspace_revision, created_by_user_id,
            created_at, updated_at, closed_at
-         ) VALUES (?, ?, '删除保护', '验证绑定历史', ?, 'ACTIVE', 1, 1, ?, ?, ?, NULL)`,
+         ) VALUES (?, ?, '删除保护', '验证绑定历史', ?, 'AGENT_PARTY', 'ACTIVE', 1, 1, ?, ?, ?, NULL)`,
       [submissionId, project.id, users.owner.id, users.owner.id, createdAt, createdAt],
     );
     database.run(
@@ -344,10 +344,10 @@ describe('删除未使用工程绑定', () => {
            id, owner_namespace, owner_kind, owner_id, attempt,
            runner_id, binding_id, priority, approval_policy, state,
            outcome_json, reported_outcome_json, cancellation_requested,
-           created_at, finished_at
+           created_at, finished_at, workspace_json
          ) VALUES (
            ?, 'COOKING', 'REPAIR', 'historical-owner', 1, ?, ?, 0,
-           'on-request', 'SUCCEEDED', '{}', '{}', 0, ?, ?
+           'on-request', 'SUCCEEDED', '{}', '{}', 0, ?, ?, ?
          )`,
       [
         executionId,
@@ -355,6 +355,7 @@ describe('删除未使用工程绑定', () => {
         binding.id,
         '2026-07-26T11:00:00.000Z',
         '2026-07-26T11:01:00.000Z',
+        JSON.stringify([{ bindingId: binding.id, workspace: null }]),
       ],
     );
     expect(() =>

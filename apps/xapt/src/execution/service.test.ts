@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 import { dirname, join } from 'node:path';
+import { mkdir } from 'node:fs/promises';
 import { EXECUTION_STATE_SCHEMA_VERSION } from '../state/schemas';
 import { CodexAppServerError } from '../codex/errors';
 import { ExecutionRecovery } from './recovery';
@@ -88,6 +89,99 @@ test('单槽完成领取、Codex Session、START 与结构化 Outcome happy path
   expect(await fixture.state.loadExecutions()).toEqual([]);
   expect(await fixture.state.loadOutbox()).toEqual([]);
   expect(fixture.service.projection.activeExecutionCount).toBe(0);
+});
+
+test('工作区组准备完成后使用一个会话并映射两个工程目录', async () => {
+  const fixture = await createFixture();
+  const secondary = '00000000-0000-4000-8000-000000000381';
+  const back = join(dirname(fixture.repositoryPath), 'backend');
+  await mkdir(back);
+  await fixture.state.bind(secondary, back);
+  const execution = claimedExecution(null);
+  execution.workspaces = [
+    { bindingId, workspace: branchWorkspace },
+    {
+      bindingId: secondary,
+      workspace: { ...branchWorkspace, key: 'repair-back', branch: 'apt/repair/back' },
+    },
+  ];
+  if (execution.codexTurn?.kind !== 'INITIAL') throw new Error('缺少首轮修复');
+  execution.codexTurn.resultAssertions = execution.workspaces.map(
+    ({ bindingId }, index) => ({
+      kind: 'GIT_COMMITS_CREATED',
+      workspaceBindingId: bindingId,
+      resultPath: ['result', `repo-${index + 1}`, 'commits'],
+    }),
+  );
+  fixture.http.claimed = [execution];
+
+  await cycleToIdle(fixture);
+
+  expect(fixture.http.starts).toHaveLength(1);
+  expect(fixture.executor.inputs[0]).toMatchObject({
+    repositoryPath: fixture.repositoryPath,
+    workspaceDirectories: [
+      { alias: 'repo-1', path: fixture.repositoryPath },
+      { alias: 'repo-2', path: back },
+    ],
+  });
+  expect(fixture.http.outcomes[0]?.outcome.kind).toBe('SUCCEEDED');
+});
+
+test('副工作区缺少本机关联时，不以部分目录启动模型', async () => {
+  const fixture = await createFixture();
+  const execution = claimedExecution(null);
+  execution.workspaces = [
+    { bindingId, workspace: branchWorkspace },
+    {
+      bindingId: '00000000-0000-4000-8000-000000000382',
+      workspace: { ...branchWorkspace, key: 'repair-back', branch: 'apt/repair/back' },
+    },
+  ];
+  fixture.http.claimed = [execution];
+
+  await cycleToIdle(fixture);
+
+  expect(fixture.executor.inputs).toEqual([]);
+  expect(fixture.http.starts).toMatchObject([
+    { kind: 'START_FAILED', failure: { code: 'BINDING_NOT_FOUND' } },
+  ]);
+});
+
+test('没有 Codex Turn 的清理任务通过普通领取入口完成', async () => {
+  const fixture = await createFixture();
+  const execution = claimedExecution(null);
+  execution.codexTurn = null;
+  execution.workspaces = [
+    {
+      bindingId,
+      workspace: {
+        key: 'cleanup',
+        isolation: 'CLEANUP_WORKTREES',
+        workspaceKeys: [branchWorkspace.key],
+        completionResult: { outcome: 'COMPLETED' },
+      },
+    },
+  ];
+  fixture.http.claimed = [execution];
+  await cycleToIdle(fixture);
+  expect(fixture.executor.inputs).toEqual([]);
+  expect(fixture.http.outcomes[0]?.outcome).toEqual({
+    kind: 'SUCCEEDED',
+    result: { outcome: 'COMPLETED' },
+  });
+});
+
+test('同一 Execution 重新领取沿用持久化 Git 基线', async () => {
+  const fixture = await createFixture({
+    capturedBaseline: { gitHead: 'new-head' },
+    resultAssertions: commitAssertions,
+  });
+  await fixture.state.saveExecutionResultBaseline(executionId, {
+    gitHead: 'original-head',
+  });
+  await cycleToIdle(fixture);
+  expect(fixture.verifiedBaselines).toEqual([{ gitHead: 'original-head' }]);
 });
 
 test('已有 Task 通过 codexTurn 继续原 Thread', async () => {

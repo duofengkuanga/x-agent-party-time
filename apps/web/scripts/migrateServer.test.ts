@@ -44,7 +44,12 @@ const schema32 = schema31
 CREATE INDEX platform_execution_runner_claim`,
   );
 
-function copyCurrentToLegacy(directory: string, version: 27 | 28 | 29 | 30 | 31 | 32) {
+const schema33 = readFileSync(join(import.meta.dir, 'fixtures/serverV33.sql'), 'utf8');
+
+function copyCurrentToLegacy(
+  directory: string,
+  version: 27 | 28 | 29 | 30 | 31 | 32 | 33,
+) {
   const path = join(directory, `legacy${version}.sqlite`);
   const db = new AppDatabase(path, { create: true });
   opened.push(db);
@@ -55,7 +60,9 @@ function copyCurrentToLegacy(directory: string, version: 27 | 28 | 29 | 30 | 31 
         ? schema31
         : version === 32
           ? schema32
-          : schema30;
+          : version === 33
+            ? schema33
+            : schema30;
   if (version === 28 || version === 29) {
     const observationStart = sql.indexOf('CREATE TABLE platform_observation_');
     if (observationStart < 0) throw new Error('旧 Schema 缺少归因表边界');
@@ -74,11 +81,13 @@ function copyCurrentToLegacy(directory: string, version: 27 | 28 | 29 | 30 | 31 
     const columns = fields.map((name) => `"${name}"`).join(', ');
     const source = fields
       .map((name) =>
-        name === 'continuation_report_id'
-          ? 'NULL'
-          : name === 'deployment_json'
-            ? `json_set(deployment_json, '$.kind', 'LOCAL_SCRIPT')`
-            : `"${name}"`,
+        name === 'workspace_json'
+          ? "json_extract(workspace_json, '$[0].workspace')"
+          : name === 'continuation_report_id'
+            ? 'NULL'
+            : name === 'deployment_json' && version < 33
+              ? `json_set(deployment_json, '$.kind', 'LOCAL_SCRIPT')`
+              : `"${name}"`,
       )
       .join(', ');
     db.exec(
@@ -86,7 +95,8 @@ function copyCurrentToLegacy(directory: string, version: 27 | 28 | 29 | 30 | 31 
     );
   }
   db.exec('DETACH DATABASE seed');
-  db.exec(`UPDATE ${version >= 31 ? 'platform' : 'cooking'}_mutation
+  if (version < 33)
+    db.exec(`UPDATE ${version >= 31 ? 'platform' : 'cooking'}_mutation
     SET result_json=json_set(result_json, '$.deployment.kind', 'LOCAL_SCRIPT')
     WHERE operation IN ('ENVIRONMENT_CREATE', 'ENVIRONMENT_UPDATE')`);
 
@@ -169,7 +179,15 @@ function expectOriginalFacts(db: Database, before: ReturnType<typeof originalRow
           value === 'cooking'
         )
           expect(rows[index]![column]).toEqual('submissions');
-        else if (field === 'deployment_json') {
+        else if (field === 'workspace_json' && table.name === 'platform_execution') {
+          const bindingId = row[table.columns.indexOf('binding_id')];
+          expect(JSON.parse(rows[index]![column] as string)).toEqual([
+            {
+              bindingId,
+              workspace: value ? JSON.parse(value as string) : null,
+            },
+          ]);
+        } else if (field === 'deployment_json') {
           const { kind: _, ...script } = JSON.parse(value as string);
           expect(JSON.parse(rows[index]![column] as string)).toEqual(script);
         } else if (field === 'result_json' && table.name.endsWith('_mutation')) {
@@ -201,7 +219,7 @@ test('预检只读；迁移备份并逐字段保留全部旧数据、关联和�
   expectOriginalFacts(f.db, before);
   expect(result.rewrittenResults).toBeGreaterThan(0);
   expect(f.db.get<{ user_version: number }>('PRAGMA user_version')).toEqual({
-    user_version: 33,
+    user_version: 34,
   });
   expect(f.db.all('PRAGMA foreign_key_check')).toEqual([]);
   const handoffs = JSON.parse(
@@ -293,7 +311,7 @@ test('提交前故障回滚全部 DDL；备份和旧数据均可重新打开', a
     this: Database,
     sql: string,
   ) {
-    if (sql === 'PRAGMA user_version=33') throw new Error('模拟提交前故障');
+    if (sql === 'PRAGMA user_version=34') throw new Error('模拟提交前故障');
     return originalExec.call(this, sql);
   });
   try {
@@ -382,7 +400,7 @@ test('Schema31 离线升级并发索引，完整保留活动执行且可幂等�
   const report = migrateServerDatabase(path, true);
   expect(report).toMatchObject({
     from: 31,
-    to: 33,
+    to: 34,
     rewrittenResults: 0,
     status: 'migrated',
   });
@@ -392,7 +410,7 @@ test('Schema31 离线升级并发索引，完整保留活动执行且可幂等�
     db.get<{ sql: string }>(
       "SELECT sql FROM sqlite_master WHERE name = 'platform_execution_binding_reservation'",
     )!.sql,
-  ).toContain('$.isolation');
+  ).toContain('$[0].workspace.isolation');
   const backup = new Database(report.backupPath!, { readonly: true });
   opened.push(backup);
   expect(originalRows(backup)).toEqual(before);
@@ -440,7 +458,7 @@ test('Schema30逐字段保留活动流程、幂等回执和归因记录，只更
   expect(originalRows(db)).toEqual(before);
   const report = migrateServerDatabase(path, true);
   expect(report.from).toBe(30);
-  expect(report.to).toBe(33);
+  expect(report.to).toBe(34);
   expect(report.rewrittenResults).toBe(0);
   expectOriginalFacts(db, before);
   expect(db.all("SELECT name FROM sqlite_master WHERE name GLOB 'cooking_*'")).toEqual(
@@ -562,7 +580,7 @@ test('Schema 32 要求真实命令并保留历史 Push、人工确认和附件�
   ]);
 
   const result = migrateServerDatabase(path, true, commands);
-  expect(result).toMatchObject({ from: 32, to: 33, historicalConfirmations: 1 });
+  expect(result).toMatchObject({ from: 32, to: 34, historicalConfirmations: 1 });
   expect(
     db.get(
       'SELECT deployment_json FROM platform_environment WHERE id = ?',
@@ -622,4 +640,21 @@ test('Schema 32 要求真实命令并保留历史 Push、人工确认和附件�
   const backup = new Database(result.backupPath!, { readonly: true });
   opened.push(backup);
   expect(originalRows(backup)).toEqual(before);
+});
+
+test('Schema 33 保存原工作区、绑定和租约，升级后只使用成员集合', async () => {
+  const f = await setup();
+  f.createBug('工作区集合迁移');
+  const [claimed] = await f.executions.claim(f.runner.id, 1, 0);
+  const { db, path } = copyCurrentToLegacy(f.directory, 33);
+  const before = originalRows(db);
+  expect(migrateServerDatabase(path).status).toBe('ready');
+  expect(originalRows(db)).toEqual(before);
+  const result = migrateServerDatabase(path, true);
+  expect(result).toMatchObject({ from: 33, to: 34 });
+  expectOriginalFacts(db, before);
+  const execution = new ExecutionService(db).get(claimed!.id);
+  expect(execution.workspaces).toEqual(claimed!.workspaces);
+  expect(execution.lease).toEqual({ expiresAt: claimed!.lease.expiresAt });
+  expect(migrateServerDatabase(path, true).status).toBe('current');
 });

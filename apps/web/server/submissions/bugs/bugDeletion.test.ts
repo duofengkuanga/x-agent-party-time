@@ -234,8 +234,8 @@ function addSessionSync(database: AppDatabase, parent: string, state: string): s
   const id = randomUUID();
   database.run(
     `INSERT INTO platform_execution(id, owner_namespace, owner_kind, owner_id, attempt,
-      previous_execution_id, runner_id, binding_id, approval_policy, state, created_at)
-     SELECT ?, 'submissions', 'SESSION_SYNC', ?, 1, id, runner_id, binding_id, 'never', ?, created_at
+      previous_execution_id, runner_id, binding_id, approval_policy, state, created_at, workspace_json)
+     SELECT ?, 'submissions', 'SESSION_SYNC', ?, 1, id, runner_id, binding_id, 'never', ?, created_at, workspace_json
      FROM platform_execution WHERE id = ?`,
     [id, randomUUID(), state, parent],
   );

@@ -32,7 +32,9 @@ export function prepareProjectSubmissionDeletion(
     );
 
   const executions = db.all<{ id: string; state: string }>(
-    `SELECT id, state FROM platform_execution WHERE binding_id IN (
+    `SELECT DISTINCT execution.id, execution.state FROM platform_execution execution
+     JOIN json_each(execution.workspace_json) member
+     WHERE member.value ->> '$.bindingId' IN (
        SELECT item.binding_id FROM submission_item item
        JOIN test_submission submission ON submission.id = item.submission_id
        WHERE submission.project_id = ?

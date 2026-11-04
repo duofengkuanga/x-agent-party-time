@@ -33,7 +33,12 @@ export class GitExecutionResultVerifier implements ExecutionResultVerifier {
     repositoryPath: string,
     assertions: ExecutionResultAssertion[],
   ): Promise<ExecutionResultBaseline> {
-    if (!assertions.some(({ kind }) => kind === 'GIT_COMMITS_CREATED')) return null;
+    if (
+      !assertions.some(
+        ({ kind }) => kind === 'GIT_COMMITS_CREATED' || kind === 'GIT_DELIVERY_STATE',
+      )
+    )
+      return null;
     return {
       gitHead: await this.git(repositoryPath, ['rev-parse', 'HEAD']),
     };
@@ -46,13 +51,41 @@ export class GitExecutionResultVerifier implements ExecutionResultVerifier {
     result: JsonValue,
   ): Promise<void> {
     verifyResultContent(assertions, result);
-    if (!assertions.some(({ kind }) => kind === 'GIT_COMMITS_CREATED')) return;
     for (const assertion of assertions) {
+      if (assertion.kind === 'GIT_DELIVERY_STATE') {
+        await this.verifyDelivery(repositoryPath, assertion, baseline, result);
+        continue;
+      }
       if (assertion.kind !== 'GIT_COMMITS_CREATED') continue;
       const value = valueAtPath(result, assertion.resultPath);
-      if (value === undefined) continue;
+      if (value === undefined) {
+        if (
+          assertion.workspaceBindingId &&
+          valueAtPath(result, ['result', 'outcome']) !== 'FAILED'
+        )
+          throw new ExecutionResultVerificationError('修复结果缺少成员工作区的提交列表');
+        continue;
+      }
       if (!baseline)
         throw new ExecutionResultVerificationError('本机 Commit 结果校验缺少执行前基线');
+      if (
+        await this.git(repositoryPath, [
+          'status',
+          '--porcelain=v1',
+          '--untracked-files=all',
+        ])
+      )
+        throw new ExecutionResultVerificationError('修复工作区仍有未提交改动');
+      const ancestry = await this.commands.run('git', [
+        '-C',
+        repositoryPath,
+        'merge-base',
+        '--is-ancestor',
+        baseline.gitHead,
+        'HEAD',
+      ]);
+      if (ancestry.exitCode !== 0)
+        throw new ExecutionResultVerificationError('当前 Git 历史不包含执行前基线');
       const actualCommits = lines(
         await this.git(repositoryPath, [
           'rev-list',
@@ -60,7 +93,17 @@ export class GitExecutionResultVerifier implements ExecutionResultVerifier {
           `${baseline.gitHead}..HEAD`,
         ]),
       );
-      if (!Array.isArray(value) || !value.every((item) => typeof item === 'string'))
+      if (
+        !Array.isArray(value) ||
+        !value.every(
+          (item) =>
+            typeof item === 'string' &&
+            (assertion.workspaceBindingId
+              ? /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u
+              : /^[a-f0-9]{7,64}$/u
+            ).test(item),
+        )
+      )
         throw new ExecutionResultVerificationError(
           'Codex 返回的本地 Commit 证据格式无效',
         );
@@ -75,15 +118,99 @@ export class GitExecutionResultVerifier implements ExecutionResultVerifier {
             ]),
           );
         } catch {
-          throw new ExecutionResultVerificationError(
-            `Codex 返回的本地 Commit ${commit} 不存在`,
-          );
+          throw new ExecutionResultVerificationError('Codex 返回的本地 Commit 不存在');
         }
       if (!sameValues(reportedCommits, actualCommits))
         throw new ExecutionResultVerificationError(
           'Codex 返回的本地 Commit 与本次 Execution 创建记录不一致',
         );
     }
+  }
+
+  private async verifyDelivery(
+    repositoryPath: string,
+    assertion: Extract<ExecutionResultAssertion, { kind: 'GIT_DELIVERY_STATE' }>,
+    baseline: ExecutionResultBaseline,
+    result: JsonValue,
+  ): Promise<void> {
+    const member = valueAtPath(result, assertion.resultPath);
+    if (!member || typeof member !== 'object' || Array.isArray(member))
+      throw new ExecutionResultVerificationError('更新结果缺少工程交付事实');
+    if (!['PUSHED', 'DEPLOYED', 'UNCHANGED'].includes(String(member.state))) return;
+    const head = await this.git(repositoryPath, ['rev-parse', 'HEAD']);
+    if (
+      await this.git(repositoryPath, [
+        'status',
+        '--porcelain=v1',
+        '--untracked-files=all',
+      ])
+    )
+      throw new ExecutionResultVerificationError('更新工作区仍有未提交改动');
+    if (member.state === 'UNCHANGED') {
+      if (!baseline || baseline.gitHead !== head)
+        throw new ExecutionResultVerificationError('声明未改动的工程存在未交付提交');
+      return;
+    }
+    if (member.commit !== head)
+      throw new ExecutionResultVerificationError('已推送的提交与工程工作区不一致');
+    if (assertion.candidateCommits?.length) {
+      if (!baseline || head === baseline.gitHead)
+        throw new ExecutionResultVerificationError('工程尚未集成本批候选提交');
+      for (const candidate of assertion.candidateCommits) {
+        const ancestor = await this.commands.run('git', [
+          '-C',
+          repositoryPath,
+          'merge-base',
+          '--is-ancestor',
+          candidate,
+          head,
+        ]);
+        if (ancestor.exitCode === 0) continue;
+        const sourcePatch = await this.git(repositoryPath, [
+          'show',
+          '--format=medium',
+          '--no-color',
+          candidate,
+        ]);
+        const appliedPatch = await this.git(repositoryPath, [
+          'log',
+          '--no-merges',
+          '-p',
+          '--no-color',
+          `${baseline.gitHead}..${head}`,
+        ]);
+        const sourceId = await this.commands.run(
+          'git',
+          ['-C', repositoryPath, 'patch-id', '--stable'],
+          { stdin: sourcePatch },
+        );
+        const applied = await this.commands.run(
+          'git',
+          ['-C', repositoryPath, 'patch-id', '--stable'],
+          { stdin: appliedPatch },
+        );
+        const fingerprint = sourceId.stdout.trim().split(/\s+/u)[0];
+        if (
+          sourceId.exitCode !== 0 ||
+          applied.exitCode !== 0 ||
+          !fingerprint ||
+          !lines(applied.stdout.trim()).some(
+            (line) => line.split(/\s+/u)[0] === fingerprint,
+          )
+        )
+          throw new ExecutionResultVerificationError('工程交付提交未包含本批冻结候选');
+      }
+    }
+    const branch = `refs/heads/${assertion.targetBranch}`;
+    const remote = await this.git(repositoryPath, [
+      'ls-remote',
+      '--exit-code',
+      '--refs',
+      'origin',
+      branch,
+    ]);
+    if (!lines(remote).includes(`${head}\t${branch}`))
+      throw new ExecutionResultVerificationError('工程远端分支尚未确认当前交付提交');
   }
 
   private async git(repositoryPath: string, args: string[]): Promise<string> {
@@ -121,7 +248,7 @@ export function verifyResultContent(
   }
 }
 
-function valueAtPath(value: JsonValue, path: string[]): JsonValue | undefined {
+export function valueAtPath(value: JsonValue, path: string[]): JsonValue | undefined {
   let current: JsonValue | undefined = value;
   for (const segment of path) {
     if (

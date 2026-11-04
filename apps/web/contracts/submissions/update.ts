@@ -122,6 +122,14 @@ const UpdateBatchEntryViewSchema = z.object({
   repairHandoffs: z.array(FrozenRepairHandoffSchema).nullable(),
 });
 
+const EngineeringDeliveryViewSchema = z.object({
+  alias: z.string(),
+  label: z.string(),
+  commit: CommitShaSchema.nullable(),
+  evidence: z.string().nullable(),
+  artifactSha256: z.string().nullable(),
+});
+
 const UpdateAttemptResultViewSchema = z.discriminatedUnion('outcome', [
   ManualHandoffResultViewSchema,
   z.object({
@@ -130,6 +138,7 @@ const UpdateAttemptResultViewSchema = z.discriminatedUnion('outcome', [
     validations: z.array(UpdateValidationSchema),
     warnings: z.array(z.string()),
     handoffUse: UpdateHandoffUseSchema.nullable(),
+    engineeringDeliveries: z.array(EngineeringDeliveryViewSchema).optional(),
   }),
   z.object({
     outcome: z.literal('FAILED'),
@@ -141,6 +150,7 @@ const UpdateAttemptResultViewSchema = z.discriminatedUnion('outcome', [
     pendingActions: z.array(z.string()),
     failureCode: z.string().nullable(),
     handoffUse: UpdateHandoffUseSchema.nullable(),
+    engineeringDeliveries: z.array(EngineeringDeliveryViewSchema).optional(),
   }),
 ]);
 
@@ -186,6 +196,7 @@ export const UpdateBatchViewSchema = z.object({
   activeExecutionId: z.uuid().nullable(),
   frozenAt: z.iso.datetime(),
   engineeringName: z.string().trim().min(1),
+  engineeringNames: z.record(z.string(), z.string()).optional(),
   targetBranch: z.string().trim().min(1),
   environmentName: z.string().trim().min(1),
   hasManualDatabaseOperation: z.boolean(),

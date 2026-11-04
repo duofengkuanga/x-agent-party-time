@@ -14,7 +14,7 @@ export type ExecutionRow = DatabaseRow<
     Execution,
     | 'owner'
     | 'codexTurn'
-    | 'workspace'
+    | 'workspaces'
     | 'attachments'
     | 'lease'
     | 'outcome'
@@ -28,7 +28,7 @@ export type ExecutionRow = DatabaseRow<
   skill_name: string | null;
   skill_bundle_hash: string | null;
   skill_source_revision: string | null;
-  workspace_json: string | null;
+  workspace_json: string;
   lease_token_hash: string | null;
   lease_expires_at: string | null;
   outcome_json: string | null;
@@ -94,7 +94,7 @@ export class ExecutionRecords {
         id: current.owner_id,
       },
       codex_turn: mapCodexTurn(current),
-      workspace: current.workspace_json ? JSON.parse(current.workspace_json) : null,
+      workspaces: JSON.parse(current.workspace_json),
       attachments,
       lease: current.lease_expires_at ? { expiresAt: current.lease_expires_at } : null,
       outcome: current.outcome_json ? JSON.parse(current.outcome_json) : null,

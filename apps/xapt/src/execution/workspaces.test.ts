@@ -14,6 +14,8 @@ import {
 } from 'node:fs/promises';
 
 import { join } from 'node:path';
+import { GitExecutionResultVerifier } from './resultVerification';
+import { NodeCommandRunner } from '../platform/system';
 import { xaptPaths } from '../platform/paths';
 import { GitExecutionWorkspaceManager } from './workspaces';
 
@@ -262,6 +264,9 @@ describe('GitExecutionWorkspaceManager', () => {
         await readFile(join(worktree, 'node_modules', 'dep', 'dist', 'index.js'), 'utf8'),
       ).toBe('dependency');
     }
+    await symlink(join(binding, 'dist'), join(repair, 'dist'));
+    await manager.prepare(binding, repairWorkspace('isolated-build'));
+    await expect(lstat(join(repair, 'dist'))).rejects.toMatchObject({ code: 'ENOENT' });
     await mkdir(join(repair, 'dist'));
     await writeFile(join(repair, 'dist', 'artifact'), 'repair output');
     await manager.prepare(binding, repairWorkspace('isolated-build'));
@@ -337,6 +342,66 @@ describe('GitExecutionWorkspaceManager', () => {
       '工作区父目录不是私有目录',
     );
     expect((await lstat(join(outside, 'node_modules'))).isSymbolicLink()).toBe(true);
+  });
+
+  test('重试沿用工作区原始基线，累计提交全部进入候选，额外提交阻止轮换', async () => {
+    const { root, binding } = await createRepository();
+    const manager = new GitExecutionWorkspaceManager(xaptPaths(root));
+    const workspace = repairWorkspace('cumulative');
+    const original = await manager.prepare(binding, workspace);
+    if (original.kind !== 'EXECUTE' || !original.baseCommit)
+      throw new Error('缺少原始基线');
+    const repair = original.cwd;
+    await run(['git', '-C', repair, 'config', 'user.name', 'Test']);
+    await run(['git', '-C', repair, 'config', 'user.email', 'test@example.invalid']);
+    await writeFile(join(repair, 'first.txt'), 'first attempt');
+    await run(['git', '-C', repair, 'add', 'first.txt']);
+    await run(['git', '-C', repair, 'commit', '-m', 'first attempt']);
+    const first = await output(['git', '-C', repair, 'rev-parse', 'HEAD']);
+
+    const retried = await manager.prepare(binding, workspace);
+    expect(retried).toMatchObject({ cwd: repair, baseCommit: original.baseCommit });
+    await writeFile(join(repair, 'second.txt'), 'second attempt');
+    await run(['git', '-C', repair, 'add', 'second.txt']);
+    await run(['git', '-C', repair, 'commit', '-m', 'second attempt']);
+    const second = await output(['git', '-C', repair, 'rev-parse', 'HEAD']);
+    const verifier = new GitExecutionResultVerifier(new NodeCommandRunner());
+    const assertions = [
+      {
+        kind: 'GIT_COMMITS_CREATED' as const,
+        workspaceBindingId: '00000000-0000-4000-8000-000000000101',
+        resultPath: ['result', 'repositories', 'repo-1', 'commits'],
+      },
+    ];
+    const result = (commits: string[]) => ({
+      result: { outcome: 'COMPLETED', repositories: { 'repo-1': { commits } } },
+    });
+    await expect(
+      verifier.verify(
+        repair,
+        assertions,
+        { gitHead: original.baseCommit },
+        result([first, second]),
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      verifier.verify(
+        repair,
+        assertions,
+        { gitHead: original.baseCommit },
+        result([second]),
+      ),
+    ).rejects.toThrow('创建记录不一致');
+
+    await writeFile(join(repair, 'draft.txt'), 'private draft');
+    const rotated = {
+      ...repairWorkspace('next-round'),
+      rotateFrom: { key: workspace.key, head: second },
+    };
+    await expect(manager.prepare(binding, rotated)).rejects.toThrow(
+      '旧修复工作区有额外改动',
+    );
+    expect(await readFile(join(repair, 'draft.txt'), 'utf8')).toBe('private draft');
   });
 
   test('removeWorkspaces 先全量校验再删除，force 覆盖未提交修改', async () => {

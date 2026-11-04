@@ -1,3 +1,4 @@
+import { ExecutionWorkspacesSchema } from '@agent-party-time/execution-contract';
 import { Database } from 'bun:sqlite';
 import { createHash } from 'node:crypto';
 import {
@@ -67,6 +68,10 @@ const schema32 = schema31
   WHERE workspace_json IS NOT NULL AND state IN ('CLAIMED', 'RUNNING', 'CANCEL_REQUESTED');
 CREATE INDEX platform_execution_runner_claim`,
   );
+const schema33 = readFileSync(
+  new URL('./fixtures/serverV33.sql', import.meta.url),
+  'utf8',
+);
 const quote = (name: string) => `"${name.replaceAll('"', '""')}"`;
 
 function schemaObjects(db: Database): SchemaObject[] {
@@ -88,7 +93,9 @@ function assertSchema(db: Database, version: number): void {
           ? schema31
           : version === 32
             ? schema32
-            : targetSchema;
+            : version === 33
+              ? schema33
+              : targetSchema;
     if (version < 30) sql = sql.replace(OBSERVATION_SCHEMA, '');
     if (version < 29) sql = sql.replace('  handoffs_json TEXT NOT NULL,\n', '');
     if (version === 27) sql = sql.replace(",\n    'HANDED_OFF'", '');
@@ -103,8 +110,19 @@ function assertSchema(db: Database, version: number): void {
             .trim(),
         })),
       );
-    if (normalize(schemaObjects(db)) !== normalize(schemaObjects(reference)))
-      throw new Error('数据库结构与对应版本不一致，原数据已保留，请核对结构差异。');
+    const actual = schemaObjects(db);
+    const expected = schemaObjects(reference);
+    if (normalize(actual) !== normalize(expected)) {
+      const names = new Set([...actual, ...expected].map(({ name }) => name));
+      const differences = [...names].filter(
+        (name) =>
+          normalize(actual.filter((row) => row.name === name)) !==
+          normalize(expected.filter((row) => row.name === name)),
+      );
+      throw new Error(
+        `数据库结构与对应版本不一致，原数据已保留。差异：${differences.join('、')}`,
+      );
+    }
   } finally {
     reference.close();
   }
@@ -162,7 +180,7 @@ function assertSettled(db: Database): void {
 function snapshot(
   db: Database,
   original?: TableSnapshot[],
-  rewrites: ResultRewrite[] = [],
+  rewrites: Array<Omit<ResultRewrite, 'before'> & { before: string | null }> = [],
   renamed = false,
 ): TableSnapshot[] {
   const tables =
@@ -176,6 +194,13 @@ function snapshot(
           .all()
           .map((c) => c.name),
       }));
+  const changes = new Map<string, typeof rewrites>();
+  for (const change of rewrites) {
+    const key = `${change.table}:${change.rowid}`;
+    const current = changes.get(key);
+    if (current) current.push(change);
+    else changes.set(key, [change]);
+  }
   return tables.map(({ name, columns }) => {
     const currentName = renamed ? (SCHEMA_31_TABLE_NAMES[name] ?? name) : name;
     const hash = createHash('sha256');
@@ -186,9 +211,7 @@ function snapshot(
       )
       .iterate()) {
       const { __migration_rowid: rowid, ...values } = row;
-      for (const change of rewrites.filter(
-        (change) => change.table === currentName && change.rowid === rowid,
-      )) {
+      for (const change of changes.get(`${currentName}:${rowid}`) ?? []) {
         if (values[change.column] !== change.after)
           throw new Error('历史结果转换校验失败。');
         values[change.column] = change.before;
@@ -204,7 +227,7 @@ function snapshot(
 function assertUnchanged(
   db: Database,
   before: TableSnapshot[],
-  rewrites: ResultRewrite[] = [],
+  rewrites: Array<Omit<ResultRewrite, 'before'> & { before: string | null }> = [],
   renamed = false,
 ): void {
   if (JSON.stringify(snapshot(db, before, rewrites, renamed)) !== JSON.stringify(before))
@@ -260,13 +283,110 @@ function rebuildTable(db: Database, reference: Database, table: string): void {
   for (const object of objects.filter((row) => row.type === 'index')) db.exec(object.sql);
 }
 
+function migrateWorkspaceCollections(db: AppDatabase): void {
+  const reference = new Database(':memory:');
+  try {
+    reference.exec(targetSchema);
+    const table = 'platform_execution';
+    const objects = schemaObjects(reference).filter((row) => row.tbl_name === table);
+    const ddl = objects.find((row) => row.type === 'table')!.sql;
+    const columns = db
+      .query<{ name: string }, []>(`PRAGMA table_info(${table})`)
+      .all()
+      .map(({ name }) => name);
+    const rows = db.all<{
+      rowid: number;
+      binding_id: string;
+      workspace_json: string | null;
+    }>(`SELECT rowid, binding_id, workspace_json FROM ${table}`);
+    const workspaceRewrites = rows.map(({ rowid, binding_id, workspace_json }) => ({
+      table,
+      rowid,
+      column: 'workspace_json',
+      before: workspace_json,
+      after: JSON.stringify([
+        {
+          bindingId: binding_id,
+          workspace: workspace_json ? JSON.parse(workspace_json) : null,
+        },
+      ]),
+    }));
+    for (const change of workspaceRewrites)
+      if (!ExecutionWorkspacesSchema.safeParse(JSON.parse(change.after)).success)
+        throw new Error('旧工作区记录结构无效，原数据已保留。');
+    const before = snapshot(db);
+    db.exec(
+      ddl.replace(
+        'CREATE TABLE platform_execution',
+        'CREATE TABLE platform_execution_migrating',
+      ),
+    );
+    db.exec(`INSERT INTO platform_execution_migrating (rowid, ${columns.join(', ')})
+      SELECT rowid, ${columns
+        .map((column) =>
+          column === 'workspace_json'
+            ? "json_array(json_object('bindingId', binding_id, 'workspace', json(workspace_json)))"
+            : quote(column),
+        )
+        .join(', ')}
+      FROM platform_execution`);
+    db.exec(
+      'DROP TABLE platform_execution; ALTER TABLE platform_execution_migrating RENAME TO platform_execution',
+    );
+    for (const object of objects) if (object.type !== 'table') db.exec(object.sql);
+    // Compare parsed contents rather than serialization differences in historical JSON.
+    const stored = db.prepare<{ workspace_json: string }, [number]>(
+      'SELECT workspace_json FROM platform_execution WHERE rowid = ?',
+    );
+    const verified = workspaceRewrites.map((change) => {
+      const after = stored.get(change.rowid)?.workspace_json;
+      if (!after || JSON.stringify(JSON.parse(after)) !== change.after)
+        throw new Error('旧工作区转换校验失败。');
+      return { ...change, after };
+    });
+    assertUnchanged(db, before, verified);
+  } finally {
+    reference.close();
+  }
+}
+
+function migrateSubmissionModes(db: AppDatabase): void {
+  const reference = new Database(':memory:');
+  try {
+    reference.exec(targetSchema);
+    const additions = {
+      test_submission: { mode: "'AGENT_PARTY'" },
+      submission_item: { target_branch_locked_at: 'NULL' },
+      submission_update_batch: { person_agent_scope_json: 'NULL' },
+      submission_cleanup: { expected_heads_json: 'NULL' },
+    };
+    for (const [table, extra] of Object.entries(additions)) {
+      const objects = schemaObjects(reference).filter((row) => row.tbl_name === table);
+      const ddl = objects.find((row) => row.type === 'table')!.sql;
+      const columns = db
+        .all<{ name: string }>(`PRAGMA table_info(${quote(table)})`)
+        .map(({ name }) => quote(name));
+      const next = `${table}_migrating`;
+      db.exec(ddl.replace(`CREATE TABLE ${table}`, `CREATE TABLE ${next}`));
+      db.exec(`INSERT INTO ${next} (rowid, ${[...columns, ...Object.keys(extra)].join(', ')})
+        SELECT rowid, ${[...columns, ...Object.values(extra)].join(', ')} FROM ${table}`);
+      db.exec(`DROP TABLE ${table}; ALTER TABLE ${next} RENAME TO ${table};`);
+      for (const object of objects) if (object.type !== 'table') db.exec(object.sql);
+    }
+    db.exec(`UPDATE platform_mutation SET result_json = json_set(result_json, '$.mode', 'AGENT_PARTY')
+      WHERE operation IN ('SUBMISSION_CREATE', 'SUBMISSION_ADD_ITEMS', 'SUBMISSION_ENVIRONMENT_CHANGE', 'SUBMISSION_UPDATE')`);
+  } finally {
+    reference.close();
+  }
+}
+
 /** Explicit offline migration; application startup never invokes this entry point. */
 export function migrateServerDatabase(
   databasePath: string,
   apply = false,
   deploymentCommands: unknown = {},
 ): MigrationReport {
-  if (SERVER_SCHEMA_VERSION !== 33) throw new Error('此迁移只适用于 Server Schema 33。');
+  if (SERVER_SCHEMA_VERSION !== 34) throw new Error('此迁移只适用于 Server Schema 34。');
   const path = realpathSync(databasePath);
   if (!statSync(path).isFile()) throw new Error('请指定现有数据库文件。');
   const db = new AppDatabase(
@@ -281,13 +401,13 @@ export function migrateServerDatabase(
     transaction = true;
     const version = db.query<{ user_version: number }, []>('PRAGMA user_version').get()!
       .user_version;
-    if (![27, 28, 29, 30, 31, 32, 33].includes(version))
+    if (![27, 28, 29, 30, 31, 32, 33, 34].includes(version))
       throw new Error(`不支持从版本 ${version} 迁移；原数据已保留。`);
     assertSchema(db, version);
     assertIntegrity(db);
     if (version < 29) assertSettled(db);
     const scripts =
-      version === 33
+      version >= 33
         ? new Map<string, string>()
         : planScriptCutover(
             db,
@@ -296,62 +416,68 @@ export function migrateServerDatabase(
           );
     const before = snapshot(db);
     const report: MigrationReport = {
-      status: version === 33 ? 'current' : 'ready',
+      status: version === 34 ? 'current' : 'ready',
       database: path,
       from: version,
-      to: 33,
+      to: 34,
       backupPath: null,
       rewrittenResults: 0,
       historicalConfirmations: 0,
       tables: before.map(({ name, rows }) => ({ name, rows })),
     };
-    if (apply && version !== 33) {
+    if (apply && version !== 34) {
       report.backupPath = backupDatabase(path, before);
-      const reference = new Database(':memory:');
-      try {
-        reference.exec(schema30);
-        if (version === 27) rebuildTable(db, reference, 'platform_execution');
-        if (version < 29) rebuildTable(db, reference, 'cooking_update_batch_entry');
-        if (version < 30) db.exec(OBSERVATION_SCHEMA);
-        const current = new Database(':memory:');
-        let renamed: ResultRewrite[];
+      if (version < 33) {
+        const reference = new Database(':memory:');
         try {
-          current.exec(schema32);
-          const renamedTables = new Set(Object.values(SCHEMA_31_TABLE_NAMES));
-          const indexes = schemaObjects(current)
-            .filter((row) => row.type === 'index' && renamedTables.has(row.tbl_name))
-            .map((row) => row.sql);
-          renamed = version < 31 ? migrateSchema31Names(db, indexes) : [];
-          if (version < 32) {
-            db.exec('DROP INDEX platform_execution_binding_reservation');
-            for (const index of schemaObjects(current).filter((row) =>
-              [
-                'platform_execution_binding_reservation',
-                'platform_execution_workspace_reservation',
-              ].includes(row.name),
-            ))
-              db.exec(index.sql);
+          reference.exec(schema30);
+          if (version === 27) rebuildTable(db, reference, 'platform_execution');
+          if (version < 29) rebuildTable(db, reference, 'cooking_update_batch_entry');
+          if (version < 30) db.exec(OBSERVATION_SCHEMA);
+          const current = new Database(':memory:');
+          let renamed: ResultRewrite[];
+          try {
+            current.exec(schema32);
+            const renamedTables = new Set(Object.values(SCHEMA_31_TABLE_NAMES));
+            const indexes = schemaObjects(current)
+              .filter((row) => row.type === 'index' && renamedTables.has(row.tbl_name))
+              .map((row) => row.sql);
+            renamed = version < 31 ? migrateSchema31Names(db, indexes) : [];
+            if (version < 32) {
+              db.exec('DROP INDEX platform_execution_binding_reservation');
+              for (const index of schemaObjects(current).filter((row) =>
+                [
+                  'platform_execution_binding_reservation',
+                  'platform_execution_workspace_reservation',
+                ].includes(row.name),
+              ))
+                db.exec(index.sql);
+            }
+          } finally {
+            current.close();
           }
+          const rewrites = version < 29 ? rewriteHistoricalResults(db) : [];
+          assertSchema(db, 32);
+          assertIntegrity(db);
+          assertUnchanged(db, before, [...renamed, ...rewrites], version < 31);
+          report.rewrittenResults = rewrites.length;
+          report.historicalConfirmations = migrateSchema32Deployment(
+            db,
+            schema33,
+            scripts,
+          );
+          assertSchema(db, 33);
+          assertIntegrity(db);
         } finally {
-          current.close();
+          reference.close();
         }
-        const rewrites = version < 29 ? rewriteHistoricalResults(db) : [];
-        assertSchema(db, 32);
-        assertIntegrity(db);
-        assertUnchanged(db, before, [...renamed, ...rewrites], version < 31);
-        report.rewrittenResults = rewrites.length;
-        report.historicalConfirmations = migrateSchema32Deployment(
-          db,
-          targetSchema,
-          scripts,
-        );
-        assertSchema(db, 33);
-        assertIntegrity(db);
-        db.exec('PRAGMA user_version=33');
-        report.status = 'migrated';
-      } finally {
-        reference.close();
       }
+      migrateWorkspaceCollections(db);
+      migrateSubmissionModes(db);
+      assertSchema(db, 34);
+      assertIntegrity(db);
+      db.exec('PRAGMA user_version=34');
+      report.status = 'migrated';
     }
     db.exec('COMMIT');
     transaction = false;

@@ -1,5 +1,8 @@
 import { expect, test } from 'bun:test';
-import type { ExecutionWorkspace } from '@agent-party-time/execution-contract';
+import {
+  executionWorkspaces,
+  type ExecutionWorkspace,
+} from '@agent-party-time/execution-contract';
 import {
   executionsConflict,
   hasExecutionCapacity,
@@ -15,7 +18,11 @@ function access(
     isolation === 'BRANCH_WORKTREE'
       ? { key, isolation, baseRef: 'main', branch: key }
       : { key, isolation, baseRef: 'main' };
-  return { bindingId, workspace, sessionId: null, codexTurn: null };
+  return {
+    workspaces: executionWorkspaces(bindingId, workspace),
+    sessionId: null,
+    codexTurn: null,
+  };
 }
 
 test('同 Binding 不同分支/Detached 工作区并行，同通道、相同工作区与 Session 互斥', () => {
@@ -27,14 +34,26 @@ test('同 Binding 不同分支/Detached 工作区并行，同通道、相同工�
   expect(
     executionsConflict(branch, {
       ...detached,
-      workspace: { ...detached.workspace!, key: 'repair' },
+      workspaces: executionWorkspaces('binding', {
+        ...detached.workspaces[0]!.workspace!,
+        key: 'repair',
+      }),
     }),
   ).toBe(true);
-  expect(executionsConflict(branch, { ...detached, workspace: null })).toBe(true);
+  expect(
+    executionsConflict(branch, {
+      ...detached,
+      workspaces: executionWorkspaces('binding'),
+    }),
+  ).toBe(true);
   expect(
     executionsConflict(
       { ...branch, sessionId: 'session' },
-      { ...detached, bindingId: 'other', sessionId: 'session' },
+      {
+        ...detached,
+        workspaces: access('update', 'DETACHED_WORKTREE', 'other').workspaces,
+        sessionId: 'session',
+      },
     ),
   ).toBe(true);
   expect(executionsConflict(branch, access('repair2', 'BRANCH_WORKTREE', 'other'))).toBe(
@@ -47,15 +66,14 @@ test('同 Binding 不同分支/Detached 工作区并行，同通道、相同工�
 
 test('清理只互斥所涉及工作区，不能删除正在执行的工作区', () => {
   const cleanup: ExecutionAccess = {
-    bindingId: 'binding',
     sessionId: null,
     codexTurn: null,
-    workspace: {
+    workspaces: executionWorkspaces('binding', {
       key: 'cleanup',
       isolation: 'CLEANUP_WORKTREES',
       workspaceKeys: ['repair'],
       completionResult: {},
-    },
+    }),
   };
   expect(executionsConflict(cleanup, access('repair', 'BRANCH_WORKTREE'))).toBe(true);
   expect(executionsConflict(access('repair', 'BRANCH_WORKTREE'), cleanup)).toBe(true);
@@ -63,12 +81,12 @@ test('清理只互斥所涉及工作区，不能删除正在执行的工作区',
   expect(
     executionsConflict(cleanup, {
       ...cleanup,
-      workspace: {
+      workspaces: executionWorkspaces('binding', {
         key: 'other-cleanup',
         isolation: 'CLEANUP_WORKTREES',
         workspaceKeys: ['other'],
         completionResult: {},
-      },
+      }),
     }),
   ).toBe(true);
 });

@@ -32,9 +32,13 @@ export function testerBugStatus(
         return `${responsible}正在处理，当前无需你操作。`;
     }
   }
-  if (item && !item.environmentAccess.owned)
+  const personAgent = snapshot.submission.submission.mode === 'PERSON_AGENT';
+  const environments = personAgent ? snapshot.submission.items : item ? [item] : [];
+  if (environments.some(({ environmentAccess }) => !environmentAccess.owned))
     return '测试环境正由其他提测使用，当前暂不可复测。';
-  if (item && !item.environmentAccess.deploymentConfirmed)
+  if (
+    environments.some(({ environmentAccess }) => !environmentAccess.deploymentConfirmed)
+  )
     return `等待${responsible}确认测试环境，当前暂不可复测。`;
   if (bug.stage === 'WAITING_FOR_UPDATE') {
     if (visual.state === 'FAILED') return `环境更新启动未完成，等待${responsible}处理。`;
@@ -57,7 +61,9 @@ export function testerBugStatus(
     return '测试环境正在更新，请稍后复测。';
   }
   return item && bug.availableActions.includes('VERIFY_PASS')
-    ? `可以在${item.environment.name}复测。`
+    ? personAgent
+      ? '可以在本次提测环境复测。'
+      : `可以在${item.environment.name}复测。`
     : '当前暂不可复测。';
 }
 

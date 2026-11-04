@@ -6,6 +6,17 @@ setup:
   - click: '.auth-submit'
   - wait: { load: networkidle }
 cases:
+  - name: submission composer defaults to immutable PersonAgent mode
+    steps:
+      - open: __BASE_URL__/submissions/__SUBMISSION_ID__
+      - wait: '.collab-rail__create'
+      - click: '.collab-rail__create'
+      - wait: '#submission-composer-title'
+    assert:
+      - text: { sel: '[aria-label="协作模式"]', contains: PersonAgent }
+      - text: { sel: '[role="dialog"][aria-labelledby="submission-composer-title"]', contains: 提测创建后，协作模式固定 }
+      - visible: '[aria-label="Agent"]'
+
   - name: projects share the main shell in both themes
     steps:
       - open: __BASE_URL__/projects

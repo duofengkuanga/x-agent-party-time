@@ -63,6 +63,7 @@ async function setup(createDatabase: ReturnType<typeof testDatabases>) {
     users.owner.id,
     project.id,
     {
+      mode: 'AGENT_PARTY' as const,
       mutationId: randomUUID(),
       title: '双工程提测',
       requirementDescription: '验证全局缺陷队列',

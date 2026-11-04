@@ -22,7 +22,7 @@ import {
 import { ExecutionInteractions } from './interactions';
 import { sleepUntilNextPoll } from './polling';
 import { projectTransaction, type ExecutionProjector } from './projection';
-import { ExecutionQueue } from './queue';
+import { ExecutionQueue, type ExecutionClaimResolver } from './queue';
 import { ExecutionRecords, type AttachmentRow, type FileRow } from './records';
 const DEFAULT_LEASE_DURATION_MS = 15_000;
 
@@ -44,6 +44,7 @@ export class ExecutionService {
     createLeaseToken: () => string = () => randomBytes(32).toString('base64url'),
     private readonly leaseDurationMs: number = DEFAULT_LEASE_DURATION_MS,
     private readonly project: ExecutionProjector = () => {},
+    resolveClaim?: ExecutionClaimResolver,
   ) {
     this.records = new ExecutionRecords(db);
     this.queue = new ExecutionQueue(
@@ -53,6 +54,7 @@ export class ExecutionService {
       createLeaseToken,
       leaseDurationMs,
       project,
+      resolveClaim,
     );
     const interactions = new ExecutionInteractions(
       db,
@@ -118,7 +120,7 @@ export class ExecutionService {
             taskSkillBinding?.skillName ?? null,
             taskSkillBinding?.bundleHash ?? null,
             taskSkillBinding?.sourceRevision ?? null,
-            input.workspace ? JSON.stringify(input.workspace) : null,
+            JSON.stringify(input.workspaces),
             createdAt,
           ],
         );

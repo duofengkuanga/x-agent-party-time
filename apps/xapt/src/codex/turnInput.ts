@@ -21,6 +21,15 @@ export function codexUserInput(input: CodexExecutionInput): unknown[] {
           },
         ]
       : []),
+    ...(input.workspaceDirectories?.length
+      ? [
+          {
+            type: 'text',
+            text: `本轮工程工作区（首项为主目录）：${JSON.stringify(input.workspaceDirectories)}。在各目录按对应工程规则执行。`,
+            text_elements: [],
+          },
+        ]
+      : []),
     {
       type: 'text',
       text: `终态输出 JSON Schema（本次执行及手动恢复原会话时使用）：\n请在执行结束时按以下 Schema 输出最终 JSON；不要把 Schema 本身当作执行结果。\n\n\`\`\`json\n${JSON.stringify(input.outputSchema)}\n\`\`\``,

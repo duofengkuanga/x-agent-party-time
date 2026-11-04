@@ -1,3 +1,4 @@
+import { readPersonAgentUpdateScope } from './personAgentUpdate';
 import { requireSubmissionAccess } from '@/server/submissions/shared/access';
 import {
   parseCommits,
@@ -7,7 +8,7 @@ import {
   projectSubmissionInteraction,
   type SubmissionInteractionRow,
 } from '@/server/submissions/shared/interactionProjection';
-import { environmentOwned } from '@/server/submissions/environmentAccess';
+import { deliveryEnvironmentAvailable } from '@/server/submissions/environmentAccess';
 import type { AppDatabase } from '@/server/database/index';
 import { PlatformError } from '@/server/platform/errors/index';
 import { ExecutionService } from '@/server/platform/execution/service';
@@ -55,7 +56,7 @@ export class UpdateQueries {
         eligibleAt: row.eligible_at,
         availableActions:
           row.responsible_user_id === userId &&
-          environmentOwned(this.db, row.submission_item_id) &&
+          deliveryEnvironmentAvailable(this.db, row.submission_item_id) &&
           !this.activeBatch(row.submission_item_id)
             ? (['FREEZE_NOW'] as const)
             : [],
@@ -147,6 +148,20 @@ export class UpdateQueries {
         .sort((left, right) => left.sortAt.localeCompare(right.sortAt))
         .map(({ sortAt: _sortAt, ...node }) => node),
     ];
+    const scope = batch.person_agent_scope_json
+      ? readPersonAgentUpdateScope(batch.person_agent_scope_json)
+      : null;
+    const engineeringNames = scope
+      ? Object.fromEntries(
+          scope.map(({ alias, engineeringId }) => [
+            alias,
+            this.db.get<{ name: string }>(
+              'SELECT name FROM platform_engineering WHERE id = ?',
+              engineeringId,
+            )?.name ?? alias,
+          ]),
+        )
+      : null;
     return UpdateBatchViewSchema.parse({
       id: batch.id,
       submissionId: batch.submission_id,
@@ -155,7 +170,10 @@ export class UpdateQueries {
       version: batch.version,
       activeExecutionId: technical ? batch.active_execution_id : null,
       frozenAt: batch.frozen_at,
-      engineeringName: source.engineering_name,
+      engineeringName: engineeringNames
+        ? Object.values(engineeringNames).join(' / ')
+        : source.engineering_name,
+      ...(technical && engineeringNames ? { engineeringNames } : {}),
       targetBranch: source.target_branch,
       environmentName: source.environment_name,
       hasManualDatabaseOperation,
@@ -171,7 +189,7 @@ export class UpdateQueries {
       })),
       timeline,
       availableActions:
-        technical && environmentOwned(this.db, batch.submission_item_id)
+        technical && deliveryEnvironmentAvailable(this.db, batch.submission_item_id)
           ? [
               ...(latest &&
               ((batch.state === 'FAILED' && isTerminal(latest.state)) ||
@@ -180,7 +198,13 @@ export class UpdateQueries {
               !this.hasActiveSessionSync(batch.id)
                 ? (['SYNC_SESSION'] as const)
                 : []),
-              ...(canRestartAfterSkillMismatch(batch, latest)
+              ...(canRestartAfterSkillMismatch(batch, latest) ||
+              (batch.person_agent_scope_json &&
+                batch.state === 'FAILED' &&
+                batch.session_id &&
+                latest &&
+                isTerminal(latest.state) &&
+                !this.hasActiveSessionSync(batch.id))
                 ? (['RETRY_UPDATE'] as const)
                 : []),
             ]
@@ -290,7 +314,7 @@ export class UpdateQueries {
   itemSource(submissionItemId: string): ItemSourceRow {
     const row = this.db.get(
       `SELECT submission.id submission_id, item.id submission_item_id,
-                submission.project_id, submission.status submission_status,
+                submission.project_id, submission.status submission_status, submission.mode submission_mode,
                 submission.title submission_title,
                 engineering.name engineering_name, item.repository_url, item.target_branch,
                 item.environment_name, item.deployment_json,
@@ -317,13 +341,29 @@ export class UpdateQueries {
 
   activeBatch(submissionItemId: string): BatchRow | undefined {
     return this.db.get(
-      `SELECT batch.* FROM submission_update_batch batch
+      `WITH target_resources AS (
+           SELECT member.id, member.environment_id, member.engineering_id, member.repository_url, member.target_branch
+           FROM submission_item anchor
+           JOIN test_submission submission ON submission.id = anchor.submission_id
+           JOIN submission_item member ON member.submission_id = anchor.submission_id
+           WHERE anchor.id = ? AND (submission.mode = 'PERSON_AGENT' OR member.id = anchor.id)
+         )
+         SELECT batch.* FROM submission_update_batch batch
          JOIN submission_item item ON item.id = batch.submission_item_id
-         JOIN submission_item target ON target.id = ?
          WHERE batch.state IN ('READY', 'RUNNING', 'FAILED')
-           AND (item.id = target.id OR item.environment_id = target.environment_id
-             OR ((item.engineering_id = target.engineering_id OR item.repository_url = target.repository_url)
-               AND item.target_branch = target.target_branch))
+           AND EXISTS (
+             SELECT 1 FROM target_resources target
+             JOIN json_each(COALESCE(batch.person_agent_scope_json, json_array(json_object(
+               'itemId', item.id, 'environmentId', item.environment_id,
+               'engineeringId', item.engineering_id, 'repositoryUrl', item.repository_url,
+               'targetBranch', item.target_branch
+             )))) reserved
+             WHERE reserved.value ->> '$.itemId' = target.id
+                OR reserved.value ->> '$.environmentId' = target.environment_id
+                OR ((reserved.value ->> '$.engineeringId' = target.engineering_id
+                  OR reserved.value ->> '$.repositoryUrl' = target.repository_url)
+                  AND reserved.value ->> '$.targetBranch' = target.target_branch)
+           )
          ORDER BY batch.frozen_at, batch.id LIMIT 1`,
       submissionItemId,
     ) as BatchRow | undefined;
@@ -401,6 +441,7 @@ export type ItemSourceRow = {
   submission_id: string;
   submission_item_id: string;
   project_id: string;
+  submission_mode: 'PERSON_AGENT' | 'AGENT_PARTY';
   submission_status: 'ACTIVE' | 'CLOSED';
   submission_title: string;
   engineering_name: string;
@@ -433,6 +474,7 @@ export type BatchRow = {
   session_id: string | null;
   deployment_json: string | null;
   historical_delivery_json: string | null;
+  person_agent_scope_json: string | null;
   frozen_at: string;
   created_at: string;
   updated_at: string;

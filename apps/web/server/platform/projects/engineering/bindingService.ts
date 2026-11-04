@@ -169,8 +169,9 @@ export class BindingService {
             resourceId: id,
           };
         const executionReference = this.db.get(
-          `SELECT 1 present FROM platform_execution
-             WHERE binding_id = ? LIMIT 1`,
+          `SELECT 1 present FROM platform_execution execution
+             JOIN json_each(execution.workspace_json) member
+             WHERE member.value ->> '$.bindingId' = ? LIMIT 1`,
           id,
         );
         if (this.references.some((referenced) => referenced(id)) || executionReference)

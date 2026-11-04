@@ -598,6 +598,7 @@ export type CleanupSourceRow = {
   active_execution_id: string | null;
   session_id: string | null;
   scope_json: string;
+  expected_heads_json: string | null;
   created_at: string;
   updated_at: string;
   responsible_user_id: string;

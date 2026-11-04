@@ -88,6 +88,7 @@ const CreateBugInputBaseSchema = z.object({
   expectedResultAttachmentIds: BugAttachmentIdsSchema,
 });
 export const CreateBugInputSchema = CreateBugInputBaseSchema.extend({
+  submissionItemId: CreateBugInputBaseSchema.shape.submissionItemId.default(null),
   startRepair: z.boolean().optional(),
 }).superRefine(requireDisjointAttachments);
 
@@ -231,7 +232,7 @@ export type LinkedBugsMutationResult = z.infer<typeof LinkedBugsMutationResultSc
 
 export type Bug = z.infer<typeof BugSchema>;
 export type BugView = z.infer<typeof BugViewSchema>;
-export type CreateBugInput = z.infer<typeof CreateBugInputSchema>;
+export type CreateBugInput = z.input<typeof CreateBugInputSchema>;
 export type UpdateBugReportInput = z.infer<typeof UpdateBugReportInputSchema>;
 export type AssignBugInput = z.infer<typeof AssignBugInputSchema>;
 export type RequestRepairInput = z.infer<typeof RequestRepairInputSchema>;

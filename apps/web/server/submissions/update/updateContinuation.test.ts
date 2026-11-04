@@ -102,7 +102,7 @@ describe('UpdateService', () => {
     expect(retried.batchId).toBe(batch.id);
     const [next] = await fixture.executions.claim(fixture.runner.id, 1, 0);
     expect(next!.codexTurn).toEqual(claimed!.codexTurn);
-    expect(next!.workspace).toEqual(claimed!.workspace);
+    expect(next!.workspaces).toEqual(claimed!.workspaces);
   });
 
   test('首次启动失败且原 Task 不存在时不自动重建 Update Task', async () => {

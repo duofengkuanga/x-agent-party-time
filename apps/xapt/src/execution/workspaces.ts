@@ -23,6 +23,10 @@ const WorkspaceRecordSchema = z.strictObject({
   worktreePath: z.string().min(1),
   isolation: z.enum(['BRANCH_WORKTREE', 'DETACHED_WORKTREE']),
   branch: z.string().min(1).nullable(),
+  baseCommit: z
+    .string()
+    .regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u)
+    .optional(),
   updatedAt: z.iso.datetime(),
 });
 
@@ -33,6 +37,7 @@ const WorkspaceStateSchema = z.strictObject({
 });
 
 export interface ExecutionWorkspaceManager {
+  repositoryIdentity(repositoryPath: string): Promise<string>;
   prepare(
     repositoryPath: string,
     workspace: ExecutionWorkspace,
@@ -41,7 +46,8 @@ export interface ExecutionWorkspaceManager {
 }
 
 export type PreparedExecutionWorkspace =
-  { kind: 'EXECUTE'; cwd: string } | { kind: 'COMPLETED'; result: JsonValue };
+  | { kind: 'EXECUTE'; cwd: string; baseCommit?: string }
+  | { kind: 'COMPLETED'; result: JsonValue };
 
 export class GitExecutionWorkspaceManager implements ExecutionWorkspaceManager {
   private readonly statePath: string;
@@ -54,6 +60,10 @@ export class GitExecutionWorkspaceManager implements ExecutionWorkspaceManager {
   ) {
     this.worktreeRoot = resolve(paths.workspaces);
     this.statePath = join(this.worktreeRoot, 'state.json');
+  }
+
+  async repositoryIdentity(repositoryPath: string): Promise<string> {
+    return gitCommonDirectory(repositoryPath);
   }
 
   async prepare(
@@ -114,8 +124,26 @@ export class GitExecutionWorkspaceManager implements ExecutionWorkspaceManager {
     await requireDirectory(repositoryPath, '本机绑定仓库不存在');
     const current = await this.readState();
     if (workspace.isolation === 'CLEANUP_WORKTREES') {
-      await this.cleanup(repositoryPath, workspace.workspaceKeys, current);
+      await this.cleanup(
+        repositoryPath,
+        workspace.workspaceKeys,
+        current,
+        workspace.expectedHeads,
+      );
       return { kind: 'COMPLETED', result: workspace.completionResult };
+    }
+    if (workspace.isolation === 'BRANCH_WORKTREE' && workspace.rotateFrom) {
+      const previous = current.workspaces[workspace.rotateFrom.key];
+      const expected = workspace.rotateFrom.head ?? previous?.baseCommit;
+      if (
+        !previous ||
+        !expected ||
+        previous.repositoryPath !== repositoryPath ||
+        !(await isExpectedGitWorktree(repositoryPath, previous, this.worktreeRoot)) ||
+        (await git(previous.worktreePath, ['rev-parse', 'HEAD'])) !== expected ||
+        (await git(previous.worktreePath, ['status', '--porcelain']))
+      )
+        throw new Error('旧修复工作区有额外改动或无法核实，已保留现场');
     }
     const existing = current.workspaces[workspace.key];
     if (existing) {
@@ -128,15 +156,24 @@ export class GitExecutionWorkspaceManager implements ExecutionWorkspaceManager {
         throw new Error('逻辑工作区与已保存的本机映射不一致');
       if (await isExpectedGitWorktree(repositoryPath, existing, this.worktreeRoot)) {
         await mirrorIgnoredRepositoryContents(repositoryPath, existing.worktreePath);
-        return { kind: 'EXECUTE', cwd: existing.worktreePath };
+        return {
+          kind: 'EXECUTE',
+          cwd: existing.worktreePath,
+          baseCommit: existing.baseCommit,
+        };
       }
       if (await pathExists(existing.worktreePath))
         throw new Error('拒绝复用仓库或分支身份不匹配的本机工作区');
-      delete current.workspaces[workspace.key];
-      await this.writeState(current);
     }
 
     await fetchBaseRef(repositoryPath, workspace.baseRef);
+    const baseCommit =
+      existing?.baseCommit ??
+      (await git(repositoryPath, [
+        'rev-parse',
+        '--verify',
+        `${workspace.baseRef}^{commit}`,
+      ]));
     await mkdir(this.worktreeRoot, { recursive: true, mode: 0o700 });
     await chmod(this.worktreeRoot, 0o700);
     const worktreePath = join(
@@ -145,6 +182,17 @@ export class GitExecutionWorkspaceManager implements ExecutionWorkspaceManager {
     );
     await ensureMissing(worktreePath);
     await git(repositoryPath, ['worktree', 'prune']);
+    const record: WorkspaceRecord = {
+      key: workspace.key,
+      repositoryPath,
+      worktreePath,
+      isolation: workspace.isolation,
+      branch: workspace.isolation === 'BRANCH_WORKTREE' ? workspace.branch : null,
+      baseCommit,
+      updatedAt: this.now().toISOString(),
+    };
+    current.workspaces[workspace.key] = record;
+    await this.writeState(current);
     if (workspace.isolation === 'BRANCH_WORKTREE') {
       const branchExists = await gitSucceeds(repositoryPath, [
         'show-ref',
@@ -156,7 +204,7 @@ export class GitExecutionWorkspaceManager implements ExecutionWorkspaceManager {
         repositoryPath,
         branchExists
           ? ['worktree', 'add', worktreePath, workspace.branch]
-          : ['worktree', 'add', '-b', workspace.branch, worktreePath, workspace.baseRef],
+          : ['worktree', 'add', '-b', workspace.branch, worktreePath, baseCommit],
       );
     } else
       await git(repositoryPath, [
@@ -164,28 +212,11 @@ export class GitExecutionWorkspaceManager implements ExecutionWorkspaceManager {
         'add',
         '--detach',
         worktreePath,
-        workspace.baseRef,
+        baseCommit,
       ]);
 
-    const record: WorkspaceRecord = {
-      key: workspace.key,
-      repositoryPath,
-      worktreePath,
-      isolation: workspace.isolation,
-      branch: workspace.isolation === 'BRANCH_WORKTREE' ? workspace.branch : null,
-      updatedAt: this.now().toISOString(),
-    };
-    current.workspaces[workspace.key] = record;
-    try {
-      await mirrorIgnoredRepositoryContents(repositoryPath, worktreePath);
-      await this.writeState(current);
-    } catch (error) {
-      await git(repositoryPath, ['worktree', 'remove', worktreePath]).catch(
-        () => undefined,
-      );
-      throw error;
-    }
-    return { kind: 'EXECUTE', cwd: worktreePath };
+    await mirrorIgnoredRepositoryContents(repositoryPath, worktreePath);
+    return { kind: 'EXECUTE', cwd: worktreePath, baseCommit };
   }
 
   async workspaceKeys(): Promise<string[]> {
@@ -242,6 +273,7 @@ export class GitExecutionWorkspaceManager implements ExecutionWorkspaceManager {
     repositoryPath: string,
     workspaceKeys: string[],
     current: z.infer<typeof WorkspaceStateSchema>,
+    expectedHeads?: Record<string, string | null>,
   ): Promise<void> {
     for (const key of [...new Set(workspaceKeys)]) {
       const record = current.workspaces[key];
@@ -251,15 +283,41 @@ export class GitExecutionWorkspaceManager implements ExecutionWorkspaceManager {
         dirname(record.worktreePath) !== this.worktreeRoot
       )
         throw new Error('拒绝清理不属于当前绑定的本机工作区');
+      if (expectedHeads && !Object.hasOwn(expectedHeads, key))
+        throw new Error('清理缺少工作区的交付记录');
+      const expected = expectedHeads?.[key] ?? record.baseCommit;
       if (await pathExists(record.worktreePath)) {
         if (!(await isExpectedGitWorktree(repositoryPath, record, this.worktreeRoot)))
           throw new Error('拒绝清理仓库或分支身份不匹配的本机工作区');
         if ((await git(record.worktreePath, ['status', '--porcelain'])).length > 0)
           throw new Error('工作区仍有未提交修改，拒绝自动清理');
+        if (
+          expectedHeads &&
+          (!expected ||
+            (await git(record.worktreePath, ['rev-parse', 'HEAD'])) !== expected)
+        )
+          throw new Error('工作区仍有未确认交付的提交，拒绝自动清理');
         await git(repositoryPath, ['worktree', 'remove', record.worktreePath]);
-      } else await git(repositoryPath, ['worktree', 'prune']);
+      } else {
+        if (
+          expectedHeads &&
+          record.branch &&
+          (await gitSucceeds(repositoryPath, [
+            'show-ref',
+            '--verify',
+            '--quiet',
+            `refs/heads/${record.branch}`,
+          ])) &&
+          (!expected ||
+            (await git(repositoryPath, ['rev-parse', `refs/heads/${record.branch}`])) !==
+              expected)
+        )
+          throw new Error('工作区分支仍有未确认交付的提交，拒绝自动清理');
+        await git(repositoryPath, ['worktree', 'prune']);
+      }
       await deleteBranchIfPresent(repositoryPath, record.branch);
       delete current.workspaces[key];
+      await this.writeState(current);
     }
     await git(repositoryPath, ['worktree', 'prune']);
     await this.writeState(current);
@@ -412,7 +470,17 @@ async function mirrorIgnoredRepositoryContents(
   repositoryPath: string,
   worktreePath: string,
 ): Promise<void> {
-  const entries = await ignoredRepositoryEntries(repositoryPath);
+  const { entries, generated } = await ignoredRepositoryEntries(repositoryPath);
+  for (const entry of generated) {
+    if (!(await ensureWorkspaceParents(worktreePath, entry, false))) continue;
+    const target = join(worktreePath, entry);
+    const link = await readlink(target).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT' || error.code === 'EINVAL') return null;
+      throw error;
+    });
+    if (link === join(repositoryPath, entry)) await unlink(target);
+    else if (link !== null) throw new Error('工作区产物目录指向共享路径，请先核对');
+  }
   if (entries.length === 0) return;
   const dependencies = entries.filter(isDependencyDirectory);
   const shareDependencies =
@@ -550,7 +618,9 @@ async function compatibleDependencyInputs(
   return true;
 }
 
-async function ignoredRepositoryEntries(repositoryPath: string): Promise<string[]> {
+async function ignoredRepositoryEntries(
+  repositoryPath: string,
+): Promise<{ entries: string[]; generated: string[] }> {
   const value = await git(repositoryPath, [
     'ls-files',
     '--others',
@@ -593,8 +663,22 @@ async function ignoredRepositoryEntries(repositoryPath: string): Promise<string[
   );
   // Git can report both an ignored directory and a nested ignored file.
   // Link each subtree once so sibling jobs never create its destination early.
-  return reusable.filter(
-    (entry) =>
-      !reusable.some((parent) => parent !== entry && entry.startsWith(`${parent}/`)),
-  );
+  return {
+    entries: reusable.filter(
+      (entry) =>
+        !reusable.some((parent) => parent !== entry && entry.startsWith(`${parent}/`)),
+    ),
+    generated: [
+      ...new Set([
+        ...outputs,
+        'dist',
+        'dist.zip',
+        'target',
+        'build',
+        '.next',
+        'src/.umi',
+        'src/.umi-production',
+      ]),
+    ],
+  };
 }

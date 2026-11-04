@@ -1,3 +1,5 @@
+import { originalTaskExecution } from '@/server/submissions/shared/executionState';
+import { executionWorkspaces } from '@agent-party-time/execution-contract';
 import { DeploymentScriptSchema } from '@/contracts/projects/engineering';
 import { requireSubmissionAccess } from '@/server/submissions/shared/access';
 import { isTerminal } from '@/server/submissions/shared/executionState';
@@ -180,7 +182,10 @@ export class UpdateService {
         if (this.queries.hasActiveSessionSync(batchId))
           throw new PlatformError('RESOURCE_CONFLICT', '更新会话正在同步');
         const source = batch.source;
-        const previousExecution = this.executions.get(latest.execution_id);
+        const previousExecution = originalTaskExecution(
+          this.executions.get,
+          this.executions.get(latest.execution_id),
+        );
         if (!previousExecution.codexTurn)
           throw new PlatformError(
             'INVALID_TRANSITION',
@@ -191,7 +196,7 @@ export class UpdateService {
           id: this.createId(),
           owner: { namespace: 'submissions', kind: 'SESSION_SYNC', id: syncId },
           attempt: 1,
-          previousExecutionId: latest.execution_id,
+          previousExecutionId: previousExecution.id,
           runnerId: source.runner_id,
           bindingId: source.binding_id,
           priority: 0,
@@ -202,7 +207,9 @@ export class UpdateService {
             outputJsonSchema: previousExecution.codexTurn.outputJsonSchema,
             resultAssertions: previousExecution.codexTurn.resultAssertions,
           },
-          workspace: null,
+          workspaces: batch.person_agent_scope_json
+            ? previousExecution.workspaces
+            : executionWorkspaces(source.binding_id),
           attachmentIds: [],
         });
         const now = this.now().toISOString();

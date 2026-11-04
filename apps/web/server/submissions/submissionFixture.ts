@@ -112,6 +112,7 @@ export function createSubmission(
   actorUserId: string = fixture.users.owner.id,
 ) {
   return fixture.service.createSubmission(actorUserId, fixture.project.id, {
+    mode: 'AGENT_PARTY' as const,
     mutationId: randomUUID(),
     title: '版本 1.0 提测',
     requirementDescription: '验证项目多工程协作流程',

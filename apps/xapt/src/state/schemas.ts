@@ -9,7 +9,19 @@ import { z } from 'zod';
 export const CONNECTION_STATE_SCHEMA_VERSION = 1;
 export const IDENTITY_STATE_SCHEMA_VERSION = 1;
 export const BINDING_STATE_SCHEMA_VERSION = 1;
-export const EXECUTION_STATE_SCHEMA_VERSION = 2;
+export const DeploymentEvidenceSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  workspaceKey: z.string().min(1).max(240),
+  executionId: z.uuid(),
+  source: z.literal('CODEX_COMMAND'),
+  commandSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+  commit: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u),
+  artifactSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+  recordedAt: z.iso.datetime(),
+});
+export type DeploymentEvidence = z.infer<typeof DeploymentEvidenceSchema>;
+
+export const EXECUTION_STATE_SCHEMA_VERSION = 3;
 export const RESULT_BASELINE_STATE_SCHEMA_VERSION = 1;
 export const OUTBOX_STATE_SCHEMA_VERSION = 2;
 export const INSTALL_STATE_SCHEMA_VERSION = 1;

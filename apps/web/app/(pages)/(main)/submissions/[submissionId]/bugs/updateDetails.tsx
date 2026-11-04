@@ -140,7 +140,7 @@ export function UpdateAttemptDetails({
                 )
               }
             >
-              更新 Agent 规则后重试
+              {node.sessionId ? '重试原批次' : '更新 Agent 规则后重试'}
             </button>
           ) : null}
           {latest && batch.availableActions.includes('SYNC_SESSION') ? (
@@ -229,6 +229,32 @@ export function UpdateAttemptDetails({
               empty="未提供已完成操作。"
               label="已完成操作"
             />
+          ) : null}
+          {work?.engineeringDeliveries?.length ? (
+            <section
+              className="collab-round-detail"
+              aria-label="各工程交付结果"
+            >
+              <h4>各工程交付结果</h4>
+              <ul>
+                {work.engineeringDeliveries.map((delivery) => (
+                  <li key={delivery.alias}>
+                    <strong>
+                      {batch.engineeringNames?.[delivery.alias] ??
+                        delivery.alias}{' '}
+                      · {delivery.label}
+                    </strong>
+                    {delivery.evidence ? <p>{delivery.evidence}</p> : null}
+                    {delivery.commit ? <code>{delivery.commit}</code> : null}
+                    {delivery.artifactSha256 ? (
+                      <p>
+                        验收摘要 <code>{delivery.artifactSha256}</code>
+                      </p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </section>
           ) : null}
           {node.canReadObservations && batch.hasManualDatabaseOperation ? (
             <p>本批包含人工数据库交接。请在对应修复记录中查看 SQL 文件。</p>

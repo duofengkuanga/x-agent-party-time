@@ -1,3 +1,5 @@
+import { isPersonAgentBug } from './personAgentScope';
+import { canRetryBeforeRepairStart } from './results';
 import { requireSubmissionAccess } from '@/server/submissions/shared/access';
 import {
   repairStateLabel,
@@ -183,12 +185,17 @@ export class RepairQueries {
         technical &&
         source.submission_status === 'ACTIVE' &&
         source.stage === 'REPAIRING' &&
-        latest &&
-        latest.outcome_json &&
-        isSynchronizableAttempt(latest.outcome_json)
-          ? context?.session_id && !this.hasActiveSessionSync(bugId)
-            ? ['SYNC_SESSION']
-            : []
+        latest?.outcome_json &&
+        isSynchronizableAttempt(latest.outcome_json) &&
+        !this.hasActiveSessionSync(bugId)
+          ? [
+              ...(context?.session_id ? ['SYNC_SESSION' as const] : []),
+              ...(isPersonAgentBug(this.db, bugId) &&
+              JSON.parse(latest.outcome_json).outcome === 'FAILED' &&
+              (context?.session_id || canRetryBeforeRepairStart(latest.outcome_json))
+                ? ['RETRY_REPAIR' as const]
+                : []),
+            ]
           : [],
       presentation: {
         statusLabel,

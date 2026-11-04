@@ -136,7 +136,7 @@ describe('生命周期', () => {
       [`bug-repair:${ciBug.id}`, `update-batch:${ciBatch.id}`],
     ];
     closed.cleanupExecutionIds.forEach((executionId, index) => {
-      const workspace = fixture.executions.get(executionId).workspace;
+      const workspace = fixture.executions.get(executionId).workspaces[0]!.workspace;
       if (workspace.isolation !== 'CLEANUP_WORKTREES')
         throw new Error('关闭提测应创建工作区清理执行');
       expect([...workspace.workspaceKeys].sort()).toEqual(expectedScopes[index]!.sort());
@@ -169,6 +169,7 @@ describe('生命周期', () => {
       fixture.users.owner.id,
       fixture.project.id,
       {
+        mode: 'AGENT_PARTY' as const,
         mutationId: randomUUID(),
         title: '环境复用提测',
         requirementDescription: '关闭后环境可以再次占用',
@@ -316,7 +317,7 @@ describe('生命周期', () => {
     expect(fixture.executions.get(retried.executionId)).toMatchObject({
       approvalPolicy: 'never',
       codexTurn: null,
-      workspace: claimedCleanup.workspace,
+      workspaces: claimedCleanup.workspaces,
     });
     await completeCleanup(fixture, retried.executionId, 'cleanup-session', {
       outcome: 'COMPLETED',

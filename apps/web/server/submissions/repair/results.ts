@@ -1,3 +1,4 @@
+import { personAgentRepairResultSchema } from './personAgentScope';
 import type { Execution, ExecutionState } from '@agent-party-time/execution-contract';
 import { PlatformError } from '@/server/platform/errors/index';
 import type {
@@ -33,6 +34,27 @@ export function projectAttemptResult(outcomeJson: string, technical: boolean) {
       outcome: 'HANDED_OFF' as const,
       questions: technical ? raw.questions : null,
     };
+  if (
+    raw.outcome === 'COMPLETED' &&
+    raw.repositories &&
+    typeof raw.repositories === 'object'
+  ) {
+    const grouped = personAgentRepairResultSchema(
+      Object.keys(raw.repositories).length,
+    ).parse({ result: raw }).result;
+    if (grouped.outcome !== 'COMPLETED')
+      throw new PlatformError('INTERNAL_ERROR', '多工程修复结果无效');
+    const repositories = Object.values(grouped.repositories);
+    const commits = repositories.flatMap((repository) => repository.commits);
+    return {
+      outcome: grouped.outcome,
+      changes: repositories.flatMap((repository) => repository.changes),
+      validations: repositories.flatMap((repository) => repository.validations),
+      warnings: repositories.flatMap((repository) => repository.warnings),
+      commitCount: commits.length,
+      commits: technical ? commits : null,
+    };
+  }
   const { technicalFailure: _technicalFailure, ...contractResult } = raw;
   const parsed = RepairExecutionResultSchema.safeParse({
     result: contractResult,
@@ -84,7 +106,9 @@ export function repairVisual(
   if (latest?.state === 'QUEUED') return queueVisual(queue?.aheadCount);
   if (latest?.state === 'WAITING_TO_RESUME')
     return { state: 'WAITING_TO_RESUME', label: '等待继续', symbol: 'Ⅱ' };
-  if (latest && ['CLAIMED', 'RUNNING'].includes(latest.state))
+  if (latest?.state === 'CLAIMED')
+    return { state: 'RUNNING', label: '正在准备工程工作区', symbol: '●' };
+  if (latest?.state === 'RUNNING')
     return { state: 'RUNNING', label: '正在自动处理', symbol: '●' };
   if (latest && ['CANCEL_REQUESTED', 'CANCELLED'].includes(latest.state))
     return {
@@ -98,6 +122,17 @@ export function repairVisual(
 export function isFailedAttemptOutcome(outcomeJson: string): boolean {
   const raw = JSON.parse(outcomeJson) as Record<string, unknown>;
   return raw.outcome === 'FAILED';
+}
+
+export function canRetryBeforeRepairStart(outcomeJson: string | null): boolean {
+  if (!outcomeJson) return false;
+  const outcome = JSON.parse(outcomeJson) as { technicalFailure?: string };
+  return [
+    'BINDING_NOT_FOUND',
+    'REPOSITORY_NOT_FOUND',
+    'ATTACHMENT_DOWNLOAD_FAILED',
+    'SKILL_PROTOCOL_MISMATCH',
+  ].includes(outcome.technicalFailure ?? '');
 }
 
 export function isSynchronizableAttempt(outcomeJson: string | null): boolean {

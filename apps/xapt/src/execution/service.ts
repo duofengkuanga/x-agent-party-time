@@ -1,3 +1,8 @@
+import {
+  attachDeploymentEvidence,
+  observeDeploymentEvidence,
+  type DeploymentEvidenceTarget,
+} from './deploymentEvidence';
 import type {
   ClaimedExecution,
   CompleteExecutionRequest,
@@ -64,7 +69,7 @@ export class ExecutionService {
     private readonly state: LocalStateStore,
     files: LocalFileSystem,
     attachments: AttachmentMaterializer,
-    workspaces: ExecutionWorkspaceManager,
+    private readonly workspaces: ExecutionWorkspaceManager,
     private readonly executor: CodexExecutor,
     skills: SkillBundleManager,
     private readonly resultVerifier: ExecutionResultVerifier,
@@ -238,7 +243,12 @@ export class ExecutionService {
       return;
     }
     const turn = execution.codexTurn;
-    if (!turn) {
+    if (
+      !turn &&
+      !execution.workspaces.every(
+        ({ workspace }) => workspace?.isolation === 'CLEANUP_WORKTREES',
+      )
+    ) {
       await failStart({
         code: 'CODEX_START_FAILED',
         message: '任务缺少 Codex 输入',
@@ -246,7 +256,7 @@ export class ExecutionService {
       });
       return;
     }
-    if (turn.kind === 'READ_SESSION') {
+    if (turn?.kind === 'READ_SESSION') {
       const synchronization = await this.preparation.readSession(
         execution,
         turn.taskId,
@@ -277,6 +287,10 @@ export class ExecutionService {
     }
     if (prepared.kind === 'WORKSPACE_COMPLETED') {
       try {
+        for (const { workspace } of execution.workspaces)
+          if (workspace?.isolation === 'CLEANUP_WORKTREES')
+            for (const key of workspace.workspaceKeys)
+              await this.state.removeDeploymentEvidence(key);
         await this.completeImmediateExecution(
           session,
           execution,
@@ -293,13 +307,30 @@ export class ExecutionService {
       }
       return;
     }
+    if (!turn) throw new Error('清理执行没有返回本机结果');
     const {
       repositoryPath,
       materialized,
       resolvedSkill,
-      resultAssertions,
-      resultBaseline,
+      workspaceDirectories,
+      verification,
     } = prepared;
+    const deliveryTargets: DeploymentEvidenceTarget[] = verification.flatMap(
+      ({ workspace, repositoryPath, resultAssertions }) =>
+        workspace
+          ? resultAssertions.flatMap((assertion) =>
+              assertion.kind === 'GIT_DELIVERY_STATE'
+                ? [{ repositoryPath, workspaceKey: workspace.key, assertion }]
+                : [],
+            )
+          : [],
+    );
+    let pendingEvidence = Promise.resolve();
+    let evidenceWriteFailed = false;
+    const observeProtocol = protocolObserver(
+      observation,
+      createCommandClassifier(repositoryPath),
+    );
     let recoveredInteraction = execution.recoveredInteraction;
     let releaseStartGate!: () => void;
     const startGate = new Promise<void>((resolve) => {
@@ -314,6 +345,7 @@ export class ExecutionService {
           approvalPolicy: execution.approvalPolicy,
           executionId: execution.id,
           repositoryPath,
+          workspaceDirectories,
           text:
             turn.kind === 'INITIAL'
               ? serializeDeterministicJson(turn.executionBrief)
@@ -327,7 +359,21 @@ export class ExecutionService {
           // Materialization above restores the files at their original paths.
           attachments: execution.sessionId ? [] : materialized,
           taskId: turn.kind === 'CONTINUATION' ? turn.taskId : null,
-          observe: protocolObserver(observation, createCommandClassifier(repositoryPath)),
+          observe: (notice) => {
+            observeProtocol(notice);
+            if (!deliveryTargets.length) return;
+            const evidence = observeDeploymentEvidence(
+              notice,
+              deliveryTargets,
+              execution.id,
+            );
+            if (evidence)
+              pendingEvidence = pendingEvidence
+                .then(() => this.state.saveDeploymentEvidence(evidence))
+                .catch(() => {
+                  evidenceWriteFailed = true;
+                });
+          },
           onManualHandoff:
             turn.manualHandoff === 'EXTERNAL_SESSION'
               ? async (questions) => {
@@ -408,14 +454,32 @@ export class ExecutionService {
     let request: CompleteExecutionRequest;
     try {
       const result = await Promise.race([started.completion, lease.lost]);
-      await observation.phase('validation', () =>
-        this.resultVerifier.verify(
+      await observation.phase('validation', async () => {
+        for (const {
           repositoryPath,
+          bindingPath,
+          workspace,
           resultAssertions,
           resultBaseline,
-          result,
-        ),
-      );
+        } of verification) {
+          if (
+            workspace &&
+            (await this.workspaces.resolve(bindingPath, workspace)) !== repositoryPath
+          )
+            throw new ExecutionResultVerificationError('执行结果的 Git 工作区身份已变化');
+          await this.resultVerifier.verify(
+            repositoryPath,
+            resultAssertions,
+            resultBaseline,
+            result,
+          );
+        }
+      });
+      await pendingEvidence;
+      if (evidenceWriteFailed)
+        throw new ExecutionResultVerificationError('无法持久化本机部署验收回执');
+      for (const target of deliveryTargets)
+        await attachDeploymentEvidence(this.state, target, result);
       observation.record({
         name: 'outcome.validated',
         source: 'xapt',

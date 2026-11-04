@@ -198,8 +198,9 @@ describe('项目删除', () => {
     database.run(
       `INSERT INTO platform_execution(
         id, owner_namespace, owner_kind, owner_id, attempt, runner_id, binding_id,
-        approval_policy, state, created_at
-       ) SELECT ?, 'test', 'test', ?, 1, runner_id, id, 'never', 'QUEUED', created_at
+        approval_policy, state, created_at, workspace_json
+       ) SELECT ?, 'test', 'test', ?, 1, runner_id, id, 'never', 'QUEUED', created_at,
+         json_array(json_object('bindingId', id, 'workspace', NULL))
          FROM platform_engineering_binding LIMIT 1`,
       [randomUUID(), randomUUID()],
     );
@@ -308,13 +309,15 @@ describe('项目删除', () => {
     database.run("UPDATE test_submission SET status = 'CLOSED' WHERE id = ?", [
       fixture.submission.id,
     ]);
+    const externalBinding = randomUUID();
     database.run(
       `INSERT INTO platform_execution(
         id, owner_namespace, owner_kind, owner_id, attempt, runner_id, binding_id,
-        approval_policy, state, created_at, previous_execution_id
+        approval_policy, state, created_at, previous_execution_id, workspace_json
        ) SELECT ?, owner_namespace, owner_kind, ?, 1, runner_id, ?, approval_policy,
-         'SUCCEEDED', created_at, id FROM platform_execution LIMIT 1`,
-      [randomUUID(), randomUUID(), randomUUID()],
+         'SUCCEEDED', created_at, id, json_array(json_object('bindingId', ?, 'workspace', NULL))
+         FROM platform_execution LIMIT 1`,
+      [randomUUID(), randomUUID(), externalBinding, externalBinding],
     );
     const before = database.all('SELECT * FROM platform_mutation');
     expect(projects.canDeleteProject(users.owner.id, project.id)).toBe(false);

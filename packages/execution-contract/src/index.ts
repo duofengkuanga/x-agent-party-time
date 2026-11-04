@@ -55,6 +55,15 @@ export const ExecutionWorkspaceSchema = z.discriminatedUnion('isolation', [
     isolation: z.literal('BRANCH_WORKTREE'),
     baseRef: z.string().trim().min(1).max(240),
     branch: z.string().trim().min(1).max(240),
+    rotateFrom: z
+      .strictObject({
+        key: z.string().trim().min(1).max(240),
+        head: z
+          .string()
+          .regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u)
+          .nullable(),
+      })
+      .optional(),
   }),
   z.strictObject({
     key: z.string().trim().min(1).max(240),
@@ -66,8 +75,66 @@ export const ExecutionWorkspaceSchema = z.discriminatedUnion('isolation', [
     isolation: z.literal('CLEANUP_WORKTREES'),
     workspaceKeys: z.array(z.string().trim().min(1).max(240)).min(1).max(100),
     completionResult: JsonValueSchema,
+    expectedHeads: z
+      .record(
+        z.string().min(1).max(240),
+        z
+          .string()
+          .regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u)
+          .nullable(),
+      )
+      .optional(),
   }),
 ]);
+
+const ExecutionWorkspaceMemberSchema = z.strictObject({
+  bindingId: BindingIdSchema,
+  workspace: ExecutionWorkspaceSchema.nullable(),
+});
+
+export const ExecutionWorkspacesSchema = z
+  .array(ExecutionWorkspaceMemberSchema)
+  .min(1)
+  .max(20)
+  .superRefine((members, context) => {
+    const bindings = new Set<string>();
+    const keys = new Set<string>();
+    for (const [index, member] of members.entries()) {
+      const workspace = member.workspace;
+      if (
+        bindings.has(member.bindingId) ||
+        (workspace && keys.has(workspace.key)) ||
+        (members.length > 1 &&
+          (!workspace || workspace.isolation !== members[0]?.workspace?.isolation))
+      )
+        context.addIssue({
+          code: 'custom',
+          path: [index],
+          message: 'Invalid execution workspace member',
+        });
+      bindings.add(member.bindingId);
+      if (workspace) keys.add(workspace.key);
+    }
+  });
+
+function validatePrimaryBinding(
+  execution: { bindingId: string; workspaces: ExecutionWorkspaceMember[] },
+  context: z.RefinementCtx,
+): void {
+  if (execution.workspaces[0]?.bindingId !== execution.bindingId)
+    context.addIssue({
+      code: 'custom',
+      path: ['bindingId'],
+      message: 'Primary binding must be the first workspace',
+    });
+}
+
+export function executionWorkspaces(
+  bindingId: string,
+  workspace: ExecutionWorkspace | null = null,
+): ExecutionWorkspaceMember[] {
+  return [{ bindingId, workspace }];
+}
 
 export const TaskSkillBindingSchema = z.strictObject({
   skillName: z.string().trim().min(1).max(120),
@@ -79,6 +146,18 @@ const ResultPathSchema = z.array(z.string().trim().min(1).max(120)).min(1).max(8
 export const ExecutionResultAssertionSchema = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('GIT_COMMITS_CREATED'),
+    workspaceBindingId: BindingIdSchema.optional(),
+    resultPath: ResultPathSchema,
+  }),
+  z.strictObject({
+    kind: z.literal('GIT_DELIVERY_STATE'),
+    workspaceBindingId: BindingIdSchema,
+    targetBranch: z.string().trim().min(1).max(240),
+    deploymentCommand: z.string().trim().min(1).max(4000).optional(),
+    candidateCommits: z
+      .array(z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u))
+      .max(1000)
+      .optional(),
     resultPath: ResultPathSchema,
   }),
   z.strictObject({
@@ -101,7 +180,7 @@ export const CodexTurnSchema = z.discriminatedUnion('kind', [
     executionBriefHash: z.string().regex(/^[a-f0-9]{64}$/u),
     outputJsonSchema: JsonObjectSchema,
     taskSkillBinding: TaskSkillBindingSchema.nullable().default(null),
-    resultAssertions: z.array(ExecutionResultAssertionSchema).max(5).optional(),
+    resultAssertions: z.array(ExecutionResultAssertionSchema).max(50).optional(),
   }),
   z.strictObject({
     kind: z.literal('CONTINUATION'),
@@ -110,13 +189,13 @@ export const CodexTurnSchema = z.discriminatedUnion('kind', [
     taskSkillBinding: TaskSkillBindingSchema,
     input: z.string().trim().min(1).max(200_000),
     outputJsonSchema: JsonObjectSchema,
-    resultAssertions: z.array(ExecutionResultAssertionSchema).max(5).optional(),
+    resultAssertions: z.array(ExecutionResultAssertionSchema).max(50).optional(),
   }),
   z.strictObject({
     kind: z.literal('READ_SESSION'),
     taskId: SessionIdSchema,
     outputJsonSchema: JsonObjectSchema,
-    resultAssertions: z.array(ExecutionResultAssertionSchema).max(5).optional(),
+    resultAssertions: z.array(ExecutionResultAssertionSchema).max(50).optional(),
   }),
 ]);
 
@@ -155,44 +234,48 @@ export const ExecutionOutcomeSchema = z.discriminatedUnion('kind', [
   }),
 ]);
 
-export const ExecutionSchema = z.object({
-  id: ExecutionIdSchema,
-  owner: ExecutionOwnerRefSchema,
-  attempt: z.number().int().positive(),
-  previousExecutionId: ExecutionIdSchema.nullable(),
-  runnerId: RunnerIdSchema,
-  bindingId: BindingIdSchema,
-  priority: z.number().int(),
-  approvalPolicy: ExecutionApprovalPolicySchema,
-  state: ExecutionStateSchema,
-  codexTurn: CodexTurnSchema.nullable(),
-  workspace: ExecutionWorkspaceSchema.nullable(),
-  attachments: z.array(ExecutionAttachmentSchema).max(25),
-  sessionId: SessionIdSchema.nullable(),
-  lease: ExecutionLeaseSchema.nullable(),
-  outcome: ExecutionOutcomeSchema.nullable(),
-  cancellationRequested: z.boolean(),
-  createdAt: z.iso.datetime(),
-  claimedAt: z.iso.datetime().nullable(),
-  startedAt: z.iso.datetime().nullable(),
-  finishedAt: z.iso.datetime().nullable(),
-});
+export const ExecutionSchema = z
+  .object({
+    id: ExecutionIdSchema,
+    owner: ExecutionOwnerRefSchema,
+    attempt: z.number().int().positive(),
+    previousExecutionId: ExecutionIdSchema.nullable(),
+    runnerId: RunnerIdSchema,
+    bindingId: BindingIdSchema,
+    priority: z.number().int(),
+    approvalPolicy: ExecutionApprovalPolicySchema,
+    state: ExecutionStateSchema,
+    codexTurn: CodexTurnSchema.nullable(),
+    workspaces: ExecutionWorkspacesSchema,
+    attachments: z.array(ExecutionAttachmentSchema).max(25),
+    sessionId: SessionIdSchema.nullable(),
+    lease: ExecutionLeaseSchema.nullable(),
+    outcome: ExecutionOutcomeSchema.nullable(),
+    cancellationRequested: z.boolean(),
+    createdAt: z.iso.datetime(),
+    claimedAt: z.iso.datetime().nullable(),
+    startedAt: z.iso.datetime().nullable(),
+    finishedAt: z.iso.datetime().nullable(),
+  })
+  .superRefine(validatePrimaryBinding);
 
-export const EnqueueExecutionInputSchema = z.object({
-  id: ExecutionIdSchema.optional(),
-  owner: ExecutionOwnerRefSchema,
-  attempt: z.number().int().positive(),
-  previousExecutionId: ExecutionIdSchema.nullable().default(null),
-  runnerId: RunnerIdSchema,
-  bindingId: BindingIdSchema,
-  priority: z.number().int().default(0),
-  approvalPolicy: ExecutionApprovalPolicySchema,
-  codexTurn: CodexTurnSchema.nullable().default(null),
-  workspace: ExecutionWorkspaceSchema.nullable().default(null),
-  attachmentIds: z.array(FileIdSchema).max(25),
-});
+export const EnqueueExecutionInputSchema = z
+  .object({
+    id: ExecutionIdSchema.optional(),
+    owner: ExecutionOwnerRefSchema,
+    attempt: z.number().int().positive(),
+    previousExecutionId: ExecutionIdSchema.nullable().default(null),
+    runnerId: RunnerIdSchema,
+    bindingId: BindingIdSchema,
+    priority: z.number().int().default(0),
+    approvalPolicy: ExecutionApprovalPolicySchema,
+    codexTurn: CodexTurnSchema.nullable().default(null),
+    workspaces: ExecutionWorkspacesSchema,
+    attachmentIds: z.array(FileIdSchema).max(25),
+  })
+  .superRefine(validatePrimaryBinding);
 
-export const ClaimedExecutionSchema = ExecutionSchema.extend({
+export const ClaimedExecutionSchema = ExecutionSchema.safeExtend({
   lease: ExecutionLeaseSchema.extend({
     token: LeaseTokenSchema,
   }),
@@ -296,6 +379,7 @@ export type Execution = z.infer<typeof ExecutionSchema>;
 export type ExecutionState = z.infer<typeof ExecutionStateSchema>;
 export type ExecutionApprovalPolicy = z.infer<typeof ExecutionApprovalPolicySchema>;
 export type ExecutionWorkspace = z.infer<typeof ExecutionWorkspaceSchema>;
+export type ExecutionWorkspaceMember = z.infer<typeof ExecutionWorkspaceMemberSchema>;
 export type TaskSkillBinding = z.infer<typeof TaskSkillBindingSchema>;
 export type ExecutionResultAssertion = z.infer<typeof ExecutionResultAssertionSchema>;
 export type CodexTurn = z.infer<typeof CodexTurnSchema>;

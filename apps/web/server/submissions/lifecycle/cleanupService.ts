@@ -1,3 +1,5 @@
+import { personAgentCleanupHeads } from './personAgentCleanup';
+import { executionWorkspaces } from '@agent-party-time/execution-contract';
 import { requireSubmissionAccess } from '@/server/submissions/shared/access';
 import { insertAuditEvent } from '@/server/platform/mutations/auditEvent';
 import { TestSubmissionWriteStore } from '@/server/submissions/testSubmissionWriteStore';
@@ -59,15 +61,18 @@ export class CleanupService {
           priority: 0,
           approvalPolicy: 'never',
           codexTurn: null,
-          workspace: {
+          workspaces: executionWorkspaces(cleanup.binding_id, {
             key: `cleanup:${cleanup.id}`,
             isolation: 'CLEANUP_WORKTREES',
             workspaceKeys: parseWorkspaceKeys(cleanup.scope_json),
+            expectedHeads: cleanup.expected_heads_json
+              ? JSON.parse(cleanup.expected_heads_json)
+              : undefined,
             completionResult: {
               outcome: 'COMPLETED',
               summary: '本机临时工作区已安全清理。',
             },
-          },
+          }),
           attachmentIds: [],
         });
         const now = this.now().toISOString();
@@ -269,14 +274,21 @@ export class CleanupService {
 
   /** Runs inside the submission closure transaction. */
   createForClosedSubmission(submissionId: string, now: string): string[] {
-    const items = this.db.all<{ id: string }>(
-      `SELECT id FROM submission_item
-         WHERE submission_id = ? ORDER BY position`,
+    const items = this.db.all<{ id: string; binding_id: string; mode: string }>(
+      `SELECT item.id, item.binding_id, submission.mode FROM submission_item item
+         JOIN test_submission submission ON submission.id = item.submission_id
+         WHERE item.submission_id = ? ORDER BY item.position`,
       submissionId,
     );
     const executionIds: string[] = [];
     for (const item of items) {
-      const workspaceKeys = this.queries.cleanupScopeForItem(item.id);
+      const expectedHeads =
+        item.mode === 'PERSON_AGENT'
+          ? personAgentCleanupHeads(this.db, submissionId, item.binding_id)
+          : undefined;
+      const workspaceKeys = expectedHeads
+        ? Object.keys(expectedHeads)
+        : this.queries.cleanupScopeForItem(item.id);
       if (!workspaceKeys.length) continue;
       const cleanup = this.createCleanup({
         reason: 'SUBMISSION_CLOSED',
@@ -284,6 +296,7 @@ export class CleanupService {
         submissionId,
         submissionItemId: item.id,
         workspaceKeys,
+        expectedHeads,
         now,
       });
       executionIds.push(cleanup.executionId);
@@ -297,6 +310,7 @@ export class CleanupService {
     submissionId: string;
     submissionItemId: string;
     workspaceKeys: string[];
+    expectedHeads?: Record<string, string | null>;
     now: string;
   }): { cleanupId: string; executionId: string } {
     const source = this.queries.itemCleanupSource(input.submissionItemId);
@@ -305,9 +319,9 @@ export class CleanupService {
     this.db.run(
       `INSERT INTO submission_cleanup(
            id, submission_id, submission_item_id, reason, subject_id,
-           state, version, active_execution_id, session_id, scope_json,
+           state, version, active_execution_id, session_id, scope_json, expected_heads_json,
            created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, 'READY', 1, NULL, NULL, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, 'READY', 1, NULL, NULL, ?, ?, ?, ?)`,
       [
         cleanupId,
         input.submissionId,
@@ -315,6 +329,7 @@ export class CleanupService {
         input.reason,
         input.subjectId,
         JSON.stringify([...new Set(input.workspaceKeys)]),
+        input.expectedHeads ? JSON.stringify(input.expectedHeads) : null,
         input.now,
         input.now,
       ],
@@ -328,15 +343,16 @@ export class CleanupService {
       priority: 0,
       approvalPolicy: 'never',
       codexTurn: null,
-      workspace: {
+      workspaces: executionWorkspaces(source.binding_id, {
         key: `cleanup:${cleanupId}`,
         isolation: 'CLEANUP_WORKTREES',
         workspaceKeys: [...new Set(input.workspaceKeys)],
+        expectedHeads: input.expectedHeads,
         completionResult: {
           outcome: 'COMPLETED',
           summary: '本机临时工作区已安全清理。',
         },
-      },
+      }),
       attachmentIds: [],
     });
     this.db.run(

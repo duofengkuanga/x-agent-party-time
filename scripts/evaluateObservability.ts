@@ -202,7 +202,7 @@ for (const [index, variant] of preregistration.ordering.entries()) {
             text: `Use $${name} to complete this isolated Execution. This prepared worktree and its local origin are disposable. Ordinary local commits and pushes required by the Skill are authorized. No network remote, real deployment, rule/script/test changes or package installation. Follow the supplied Schema.\nExecution Brief:\n${JSON.stringify(turn.executionBrief)}`,
             approvalPolicy: 'never',
             taskId: null,
-            skill: { name, path: join(target, 'SKILL.md') },
+            skill: { name, path: target },
             attachments: [],
             outputSchema: turn.outputJsonSchema,
             onInteraction: async () => {

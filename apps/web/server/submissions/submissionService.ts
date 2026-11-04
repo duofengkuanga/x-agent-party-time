@@ -1,3 +1,4 @@
+import { normalizeRepositoryUrl } from '@agent-party-time/runner-contract';
 import { requireProjectMember } from '@/server/platform/projects/access';
 import { acquireEnvironment, environmentAccessForItem } from './environmentAccess';
 import { randomUUID } from 'node:crypto';
@@ -22,6 +23,7 @@ import {
   type EnvironmentConflict,
   type CreateSubmissionInput,
   type TestSubmission,
+  type PersonAgentAssignment,
   type UpdateSubmissionInput,
 } from '../../contracts/submissions/submission';
 
@@ -88,24 +90,36 @@ export class SubmissionService {
               'VALIDATION_FAILED',
               '测试负责人不能同时担任提测项负责人',
             );
+          const source = snapshotItemSource(this.db, projectId, item);
+          if (parsed.personAgent) requirePersonAgentBinding(parsed.personAgent, source);
           return {
             id: this.createId(),
             position,
-            source: snapshotItemSource(this.db, projectId, item),
+            source,
             targetBranch: item.targetBranch,
           };
         });
+        if (parsed.personAgent)
+          requireDistinctPersonAgentTargets(
+            itemSnapshots.map(({ source, targetBranch }) => ({
+              repository_url: source.repository_url,
+              target_branch: targetBranch,
+            })),
+          );
         const stored = this.db.get<SubmissionRow>(
           `INSERT INTO test_submission(
                id, project_id, title, requirement_description,
-               tester_user_id, status, version, workspace_revision,
-               created_by_user_id, created_at, updated_at, closed_at
-             ) VALUES (?, ?, ?, ?, ?, 'ACTIVE', 1, 1, ?, ?, ?, NULL) RETURNING *`,
+               tester_user_id, mode, person_agent_developer_id, person_agent_runner_id,
+               status, version, workspace_revision, created_by_user_id, created_at, updated_at, closed_at
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', 1, 1, ?, ?, ?, NULL) RETURNING *`,
           submissionId,
           projectId,
           parsed.title,
           parsed.requirementDescription,
           parsed.testerUserId,
+          parsed.mode,
+          parsed.personAgent?.responsibleUserId ?? null,
+          parsed.personAgent?.runnerId ?? null,
           actorUserId,
           createdAt,
           createdAt,
@@ -136,6 +150,7 @@ export class SubmissionService {
             action: 'SUBMISSION_CREATED',
             details: {
               testerUserId: parsed.testerUserId,
+              mode: parsed.mode,
               itemIds: itemSnapshots.map(({ id }) => id),
               environmentTakeovers: takeovers,
             },
@@ -226,6 +241,14 @@ export class SubmissionService {
               '测试负责人不能同时担任提测项负责人',
             );
           const source = snapshotItemSource(this.db, current.project_id, item);
+          if (current.mode === 'PERSON_AGENT')
+            requirePersonAgentBinding(
+              {
+                responsibleUserId: current.person_agent_developer_id!,
+                runnerId: current.person_agent_runner_id!,
+              },
+              source,
+            );
           const itemId = this.createId();
           const observers = insertItem(this.db, {
             actorUserId,
@@ -242,6 +265,13 @@ export class SubmissionService {
           affectedSubmissionIds.push(...observers);
           itemIds.push(itemId);
         }
+        if (current.mode === 'PERSON_AGENT')
+          requireDistinctPersonAgentTargets(
+            this.db.all(
+              'SELECT repository_url, target_branch FROM submission_item WHERE submission_id = ?',
+              submissionId,
+            ),
+          );
         const stored = this.db.get<SubmissionRow>(
           `UPDATE test_submission
           SET version = version + 1, workspace_revision = workspace_revision + 1, updated_at = ?
@@ -393,7 +423,7 @@ export class SubmissionService {
         }> = [];
         for (const target of targetBranches) {
           const item = this.db.get(
-            `SELECT item.responsible_user_id, item.target_branch,
+            `SELECT item.responsible_user_id, item.target_branch, item.target_branch_locked_at,
                     EXISTS(SELECT 1 FROM submission_bug bug
                            WHERE bug.submission_item_id = item.id) has_bug
                FROM submission_item item
@@ -404,6 +434,7 @@ export class SubmissionService {
             | {
                 responsible_user_id: string;
                 target_branch: string;
+                target_branch_locked_at: string | null;
                 has_bug: number;
               }
             | undefined;
@@ -417,10 +448,14 @@ export class SubmissionService {
               'PERMISSION_DENIED',
               '只有对应开发负责人可以修改目标分支',
             );
-          if (item.has_bug)
+          if (
+            current.mode === 'PERSON_AGENT' ? item.target_branch_locked_at : item.has_bug
+          )
             throw new PlatformError(
               'INVALID_TRANSITION',
-              '该工程已有缺陷，不能再修改目标分支',
+              current.mode === 'PERSON_AGENT'
+                ? '该工程已进入修复范围，目标分支已锁定'
+                : '该工程已有缺陷，不能再修改目标分支',
             );
           if (item.target_branch === target.targetBranch) continue;
           const updateItem = this.db.run(
@@ -428,16 +463,27 @@ export class SubmissionService {
                SET target_branch = ?
                WHERE id = ? AND submission_id = ?
                  AND responsible_user_id = ?
-                 AND NOT EXISTS (
-                   SELECT 1 FROM submission_bug
-                   WHERE submission_item_id = submission_item.id
-                 )`,
-            [target.targetBranch, target.submissionItemId, submissionId, actorUserId],
+                 AND CASE WHEN ? = 'PERSON_AGENT' THEN target_branch_locked_at IS NULL
+                   ELSE NOT EXISTS (SELECT 1 FROM submission_bug WHERE submission_item_id = submission_item.id) END`,
+            [
+              target.targetBranch,
+              target.submissionItemId,
+              submissionId,
+              actorUserId,
+              current.mode,
+            ],
           );
           if (updateItem.changes !== 1)
             throw new PlatformError('STALE_STATE', '提测工程状态已更新，请刷新后重试');
           changedTargetBranches.push(target);
         }
+        if (current.mode === 'PERSON_AGENT' && changedTargetBranches.length)
+          requireDistinctPersonAgentTargets(
+            this.db.all(
+              'SELECT repository_url, target_branch FROM submission_item WHERE submission_id = ?',
+              submissionId,
+            ),
+          );
         const updated = this.db.get<SubmissionRow>(
           `UPDATE test_submission
              SET title = ?, requirement_description = ?,
@@ -471,4 +517,31 @@ export class SubmissionService {
       },
     });
   }
+}
+
+function requirePersonAgentBinding(
+  assignment: PersonAgentAssignment,
+  source: { responsible_user_id: string; runner_id: string },
+): void {
+  if (
+    assignment.responsibleUserId !== source.responsible_user_id ||
+    assignment.runnerId !== source.runner_id
+  )
+    throw new PlatformError(
+      'VALIDATION_FAILED',
+      'PersonAgent 的全部工程必须绑定同一个开发负责人和 Agent',
+    );
+}
+
+function requireDistinctPersonAgentTargets(
+  items: Array<{ repository_url: string; target_branch: string }>,
+): void {
+  const keys = items.map(({ repository_url, target_branch }) =>
+    JSON.stringify([normalizeRepositoryUrl(repository_url), target_branch]),
+  );
+  if (new Set(keys).size !== keys.length)
+    throw new PlatformError(
+      'VALIDATION_FAILED',
+      'PersonAgent 不能重复选择同一仓库和目标分支',
+    );
 }

@@ -262,6 +262,7 @@ export function createTakeoverSubmission(
   );
   const item = view.submission.items[0]!;
   const input = {
+    mode: 'AGENT_PARTY' as const,
     mutationId: randomUUID(),
     title,
     requirementDescription,

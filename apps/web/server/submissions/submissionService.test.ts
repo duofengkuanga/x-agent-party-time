@@ -167,6 +167,7 @@ describe('SubmissionService create', () => {
     const fixture = await setup();
     const createMutationId = randomUUID();
     const createInput = {
+      mode: 'AGENT_PARTY' as const,
       mutationId: createMutationId,
       title: '幂等提测',
       requirementDescription: '验证重复请求没有重复副作用',

@@ -7,11 +7,21 @@ import {
 import { repairService } from '../../../server/runtime/services';
 import type {
   RepairMutationResult,
+  ContinueRepairInput,
   ResolveRepairInteractionInput,
   SynchronizeRepairSessionInput,
 } from '../../../contracts/submissions/repair';
 
 export type RepairActionResult = InteractiveActionResult<RepairMutationResult>;
+
+export async function retryRepairAction(
+  bugId: string,
+  input: ContinueRepairInput,
+): Promise<RepairActionResult> {
+  return runRepairAction((userId) =>
+    repairService().continueRepair(userId, bugId, input),
+  );
+}
 
 export async function synchronizeRepairSessionAction(
   bugId: string,

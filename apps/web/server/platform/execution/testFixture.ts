@@ -1,4 +1,7 @@
-import type { EnqueueExecutionInput } from '@agent-party-time/execution-contract';
+import {
+  executionWorkspaces,
+  type EnqueueExecutionInput,
+} from '@agent-party-time/execution-contract';
 
 export function input(
   runnerId: string,
@@ -14,7 +17,7 @@ export function input(
     priority: 0,
     approvalPolicy: 'on-request',
     codexTurn: null,
-    workspace: null,
+    workspaces: executionWorkspaces(localBindingId),
     attachmentIds: [],
   };
 }

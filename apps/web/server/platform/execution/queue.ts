@@ -6,6 +6,7 @@ import {
   type CodexTurn,
   type Execution,
   type ExecutionOutcome,
+  type ExecutionWorkspaceMember,
   type RunnerActivity,
 } from '@agent-party-time/execution-contract';
 import {
@@ -16,6 +17,15 @@ import {
 import { ACTIVE_STATES, LEASED_STATES, hashSecret, newLeaseExpiry } from './lease';
 import { projectTransaction, type ExecutionProjector } from './projection';
 import { ExecutionRecords, type ExecutionRow } from './records';
+export type ExecutionClaimPlan = {
+  workspaces: ExecutionWorkspaceMember[];
+  codexTurn: CodexTurn | null;
+  claimed?(): void;
+};
+export type ExecutionClaimResolver = (
+  execution: Execution,
+) => ExecutionClaimPlan | false | undefined;
+
 export class ExecutionQueue {
   constructor(
     private readonly db: AppDatabase,
@@ -24,6 +34,7 @@ export class ExecutionQueue {
     private readonly createLeaseToken: () => string,
     private readonly leaseDurationMs: number,
     private readonly project: ExecutionProjector,
+    private readonly resolveClaim?: ExecutionClaimResolver,
   ) {}
   activityForRunner(runnerId: string): RunnerActivity {
     this.expireLeases();
@@ -87,6 +98,7 @@ export class ExecutionQueue {
         execution.lease_expires_at <= this.now().toISOString()
       )
         return false;
+      if (this.resolveClaim?.(this.records.get(executionId)) === false) return false;
       const rows = this.schedulingRows(execution.runner_id);
       const candidate = rows.find((row) => row.id === executionId)!;
       const others = rows.filter((row) => row.id !== executionId);
@@ -118,68 +130,98 @@ export class ExecutionQueue {
   claimAvailable(runnerId: string, availableSlots: number): ClaimedExecution[] {
     if (availableSlots === 0) return [];
     this.expireLeases();
-    return this.db.transaction(() => {
-      const rows = this.schedulingRows(runnerId);
-      const active = rows.filter(occupiesLane);
-      const occupied = rows.filter(holdsSlot).map((row) => row.access);
-      const queued = rows.filter((row) => isQueued(row) && row.manual_available);
-      const claimed: ClaimedExecution[] = [];
-      for (
-        let index = 0;
-        index < queued.length && claimed.length < availableSlots;
-        index++
-      ) {
-        const row = queued[index]!;
-        if (
-          (row.state === 'WAITING_TO_RESUME' && row.lease_token_hash) ||
-          active.some((entry) => executionsConflict(entry.access, row.access)) ||
-          queued
-            .slice(0, index)
-            .some((entry) => executionsConflict(entry.access, row.access)) ||
-          !hasExecutionCapacity(row.access, occupied)
-        )
-          continue;
-        const recoveredInteraction =
-          row.state === 'WAITING_TO_RESUME'
-            ? this.records.latestInteraction(row.id)
-            : undefined;
-        const leaseToken = this.createLeaseToken();
-        const expiresAt = newLeaseExpiry(this.now(), this.leaseDurationMs);
-        this.db.run(
-          `UPDATE platform_execution SET state = 'CLAIMED', lease_token_hash = ?,
+    return this.db
+      .transaction(() => {
+        const plans = new Map<string, ExecutionClaimPlan | false>();
+        if (this.resolveClaim) {
+          const queued = this.db.all<{ id: string }>(
+            "SELECT id FROM platform_execution WHERE runner_id = ? AND state IN ('QUEUED', 'WAITING_TO_RESUME')",
+            runnerId,
+          );
+          for (const { id } of queued) {
+            const plan = this.resolveClaim(this.records.get(id));
+            if (plan !== undefined) plans.set(id, plan);
+          }
+        }
+        const rows = this.schedulingRows(runnerId, plans);
+        const active = rows.filter(occupiesLane);
+        const occupied = rows.filter(holdsSlot).map((row) => row.access);
+        const queued = rows.filter(
+          (row) => isQueued(row) && row.manual_available && plans.get(row.id) !== false,
+        );
+        const claimed: ClaimedExecution[] = [];
+        for (
+          let index = 0;
+          index < queued.length && claimed.length < availableSlots;
+          index++
+        ) {
+          const row = queued[index]!;
+          if (
+            (row.state === 'WAITING_TO_RESUME' && row.lease_token_hash) ||
+            active.some((entry) => executionsConflict(entry.access, row.access)) ||
+            queued
+              .slice(0, index)
+              .some((entry) => executionsConflict(entry.access, row.access)) ||
+            !hasExecutionCapacity(row.access, occupied)
+          )
+            continue;
+          const recoveredInteraction =
+            row.state === 'WAITING_TO_RESUME'
+              ? this.records.latestInteraction(row.id)
+              : undefined;
+          const plan = plans.get(row.id);
+          if (plan) {
+            this.db.run(
+              'UPDATE platform_execution SET workspace_json = ?, codex_turn_json = ? WHERE id = ?',
+              [
+                JSON.stringify(plan.workspaces),
+                plan.codexTurn ? JSON.stringify(plan.codexTurn) : null,
+                row.id,
+              ],
+            );
+            plan.claimed?.();
+          }
+          const leaseToken = this.createLeaseToken();
+          const expiresAt = newLeaseExpiry(this.now(), this.leaseDurationMs);
+          this.db.run(
+            `UPDATE platform_execution SET state = 'CLAIMED', lease_token_hash = ?,
              lease_expires_at = ?, claimed_at = COALESCE(claimed_at, ?),
              resume_requested_at = NULL WHERE id = ?`,
-          [hashSecret(leaseToken), expiresAt, this.now().toISOString(), row.id],
-        );
-        const execution = this.records.get(row.id);
-        claimed.push(
-          ClaimedExecutionSchema.parse({
-            ...execution,
-            codexTurn: codexTurnForClaim(execution),
-            lease: { token: leaseToken, expiresAt },
-            outcome: null,
-            recoveredInteraction:
-              recoveredInteraction?.state === 'RESOLVED' &&
-              recoveredInteraction.resolution_json
-                ? {
-                    method: recoveredInteraction.method,
-                    payload: JSON.parse(recoveredInteraction.payload_json),
-                    resolution: JSON.parse(recoveredInteraction.resolution_json),
-                  }
-                : null,
-          }),
-        );
-        active.push(row);
-        occupied.push(row.access);
-      }
-      return claimed;
-    })();
+            [hashSecret(leaseToken), expiresAt, this.now().toISOString(), row.id],
+          );
+          const execution = this.records.get(row.id);
+          claimed.push(
+            ClaimedExecutionSchema.parse({
+              ...execution,
+              codexTurn: codexTurnForClaim(execution),
+              lease: { token: leaseToken, expiresAt },
+              outcome: null,
+              recoveredInteraction:
+                recoveredInteraction?.state === 'RESOLVED' &&
+                recoveredInteraction.resolution_json
+                  ? {
+                      method: recoveredInteraction.method,
+                      payload: JSON.parse(recoveredInteraction.payload_json),
+                      resolution: JSON.parse(recoveredInteraction.resolution_json),
+                    }
+                  : null,
+            }),
+          );
+          active.push(row);
+          occupied.push(row.access);
+        }
+        return claimed;
+      })
+      .immediate();
   }
 
-  private schedulingRows(runnerId: string): ScheduledExecution[] {
+  private schedulingRows(
+    runnerId: string,
+    plans?: ReadonlyMap<string, ExecutionClaimPlan | false>,
+  ): ScheduledExecution[] {
     return this.db
       .all<SchedulingRow>(
-        `SELECT candidate.id, candidate.state, candidate.binding_id, candidate.priority,
+        `SELECT candidate.id, candidate.state, candidate.priority,
          candidate.workspace_json, candidate.lease_token_hash, candidate.lease_expires_at,
          candidate.cancellation_requested, candidate.resume_requested_at, candidate.created_at,
          COALESCE(candidate.session_id, json_extract(candidate.codex_turn_json, '$.taskId')) session_id,
@@ -191,15 +233,28 @@ export class ExecutionQueue {
          'WAITING_TO_RESUME', 'WAITING_FOR_INTERACTION')`,
         runnerId,
       )
-      .map((row) => ({
-        ...row,
-        access: {
-          bindingId: row.binding_id,
-          workspace: row.workspace_json ? JSON.parse(row.workspace_json) : null,
-          sessionId: row.session_id,
-          codexTurn: null,
-        },
-      }))
+      .map((row) => {
+        const plan = plans?.get(row.id);
+        const available = plan
+          ? this.db.get<{ allowed: number }>(
+              `SELECT ${manualWorkspaceAvailable('candidate')} allowed
+               FROM (SELECT ? id, ? runner_id, ? workspace_json, ? codex_turn_json) candidate`,
+              row.id,
+              runnerId,
+              JSON.stringify(plan.workspaces),
+              plan.codexTurn ? JSON.stringify(plan.codexTurn) : null,
+            )?.allowed
+          : row.manual_available;
+        return {
+          ...row,
+          manual_available: available ?? 0,
+          access: {
+            workspaces: plan ? plan.workspaces : JSON.parse(row.workspace_json),
+            sessionId: row.session_id,
+            codexTurn: null,
+          },
+        };
+      })
       .sort(compareSchedule);
   }
 
@@ -282,12 +337,15 @@ function manualWorkspaceAvailable(candidate: string): string {
       ))
       AND manual.runner_id = ${candidate}.runner_id
       AND (manual.session_id = json_extract(${candidate}.codex_turn_json, '$.taskId')
-        OR (manual.binding_id = ${candidate}.binding_id AND (
-          manual.workspace_json IS NULL OR ${candidate}.workspace_json IS NULL
-          OR json_extract(manual.workspace_json, '$.key') = json_extract(${candidate}.workspace_json, '$.key')
-          OR EXISTS (SELECT 1 FROM json_each(${candidate}.workspace_json, '$.workspaceKeys') cleanup
-            WHERE cleanup.value = json_extract(manual.workspace_json, '$.key'))
-        )))
+        OR EXISTS (
+          SELECT 1 FROM json_each(manual.workspace_json) a
+          JOIN json_each(${candidate}.workspace_json) b
+          WHERE a.value ->> '$.workspace.key' = b.value ->> '$.workspace.key'
+            OR EXISTS (SELECT 1 FROM json_each(b.value, '$.workspace.workspaceKeys') cleanup
+              WHERE cleanup.value = a.value ->> '$.workspace.key')
+            OR (a.value ->> '$.bindingId' = b.value ->> '$.bindingId'
+              AND (a.value ->> '$.workspace' IS NULL OR b.value ->> '$.workspace' IS NULL))
+        ))
       AND NOT (COALESCE(json_extract(${candidate}.codex_turn_json, '$.kind'), '') = 'READ_SESSION'
         AND json_extract(${candidate}.codex_turn_json, '$.taskId') = manual.session_id)
       AND NOT EXISTS (
@@ -316,7 +374,6 @@ type SchedulingRow = Pick<
   ExecutionRow,
   | 'id'
   | 'state'
-  | 'binding_id'
   | 'priority'
   | 'workspace_json'
   | 'lease_token_hash'
@@ -333,11 +390,11 @@ type ScheduledExecution = SchedulingRow & {
   access: ExecutionAccess;
 };
 
-function occupiesLane(row: SchedulingRow): boolean {
+function occupiesLane(row: ScheduledExecution): boolean {
   return (
     ['CLAIMED', 'RUNNING', 'CANCEL_REQUESTED'].includes(row.state) ||
     (row.state === 'WAITING_FOR_INTERACTION' &&
-      Boolean(row.workspace_json) &&
+      row.access.workspaces.some(({ workspace }) => workspace !== null) &&
       Boolean(row.lease_token_hash) &&
       Boolean(row.lease_expires_at))
   );

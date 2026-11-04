@@ -25,17 +25,40 @@ export function environmentReady(db: AppDatabase, itemId: string): boolean {
   );
 }
 
+export function deliveryEnvironmentAvailable(
+  db: AppDatabase,
+  itemId: string,
+  verification = false,
+): boolean {
+  return Boolean(
+    db.get(
+      `SELECT 1 FROM submission_item anchor
+      JOIN test_submission submission ON submission.id = anchor.submission_id
+      WHERE anchor.id = ? AND NOT EXISTS (
+        SELECT 1 FROM submission_item item
+        LEFT JOIN submission_environment_lock lock ON lock.submission_item_id = item.id
+        WHERE item.submission_id = anchor.submission_id
+          AND (submission.mode = 'PERSON_AGENT' OR item.id = anchor.id)
+          AND (lock.environment_id IS NULL
+            OR ((? OR submission.mode = 'PERSON_AGENT') AND lock.deployment_confirmed = 0))
+      )`,
+      itemId,
+      verification ? 1 : 0,
+    ),
+  );
+}
+
 export function requireEnvironment(
   db: AppDatabase,
   itemId: string,
   verification = false,
 ): void {
-  if (!environmentOwned(db, itemId))
+  if (!deliveryEnvironmentAvailable(db, itemId))
     throw new PlatformError(
       'RESOURCE_CONFLICT',
-      '此提测项已暂停使用环境，请先重新取得环境使用权',
+      '提测已暂停使用环境，请先重新取得环境使用权并确认版本',
     );
-  if (verification && !environmentReady(db, itemId))
+  if (verification && !deliveryEnvironmentAvailable(db, itemId, true))
     throw new PlatformError(
       'INVALID_TRANSITION',
       '请工程负责人先确认当前提测版本已部署，再进行测试验证',
@@ -46,7 +69,9 @@ export function environmentBusy(db: AppDatabase, itemId: string): boolean {
   return Boolean(
     db.get(
       `SELECT 1 FROM submission_update_batch batch
-    WHERE batch.submission_item_id = ? AND (
+      JOIN submission_item item ON item.id = ?
+      WHERE (batch.submission_item_id = item.id
+        OR (batch.person_agent_scope_json IS NOT NULL AND batch.submission_id = item.submission_id)) AND (
       batch.state IN ('READY', 'RUNNING') OR
       EXISTS (SELECT 1 FROM submission_update_attempt attempt JOIN platform_execution execution ON execution.id = attempt.execution_id
         WHERE attempt.batch_id = batch.id AND execution.state IN ('QUEUED', 'CLAIMED', 'RUNNING', 'WAITING_FOR_INTERACTION', 'WAITING_TO_RESUME', 'CANCEL_REQUESTED')) OR

@@ -1,3 +1,7 @@
+import {
+  personAgentUpdateResultSchema,
+  readPersonAgentUpdateScope,
+} from './personAgentUpdate';
 import { TestSubmissionWriteStore } from '@/server/submissions/testSubmissionWriteStore';
 import {
   asDetails,
@@ -90,7 +94,7 @@ export class UpdateProjection {
     if (!attempt || attempt.outcome_json) return;
     const batch = this.queries.batch(attempt.batch_id);
     const now = this.now().toISOString();
-    const interpreted = this.interpret(execution);
+    const interpreted = this.interpret(execution, batch);
     const nextState = {
       COMPLETED: 'COMPLETED',
       FAILED: 'FAILED',
@@ -149,7 +153,7 @@ export class UpdateProjection {
     const turnId = typeof envelope.turnId === 'string' ? envelope.turnId : null;
     const result = envelope.result;
     if (!turnId) return;
-    const parsed = UpdateExecutionResultSchema.safeParse(result);
+    const parsed = this.resultSchema(batch).safeParse(result);
     if (!parsed.success) {
       markInvalidExecutionResult(this.db, execution.id, INVALID_RESULT_MESSAGE);
       return;
@@ -228,6 +232,7 @@ export class UpdateProjection {
 
   private interpret(
     execution: Execution,
+    batch: BatchRow,
   ):
     | { kind: 'COMPLETED'; attemptOutcome: unknown }
     | { kind: 'FAILED' | 'HANDED_OFF'; attemptOutcome: unknown } {
@@ -237,7 +242,7 @@ export class UpdateProjection {
         attemptOutcome: { outcome: 'HANDED_OFF', questions: execution.outcome.questions },
       };
     if (execution.outcome?.kind === 'SUCCEEDED') {
-      const parsed = UpdateExecutionResultSchema.safeParse(execution.outcome.result);
+      const parsed = this.resultSchema(batch).safeParse(execution.outcome.result);
       const result = parsed.success ? parsed.data.result : null;
       if (result?.outcome === 'COMPLETED')
         return { kind: 'COMPLETED', attemptOutcome: result };
@@ -279,6 +284,15 @@ export class UpdateProjection {
             : execution.outcome?.kind,
       },
     };
+  }
+
+  private resultSchema(batch: BatchRow) {
+    return batch.person_agent_scope_json
+      ? personAgentUpdateResultSchema(
+          readPersonAgentUpdateScope(batch.person_agent_scope_json),
+          true,
+        )
+      : UpdateExecutionResultSchema;
   }
 
   private auditForBatch(

@@ -1,9 +1,16 @@
+import { outputJsonSchema } from '@/contracts/outputSchema';
+import {
+  freezePersonAgentUpdate,
+  personAgentUpdateResultSchema,
+} from './personAgentUpdate';
+import { executionWorkspaces } from '@agent-party-time/execution-contract';
 import { DeploymentScriptSchema } from '@/contracts/projects/engineering';
 import {
   isTerminal,
   requireTaskSkillBinding,
+  originalTaskExecution,
 } from '@/server/submissions/shared/executionState';
-import { environmentOwned } from '@/server/submissions/environmentAccess';
+import { deliveryEnvironmentAvailable } from '@/server/submissions/environmentAccess';
 import type { TestSubmissionWriteStore } from '@/server/submissions/testSubmissionWriteStore';
 import type { AppDatabase } from '@/server/database/index';
 import { PlatformError } from '@/server/platform/errors/index';
@@ -12,7 +19,10 @@ import {
   createInitialCodexTurn,
 } from '@/server/platform/execution/codexTurn';
 import type { ExecutionService } from '@/server/platform/execution/service';
-import type { JsonObject } from '@agent-party-time/execution-contract';
+import type {
+  ExecutionResultAssertion,
+  JsonObject,
+} from '@agent-party-time/execution-contract';
 import { UpdateOutputJsonSchema } from '../../../contracts/submissions/update';
 import type { BatchRow, ItemSourceRow, UpdateQueries } from './updateQueries';
 import { parseCommits } from '@/server/submissions/repair/results';
@@ -42,15 +52,22 @@ export class UpdateDelivery {
     if (!latest || !isTerminal(latest.state))
       throw new PlatformError('RESOURCE_CONFLICT', '当前更新执行尚未结束');
     const source = batch.source;
-    const previousExecution = this.executions.get(latest.execution_id);
+    const previousExecution = originalTaskExecution(
+      this.executions.get,
+      this.executions.get(latest.execution_id),
+    );
     const codexTurn = batch.session_id
       ? createContinuationCodexTurn({
           manualHandoff: 'EXTERNAL_SESSION',
           taskId: batch.session_id,
           taskSkillBinding: requireTaskSkillBinding(previousExecution, '更新'),
-          text: '继续完成上次未完成的任务。',
-          resultAssertions: [UPDATE_HANDOFF_TEXT_ASSERTION],
-          outputJsonSchema: UpdateOutputJsonSchema,
+          text:
+            batch.person_agent_scope_json && latest.outcome_json
+              ? `继续原冻结批次。重新核实各工程实际状态再继续。上轮结果：${latest.outcome_json}`
+              : '继续完成上次未完成的任务。',
+          resultAssertions: previousExecution.codexTurn?.resultAssertions,
+          outputJsonSchema:
+            previousExecution.codexTurn?.outputJsonSchema ?? UpdateOutputJsonSchema,
         })
       : canRestartAfterSkillMismatch(batch, latest) &&
           previousExecution.codexTurn?.kind === 'INITIAL'
@@ -68,11 +85,7 @@ export class UpdateDelivery {
       priority: 1,
       approvalPolicy: 'never',
       codexTurn,
-      workspace: {
-        key: `update-batch:${batchId}`,
-        isolation: 'DETACHED_WORKTREE',
-        baseRef: `origin/${source.target_branch}`,
-      },
+      workspaces: previousExecution.workspaces,
       attachmentIds: [],
     });
     const now = this.now().toISOString();
@@ -157,7 +170,7 @@ export class UpdateDelivery {
     const source = this.queries.itemSource(submissionItemId);
     if (
       source.submission_status !== 'ACTIVE' ||
-      !environmentOwned(this.db, submissionItemId)
+      !deliveryEnvironmentAvailable(this.db, submissionItemId)
     )
       return undefined;
     const pending = this.db.get(
@@ -189,15 +202,21 @@ export class UpdateDelivery {
     const attemptId = this.createId();
     const executionId = this.createId();
     const workspaceKey = `update-batch:${batchId}`;
-    const entries = candidates.map((candidate) => {
-      const commits = parseCommits(candidate.pending_commits_json);
-      return {
-        bugTitle: candidate.title,
-        commits,
-        repairHandoffs: freezeRepairHandoffs(this.db, candidate.bug_id, commits),
-      };
-    });
-    const executionBrief: JsonObject = {
+    const grouped =
+      source.submission_mode === 'PERSON_AGENT'
+        ? freezePersonAgentUpdate(this.db, source.submission_id, batchId, candidates)
+        : null;
+    const entries =
+      grouped?.entries ??
+      candidates.map((candidate) => {
+        const commits = parseCommits(candidate.pending_commits_json);
+        return {
+          bugTitle: candidate.title,
+          commits,
+          repairHandoffs: freezeRepairHandoffs(this.db, candidate.bug_id, commits),
+        };
+      });
+    const executionBrief: JsonObject = grouped?.brief ?? {
       targetBranch: source.target_branch,
       environment: source.environment_name,
       frozenCandidates: entries.map((entry, position) => ({
@@ -213,9 +232,18 @@ export class UpdateDelivery {
       `INSERT INTO submission_update_batch(
            id, submission_id, submission_item_id, state, version,
            active_execution_id, session_id, deployment_json, frozen_at,
-           created_at, updated_at
-         ) VALUES (?, ?, ?, 'READY', 1, NULL, NULL, ?, ?, ?, ?)`,
-      [batchId, source.submission_id, submissionItemId, deploymentJson, now, now, now],
+           created_at, updated_at, person_agent_scope_json
+         ) VALUES (?, ?, ?, 'READY', 1, NULL, NULL, ?, ?, ?, ?, ?)`,
+      [
+        batchId,
+        source.submission_id,
+        submissionItemId,
+        deploymentJson,
+        now,
+        now,
+        now,
+        grouped ? JSON.stringify(grouped.scope) : null,
+      ],
     );
     const insertEntry = this.db.prepare(
       `INSERT INTO submission_update_batch_entry(
@@ -246,14 +274,42 @@ export class UpdateDelivery {
         requiredSkillName: 'XUpdate',
         requiredSkillProtocol: 'script-deployment-v1',
         executionBrief,
-        resultAssertions: [UPDATE_HANDOFF_TEXT_ASSERTION],
-        outputJsonSchema: UpdateOutputJsonSchema,
+        resultAssertions: [
+          UPDATE_HANDOFF_TEXT_ASSERTION,
+          ...(grouped?.scope.flatMap(
+            ({
+              alias,
+              bindingId,
+              targetBranch,
+              deploymentCommand,
+              candidateCommits,
+            }): ExecutionResultAssertion[] => [
+              {
+                kind: 'GIT_DELIVERY_STATE',
+                workspaceBindingId: bindingId,
+                targetBranch,
+                deploymentCommand,
+                candidateCommits,
+                resultPath: ['result', 'deliveries', alias],
+              },
+              {
+                ...UPDATE_HANDOFF_TEXT_ASSERTION,
+                resultPath: ['result', 'deliveries', alias, 'evidence'],
+              },
+            ],
+          ) ?? []),
+        ],
+        outputJsonSchema: grouped
+          ? outputJsonSchema(personAgentUpdateResultSchema(grouped.scope))
+          : UpdateOutputJsonSchema,
       }),
-      workspace: {
-        key: workspaceKey,
-        isolation: 'DETACHED_WORKTREE',
-        baseRef: `origin/${source.target_branch}`,
-      },
+      workspaces:
+        grouped?.workspaces ??
+        executionWorkspaces(source.binding_id, {
+          key: workspaceKey,
+          isolation: 'DETACHED_WORKTREE',
+          baseRef: `origin/${source.target_branch}`,
+        }),
       attachmentIds: [],
     });
     this.db.run(
