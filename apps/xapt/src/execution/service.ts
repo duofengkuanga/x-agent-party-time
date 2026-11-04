@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import {
   attachDeploymentEvidence,
   observeDeploymentEvidence,
@@ -354,6 +355,10 @@ export class ExecutionService {
             turn.kind === 'INITIAL'
               ? { name: resolvedSkill.skillName, path: resolvedSkill.path }
               : null,
+          boundSkillPath:
+            turn.kind === 'CONTINUATION'
+              ? join(resolvedSkill.path, 'SKILL.md')
+              : undefined,
           outputSchema: turn.outputJsonSchema,
           // Reclaimed executions already sent these paths to the same session.
           // Materialization above restores the files at their original paths.

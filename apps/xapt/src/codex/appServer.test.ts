@@ -133,16 +133,18 @@ rl.on('line', (line) => {
   expect((turns[0]?.params as { input: unknown[] }).input.slice(0, -1)).toEqual([
     {
       type: 'text',
-      text: `$XBugRepaire\n\n${JSON.stringify({
-        task: '只返回 JSON',
-        attachments: [
-          {
-            role: 'ACTUAL_RESULT',
-            name: 'evidence.txt',
-            path: join(root, 'evidence.txt'),
-          },
-        ],
-      })}`,
+      text: `$XBugRepaire\n\n本轮绑定的规则文件："/tmp/repair-skill/SKILL.md"。请先读取并按这份规则执行。\n\n${JSON.stringify(
+        {
+          task: '只返回 JSON',
+          attachments: [
+            {
+              role: 'ACTUAL_RESULT',
+              name: 'evidence.txt',
+              path: join(root, 'evidence.txt'),
+            },
+          ],
+        },
+      )}`,
       text_elements: [],
     },
     {

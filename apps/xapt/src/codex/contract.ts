@@ -18,6 +18,7 @@ export type CodexExecutionInput = {
   workspaceDirectories?: Array<{ alias: string; path: string; baseCommit?: string }>;
   text: string;
   skill: { name: string; path: string } | null;
+  boundSkillPath?: string;
   outputSchema: JsonObject;
   attachments: MaterializedAttachment[];
   taskId: string | null;

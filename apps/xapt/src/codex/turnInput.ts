@@ -6,10 +6,18 @@ import { asRecord, requiredString } from './wireValues';
 
 export function codexUserInput(input: CodexExecutionInput): unknown[] {
   const text = textWithAttachments(input.text, input.attachments, Boolean(input.skill));
+  const skillPath = input.skill
+    ? join(input.skill.path, 'SKILL.md')
+    : input.boundSkillPath;
+  const instruction = skillPath
+    ? `本轮绑定的规则文件：${JSON.stringify(skillPath)}。请先读取并按这份规则执行。\n\n`
+    : '';
   return [
     {
       type: 'text',
-      text: input.skill ? `$${input.skill.name}\n\n${text}` : text,
+      text: input.skill
+        ? `$${input.skill.name}\n\n${instruction}${text}`
+        : `${instruction}${text}`,
       text_elements: [],
     },
     ...(input.skill

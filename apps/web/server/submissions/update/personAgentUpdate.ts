@@ -106,12 +106,13 @@ export function personAgentUpdateResultSchema(
       for (const { alias, deploymentCommand } of scope) {
         const delivery = result.deliveries[alias];
         if (!delivery || delivery.state !== 'DEPLOYED') continue;
-        const receipt = delivery.receipt;
+        const receipt =
+          'receipt' in delivery ? deploymentReceipt.safeParse(delivery.receipt) : null;
         const command = createHash('sha256').update(deploymentCommand).digest('hex');
         if (
-          !receipt ||
-          receipt.commit !== delivery.commit ||
-          receipt.commandSha256 !== command
+          !receipt?.success ||
+          receipt.data.commit !== delivery.commit ||
+          receipt.data.commandSha256 !== command
         )
           context.addIssue({
             code: 'custom',
