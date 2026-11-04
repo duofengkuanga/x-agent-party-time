@@ -60,6 +60,34 @@ test('远程连接恢复失败时关闭已启动的 control socket', async () =>
   }
 });
 
+test('daemon 启动本机缓存检查，关闭时等待检查退出', async () => {
+  const paths = xaptPaths(await createTestDirectory());
+  const files = new NodeLocalFileSystem();
+  const state = new LocalStateStore(paths, files);
+  const started = Promise.withResolvers<void>();
+  let stopped = false;
+  const runtime = new DaemonRuntime({
+    paths,
+    files,
+    state,
+    codex: { executable: '/opt/bin/codex', version: '0.146.0' },
+    buildCacheMaintenance: async (signal) => {
+      started.resolve();
+      await new Promise<void>((resolve) =>
+        signal.addEventListener('abort', () => resolve(), { once: true }),
+      );
+      stopped = true;
+    },
+  });
+  const control = new DaemonControlClient(paths.controlSocket, 200);
+  const running = runtime.run();
+  await started.promise;
+  await stopWhenReady(control);
+  await running;
+  expect(stopped).toBe(true);
+  expect(await files.info(paths.controlSocket)).toBeNull();
+});
+
 async function runtimeFixture(
   serverUrl: string,
   keychain: Keychain,

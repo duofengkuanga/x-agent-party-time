@@ -230,12 +230,13 @@ if stage=='package':
         '\nThis repository currently has independent addition and subtraction defects. A Repair validates its own feature using the test entry with --focus add or --focus subtract. Delivery must validate both features without a focus selector.\n',
     );
   }
-  git(source, 'init', '-b', 'main');
+  // Keep the disposable Git metadata inside the explicitly writable fixture root.
+  git(source, 'init', '-b', 'main', '--separate-git-dir', join(directory, 'fixture-git'));
   git(source, 'config', 'user.name', 'Handoff evaluation');
   git(source, 'config', 'user.email', 'handoff-eval@example.invalid');
   git(source, 'add', '.');
   git(source, 'commit', '-m', 'test: isolated handoff fixture');
-  const remote = join(directory, 'remote.git');
+  const remote = join(directory, 'origin-bare');
   git(source, 'clone', '--bare', source, remote);
   git(source, 'remote', 'add', 'origin', remote);
   git(source, 'fetch', 'origin');
@@ -305,7 +306,7 @@ async function runAgent(
   );
   const prompt = options.resumeTaskId
     ? '前次终态传输中断，平台尚未确认结果。继续完成同一个冻结更新批次；候选、目标分支、环境和验收要求均未改变。按原 Skill 核对当前事实后返回终态。'
-    : `Use $${skillName} at ${join(skillRoot, 'SKILL.md')} to complete this Execution. Your worktree has already been prepared at ${worktree}. This is an authorized isolated evaluation: modify only this worktree, and use only its local origin for any permitted push. Follow the supplied output Schema. Do not change AGENTS.md, tests, validation scripts, or the Skill.\nExecution Brief:\n${JSON.stringify(brief)}\n`;
+    : `Use $${skillName} at ${join(skillRoot, 'SKILL.md')} to complete this Execution. Your worktree has already been prepared at ${worktree}. Its disposable Git metadata is in the writable fixture directory named fixture-git. This is an authorized isolated evaluation: modify only this worktree, and use only its local origin for any permitted push. Follow the supplied output Schema. Do not change AGENTS.md, tests, validation scripts, or the Skill.\nExecution Brief:\n${JSON.stringify(brief)}\n`;
   await writeFile(join(directory, `${label}-prompt.txt`), prompt);
   const started = Date.now();
   console.log(`${variant}/${directory.split('/').at(-1)}/${phase}: real Codex started`);

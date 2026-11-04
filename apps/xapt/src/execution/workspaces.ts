@@ -3,11 +3,14 @@ import { createHash } from 'node:crypto';
 import {
   chmod,
   mkdir,
+  lstat,
   readFile,
   stat,
   realpath,
   appendFile,
   symlink,
+  readlink,
+  unlink,
 } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { z } from 'zod';
@@ -411,17 +414,30 @@ async function mirrorIgnoredRepositoryContents(
 ): Promise<void> {
   const entries = await ignoredRepositoryEntries(repositoryPath);
   if (entries.length === 0) return;
+  const dependencies = entries.filter(isDependencyDirectory);
+  const shareDependencies =
+    !dependencies.length ||
+    (await compatibleDependencyInputs(repositoryPath, worktreePath, dependencies));
   const links = await Promise.allSettled(
     entries.map(async (entry) => {
       const source = join(repositoryPath, entry);
       const target = join(worktreePath, entry);
-      // 被忽略文件可能位于主工程里未跟踪的父目录下（如 cache/.DS_Store），
-      // worktree 里没有该父目录，先补建（空目录不会出现在 git status）。
-      await mkdir(dirname(target), { recursive: true });
+      const skipLink = isDependencyDirectory(entry) && !shareDependencies;
+      if (!(await ensureWorkspaceParents(worktreePath, entry, !skipLink))) return false;
+      if (skipLink) {
+        const link = await readlink(target).catch((error: NodeJS.ErrnoException) => {
+          if (error.code === 'ENOENT' || error.code === 'EINVAL') return null;
+          throw error;
+        });
+        if (link === source) await unlink(target);
+        else if (link !== null) throw new Error('依赖链接与工作区已登记的共享来源不一致');
+        return false;
+      }
       // Ignored contents are shared; preserve any content already owned by this worktree.
       await symlink(source, target).catch((error: NodeJS.ErrnoException) => {
         if (error.code !== 'EEXIST') throw error;
       });
+      return true;
     }),
   );
   const failed = links.find((link) => link.status === 'rejected');
@@ -445,9 +461,93 @@ async function mirrorIgnoredRepositoryContents(
     },
   );
   const lines = new Set(existing.split('\n'));
-  const additions = entries.filter((entry) => !lines.has(entry));
+  const additions = entries.filter((entry, index) => {
+    const link = links[index];
+    return link?.status === 'fulfilled' && link.value && !lines.has(entry);
+  });
   if (additions.length > 0)
     await appendFile(excludePath, `\n${additions.join('\n')}\n`, 'utf8');
+}
+
+async function ensureWorkspaceParents(
+  worktree: string,
+  entry: string,
+  create: boolean,
+): Promise<boolean> {
+  let directory = worktree;
+  for (const segment of entry.split('/').slice(0, -1)) {
+    directory = join(directory, segment);
+    if (create)
+      await mkdir(directory).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== 'EEXIST') throw error;
+      });
+    const info = await lstat(directory).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return null;
+      throw error;
+    });
+    if (!info) return false;
+    if (!info.isDirectory()) throw new Error('工作区父目录不是私有目录');
+  }
+  return true;
+}
+
+function isDependencyDirectory(entry: string): boolean {
+  return entry.split('/').at(-1) === 'node_modules';
+}
+
+async function compatibleDependencyInputs(
+  repositoryPath: string,
+  worktreePath: string,
+  dependencyDirectories: string[],
+): Promise<boolean> {
+  const runtimeInputs = [
+    '.nvmrc',
+    '.node-version',
+    '.tool-versions',
+    '.npmrc',
+    '.yarnrc.yml',
+    'bunfig.toml',
+  ];
+  const inputs = [
+    'package.json',
+    'package-lock.json',
+    'npm-shrinkwrap.json',
+    'pnpm-lock.yaml',
+    'pnpm-workspace.yaml',
+    'yarn.lock',
+    'bun.lock',
+    'bun.lockb',
+    ...runtimeInputs,
+  ].map((name) => `:(glob)**/${name}`);
+  const sourceHead = await git(repositoryPath, ['rev-parse', 'HEAD']);
+  const differences = await Promise.all([
+    git(repositoryPath, [
+      'status',
+      '--porcelain',
+      '--untracked-files=all',
+      '--',
+      ...inputs,
+    ]),
+    git(worktreePath, ['diff', '--name-only', sourceHead, '--', ...inputs]),
+    git(worktreePath, ['ls-files', '--others', '--exclude-standard', '--', ...inputs]),
+  ]);
+  if (differences.some(Boolean)) return false;
+  const directories = new Set(['.', ...dependencyDirectories.map(dirname)]);
+  for (const directory of directories) {
+    for (const name of runtimeInputs) {
+      const configPath = join(directory, name);
+      const [source, target] = await Promise.all(
+        [repositoryPath, worktreePath].map((root) =>
+          readFile(join(root, configPath)).catch((error: NodeJS.ErrnoException) => {
+            if (error.code === 'ENOENT') return null;
+            throw error;
+          }),
+        ),
+      );
+      if (target && !source?.equals(target)) return false;
+    }
+  }
+  return true;
 }
 
 async function ignoredRepositoryEntries(repositoryPath: string): Promise<string[]> {
@@ -485,10 +585,11 @@ async function ignoredRepositoryEntries(repositoryPath: string): Promise<string[
         .some((part) => generated.has(part));
     }),
   );
+  const separatelyManaged = [...outputs, ...entries.filter(isDependencyDirectory)];
   const reusable = entries.filter(
     (entry) =>
       !outputs.has(entry) &&
-      ![...outputs].some((output) => output.startsWith(`${entry}/`)),
+      !separatelyManaged.some((output) => output.startsWith(`${entry}/`)),
   );
   // Git can report both an ignored directory and a nested ignored file.
   // Link each subtree once so sibling jobs never create its destination early.

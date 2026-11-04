@@ -257,6 +257,10 @@ xapt 内置采集和确定性分析，不需要额外 Skill 或常驻大模型�
 
 首例提供隔离假远端和假目标，使用真实 Bun 编译。基线部署再次构建；优化部署核对输入、源提交、独立检查、产物摘要与目标回执，消费同一封存字节，失败时明确停止。测试覆盖篡改、输入失效、Push 未确认、目标竞争和响应丢失恢复。
 
+Node 工程在根 `package.json` 声明 `build:cache:maintain`，格式为 `node scripts/<入口>.js --maintain`。要授权本机 daemon 定时运行，将对应 Binding ID 和已批准的 Git 提交登记到 xapt 私有状态目录下的 `buildCacheMaintenance.json`，文件权限设为 `0600`。格式为 `{"entries":[{"bindingId":"<Binding ID>","revision":"<完整 Git SHA>"}]}`。
+
+xapt 启动时核对登记、当前检出、工作区状态和 Node 版本，再按脚本返回的到期时间调度。维护失败保留有界的本机摘要。产物锁、访问时间、七天保留和单仓库 5 GiB 容量由工程脚本管理。
+
 工程脚本可在当前命令终态输出中发出以下有界来源回执：
 
 ```text

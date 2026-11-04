@@ -5,6 +5,7 @@ import { ConnectionCoordinator, normalizeServerOrigin } from './agent/connection
 import { DaemonControlClient } from './daemon/control';
 import { DaemonManager } from './daemon/manager';
 import { DaemonRuntime } from './daemon/runtime';
+import { runBuildCacheMaintenance } from './daemon/buildCacheMaintenance';
 import { NodeLocalFileSystem } from './platform/files';
 import { MacOsBrowser } from './platform/macos/browser';
 import { MacOsDirectorySelector } from './platform/macos/directorySelector';
@@ -169,6 +170,8 @@ export function createCliRuntime(): CliRuntime {
         connection,
         agentService,
         observations,
+        buildCacheMaintenance: (signal) =>
+          runBuildCacheMaintenance(paths, state, files, signal),
       }).run();
     },
   };

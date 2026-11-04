@@ -7,6 +7,8 @@ import {
   readFile,
   readlink,
   realpath,
+  rename,
+  symlink,
   rm,
   writeFile,
 } from 'node:fs/promises';
@@ -270,6 +272,71 @@ describe('GitExecutionWorkspaceManager', () => {
       'old artifact',
     );
     await expect(lstat(join(update, 'dist'))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  test('依赖输入改变后解除已有共享链接并保留私有依赖', async () => {
+    const { root, binding } = await createRepository({ ignoreLocalFiles: true });
+    const manager = new GitExecutionWorkspaceManager(xaptPaths(root));
+    await mkdir(join(binding, 'node_modules'));
+    await writeFile(join(binding, 'node_modules', 'dep.js'), 'shared dependency');
+    const workspace = repairWorkspace('dependency-change');
+    const repair = cwd(await manager.prepare(binding, workspace));
+    expect((await lstat(join(repair, 'node_modules'))).isSymbolicLink()).toBe(true);
+
+    await writeFile(join(repair, 'package.json'), '{"dependencies":{"dep":"2.0.0"}}');
+    expect(cwd(await manager.prepare(binding, workspace))).toBe(repair);
+    await expect(lstat(join(repair, 'node_modules'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    expect(await readFile(join(binding, 'node_modules', 'dep.js'), 'utf8')).toBe(
+      'shared dependency',
+    );
+
+    await mkdir(join(repair, 'node_modules'));
+    await writeFile(join(repair, 'node_modules', 'dep.js'), 'private dependency');
+    await manager.prepare(binding, workspace);
+    expect(await readFile(join(repair, 'node_modules', 'dep.js'), 'utf8')).toBe(
+      'private dependency',
+    );
+    expect(await readFile(join(binding, 'node_modules', 'dep.js'), 'utf8')).toBe(
+      'shared dependency',
+    );
+  });
+
+  test('工作区私有且被忽略的 Node 声明也参与共享依赖检查', async () => {
+    const { root, binding } = await createRepository({ ignoreLocalFiles: true });
+    await writeFile(join(binding, '.git/info/exclude'), '.nvmrc\n');
+    await writeFile(join(binding, '.nvmrc'), 'v20');
+    await mkdir(join(binding, 'node_modules'));
+    const manager = new GitExecutionWorkspaceManager(xaptPaths(root));
+    const workspace = repairWorkspace('runtime-dependency-change');
+    const repair = cwd(await manager.prepare(binding, workspace));
+    expect((await lstat(join(repair, 'node_modules'))).isSymbolicLink()).toBe(true);
+    await rm(join(repair, '.nvmrc'));
+    await writeFile(join(repair, '.nvmrc'), 'v22');
+    await manager.prepare(binding, workspace);
+    await expect(lstat(join(repair, 'node_modules'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    expect(await readFile(join(binding, '.nvmrc'), 'utf8')).toBe('v20');
+  });
+
+  test('依赖准备拒绝通过父目录软链修改工作区外的链接', async () => {
+    const { root, binding } = await createRepository({ ignoreLocalFiles: true });
+    await mkdir(join(binding, 'pkg/node_modules'), { recursive: true });
+    await writeFile(join(binding, 'pkg/node_modules/dep.js'), 'shared');
+    const manager = new GitExecutionWorkspaceManager(xaptPaths(root));
+    const workspace = repairWorkspace('dependency-parent-link');
+    const repair = cwd(await manager.prepare(binding, workspace));
+    expect((await lstat(join(repair, 'pkg'))).isDirectory()).toBe(true);
+    const outside = join(root, 'outside');
+    await rename(join(repair, 'pkg'), outside);
+    await symlink(outside, join(repair, 'pkg'));
+    await writeFile(join(repair, 'package.json'), '{}');
+    await expect(manager.prepare(binding, workspace)).rejects.toThrow(
+      '工作区父目录不是私有目录',
+    );
+    expect((await lstat(join(outside, 'node_modules'))).isSymbolicLink()).toBe(true);
   });
 
   test('removeWorkspaces 先全量校验再删除，force 覆盖未提交修改', async () => {

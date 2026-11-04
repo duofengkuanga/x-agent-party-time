@@ -16,6 +16,7 @@ export interface DaemonRuntimeOptions {
   connection?: ConnectionCoordinator;
   agentService?: AgentService;
   observations?: { readonly degraded: boolean; shutdown(): Promise<void> };
+  buildCacheMaintenance?(signal: AbortSignal): Promise<void>;
 }
 
 export class DaemonRuntime {
@@ -52,12 +53,15 @@ export class DaemonRuntime {
       throw error;
     }
     const serviceTask = this.options.agentService?.run();
+    const maintenance = new AbortController();
+    const maintenanceTask = this.options.buildCacheMaintenance?.(maintenance.signal);
     try {
       await this.control.done;
     } finally {
       this.options.agentService?.stop();
+      maintenance.abort();
       try {
-        await serviceTask;
+        await Promise.all([serviceTask, maintenanceTask]);
       } finally {
         await this.options.observations?.shutdown();
       }
