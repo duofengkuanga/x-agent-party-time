@@ -67,9 +67,9 @@ This project is indexed by GitNexus as **x-agent-party-time** (2039 symbols, 674
 
 ## Agent skills
 
-### Issue tracker
+### Specs
 
-Issues and specs live in GitHub Issues. Before reading or publishing tickets, read `docs/agents/issueTracker.md`.
+需求与验收规范保存在 `docs/specs/`。整理、查阅或拆分 spec 前读取 `docs/agents/specs.md`；默认交付仓库文档，不发布 GitHub Issues。
 
 ### Domain docs
 

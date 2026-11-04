@@ -56,4 +56,4 @@ PersonAgent 按同一张 Test Submission 收集已修好的待更新 Bug，统�
 
 ## 实现状态
 
-上述产品流程已由用户整体确认。本轮不修改业务实现；技术设计提案和待验证边界见 [PersonAgent 技术设计](../design/personAgentExecutionDesign.md)。模式不可变、PersonAgent 的负责人及 Agent 一致性、跨工程统一验收等约束的自动化检查均待实现。
+上述产品流程已由用户整体确认，完整需求与验收范围见 [PersonAgent spec](../specs/personAgentMultiEngineering.md)。本轮不修改业务实现；技术设计提案和待验证边界见 [PersonAgent 技术设计](../design/personAgentExecutionDesign.md)。模式不可变、PersonAgent 的负责人及 Agent 一致性、跨工程统一验收等约束的自动化检查均待实现。

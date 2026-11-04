@@ -13,7 +13,7 @@ _Avoid_: Workspace、团队空间
 _Avoid_: Repository、代码库
 
 **Test Submission**:
-一次已经确定参与者、工程、目标分支、环境和协作模式的测试交付周期；创建后协作模式不可切换，AgentParty 活动期间可以追加工程。
+一次已经确定参与者、工程、目标分支、环境和协作模式的测试交付周期；创建后协作模式不可切换，活动期间可以追加工程。
 _Avoid_: Test Run、测试任务
 
 **PersonAgent**:
