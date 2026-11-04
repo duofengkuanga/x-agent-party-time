@@ -50,6 +50,7 @@ export function personAgentUpdateResultSchema(
   requireReceipt = false,
 ) {
   const [completed, failed] = UpdateExecutionResultSchema.shape.result.options;
+  const receiptFields = requireReceipt ? { receipt: deploymentReceipt.optional() } : {};
   const completedMembers = Object.fromEntries(
     scope.map(({ alias, changed }) => [
       alias,
@@ -59,7 +60,7 @@ export function personAgentUpdateResultSchema(
             commit: CommitShaSchema,
             pushVerified: z.literal(true),
             deploymentVerified: z.literal(true),
-            receipt: deploymentReceipt.optional(),
+            ...receiptFields,
           })
         : z.strictObject({ state: z.literal('UNCHANGED') }),
     ]),
@@ -79,7 +80,7 @@ export function personAgentUpdateResultSchema(
         ]),
         commit: CommitShaSchema.nullable(),
         evidence: z.string().trim().max(300),
-        receipt: deploymentReceipt.optional(),
+        ...receiptFields,
       }),
     ]),
   );

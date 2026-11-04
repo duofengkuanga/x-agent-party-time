@@ -173,6 +173,9 @@ test.each([false, true])(
         ],
       },
     });
+    expect(JSON.stringify(update!.codexTurn?.outputJsonSchema)).not.toContain(
+      '"receipt"',
+    );
     f.executions.start(f.runner.id, update!.id, {
       kind: 'STARTED',
       leaseToken: update!.lease.token,
