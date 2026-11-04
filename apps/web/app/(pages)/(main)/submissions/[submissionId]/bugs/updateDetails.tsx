@@ -1,14 +1,13 @@
 'use client';
 
-import { useRef, useState } from 'react';
 import type { UpdateBatchView } from '@/contracts/submissions/update';
 import {
-  reportExternalDeploymentAction,
   resolveUpdateInteractionAction,
+  retryUpdateAction,
   synchronizeUpdateSessionAction,
 } from '@/app/actions/submissions/update';
 import { createClientId } from '@/app/(pages)/(main)/components/clientId';
-import { AttachmentPicker, ProgressAttachments } from './attachments';
+import { ProgressAttachments } from './attachments';
 import { useWorkspaceMutation } from './useWorkspaceMutation';
 import { ManualHandoff } from './manualHandoff';
 import { SubmissionInteractionRecord } from './interactionRecord';
@@ -126,6 +125,24 @@ export function UpdateAttemptDetails({
               ) : null}
             </>
           ) : null}
+          {latest && batch.availableActions.includes('RETRY_UPDATE') ? (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() =>
+                run(
+                  () =>
+                    retryUpdateAction(batch.id, {
+                      mutationId: createClientId(),
+                      expectedVersion: batch.version,
+                    }),
+                  '原批次已重新排队。',
+                )
+              }
+            >
+              更新 Agent 规则后重试
+            </button>
+          ) : null}
           {latest && batch.availableActions.includes('SYNC_SESSION') ? (
             <div className="collab-batch-actions">
               <p>同步本批全部 {batch.entries.length} 条缺陷的更新结果。</p>
@@ -200,7 +217,7 @@ export function UpdateAttemptDetails({
           <p>
             {work?.outcome === 'COMPLETED'
               ? '本轮已完成推送和环境更新。'
-              : work?.outcome === 'PUSHED'
+              : work?.outcome === 'PUSH_CONFIRMED'
                 ? '本轮已推送；环境更新结果以后续确认记录为准。'
                 : work?.outcome === 'FAILED'
                   ? '本轮更新未完成。'
@@ -213,16 +230,11 @@ export function UpdateAttemptDetails({
               label="已完成操作"
             />
           ) : null}
+          {node.canReadObservations && batch.hasManualDatabaseOperation ? (
+            <p>本批包含人工数据库交接。请在对应修复记录中查看 SQL 文件。</p>
+          ) : null}
           {work?.warnings.length ? (
             <RoundLines items={work.warnings} empty="" label="提醒" />
-          ) : null}
-          {latest && batch.availableActions.includes('REPORT_EXTERNAL') ? (
-            <>
-              {batch.hasManualDatabaseOperation ? (
-                <p>请先人工执行代码仓库中的 SQL，并确认本批环境更新结果。</p>
-              ) : null}
-              <UpdateBatchActions batch={batch} pending={pending} run={run} />
-            </>
           ) : null}
         </>
       }
@@ -235,7 +247,7 @@ export function ExternalUpdateReport({
 }: {
   node: Extract<
     UpdateBatchView['timeline'][number],
-    { kind: 'EXTERNAL_REPORT' }
+    { kind: 'HISTORICAL_DEPLOYMENT' }
   >;
 }) {
   return (
@@ -330,7 +342,7 @@ export function UpdateBatchDetails({
         />
         <ol className="collab-developer-timeline">
           {[...batch.timeline].reverse().map((node) =>
-            node.kind === 'EXTERNAL_REPORT' ? (
+            node.kind === 'HISTORICAL_DEPLOYMENT' ? (
               <li key={node.id}>
                 <ExternalUpdateReport node={node} />
               </li>
@@ -339,91 +351,5 @@ export function UpdateBatchDetails({
         </ol>
       </section>
     </div>
-  );
-}
-
-function UpdateBatchActions({
-  batch,
-  pending,
-  run,
-}: {
-  batch: UpdateBatchView;
-  pending: boolean;
-  run: RunWorkspaceAction;
-}) {
-  const [externalOutcome, setExternalOutcome] = useState<
-    'SUCCEEDED' | 'FAILED'
-  >('SUCCEEDED');
-  const [externalSummary, setExternalSummary] = useState('');
-  const [externalFiles, setExternalFiles] = useState<File[]>([]);
-  const externalFileInput = useRef<HTMLInputElement>(null);
-
-  return (
-    <section className="collab-batch-actions" aria-label="确认整批更新结果">
-      <p>本次确认将作用于本批全部 {batch.entries.length} 条缺陷。</p>
-      {batch.availableActions.includes('REPORT_EXTERNAL') ? (
-        <div className="collab-form collab-bug-verification">
-          <label>
-            <span>外部更新结果</span>
-            <select
-              onChange={(event) =>
-                setExternalOutcome(event.target.value as 'SUCCEEDED' | 'FAILED')
-              }
-              value={externalOutcome}
-            >
-              <option value="SUCCEEDED">外部更新成功</option>
-              <option value="FAILED">外部更新失败</option>
-            </select>
-          </label>
-          <textarea
-            maxLength={8_000}
-            onChange={(event) => setExternalSummary(event.target.value)}
-            placeholder={
-              externalOutcome === 'FAILED'
-                ? '说明持续集成或部署失败原因'
-                : '可补充外部更新结果'
-            }
-            rows={3}
-            value={externalSummary}
-          />
-          <AttachmentPicker
-            files={externalFiles}
-            inputRef={externalFileInput}
-            onChange={setExternalFiles}
-          />
-          <button
-            disabled={
-              pending ||
-              (externalOutcome === 'FAILED' && !externalSummary.trim())
-            }
-            onClick={() => {
-              const formData = new FormData();
-              formData.set('mutationId', createClientId());
-              formData.set('expectedVersion', String(batch.version));
-              formData.set('outcome', externalOutcome);
-              formData.set('summary', externalSummary);
-              externalFiles.forEach((file) =>
-                formData.append('attachments', file),
-              );
-              run(
-                () => reportExternalDeploymentAction(batch.id, formData),
-                externalOutcome === 'SUCCEEDED'
-                  ? '外部更新已确认成功，缺陷进入待验证。'
-                  : '外部更新失败记录已追加。',
-                () => {
-                  setExternalSummary('');
-                  setExternalFiles([]);
-                  if (externalFileInput.current)
-                    externalFileInput.current.value = '';
-                },
-              );
-            }}
-            type="button"
-          >
-            提交外部结果
-          </button>
-        </div>
-      ) : null}
-    </section>
   );
 }

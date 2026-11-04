@@ -21,26 +21,9 @@ export const EngineeringIdentifierSchema = z
     /^[a-z\p{Script=Han}][a-z0-9\p{Script=Han}]*(?:-[a-z0-9\p{Script=Han}]+)*$/u,
     '工程标识只能使用中文、小写字母、数字和连字符，并以中文或小写字母开头',
   );
-export const DeploymentMethodSchema = z.discriminatedUnion('kind', [
-  z.strictObject({
-    kind: z.literal('LOCAL_SCRIPT'),
-    command: z.string().trim().min(1).max(4_000),
-  }),
-  z.strictObject({ kind: z.literal('CI_CD') }),
-]);
-
-// An environment keeps its script while CI is selected; execution still uses DeploymentMethodSchema.
-export const EnvironmentDeploymentSettingsSchema = z.discriminatedUnion('kind', [
-  DeploymentMethodSchema.options[0],
-  DeploymentMethodSchema.options[1].extend({
-    scriptCommand: DeploymentMethodSchema.options[0].shape.command.optional(),
-  }),
-]);
-
-export const EffectiveEnvironmentDeploymentSchema =
-  EnvironmentDeploymentSettingsSchema.transform((settings) =>
-    settings.kind === 'LOCAL_SCRIPT' ? settings : { kind: 'CI_CD' as const },
-  );
+export const DeploymentScriptSchema = z.strictObject({
+  command: z.string().trim().min(1).max(4_000),
+});
 
 const EngineeringBaseSchema = z.object({
   id: EngineeringIdSchema,
@@ -75,8 +58,7 @@ export const TestEnvironmentSchema = z.object({
   id: EnvironmentIdSchema,
   engineeringId: EngineeringIdSchema,
   name: EnvironmentNameSchema,
-  deployment: DeploymentMethodSchema,
-  scriptCommand: DeploymentMethodSchema.options[0].shape.command.optional(),
+  deployment: DeploymentScriptSchema,
   version: z.number().int().positive(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
@@ -93,7 +75,7 @@ export const EngineeringWorkspaceSchema = z.object({
   environments: z.array(TestEnvironmentSchema),
 });
 
-export type DeploymentMethod = z.infer<typeof DeploymentMethodSchema>;
+export type DeploymentScript = z.infer<typeof DeploymentScriptSchema>;
 export type Engineering = z.infer<typeof EngineeringSchema>;
 export type EngineeringMembership = z.infer<typeof EngineeringMembershipSchema>;
 export type TestEnvironment = z.infer<typeof TestEnvironmentSchema>;

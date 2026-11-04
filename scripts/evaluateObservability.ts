@@ -12,7 +12,7 @@ import { handleObservationRead } from '../apps/web/server/platform/execution/obs
 import { ExecutionObservations } from '../apps/web/server/platform/execution/observations';
 import { LocalFileStore } from '../apps/web/server/platform/files/localFileStore';
 import { RepairExecutionResultSchema } from '../apps/web/contracts/submissions/repair';
-import { LocalScriptUpdateExecutionResultSchema } from '../apps/web/contracts/submissions/update';
+import { UpdateExecutionResultSchema } from '../apps/web/contracts/submissions/update';
 import type {
   ClaimedExecution,
   JsonValue,
@@ -86,7 +86,7 @@ for (const [index, variant] of preregistration.ordering.entries()) {
           type: 'BACKEND',
           identifier: 'addition',
           environment: 'isolated',
-          deployment: { kind: 'LOCAL_SCRIPT', command: 'bun tools/delivery.ts deploy' },
+          deployment: { command: 'bun tools/delivery.ts deploy' },
           repository: 'https://example.invalid/isolated.git',
           branch: 'main',
         },
@@ -225,7 +225,7 @@ for (const [index, variant] of preregistration.ordering.entries()) {
         const outcome = await started.completion;
         await observation.phase('validation', async () => {
           if (label === 'repair') RepairExecutionResultSchema.parse(outcome);
-          else LocalScriptUpdateExecutionResultSchema.parse(outcome);
+          else UpdateExecutionResultSchema.parse(outcome);
           verifyResultContent(turn.resultAssertions ?? [], outcome);
         });
         observation.record({
@@ -330,10 +330,7 @@ for (const [index, variant] of preregistration.ordering.entries()) {
       fixture.base,
     );
     const updated = await run(update, updateWorktree, 'update');
-    if (
-      LocalScriptUpdateExecutionResultSchema.parse(updated.outcome).result.outcome !==
-      'COMPLETED'
-    )
+    if (UpdateExecutionResultSchema.parse(updated.outcome).result.outcome !== 'COMPLETED')
       throw new Error('Update 未完成假部署');
     if (
       fixtureGit(

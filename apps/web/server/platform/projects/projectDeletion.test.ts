@@ -13,7 +13,6 @@ import {
   completeUpdate,
   createAndRequestBug,
   currentBug,
-  latestBatch,
   lifecycleFixture,
   submissionRow,
 } from '@/server/submissions/lifecycle/lifecycleFixture';
@@ -76,7 +75,7 @@ describe('项目删除', () => {
       type: 'FRONTEND',
       identifier: 'web',
       environment: '测试环境',
-      deployment: { kind: 'CI_CD' },
+      deployment: { command: 'bun run deploy:backend' },
       repository: 'https://example.com/project.git',
       developers: { member: { userId: users.member.id, runnerId: paired.runner.id } },
     });
@@ -237,15 +236,9 @@ describe('项目删除', () => {
     });
     const ciBug = createAndRequestBug(fixture, fixture.items[1]!.id, '持续集成缺陷');
     await completeNextRepair(fixture, 'project-delete-ci', ['2'.repeat(40)]);
-    const batch = await completeUpdate(fixture, fixture.items[1]!.id, {
-      outcome: 'PUSHED',
+    await completeUpdate(fixture, fixture.items[1]!.id, {
+      outcome: 'COMPLETED',
       summary: '推送完成',
-    });
-    fixture.updates.reportExternalDeployment(users.developer.id, batch.id, {
-      ...mutation(latestBatch(database, fixture.items[1]!.id).version),
-      outcome: 'SUCCEEDED',
-      summary: '外部部署完成',
-      attachmentIds: [],
     });
     for (const bug of [localBug, ciBug])
       fixture.lifecycle.verifyBug(users.tester.id, bug.id, {
@@ -293,7 +286,6 @@ describe('项目删除', () => {
       'submission_update_batch',
       'submission_update_batch_entry',
       'submission_update_attempt',
-      'submission_external_deployment_report',
       'submission_verification_record',
       'submission_cleanup',
       'submission_cleanup_attempt',

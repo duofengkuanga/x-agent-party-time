@@ -1,4 +1,3 @@
-import { DeploymentMethodSchema } from '@/contracts/projects/engineering';
 import { TestSubmissionWriteStore } from '@/server/submissions/testSubmissionWriteStore';
 import {
   asDetails,
@@ -11,10 +10,7 @@ import { insertAuditEvent } from '@/server/platform/mutations/auditEvent';
 import type { AppDatabase } from '@/server/database/index';
 import { executionProjector } from '@/server/platform/execution/projection';
 import type { Execution, JsonValue } from '@agent-party-time/execution-contract';
-import {
-  CiCdUpdateExecutionResultSchema,
-  LocalScriptUpdateExecutionResultSchema,
-} from '../../../contracts/submissions/update';
+import { UpdateExecutionResultSchema } from '../../../contracts/submissions/update';
 import type { BatchRow } from './updateQueries';
 import { isUpdateExecution, staleBatch } from './results';
 import { UpdateQueries } from './updateQueries';
@@ -94,10 +90,9 @@ export class UpdateProjection {
     if (!attempt || attempt.outcome_json) return;
     const batch = this.queries.batch(attempt.batch_id);
     const now = this.now().toISOString();
-    const interpreted = this.interpret(execution, batch);
+    const interpreted = this.interpret(execution);
     const nextState = {
       COMPLETED: 'COMPLETED',
-      PUSHED: 'WAITING_EXTERNAL',
       FAILED: 'FAILED',
       HANDED_OFF: 'RUNNING',
     }[interpreted.kind];
@@ -154,7 +149,7 @@ export class UpdateProjection {
     const turnId = typeof envelope.turnId === 'string' ? envelope.turnId : null;
     const result = envelope.result;
     if (!turnId) return;
-    const parsed = this.parseResult(batch, result);
+    const parsed = UpdateExecutionResultSchema.safeParse(result);
     if (!parsed.success) {
       markInvalidExecutionResult(this.db, execution.id, INVALID_RESULT_MESSAGE);
       return;
@@ -183,8 +178,8 @@ export class UpdateProjection {
     const attemptId = this.createId();
     const now = this.now().toISOString();
     this.db.run(
-      `INSERT INTO submission_update_attempt(id, batch_id, execution_id, continuation_report_id, attempt, outcome_json, created_at, finished_at)
-       VALUES (?, ?, ?, NULL, ?, NULL, ?, NULL)`,
+      `INSERT INTO submission_update_attempt(id, batch_id, execution_id, attempt, outcome_json, created_at, finished_at)
+       VALUES (?, ?, ?, ?, NULL, ?, NULL)`,
       [attemptId, batch.id, execution.id, latest.attempt + 1, now],
     );
     this.applyTerminalExecution({
@@ -233,10 +228,8 @@ export class UpdateProjection {
 
   private interpret(
     execution: Execution,
-    batch: BatchRow,
   ):
     | { kind: 'COMPLETED'; attemptOutcome: unknown }
-    | { kind: 'PUSHED'; attemptOutcome: unknown }
     | { kind: 'FAILED' | 'HANDED_OFF'; attemptOutcome: unknown } {
     if (execution.outcome?.kind === 'HANDED_OFF')
       return {
@@ -244,11 +237,10 @@ export class UpdateProjection {
         attemptOutcome: { outcome: 'HANDED_OFF', questions: execution.outcome.questions },
       };
     if (execution.outcome?.kind === 'SUCCEEDED') {
-      const parsed = this.parseResult(batch, execution.outcome.result);
+      const parsed = UpdateExecutionResultSchema.safeParse(execution.outcome.result);
       const result = parsed.success ? parsed.data.result : null;
       if (result?.outcome === 'COMPLETED')
         return { kind: 'COMPLETED', attemptOutcome: result };
-      if (result?.outcome === 'PUSHED') return { kind: 'PUSHED', attemptOutcome: result };
       if (parsed.success) return { kind: 'FAILED', attemptOutcome: result };
       markInvalidExecutionResult(this.db, execution.id, INVALID_RESULT_MESSAGE);
       return {
@@ -287,13 +279,6 @@ export class UpdateProjection {
             : execution.outcome?.kind,
       },
     };
-  }
-
-  private parseResult(batch: BatchRow, result: unknown) {
-    const deployment = DeploymentMethodSchema.parse(JSON.parse(batch.deployment_json));
-    return deployment.kind === 'LOCAL_SCRIPT'
-      ? LocalScriptUpdateExecutionResultSchema.safeParse(result)
-      : CiCdUpdateExecutionResultSchema.safeParse(result);
   }
 
   private auditForBatch(

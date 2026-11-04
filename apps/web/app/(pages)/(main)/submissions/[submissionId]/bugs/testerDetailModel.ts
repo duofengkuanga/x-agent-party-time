@@ -49,12 +49,6 @@ export function testerBugStatus(
     return '修复已完成，测试环境更新后才能复测。';
   }
   if (bug.stage === 'UPDATING') {
-    const waitingForConfirmation = snapshot.updateBatches.some(
-      (batch) =>
-        batch.state === 'WAITING_EXTERNAL' &&
-        batch.entries.some((entry) => entry.bugId === bug.id),
-    );
-    if (waitingForConfirmation) return `等待${responsible}确认环境更新结果，请稍后复测。`;
     if (visual.state === 'FAILED') return `环境更新遇到问题，等待${responsible}处理。`;
     if (visual.state === 'NEEDS_APPROVAL' || visual.state === 'NEEDS_INPUT')
       return `环境更新需要${responsible}确认，请稍后复测。`;

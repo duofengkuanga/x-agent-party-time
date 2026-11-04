@@ -28,7 +28,10 @@ export type DeveloperTimelineEntry =
       id: string;
       at: string;
       kind: 'report';
-      node: Extract<UpdateBatchView['timeline'][number], { kind: 'EXTERNAL_REPORT' }>;
+      node: Extract<
+        UpdateBatchView['timeline'][number],
+        { kind: 'HISTORICAL_DEPLOYMENT' }
+      >;
       batch: UpdateBatchView;
     }
   | { id: string; at: string; kind: 'event'; node: BugEvent };
@@ -64,7 +67,7 @@ export function developerTimeline(
           batch,
           round: 0,
         });
-      if (node.kind === 'EXTERNAL_REPORT')
+      if (node.kind === 'HISTORICAL_DEPLOYMENT')
         entries.push({ id: node.id, at: node.occurredAt, kind: 'report', node, batch });
     }
   }
@@ -79,7 +82,7 @@ export function executionRoundStatus(
 ): string {
   if (node.result?.outcome === 'HANDED_OFF') return '等待人工确认';
   if (node.result?.outcome === 'FAILED') return '未完成';
-  if (node.result?.outcome === 'PUSHED') return '已推送';
+  if (node.result?.outcome === 'PUSH_CONFIRMED') return '已推送';
   if (node.result?.outcome === 'COMPLETED') return '已完成';
   const labels: Record<ExecutionState, string> = {
     QUEUED: '排队中',
@@ -101,7 +104,7 @@ export function executionRoundProgress(node: RepairRound | UpdateRound): string 
   if (result?.outcome === 'FAILED') return `${result.failedStep}：${result.reason}`;
   if (result?.outcome === 'HANDED_OFF') return '自动执行已停止，等待在原会话中继续处理。';
   if (result?.outcome === 'COMPLETED') return '本轮执行已完成。';
-  if (result?.outcome === 'PUSHED') return '已完成推送，等待确认环境更新结果。';
+  if (result?.outcome === 'PUSH_CONFIRMED') return '历史记录确认了本轮推送。';
   if (node.executionState === 'RUNNING') return 'Agent 正在执行，尚未回传步骤明细。';
   if (node.executionState === 'CLAIMED') return 'Agent 已领取，正在准备执行。';
   if (node.executionState === 'QUEUED') return '等待 Agent 执行。';

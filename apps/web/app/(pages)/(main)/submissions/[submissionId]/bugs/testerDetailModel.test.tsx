@@ -12,6 +12,7 @@ import {
   completeUpdate,
   createTakeoverSubmission,
 } from '@/server/submissions/lifecycle/lifecycleFixture';
+import { testSkillBinding } from '@/testing/submissions/execution';
 import { mutation } from '@/testing/submissions/project';
 import { testDatabases } from '@/testing/database';
 import { testerBugStatus, latestTesterFeedback } from './testerDetailModel';
@@ -71,9 +72,16 @@ test('同工程下一批待更新倒计时只显示在待更新缺陷卡片上',
   const itemId = fixture.items[1]!.id;
   const updating = createAndRequestBug(fixture, itemId, '正在更新的缺陷');
   await completeNextRepair(fixture, 'updating-repair', ['a'.repeat(40)]);
-  await completeUpdate(fixture, itemId, {
-    outcome: 'PUSHED',
-    summary: '等待外部部署结果',
+  const batch = fixture.updates.freezeNow(fixture.users.developer.id, itemId, {
+    mutationId: randomUUID(),
+  });
+  const [execution] = await fixture.executions.claim(fixture.runner.id, 1, 0);
+  expect(execution!.id).toBe(batch.executionId);
+  fixture.executions.start(fixture.runner.id, execution!.id, {
+    kind: 'STARTED',
+    leaseToken: execution!.lease.token,
+    sessionId: 'running-update',
+    taskSkillBinding: testSkillBinding('XUpdate'),
   });
   const waiting = createAndRequestBug(fixture, itemId, '下一批待更新的缺陷');
   await completeNextRepair(fixture, 'waiting-repair', ['b'.repeat(40)]);
@@ -138,12 +146,10 @@ test('测试详情全流程区分等待修复、等待更新、更新中、可�
   expect(read().message).toContain('已提交修复');
   await completeNextRepair(fixture, 'private-repair-session', ['a'.repeat(40)]);
   expect(read().message).toContain('测试环境更新后才能复测');
-  const batch = await completeUpdate(fixture, fixture.items[1]!.id, {
-    outcome: 'PUSHED',
-    summary: '已推送',
+  await completeUpdate(fixture, fixture.items[1]!.id, {
+    outcome: 'COMPLETED',
+    summary: '完成脚本部署',
   });
-  expect(read().bug.stage).toBe('UPDATING');
-  expect(read().message).toContain('请稍后复测');
   const board = renderToStaticMarkup(
     <BugBoard
       snapshot={read().snapshot}
@@ -153,15 +159,6 @@ test('测试详情全流程区分等待修复、等待更新、更新中、可�
   );
   expect(board).toContain('内容丢失');
   expect(board).not.toContain('collab-update-batch-card');
-  fixture.updates.reportExternalDeployment(
-    fixture.users.developer.id,
-    batch.id,
-    {
-      ...mutation(batch.version),
-      outcome: 'SUCCEEDED',
-      attachmentIds: [],
-    },
-  );
   expect(read().message).toBe('可以在持续集成环境复测。');
   fixture.lifecycle.verifyBug(fixture.users.tester.id, bug.id, {
     ...mutation(read().bug.version),

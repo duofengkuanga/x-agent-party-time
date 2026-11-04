@@ -9,7 +9,6 @@ import {
   formField,
   formStringList,
   integerFormField,
-  optionalFormField,
   runRedirectMutation,
   runInteractiveMutation,
 } from '@/app/actions/actionTransport';
@@ -19,9 +18,9 @@ import {
   bindingSettingsPath,
 } from '@/app/(pages)/(main)/projects/components/routeState';
 import {
-  DeploymentMethodSchema,
+  DeploymentScriptSchema,
   EngineeringTypeSchema,
-  type DeploymentMethod,
+  type DeploymentScript,
 } from '../../../contracts/projects/engineering';
 import { engineeringActionError } from '../../../server/platform/projects/engineering/actionError';
 
@@ -46,7 +45,6 @@ export async function createEngineeringAction(formData: FormData): Promise<never
         mutationId: formField(formData, `environmentMutationId:${key}`),
         name: formField(formData, `environmentName:${key}`),
         deployment: deploymentField(formData, key),
-        scriptCommand: optionalFormField(formData, `scriptCommand:${key}`),
       })),
     });
     return {
@@ -139,7 +137,6 @@ export async function createEnvironmentAction(formData: FormData) {
           mutationId: formField(formData, 'mutationId'),
           name: formField(formData, 'name'),
           deployment: deploymentField(formData),
-          scriptCommand: optionalFormField(formData, 'scriptCommand'),
         },
       ),
       refreshPaths: REFRESH_PATHS,
@@ -159,7 +156,6 @@ export async function updateEnvironmentAction(formData: FormData) {
           expectedVersion: integerFormField(formData, 'expectedVersion'),
           name: formField(formData, 'name'),
           deployment: deploymentField(formData),
-          scriptCommand: optionalFormField(formData, 'scriptCommand'),
         },
       ),
       refreshPaths: REFRESH_PATHS,
@@ -200,11 +196,10 @@ function runEngineeringRedirect(
   });
 }
 
-function deploymentField(formData: FormData, key?: string): DeploymentMethod {
+function deploymentField(formData: FormData, key?: string): DeploymentScript {
   const suffix = key === undefined ? '' : `:${key}`;
-  const kind = formField(formData, `deploymentKind${suffix}`);
   const command = formField(formData, `command${suffix}`).trim();
-  return DeploymentMethodSchema.parse(command ? { kind, command } : { kind });
+  return DeploymentScriptSchema.parse({ command });
 }
 
 export async function createEngineeringBindingAction(formData: FormData): Promise<never> {

@@ -363,7 +363,7 @@ describe('Submission workspace', () => {
         {
           ...mutation(fixture.environments.front.version),
           name: fixture.environments.front.name,
-          deployment: { kind: 'CI_CD' },
+          deployment: { command: 'bun run deploy:backend' },
         },
       ),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));

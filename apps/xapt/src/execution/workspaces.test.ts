@@ -213,6 +213,65 @@ describe('GitExecutionWorkspaceManager', () => {
     );
   });
 
+  test('修复与更新 worktree 隔离构建产物，同时复用依赖内文件', async () => {
+    const { root, binding } = await createRepository({ ignoreLocalFiles: true });
+    const exclude = await output([
+      'git',
+      '-C',
+      binding,
+      'rev-parse',
+      '--git-path',
+      'info/exclude',
+    ]);
+    const artifacts = [
+      'dist',
+      'dist.zip',
+      'target',
+      'build',
+      '.next',
+      'src/.umi',
+      'src/.umi-production',
+    ];
+    await writeFile(join(binding, exclude), artifacts.join('\n') + '\n');
+    for (const entry of artifacts) {
+      if (entry === 'dist.zip') await writeFile(join(binding, entry), 'old archive');
+      else {
+        await mkdir(join(binding, entry), { recursive: true });
+        await writeFile(join(binding, entry, 'artifact'), 'old artifact');
+      }
+    }
+    await mkdir(join(binding, 'node_modules', 'dep', 'dist'), { recursive: true });
+    await writeFile(
+      join(binding, 'node_modules', 'dep', 'dist', 'index.js'),
+      'dependency',
+    );
+
+    const manager = new GitExecutionWorkspaceManager(xaptPaths(root));
+    const repair = cwd(await manager.prepare(binding, repairWorkspace('isolated-build')));
+    const update = cwd(
+      await manager.prepare(binding, updateWorkspace('isolated-build-update')),
+    );
+    for (const worktree of [repair, update]) {
+      for (const artifact of artifacts)
+        await expect(lstat(join(worktree, artifact))).rejects.toMatchObject({
+          code: 'ENOENT',
+        });
+      expect(
+        await readFile(join(worktree, 'node_modules', 'dep', 'dist', 'index.js'), 'utf8'),
+      ).toBe('dependency');
+    }
+    await mkdir(join(repair, 'dist'));
+    await writeFile(join(repair, 'dist', 'artifact'), 'repair output');
+    await manager.prepare(binding, repairWorkspace('isolated-build'));
+    expect(await readFile(join(repair, 'dist', 'artifact'), 'utf8')).toBe(
+      'repair output',
+    );
+    expect(await readFile(join(binding, 'dist', 'artifact'), 'utf8')).toBe(
+      'old artifact',
+    );
+    await expect(lstat(join(update, 'dist'))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   test('removeWorkspaces 先全量校验再删除，force 覆盖未提交修改', async () => {
     const { root, binding } = await createRepository();
 

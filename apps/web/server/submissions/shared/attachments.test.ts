@@ -10,7 +10,7 @@ test('附件绑定统一验证归属和所有用途，仅允许复用当前缺�
     const exclusive = [
       'submission_verification_attachment',
       'submission_reopen_attachment',
-      'submission_external_deployment_report_attachment',
+      'submission_update_history_file',
     ];
     for (const table of exclusive) db.run(`CREATE TABLE ${table}(file_id TEXT)`);
     db.run("INSERT INTO platform_file VALUES ('file', 'tester')");

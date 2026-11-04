@@ -305,9 +305,7 @@ export function BugBoard({
           const batches = showBatches
             ? snapshot.updateBatches.filter(
                 (batch) =>
-                  ['READY', 'RUNNING', 'WAITING_EXTERNAL', 'FAILED'].includes(
-                    batch.state,
-                  ) &&
+                  ['READY', 'RUNNING', 'FAILED'].includes(batch.state) &&
                   batch.entries.some((entry) =>
                     bugs.some((bug) => bug.id === entry.bugId),
                   ),

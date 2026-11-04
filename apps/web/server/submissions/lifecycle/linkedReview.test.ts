@@ -40,15 +40,9 @@ async function linkedReady() {
 }
 
 async function finishBackend(fixture: Awaited<ReturnType<typeof setup>>) {
-  const batch = await completeUpdate(fixture, fixture.items[1]!.id, {
-    outcome: 'PUSHED',
+  await completeUpdate(fixture, fixture.items[1]!.id, {
+    outcome: 'COMPLETED',
     summary: '后端已推送',
-  });
-  fixture.updates.reportExternalDeployment(fixture.users.developer.id, batch.id, {
-    ...mutation(latestBatch(fixture.database, fixture.items[1]!.id).version),
-    outcome: 'SUCCEEDED',
-    summary: '后端已部署',
-    attachmentIds: [],
   });
 }
 

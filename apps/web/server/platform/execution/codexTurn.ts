@@ -9,6 +9,7 @@ import {
 
 export function createInitialCodexTurn(input: {
   requiredSkillName: string;
+  requiredSkillProtocol?: string;
   manualHandoff?: 'EXTERNAL_SESSION';
   executionBrief: JsonObject;
   outputJsonSchema: JsonObject;
@@ -19,6 +20,7 @@ export function createInitialCodexTurn(input: {
     kind: 'INITIAL',
     manualHandoff: input.manualHandoff,
     requiredSkillName: input.requiredSkillName,
+    requiredSkillProtocol: input.requiredSkillProtocol,
     executionBrief: input.executionBrief,
     executionBriefHash: createHash('sha256').update(serialized).digest('hex'),
     outputJsonSchema: input.outputJsonSchema,

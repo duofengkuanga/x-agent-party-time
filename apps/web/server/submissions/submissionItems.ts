@@ -1,4 +1,4 @@
-import { EffectiveEnvironmentDeploymentSchema } from '@/contracts/projects/engineering';
+import { DeploymentScriptSchema } from '@/contracts/projects/engineering';
 import type { AppDatabase } from '@/server/database/index';
 import { PlatformError } from '@/server/platform/errors/index';
 import type {
@@ -11,8 +11,8 @@ import type { SubmissionItemRow } from './submissionQueries';
 
 type ItemSnapshotSource = Omit<
   SubmissionItemRow,
-  'id' | 'submission_id' | 'target_branch' | 'created_at'
->;
+  'id' | 'submission_id' | 'target_branch' | 'created_at' | 'deployment_json'
+> & { deployment_json: string };
 
 export function environmentConflictsForSubmission(
   db: AppDatabase,
@@ -98,7 +98,7 @@ export function snapshotItemSource(
   return {
     ...source,
     deployment_json: JSON.stringify(
-      EffectiveEnvironmentDeploymentSchema.parse(JSON.parse(source.deployment_json)),
+      DeploymentScriptSchema.parse(JSON.parse(source.deployment_json)),
     ),
   };
 }

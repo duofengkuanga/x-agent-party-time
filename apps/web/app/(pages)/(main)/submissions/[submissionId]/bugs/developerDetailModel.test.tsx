@@ -7,7 +7,6 @@ import {
   completeUpdate,
 } from '@/server/submissions/lifecycle/lifecycleFixture';
 import { createSubmissionWorkflow } from '@/server/runtime/createSubmissionWorkflow';
-import { mutation } from '@/testing/submissions/project';
 import { testDatabases } from '@/testing/database';
 import {
   developerTimeline,
@@ -30,9 +29,9 @@ test('两个缺陷保留各自修复轮次，同时指向同一个批次和更�
   const second = createAndRequestBug(fixture, fixture.items[1]!.id, '乙缺陷');
   await completeNextRepair(fixture, 'repair-second', ['b'.repeat(40)]);
   fixture.clock.set('2026-07-27T12:02:00.000Z');
-  const batch = await completeUpdate(fixture, fixture.items[1]!.id, {
-    outcome: 'PUSHED',
-    summary: '已推送',
+  await completeUpdate(fixture, fixture.items[1]!.id, {
+    outcome: 'COMPLETED',
+    summary: '完成部署',
   });
   const before = workspace.getWorkspace(
     fixture.users.developer.id,
@@ -73,28 +72,10 @@ test('两个缺陷保留各自修复轮次，同时指向同一个批次和更�
       />,
     );
   expect(render(update.batch).match(/<dt>/g)).toHaveLength(4);
-  expect(render(update.batch)).toContain('全部 2 条缺陷');
-  fixture.clock.set('2026-07-27T12:03:00.000Z');
-  fixture.updates.reportExternalDeployment(
-    fixture.users.developer.id,
-    batch.id,
-    { ...mutation(batch.version), outcome: 'SUCCEEDED', attachmentIds: [] },
-  );
-  const after = workspace.getWorkspace(
-    fixture.users.developer.id,
-    fixture.submission.id,
-  );
+  expect(render(update.batch)).toContain('本轮已完成推送和环境更新');
   expect(
-    after.bugs.filter((bug) => bug.stage === 'WAITING_FOR_VERIFICATION'),
+    before.bugs.filter((bug) => bug.stage === 'WAITING_FOR_VERIFICATION'),
   ).toHaveLength(2);
-  const updatedBatch = after.updateBatches.find(
-    (item) => item.id === batch.id,
-  )!;
-  expect(render(updatedBatch)).toContain(
-    '本轮已推送；环境更新结果以后续确认记录为准',
-  );
-  expect(render(updatedBatch)).not.toContain('本轮已完成推送和环境更新');
-  expect(developerTimeline(first.id, after)[0]!.kind).toBe('report');
 });
 
 test('新修复轮次不会继承上一轮检查结果，也不会臆造当前执行的命令', async () => {

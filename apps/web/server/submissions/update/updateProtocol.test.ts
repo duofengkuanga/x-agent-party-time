@@ -12,7 +12,6 @@ import {
   freezeUpdate,
   latestBatch,
   pending,
-  pushedUpdate,
   startCandidateUpdate,
   startExecution,
   updateFixture,
@@ -183,8 +182,8 @@ describe('更新遵守环境使用权', () => {
   });
 });
 
-test('外部部署等待期间禁止切换；失败后允许切换但原批次不能重试或同步', async () => {
-  const fixture = await setup({ deploymentKind: 'CI_CD' });
+test('脚本运行期间禁止切换；失败后允许切换但原批次不能重试或同步', async () => {
+  const fixture = await setup();
   const { started: running } = await startCandidateUpdate(
     fixture,
     '外部部署占用',
@@ -192,7 +191,6 @@ test('外部部署等待期间禁止切换；失败后允许切换但原批次�
     ['cccccccccccccccccccccccccccccccccccccccc'],
     'external-lock-update',
   );
-  completeSuccessfulExecution(fixture, running, pushedUpdate());
   const submissions = new SubmissionService(fixture.database, fixture.clock.now);
   const original = submissions.getWorkspace(
     fixture.users.owner.id,
@@ -202,7 +200,7 @@ test('外部部署等待期间禁止切换；失败后允许切换但原批次�
   const input = {
     mutationId: randomUUID(),
     title: '等待环境',
-    requirementDescription: '验证外部部署保护',
+    requirementDescription: '验证脚本部署保护',
     testerUserId: fixture.users.tester.id,
     items: [
       {
@@ -220,20 +218,14 @@ test('外部部署等待期间禁止切换；失败后允许切换但原批次�
     projectId,
     input,
   );
-  expect(blocked[0]!.blockedReason).toContain('等待部署结果');
+  expect(blocked[0]!.blockedReason).toContain('正在更新');
   expect(() =>
     submissions.createSubmission(fixture.users.owner.id, projectId, {
       ...input,
       environmentTakeovers: blocked,
     }),
-  ).toThrow('等待部署结果');
-  const waiting = latestBatch(fixture.database, fixture.item.id);
-  fixture.updates.reportExternalDeployment(fixture.users.developer.id, waiting.id, {
-    ...mutation(waiting.version),
-    outcome: 'FAILED',
-    summary: '外部部署已经失败并结束',
-    attachmentIds: [],
-  });
+  ).toThrow('正在更新');
+  completeSuccessfulExecution(fixture, running, failedUpdate('部署脚本失败'));
   const available = submissions.environmentConflicts(
     fixture.users.owner.id,
     projectId,

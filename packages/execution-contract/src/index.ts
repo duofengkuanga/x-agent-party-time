@@ -93,6 +93,10 @@ export const CodexTurnSchema = z.discriminatedUnion('kind', [
     kind: z.literal('INITIAL'),
     manualHandoff: z.literal('EXTERNAL_SESSION').optional(),
     requiredSkillName: z.string().trim().min(1).max(120),
+    requiredSkillProtocol: z
+      .string()
+      .regex(/^[a-z][a-z0-9-]{0,63}$/u)
+      .optional(),
     executionBrief: JsonObjectSchema,
     executionBriefHash: z.string().regex(/^[a-f0-9]{64}$/u),
     outputJsonSchema: JsonObjectSchema,
@@ -121,6 +125,7 @@ export const ExecutionFailureCodeSchema = z.enum([
   'REPOSITORY_NOT_FOUND',
   'ATTACHMENT_DOWNLOAD_FAILED',
   'CODEX_START_FAILED',
+  'SKILL_PROTOCOL_MISMATCH',
   'CODEX_EXECUTION_FAILED',
   'CANCELLED_BY_REQUEST',
 ]);

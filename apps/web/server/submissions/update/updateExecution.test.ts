@@ -24,6 +24,28 @@ import {
 const setup = updateFixture(testDatabases());
 
 describe('UpdateService', () => {
+  test('冻结批次直接把真实部署脚本交给 Agent', async () => {
+    const fixture = await setup();
+    fixture.createBug('更新脚本');
+    await completeNextRepair(fixture, 'script-repair', ['a'.repeat(40)]);
+    const frozen = fixture.updates.freezeNow(
+      fixture.users.developer.id,
+      fixture.item.id,
+      {
+        mutationId: randomUUID(),
+      },
+    );
+    const [claimed] = await fixture.executions.claim(fixture.runner.id, 1, 0);
+    expect(claimed?.id).toBe(frozen.executionId);
+    const turn = claimed?.codexTurn;
+    expect(turn?.kind).toBe('INITIAL');
+    if (turn?.kind !== 'INITIAL') throw new Error('缺少首次更新任务');
+    expect(turn.executionBrief).toMatchObject({
+      deploymentCommand: 'bun run deploy:test',
+    });
+    expect(turn.executionBrief).not.toHaveProperty('deployment');
+  });
+
   test('活动失败 Batch 隔离后续候选，完成后下一轮独立冻结', async () => {
     const fixture = await setup();
     const { bug: first, started: running } = await startCandidateUpdate(
@@ -167,55 +189,51 @@ describe('UpdateService', () => {
     });
   });
 
-  test.each(['LOCAL_SCRIPT', 'CI_CD'] as const)(
-    '%s 的执行完成与会话同步都拒绝另一部署方式的结果',
-    async (deploymentKind) => {
-      const fixture = await setup({ deploymentKind });
-      const commits = ['a'.repeat(40)];
-      const { bug, started } = await startCandidateUpdate(
-        fixture,
-        '部署结果必须匹配冻结配置',
-        'deployment-repair',
-        commits,
-        'deployment-update',
-      );
-      const wrongResult =
-        deploymentKind === 'LOCAL_SCRIPT' ? pushedUpdate() : completedUpdate();
-      expect(completeSuccessfulExecution(fixture, started, wrongResult).state).toBe(
-        'FAILED',
-      );
-      const batch = latestBatch(fixture.database, fixture.item.id);
-      expect(batch.state).toBe('FAILED');
-      const before = fixture.updates.batchView(fixture.users.developer.id, batch.id);
-      const sync = fixture.updates.synchronizeSession(
-        fixture.users.developer.id,
-        batch.id,
-        mutation(batch.version),
-      );
-      const [claimed] = await fixture.executions.claim(fixture.runner.id, 1, 0);
-      expect(claimed!.id).toBe(sync.executionId);
-      fixture.executions.start(fixture.runner.id, claimed!.id, {
-        kind: 'STARTED',
-        leaseToken: claimed!.lease.token,
-        sessionId: started.sessionId,
-      });
-      const synchronized = fixture.executions.complete(fixture.runner.id, claimed!.id, {
-        leaseToken: claimed!.lease.token,
-        sessionId: started.sessionId,
-        outcome: {
-          kind: 'SUCCEEDED',
-          result: { turnId: 'wrong-deployment-turn', result: wrongResult },
-        },
-      });
-      expect(synchronized.state).toBe('FAILED');
-      expect(fixture.updates.batchView(fixture.users.developer.id, batch.id)).toEqual({
-        ...before,
-        synchronizationError: 'Codex 返回的更新结果无效',
-      });
-      expect(currentBug(fixture.database, bug.id).stage).toBe('UPDATING');
-      expect(pendingCommits(fixture.database, bug.id)).toEqual(commits);
-    },
-  );
+  test('执行完成与会话同步都拒绝仅确认推送的旧结果', async () => {
+    const fixture = await setup();
+    const commits = ['a'.repeat(40)];
+    const { bug, started } = await startCandidateUpdate(
+      fixture,
+      '部署结果必须匹配冻结配置',
+      'deployment-repair',
+      commits,
+      'deployment-update',
+    );
+    const wrongResult = pushedUpdate();
+    expect(completeSuccessfulExecution(fixture, started, wrongResult).state).toBe(
+      'FAILED',
+    );
+    const batch = latestBatch(fixture.database, fixture.item.id);
+    expect(batch.state).toBe('FAILED');
+    const before = fixture.updates.batchView(fixture.users.developer.id, batch.id);
+    const sync = fixture.updates.synchronizeSession(
+      fixture.users.developer.id,
+      batch.id,
+      mutation(batch.version),
+    );
+    const [claimed] = await fixture.executions.claim(fixture.runner.id, 1, 0);
+    expect(claimed!.id).toBe(sync.executionId);
+    fixture.executions.start(fixture.runner.id, claimed!.id, {
+      kind: 'STARTED',
+      leaseToken: claimed!.lease.token,
+      sessionId: started.sessionId,
+    });
+    const synchronized = fixture.executions.complete(fixture.runner.id, claimed!.id, {
+      leaseToken: claimed!.lease.token,
+      sessionId: started.sessionId,
+      outcome: {
+        kind: 'SUCCEEDED',
+        result: { turnId: 'wrong-deployment-turn', result: wrongResult },
+      },
+    });
+    expect(synchronized.state).toBe('FAILED');
+    expect(fixture.updates.batchView(fixture.users.developer.id, batch.id)).toEqual({
+      ...before,
+      synchronizationError: 'Codex 返回的更新结果无效',
+    });
+    expect(currentBug(fixture.database, bug.id).stage).toBe('UPDATING');
+    expect(pendingCommits(fixture.database, bug.id)).toEqual(commits);
+  });
 
   test('Update Outcome 业务解释失败时整笔事务回滚', async () => {
     const ids = [

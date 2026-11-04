@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { dirname, join } from 'node:path';
 import { EXECUTION_STATE_SCHEMA_VERSION } from '../state/schemas';
 import { CodexAppServerError } from '../codex/errors';
 import { ExecutionRecovery } from './recovery';
@@ -96,6 +97,47 @@ test('已有 Task 通过 codexTurn 继续原 Thread', async () => {
 
   expect(fixture.executor.inputs[0]?.taskId).toBe('thread-existing');
   expect(fixture.executor.inputs[0]?.skill).toBeNull();
+});
+
+test('新版执行拒绝启动未声明所需协议的旧规则包', async () => {
+  const fixture = await createFixture();
+  const execution = claimedExecution(null);
+  Object.assign(execution.codexTurn!, { requiredSkillProtocol: 'script-deployment-v1' });
+  fixture.http.claimed = [execution];
+
+  await cycleToIdle(fixture);
+
+  expect(fixture.executor.inputs).toEqual([]);
+  expect(fixture.http.starts.at(-1)).toMatchObject({
+    kind: 'START_FAILED',
+    failure: {
+      code: 'SKILL_PROTOCOL_MISMATCH',
+      message: '当前规则包不支持此任务协议，请更新 Agent 规则包',
+    },
+  });
+});
+
+test('已声明任务协议的规则包可以启动新版执行', async () => {
+  const fixture = await createFixture();
+  const execution = claimedExecution(null);
+  Object.assign(execution.codexTurn!, { requiredSkillProtocol: 'script-deployment-v1' });
+  fixture.http.claimed = [execution];
+  await fixture.files.writeAtomic(
+    join(
+      dirname(fixture.repositoryPath),
+      'skills',
+      skillBinding.bundleHash,
+      'agents',
+      'openai.yaml',
+    ),
+    '# xapt-execution-protocol: script-deployment-v1\n',
+    0o600,
+  );
+
+  await cycleToIdle(fixture);
+
+  expect(fixture.executor.inputs).toHaveLength(1);
+  expect(fixture.http.outcomes.at(-1)?.outcome.kind).toBe('SUCCEEDED');
 });
 
 test('首次执行保存结果校验基线供后续同步复用', async () => {

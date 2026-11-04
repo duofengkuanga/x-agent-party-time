@@ -8,8 +8,8 @@ import {
   RepairOutputJsonSchema,
 } from '../apps/web/contracts/submissions/repair';
 import {
-  CiCdUpdateExecutionResultSchema,
-  CiCdUpdateOutputJsonSchema,
+  UpdateExecutionResultSchema,
+  UpdateOutputJsonSchema,
 } from '../apps/web/contracts/submissions/update';
 import { bundleHash } from '../apps/xapt/src/skills/manager';
 import { verifyResultContent } from '../apps/xapt/src/execution/resultVerification';
@@ -119,7 +119,20 @@ async function prepareCase(directory: string, language: string) {
   const driver = language === 'node' ? 'node tools/check.mjs' : 'python3 tools/check.py';
   await writeFile(
     join(source, 'README.md'),
-    `# Billing fixture\n\nThe add function must return the sum of two integers.\n\nRepair acceptance: relevant tests must pass. Delivery acceptance: syntax/compilation, tests, and a package artifact must all be evidenced.\n\nAvailable validation entry points:\n- ${driver} compile\n- ${driver} test\n- ${driver} package\n\nInspect the scripts to select applicable commands and runtime conditions. No external services or package installation are needed.\n`,
+    `# Billing fixture\n\nThe add function must return the sum of two integers.\n\nRepair acceptance: relevant tests must pass. Delivery acceptance: syntax/compilation, tests, and a package artifact must all be evidenced.\n\nAvailable validation entry points:\n- ${driver} compile\n- ${driver} test\n- ${driver} package\n\nInspect the scripts to select applicable commands and runtime conditions. No external services or package installation are needed. For the fixture deployment, run sh tools/deploy.sh after confirming Push. The .eval/deployed file identifies the deployed commit. On recovery compare it with the expected HEAD before deciding whether to deploy.\n`,
+  );
+  await writeFile(
+    join(source, 'tools/deploy.sh'),
+    `#!/bin/sh
+set -eu
+head=$(git rev-parse HEAD)
+remote=$(git ls-remote origin refs/heads/main | cut -f1)
+test "$head" = "$remote"
+test ! -e .eval/deployed
+mkdir -p .eval
+printf '%s\n' "$head" > .eval/deployed
+test "$(cat .eval/deployed)" = "$head"
+`,
   );
   if (language === 'node') {
     await writeFile(
@@ -268,7 +281,7 @@ async function runAgent(
       ? baselineSchemas![phase]
       : phase === 'repair'
         ? RepairOutputJsonSchema
-        : CiCdUpdateOutputJsonSchema;
+        : UpdateOutputJsonSchema;
   const schemaFile = join(directory, `${label}-schema.json`);
   const resultFile = join(directory, `${label}-outcome.json`);
   const eventsFile = join(directory, `${label}-events.jsonl`);
@@ -583,14 +596,26 @@ try {
         {
           targetBranch: 'main',
           environment: 'isolated',
-          deployment: { mode: 'CI_CD' },
+          ...(variant === 'baseline'
+            ? { deployment: { mode: 'CI_CD' } }
+            : { deploymentCommand: 'sh tools/deploy.sh' }),
           frozenCandidates: candidates,
         },
         { persist: values.scenario === 'resume' },
       );
-      if (variant === 'current') CiCdUpdateExecutionResultSchema.parse(update.outcome);
-      if ((update.outcome as { result: { outcome: string } }).result.outcome !== 'PUSHED')
-        throw new Error('Update 没有确认 Push');
+      if (variant === 'current') {
+        const { result } = UpdateExecutionResultSchema.parse(update.outcome);
+        if (
+          result.outcome !== 'COMPLETED' ||
+          (await readFile(join(updateWorktree, '.eval/deployed'), 'utf8')).trim() !==
+            git(updateWorktree, 'rev-parse', 'HEAD')
+        )
+          throw new Error('Update 没有完成隔离部署');
+      } else if (
+        (update.outcome as { result: { outcome: string } }).result.outcome !== 'PUSHED'
+      ) {
+        throw new Error('基线 Update 没有确认 Push');
+      }
       for (const commit of actualCommits)
         git(fixture.remote, 'merge-base', '--is-ancestor', commit, 'main');
       if (git(updateWorktree, 'status', '--porcelain'))
@@ -629,8 +654,8 @@ try {
         !updateTrace.some((entry) => entry.step === 'independent')
       )
         throw new Error('不可合并的本阶段强制检查没有执行');
-      if (values.scenario === 'stale') {
-        const parsed = CiCdUpdateExecutionResultSchema.parse(update.outcome).result;
+      if (values.scenario === 'stale' && variant === 'current') {
+        const parsed = UpdateExecutionResultSchema.parse(update.outcome).result;
         if (!parsed.handoffUse.rechecked.length)
           throw new Error('失效入口没有重新查证说明');
       }
@@ -647,9 +672,13 @@ try {
           resumeTaskId: update.threadId,
           label: 'resumed-update',
         });
-        const parsed = CiCdUpdateExecutionResultSchema.parse(resumed.outcome).result;
+        const expectedOutcome = variant === 'current' ? 'COMPLETED' : 'PUSHED';
+        const observedOutcome =
+          variant === 'current'
+            ? UpdateExecutionResultSchema.parse(resumed.outcome).result.outcome
+            : (resumed.outcome as { result: { outcome: string } }).result.outcome;
         if (
-          parsed.outcome !== 'PUSHED' ||
+          observedOutcome !== expectedOutcome ||
           resumed.threadId !== update.threadId ||
           git(fixture.remote, 'rev-parse', 'main') !== remoteBefore
         )

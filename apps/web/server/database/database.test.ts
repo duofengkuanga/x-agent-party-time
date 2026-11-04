@@ -77,6 +77,7 @@ describe('Server SQLite schema', () => {
         'platform_engineering_binding',
         'platform_engineering_membership',
         'platform_environment',
+        'platform_environment_deployment_cutover',
         'platform_execution',
         'platform_execution_attachment',
         'platform_execution_interaction',
@@ -144,6 +145,7 @@ describe('Server SQLite schema', () => {
         'submission_update_attempt',
         'submission_update_batch',
         'submission_update_batch_entry',
+        'submission_update_history_file',
         'submission_update_session_sync',
       ]);
     } finally {

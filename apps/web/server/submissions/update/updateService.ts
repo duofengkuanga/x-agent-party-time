@@ -1,7 +1,6 @@
-import { DeploymentMethodSchema } from '@/contracts/projects/engineering';
+import { DeploymentScriptSchema } from '@/contracts/projects/engineering';
 import { requireSubmissionAccess } from '@/server/submissions/shared/access';
 import { isTerminal } from '@/server/submissions/shared/executionState';
-import { requireBindableFiles } from '@/server/submissions/shared/attachments';
 import { requireEnvironment } from '@/server/submissions/environmentAccess';
 import { TestSubmissionWriteStore } from '@/server/submissions/testSubmissionWriteStore';
 import type { AppDatabase } from '@/server/database/index';
@@ -9,12 +8,10 @@ import { PlatformError } from '@/server/platform/errors/index';
 import { ExecutionService } from '@/server/platform/execution/service';
 import { randomUUID } from 'node:crypto';
 import {
-  ExternalDeploymentReportInputSchema,
   FreezeUpdateInputSchema,
   ResolveUpdateInteractionInputSchema,
   RetryUpdateInputSchema,
   UpdateMutationResultSchema,
-  type ExternalDeploymentReportInput,
   type ResolveUpdateInteractionInput,
   type RetryUpdateInput,
   type SynchronizeUpdateSessionInput,
@@ -34,7 +31,7 @@ export class UpdateService {
   readonly projectExecution: UpdateProjection['projectExecution'];
   readonly workspace: UpdateQueries['workspace'];
   readonly batchView: UpdateQueries['batchView'];
-  readonly requireExternalAttachmentAccess: UpdateQueries['requireExternalAttachmentAccess'];
+  readonly requireHistoricalAttachmentAccess: UpdateQueries['requireHistoricalAttachmentAccess'];
   readonly recordCandidateAvailable: UpdateDelivery['recordCandidateAvailable'];
   readonly recalculatePendingDeliveryForBug: UpdateDelivery['recalculatePendingDeliveryForBug'];
   readonly prepareDueExecutions: UpdateDelivery['prepareDueExecutions'];
@@ -49,8 +46,8 @@ export class UpdateService {
     this.queries = new UpdateQueries(db, executions);
     this.workspace = this.queries.workspace.bind(this.queries);
     this.batchView = this.queries.batchView.bind(this.queries);
-    this.requireExternalAttachmentAccess =
-      this.queries.requireExternalAttachmentAccess.bind(this.queries);
+    this.requireHistoricalAttachmentAccess =
+      this.queries.requireHistoricalAttachmentAccess.bind(this.queries);
     this.writes = new TestSubmissionWriteStore(db, now, createId, onInvalidated);
     this.delivery = new UpdateDelivery(
       db,
@@ -91,7 +88,7 @@ export class UpdateService {
       submissionId: () => this.queries.itemSource(submissionItemId).submission_id,
       perform: () => {
         const source = this.requireResponsible(actorUserId, submissionItemId);
-        DeploymentMethodSchema.parse(JSON.parse(source.deployment_json));
+        DeploymentScriptSchema.parse(JSON.parse(source.deployment_json));
         const now = this.now().toISOString();
         const frozen = this.delivery.freezeItem(submissionItemId, now, false);
         if (!frozen)
@@ -227,95 +224,6 @@ export class UpdateService {
             projectId: source.project_id,
             action: 'UPDATE_SESSION_SYNC_REQUESTED',
             details: { executionId: execution.id },
-          },
-        };
-      },
-    });
-  }
-
-  reportExternalDeployment(
-    actorUserId: string,
-    batchId: string,
-    inputValue: ExternalDeploymentReportInput,
-  ): UpdateMutationResult {
-    const input = ExternalDeploymentReportInputSchema.parse(inputValue);
-    return this.writes.run({
-      mutationId: input.mutationId,
-      actorUserId,
-      operation: 'UPDATE_BATCH_REPORT_EXTERNAL',
-      resourceType: 'UPDATE_BATCH',
-      resultSchema: UpdateMutationResultSchema,
-      submissionId: () => this.queries.batch(batchId).submission_id,
-      perform: () => {
-        const batch = this.requireBatchResponsible(actorUserId, batchId);
-        this.requireBatchVersion(batch, input.expectedVersion);
-        const deployment = DeploymentMethodSchema.parse(
-          JSON.parse(batch.deployment_json),
-        );
-        if (deployment.kind !== 'CI_CD')
-          throw new PlatformError(
-            'INVALID_TRANSITION',
-            '只有 CI/CD 更新批次需要外部结果',
-          );
-        if (batch.state !== 'WAITING_EXTERNAL')
-          throw new PlatformError('INVALID_TRANSITION', '当前更新批次不在等待外部结果');
-        requireBindableFiles(this.db, actorUserId, input.attachmentIds);
-        const now = this.now().toISOString();
-        const reportId = this.createId();
-        const reportRound = this.queries.nextExternalReportRound(batchId);
-        this.db.run(
-          `INSERT INTO submission_external_deployment_report(
-               id, batch_id, round, outcome, summary,
-               reported_by_user_id, created_at
-             ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          [
-            reportId,
-            batchId,
-            reportRound,
-            input.outcome,
-            input.summary?.trim() || null,
-            actorUserId,
-            now,
-          ],
-        );
-        input.attachmentIds.forEach((fileId, position) =>
-          this.db.run(
-            `INSERT INTO submission_external_deployment_report_attachment(
-                 file_id, report_id, position
-               ) VALUES (?, ?, ?)`,
-            [fileId, reportId, position],
-          ),
-        );
-        const state = input.outcome === 'SUCCEEDED' ? 'COMPLETED' : 'FAILED';
-        const batchUpdate = this.db.run(
-          `UPDATE submission_update_batch
-             SET state = ?, active_execution_id = NULL,
-                 version = version + 1, updated_at = ?
-             WHERE id = ? AND version = ? AND state = 'WAITING_EXTERNAL'`,
-          [state, now, batchId, input.expectedVersion],
-        );
-        if (batchUpdate.changes !== 1) throw staleBatch();
-        if (input.outcome === 'SUCCEEDED') this.delivery.completeBatchBugs(batchId, now);
-        const revision = this.writes.bumpRevision(batch.submission_id, now);
-        return {
-          result: {
-            batchId,
-            batchVersion: input.expectedVersion + 1,
-            executionId: null,
-            revision,
-          },
-          resourceId: batchId,
-          audit: {
-            projectId: batch.source.project_id,
-            action:
-              input.outcome === 'SUCCEEDED'
-                ? 'EXTERNAL_DEPLOYMENT_SUCCEEDED'
-                : 'EXTERNAL_DEPLOYMENT_FAILED',
-            details: {
-              reportId,
-              round: reportRound,
-              attachmentCount: input.attachmentIds.length,
-            },
           },
         };
       },

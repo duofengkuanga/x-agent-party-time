@@ -1,4 +1,3 @@
-import { DeploymentMethodSchema } from '@/contracts/projects/engineering';
 import { requireSubmissionAccess } from '@/server/submissions/shared/access';
 import {
   parseCommits,
@@ -20,7 +19,12 @@ import {
   type UpdateBatchView,
   type UpdateWorkspaceProjection,
 } from '../../../contracts/submissions/update';
-import { batchStateLabel, projectUpdateAttemptResult, updateVisual } from './results';
+import {
+  batchStateLabel,
+  canRestartAfterSkillMismatch,
+  projectUpdateAttemptResult,
+  updateVisual,
+} from './results';
 import type { Execution } from '@agent-party-time/execution-contract';
 
 export class UpdateQueries {
@@ -36,10 +40,8 @@ export class UpdateQueries {
         last_candidate_at: string;
         eligible_at: string;
         responsible_user_id: string;
-        deployment_kind: string;
       }>(
-        `SELECT pending.*, item.responsible_user_id,
-                  json_extract(item.deployment_json, '$.kind') deployment_kind
+        `SELECT pending.*, item.responsible_user_id
            FROM submission_pending_delivery pending
            JOIN submission_item item
              ON item.id = pending.submission_item_id
@@ -84,7 +86,6 @@ export class UpdateQueries {
     const attempts = this.attempts(batchId);
     const latest = attempts.at(-1);
     const entries = this.batchEntries(batchId);
-    const deployment = DeploymentMethodSchema.parse(JSON.parse(batch.deployment_json));
     const hasManualDatabaseOperation = entries.some((entry) =>
       parseStoredManualOperations(
         entry.manual_operations_json,
@@ -124,14 +125,14 @@ export class UpdateQueries {
             : null,
           sortAt: attempt.created_at,
         })),
-        ...this.externalReports(batchId).map((report) => ({
+        ...historicalConfirmations(batch.historical_delivery_json).map((report) => ({
           id: report.id,
-          kind: 'EXTERNAL_REPORT' as const,
+          kind: 'HISTORICAL_DEPLOYMENT' as const,
           round: report.round,
           outcome: report.outcome,
           summary: report.summary,
           attachments: technical
-            ? this.externalReportAttachments(report.id).map((attachment) => ({
+            ? this.historicalAttachments(report.fileIds).map((attachment) => ({
                 id: attachment.id,
                 originalName: attachment.original_name,
                 mediaType: attachment.media_type,
@@ -157,7 +158,6 @@ export class UpdateQueries {
       engineeringName: source.engineering_name,
       targetBranch: source.target_branch,
       environmentName: source.environment_name,
-      deploymentKind: deployment.kind,
       hasManualDatabaseOperation,
       synchronizationError: technical ? this.sessionSynchronizationError(batch.id) : null,
       entries: entries.map((entry) => ({
@@ -180,8 +180,8 @@ export class UpdateQueries {
               !this.hasActiveSessionSync(batch.id)
                 ? (['SYNC_SESSION'] as const)
                 : []),
-              ...(batch.state === 'WAITING_EXTERNAL' && deployment.kind === 'CI_CD'
-                ? (['REPORT_EXTERNAL'] as const)
+              ...(canRestartAfterSkillMismatch(batch, latest)
+                ? (['RETRY_UPDATE'] as const)
                 : []),
             ]
           : [],
@@ -212,16 +212,15 @@ export class UpdateQueries {
     );
   }
 
-  requireExternalAttachmentAccess(userId: string, fileId: string): void {
+  requireHistoricalAttachmentAccess(userId: string, fileId: string): void {
     const row = this.db.get(
       `SELECT batch.submission_id, item.responsible_user_id
-         FROM submission_external_deployment_report_attachment attachment
-         JOIN submission_external_deployment_report report
-           ON report.id = attachment.report_id
-         JOIN submission_update_batch batch ON batch.id = report.batch_id
+         FROM submission_update_batch batch
          JOIN submission_item item ON item.id = batch.submission_item_id
-         WHERE attachment.file_id = ?`,
+         JOIN submission_update_history_file attachment ON attachment.batch_id = batch.id
+         WHERE attachment.file_id = ? AND item.responsible_user_id = ?`,
       fileId,
+      userId,
     ) as { submission_id: string; responsible_user_id: string } | undefined;
     if (!row || row.responsible_user_id !== userId)
       throw new PlatformError('NOT_FOUND', '附件不存在或无权访问');
@@ -232,55 +231,12 @@ export class UpdateQueries {
     }
   }
 
-  nextExternalReportRound(batchId: string): number {
-    const row = this.db.get(
-      `SELECT COALESCE(MAX(round), 0) + 1 round
-         FROM submission_external_deployment_report WHERE batch_id = ?`,
-      batchId,
-    ) as { round: number };
-    return row.round;
-  }
-
-  externalReports(batchId: string): ExternalReportRow[] {
-    return this.db.all<ExternalReportRow>(
-      `SELECT * FROM submission_external_deployment_report
-         WHERE batch_id = ? ORDER BY round, created_at, id`,
-      batchId,
-    );
-  }
-
-  latestUnconsumedFailedReport(batchId: string): ExternalReportRow | undefined {
-    return this.db.get(
-      `SELECT report.*
-         FROM submission_external_deployment_report report
-         LEFT JOIN submission_update_attempt attempt
-           ON attempt.continuation_report_id = report.id
-         WHERE report.batch_id = ? AND report.outcome = 'FAILED'
-           AND attempt.id IS NULL
-         ORDER BY report.round DESC LIMIT 1`,
-      batchId,
-    ) as ExternalReportRow | undefined;
-  }
-
-  externalReportAttachmentIds(reportId: string): string[] {
-    return this.db
-      .all<{ file_id: string }>(
-        `SELECT file_id
-           FROM submission_external_deployment_report_attachment
-           WHERE report_id = ? ORDER BY position`,
-        reportId,
-      )
-      .map(({ file_id }) => file_id);
-  }
-
-  externalReportAttachments(reportId: string): ExternalReportAttachmentRow[] {
-    return this.db.all<ExternalReportAttachmentRow>(
-      `SELECT file.id, file.original_name, file.media_type,
-                file.size_bytes, file.created_at
-         FROM submission_external_deployment_report_attachment attachment
-         JOIN platform_file file ON file.id = attachment.file_id
-         WHERE attachment.report_id = ? ORDER BY attachment.position`,
-      reportId,
+  private historicalAttachments(fileIds: string[]): HistoricalAttachmentRow[] {
+    return this.db.all<HistoricalAttachmentRow>(
+      `SELECT file.id, file.original_name, file.media_type, file.size_bytes, file.created_at
+         FROM json_each(?) attachment JOIN platform_file file ON file.id = attachment.value
+         ORDER BY attachment.key`,
+      JSON.stringify(fileIds),
     );
   }
 
@@ -364,7 +320,7 @@ export class UpdateQueries {
       `SELECT batch.* FROM submission_update_batch batch
          JOIN submission_item item ON item.id = batch.submission_item_id
          JOIN submission_item target ON target.id = ?
-         WHERE batch.state IN ('READY', 'RUNNING', 'WAITING_EXTERNAL', 'FAILED')
+         WHERE batch.state IN ('READY', 'RUNNING', 'FAILED')
            AND (item.id = target.id OR item.environment_id = target.environment_id
              OR ((item.engineering_id = target.engineering_id OR item.repository_url = target.repository_url)
                AND item.target_branch = target.target_branch))
@@ -471,11 +427,12 @@ export type BatchRow = {
   id: string;
   submission_id: string;
   submission_item_id: string;
-  state: 'READY' | 'RUNNING' | 'WAITING_EXTERNAL' | 'FAILED' | 'COMPLETED';
+  state: 'READY' | 'RUNNING' | 'FAILED' | 'COMPLETED';
   version: number;
   active_execution_id: string | null;
   session_id: string | null;
-  deployment_json: string;
+  deployment_json: string | null;
+  historical_delivery_json: string | null;
   frozen_at: string;
   created_at: string;
   updated_at: string;
@@ -485,7 +442,6 @@ export type AttemptRow = {
   id: string;
   batch_id: string;
   execution_id: string;
-  continuation_report_id: string | null;
   attempt: number;
   outcome_json: string | null;
   created_at: string;
@@ -494,20 +450,26 @@ export type AttemptRow = {
   session_id: string | null;
 };
 
-export type ExternalReportRow = {
+type HistoricalConfirmation = {
   id: string;
   batch_id: string;
   round: number;
   outcome: 'SUCCEEDED' | 'FAILED';
   summary: string | null;
-  reported_by_user_id: string;
+  fileIds: string[];
   created_at: string;
 };
 
-export type ExternalReportAttachmentRow = {
+type HistoricalAttachmentRow = {
   id: string;
   original_name: string;
   media_type: string;
   size_bytes: number;
   created_at: string;
 };
+
+function historicalConfirmations(json: string | null): HistoricalConfirmation[] {
+  return json === null
+    ? []
+    : (JSON.parse(json) as { confirmations: HistoricalConfirmation[] }).confirmations;
+}

@@ -86,7 +86,7 @@ const TimelineEntrySchema = z.object({
     'REOPEN',
     'REPAIR',
     'UPDATE',
-    'EXTERNAL_DEPLOYMENT',
+    'HISTORICAL_DEPLOYMENT',
     'CLEANUP',
     'SUBMISSION',
   ]),

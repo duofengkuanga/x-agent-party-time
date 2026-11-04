@@ -45,11 +45,7 @@ export function EngineeringEnvironmentManagement({
                 required
               />
             </label>
-            <DeploymentFields
-              compact
-              deployment={environment.deployment}
-              scriptCommand={environment.scriptCommand}
-            />
+            <DeploymentFields compact deployment={environment.deployment} />
           </AutoSaveForm>
           <EnvironmentDeleteControl
             engineeringId={engineeringId}
@@ -206,15 +202,10 @@ export function EngineeringDetail({
                     >
                       <div>
                         <h5>{environment.name}</h5>
-                        <small>
-                          {deploymentLabel(environment.deployment.kind)}
-                        </small>
-                        {'command' in environment.deployment ? (
-                          <details>
-                            <summary>部署命令</summary>
-                            <code>{environment.deployment.command}</code>
-                          </details>
-                        ) : null}
+                        <details>
+                          <summary>部署命令</summary>
+                          <code>{environment.deployment.command}</code>
+                        </details>
                       </div>
                     </article>
                   ))}
@@ -228,7 +219,4 @@ export function EngineeringDetail({
       </div>
     </article>
   );
-}
-function deploymentLabel(kind: 'LOCAL_SCRIPT' | 'CI_CD'): string {
-  return kind === 'LOCAL_SCRIPT' ? '本地脚本' : '持续集成';
 }

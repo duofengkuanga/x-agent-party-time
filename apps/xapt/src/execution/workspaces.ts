@@ -467,10 +467,33 @@ async function ignoredRepositoryEntries(repositoryPath: string): Promise<string[
         .filter((entry) => entry.length > 0),
     ),
   ];
+  const generated = new Set([
+    'dist',
+    'dist.zip',
+    'target',
+    'build',
+    '.next',
+    '.umi',
+    '.umi-production',
+  ]);
+  const outputs = new Set(
+    entries.filter((entry) => {
+      const parts = entry.split('/');
+      const dependencies = parts.indexOf('node_modules');
+      return parts
+        .slice(0, dependencies < 0 ? parts.length : dependencies)
+        .some((part) => generated.has(part));
+    }),
+  );
+  const reusable = entries.filter(
+    (entry) =>
+      !outputs.has(entry) &&
+      ![...outputs].some((output) => output.startsWith(`${entry}/`)),
+  );
   // Git can report both an ignored directory and a nested ignored file.
   // Link each subtree once so sibling jobs never create its destination early.
-  return entries.filter(
+  return reusable.filter(
     (entry) =>
-      !entries.some((parent) => parent !== entry && entry.startsWith(`${parent}/`)),
+      !reusable.some((parent) => parent !== entry && entry.startsWith(`${parent}/`)),
   );
 }

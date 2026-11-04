@@ -47,7 +47,7 @@ async function setup(
     type: 'FRONTEND',
     identifier: 'web',
     environment: '前端测试环境',
-    deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' },
+    deployment: { command: 'bun run deploy:test' },
     repository:
       options.confirmRepositories === false ? null : 'https://example.com/front.git',
     developers: { developerA },
@@ -57,7 +57,7 @@ async function setup(
     type: 'BACKEND',
     identifier: 'api',
     environment: '后端测试环境',
-    deployment: { kind: 'CI_CD' },
+    deployment: { command: 'bun run deploy:backend' },
     repository:
       options.confirmRepositories === false ? null : 'https://example.com/back.git',
     developers: { developerA, developerB },

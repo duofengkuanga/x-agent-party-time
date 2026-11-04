@@ -21,6 +21,11 @@ import { SERVER_SCHEMA_VERSION } from '@/server/database/schema';
 import { AppDatabase } from '@/server/database/index';
 import { rewriteHistoricalResults, type ResultRewrite } from './migrateServerResults';
 
+import {
+  DeploymentCommandsSchema,
+  migrateSchema32Deployment,
+  planScriptCutover,
+} from './schema32Migration';
 import { migrateSchema31Names, SCHEMA_31_TABLE_NAMES } from './schema31Migration';
 
 type SchemaObject = { type: string; name: string; tbl_name: string; sql: string };
@@ -32,6 +37,7 @@ type MigrationReport = {
   to: number;
   backupPath: string | null;
   rewrittenResults: number;
+  historicalConfirmations: number;
   tables: Array<{ name: string; rows: number }>;
 };
 
@@ -49,6 +55,18 @@ const schema31 = readFileSync(
   new URL('./fixtures/serverV31.sql', import.meta.url),
   'utf8',
 );
+const schema32 = schema31
+  .replace(
+    'ON platform_execution(binding_id)\n  WHERE state IN (',
+    "ON platform_execution(binding_id, COALESCE(json_extract(workspace_json, '$.isolation'), 'EXCLUSIVE'))\n  WHERE state IN (",
+  )
+  .replace(
+    'CREATE INDEX platform_execution_runner_claim',
+    `CREATE UNIQUE INDEX platform_execution_workspace_reservation
+  ON platform_execution(runner_id, json_extract(workspace_json, '$.key'))
+  WHERE workspace_json IS NOT NULL AND state IN ('CLAIMED', 'RUNNING', 'CANCEL_REQUESTED');
+CREATE INDEX platform_execution_runner_claim`,
+  );
 const quote = (name: string) => `"${name.replaceAll('"', '""')}"`;
 
 function schemaObjects(db: Database): SchemaObject[] {
@@ -63,7 +81,14 @@ function schemaObjects(db: Database): SchemaObject[] {
 function assertSchema(db: Database, version: number): void {
   const reference = new Database(':memory:');
   try {
-    let sql = version < 31 ? schema30 : version === 31 ? schema31 : targetSchema;
+    let sql =
+      version < 31
+        ? schema30
+        : version === 31
+          ? schema31
+          : version === 32
+            ? schema32
+            : targetSchema;
     if (version < 30) sql = sql.replace(OBSERVATION_SCHEMA, '');
     if (version < 29) sql = sql.replace('  handoffs_json TEXT NOT NULL,\n', '');
     if (version === 27) sql = sql.replace(",\n    'HANDED_OFF'", '');
@@ -239,8 +264,9 @@ function rebuildTable(db: Database, reference: Database, table: string): void {
 export function migrateServerDatabase(
   databasePath: string,
   apply = false,
+  deploymentCommands: unknown = {},
 ): MigrationReport {
-  if (SERVER_SCHEMA_VERSION !== 32) throw new Error('此迁移只适用于 Server Schema 32。');
+  if (SERVER_SCHEMA_VERSION !== 33) throw new Error('此迁移只适用于 Server Schema 33。');
   const path = realpathSync(databasePath);
   if (!statSync(path).isFile()) throw new Error('请指定现有数据库文件。');
   const db = new AppDatabase(
@@ -255,22 +281,31 @@ export function migrateServerDatabase(
     transaction = true;
     const version = db.query<{ user_version: number }, []>('PRAGMA user_version').get()!
       .user_version;
-    if (![27, 28, 29, 30, 31, 32].includes(version))
+    if (![27, 28, 29, 30, 31, 32, 33].includes(version))
       throw new Error(`不支持从版本 ${version} 迁移；原数据已保留。`);
     assertSchema(db, version);
     assertIntegrity(db);
     if (version < 29) assertSettled(db);
+    const scripts =
+      version === 33
+        ? new Map<string, string>()
+        : planScriptCutover(
+            db,
+            version,
+            DeploymentCommandsSchema.parse(deploymentCommands),
+          );
     const before = snapshot(db);
     const report: MigrationReport = {
-      status: version === 32 ? 'current' : 'ready',
+      status: version === 33 ? 'current' : 'ready',
       database: path,
       from: version,
-      to: 32,
+      to: 33,
       backupPath: null,
       rewrittenResults: 0,
+      historicalConfirmations: 0,
       tables: before.map(({ name, rows }) => ({ name, rows })),
     };
-    if (apply && version !== 32) {
+    if (apply && version !== 33) {
       report.backupPath = backupDatabase(path, before);
       const reference = new Database(':memory:');
       try {
@@ -281,20 +316,22 @@ export function migrateServerDatabase(
         const current = new Database(':memory:');
         let renamed: ResultRewrite[];
         try {
-          current.exec(targetSchema);
+          current.exec(schema32);
           const renamedTables = new Set(Object.values(SCHEMA_31_TABLE_NAMES));
           const indexes = schemaObjects(current)
             .filter((row) => row.type === 'index' && renamedTables.has(row.tbl_name))
             .map((row) => row.sql);
           renamed = version < 31 ? migrateSchema31Names(db, indexes) : [];
-          db.exec('DROP INDEX platform_execution_binding_reservation');
-          for (const index of schemaObjects(current).filter((row) =>
-            [
-              'platform_execution_binding_reservation',
-              'platform_execution_workspace_reservation',
-            ].includes(row.name),
-          ))
-            db.exec(index.sql);
+          if (version < 32) {
+            db.exec('DROP INDEX platform_execution_binding_reservation');
+            for (const index of schemaObjects(current).filter((row) =>
+              [
+                'platform_execution_binding_reservation',
+                'platform_execution_workspace_reservation',
+              ].includes(row.name),
+            ))
+              db.exec(index.sql);
+          }
         } finally {
           current.close();
         }
@@ -303,7 +340,14 @@ export function migrateServerDatabase(
         assertIntegrity(db);
         assertUnchanged(db, before, [...renamed, ...rewrites], version < 31);
         report.rewrittenResults = rewrites.length;
-        db.exec('PRAGMA user_version=32');
+        report.historicalConfirmations = migrateSchema32Deployment(
+          db,
+          targetSchema,
+          scripts,
+        );
+        assertSchema(db, 33);
+        assertIntegrity(db);
+        db.exec('PRAGMA user_version=33');
         report.status = 'migrated';
       } finally {
         reference.close();
@@ -323,14 +367,26 @@ if (import.meta.main) {
   try {
     const { values } = parseArgs({
       args: process.argv.slice(2).filter((arg) => arg !== '--'),
-      options: { database: { type: 'string' }, apply: { type: 'boolean' } },
+      options: {
+        database: { type: 'string' },
+        apply: { type: 'boolean' },
+        'deployment-commands': { type: 'string' },
+      },
     });
     if (!values.database)
       throw new Error(
-        '用法：bun run migrate:server -- --database /绝对路径/server.sqlite [--apply]；默认仅预检，应用前停止 Server。',
+        '用法：bun run migrate:server -- --database /绝对路径/server.sqlite [--deployment-commands 配置.json] [--apply]；默认仅预检，应用前停止 Server。',
       );
+    const commandPath = values['deployment-commands'];
+    const commands: unknown = commandPath
+      ? JSON.parse(readFileSync(commandPath, 'utf8'))
+      : {};
     console.log(
-      JSON.stringify(migrateServerDatabase(values.database, values.apply), null, 2),
+      JSON.stringify(
+        migrateServerDatabase(values.database, values.apply, commands),
+        null,
+        2,
+      ),
     );
   } catch (error) {
     console.error(

@@ -25,7 +25,7 @@ test('创建配置只向项目成员开放，提供真实分支依据与当前�
     {
       mutationId: randomUUID(),
       name: '空闲环境',
-      deployment: { kind: 'CI_CD' },
+      deployment: { command: 'bun run deploy:backend' },
     },
   );
   f.submissions.updateSubmission(f.users.developer.id, f.submission.id, {

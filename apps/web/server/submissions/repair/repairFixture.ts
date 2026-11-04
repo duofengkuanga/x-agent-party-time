@@ -32,7 +32,7 @@ async function setup(
           type: 'BACKEND',
           identifier: 'payment-api',
           environment: '支付测试环境',
-          deployment: { kind: 'CI_CD' },
+          deployment: { command: 'bun run deploy:backend' },
           repository: 'https://example.com/payment.git',
           branch: 'feature/payment',
         },

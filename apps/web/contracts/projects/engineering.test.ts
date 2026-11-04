@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import {
-  DeploymentMethodSchema,
+  DeploymentScriptSchema,
   EngineeringIdentifierSchema,
   RepositoryUrlSchema,
 } from './engineering';
@@ -17,34 +17,12 @@ describe('EngineeringIdentifier', () => {
   });
 });
 
-describe('DeploymentMethod', () => {
-  test('LOCAL_SCRIPT 必须且只能携带非空 command', () => {
-    expect(
-      DeploymentMethodSchema.parse({
-        kind: 'LOCAL_SCRIPT',
-        command: 'bun run deploy:test',
-      }),
-    ).toEqual({ kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' });
-    expect(() => DeploymentMethodSchema.parse({ kind: 'LOCAL_SCRIPT' })).toThrow();
-    expect(() =>
-      DeploymentMethodSchema.parse({ kind: 'LOCAL_SCRIPT', command: '   ' }),
-    ).toThrow();
+test('部署脚本必须提供非空命令，并拒绝旧的部署方式字段', () => {
+  expect(DeploymentScriptSchema.parse({ command: ' bun run deploy:test ' })).toEqual({
+    command: 'bun run deploy:test',
   });
-
-  test('CI_CD 不允许 command 或冗余确认字段', () => {
-    expect(DeploymentMethodSchema.parse({ kind: 'CI_CD' })).toEqual({
-      kind: 'CI_CD',
-    });
-    expect(() =>
-      DeploymentMethodSchema.parse({ kind: 'CI_CD', command: 'deploy' }),
-    ).toThrow();
-    expect(() =>
-      DeploymentMethodSchema.parse({
-        kind: 'CI_CD',
-        manualConfirmationRequired: true,
-      }),
-    ).toThrow();
-  });
+  expect(DeploymentScriptSchema.safeParse({ command: '   ' }).success).toBe(false);
+  expect(DeploymentScriptSchema.safeParse({ kind: 'CI_CD' }).success).toBe(false);
 });
 
 describe('RepositoryUrl', () => {

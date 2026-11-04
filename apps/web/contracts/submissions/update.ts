@@ -25,14 +25,8 @@ import { z } from 'zod';
 
 export const UpdateBatchIdSchema = z.uuid();
 const UpdateAttemptIdSchema = z.uuid();
-const ExternalDeploymentReportIdSchema = z.uuid();
-export const UpdateBatchStateSchema = z.enum([
-  'READY',
-  'RUNNING',
-  'WAITING_EXTERNAL',
-  'FAILED',
-  'COMPLETED',
-]);
+const HistoricalDeploymentIdSchema = z.uuid();
+export const UpdateBatchStateSchema = z.enum(['READY', 'RUNNING', 'FAILED', 'COMPLETED']);
 
 const UpdateValidationSchema = ValidationSchema;
 
@@ -95,13 +89,6 @@ const CompletedUpdateExecutionResultSchema = z
   })
   .superRefine(validateHandoffUse);
 
-const PushedUpdateExecutionResultSchema = z
-  .strictObject({
-    outcome: z.literal('PUSHED'),
-    ...UpdateResultFields,
-  })
-  .superRefine(validateHandoffUse);
-
 const FailedUpdateExecutionResultSchema = z
   .strictObject({
     outcome: z.literal('FAILED'),
@@ -112,27 +99,14 @@ const FailedUpdateExecutionResultSchema = z
   })
   .superRefine(validateHandoffUse);
 
-export const LocalScriptUpdateExecutionResultSchema = z.strictObject({
+export const UpdateExecutionResultSchema = z.strictObject({
   result: z.discriminatedUnion('outcome', [
     CompletedUpdateExecutionResultSchema,
     FailedUpdateExecutionResultSchema,
   ]),
 });
 
-export const CiCdUpdateExecutionResultSchema = z.strictObject({
-  result: z.discriminatedUnion('outcome', [
-    PushedUpdateExecutionResultSchema,
-    FailedUpdateExecutionResultSchema,
-  ]),
-});
-
-export const LocalScriptUpdateOutputJsonSchema = outputJsonSchema(
-  LocalScriptUpdateExecutionResultSchema,
-);
-export const CiCdUpdateOutputJsonSchema = outputJsonSchema(
-  CiCdUpdateExecutionResultSchema,
-);
-
+export const UpdateOutputJsonSchema = outputJsonSchema(UpdateExecutionResultSchema);
 const PendingDeliveryViewSchema = z.object({
   submissionItemId: SubmissionItemIdSchema,
   lastCandidateAt: z.iso.datetime(),
@@ -151,7 +125,7 @@ const UpdateBatchEntryViewSchema = z.object({
 const UpdateAttemptResultViewSchema = z.discriminatedUnion('outcome', [
   ManualHandoffResultViewSchema,
   z.object({
-    outcome: z.enum(['COMPLETED', 'PUSHED']),
+    outcome: z.enum(['COMPLETED', 'PUSH_CONFIRMED']),
     completedActions: z.array(z.string()),
     validations: z.array(UpdateValidationSchema),
     warnings: z.array(z.string()),
@@ -193,8 +167,8 @@ const UpdateBatchTimelineNodeSchema = z.discriminatedUnion('kind', [
     result: UpdateAttemptResultViewSchema.nullable(),
   }),
   z.object({
-    id: ExternalDeploymentReportIdSchema,
-    kind: z.literal('EXTERNAL_REPORT'),
+    id: HistoricalDeploymentIdSchema,
+    kind: z.literal('HISTORICAL_DEPLOYMENT'),
     round: z.number().int().positive(),
     outcome: z.enum(['SUCCEEDED', 'FAILED']),
     summary: z.string().nullable(),
@@ -214,12 +188,11 @@ export const UpdateBatchViewSchema = z.object({
   engineeringName: z.string().trim().min(1),
   targetBranch: z.string().trim().min(1),
   environmentName: z.string().trim().min(1),
-  deploymentKind: z.enum(['LOCAL_SCRIPT', 'CI_CD']),
   hasManualDatabaseOperation: z.boolean(),
   synchronizationError: z.string().nullable(),
   entries: z.array(UpdateBatchEntryViewSchema).min(1),
   timeline: z.array(UpdateBatchTimelineNodeSchema),
-  availableActions: z.array(z.enum(['RETRY_UPDATE', 'SYNC_SESSION', 'REPORT_EXTERNAL'])),
+  availableActions: z.array(z.enum(['RETRY_UPDATE', 'SYNC_SESSION'])),
   presentation: z.object({
     statusLabel: z.string().trim().min(1),
     visual: SubmissionVisualPresentationSchema,
@@ -239,19 +212,6 @@ export const RetryUpdateInputSchema = VersionedMutationSchema;
 
 const SynchronizeUpdateSessionInputSchema = RetryUpdateInputSchema;
 
-export const ExternalDeploymentReportInputSchema = z.discriminatedUnion('outcome', [
-  VersionedMutationSchema.extend({
-    outcome: z.literal('SUCCEEDED'),
-    summary: z.string().trim().min(1).max(8_000).optional(),
-    attachmentIds: z.array(z.uuid()).max(5),
-  }),
-  VersionedMutationSchema.extend({
-    outcome: z.literal('FAILED'),
-    summary: z.string().trim().min(1).max(8_000),
-    attachmentIds: z.array(z.uuid()).max(5),
-  }),
-]);
-
 export const ResolveUpdateInteractionInputSchema = RetryUpdateInputSchema.extend({
   resolution: z.json(),
 });
@@ -270,9 +230,6 @@ export type UpdateWorkspaceProjection = z.infer<typeof UpdateWorkspaceProjection
 export type RetryUpdateInput = z.infer<typeof RetryUpdateInputSchema>;
 export type SynchronizeUpdateSessionInput = z.infer<
   typeof SynchronizeUpdateSessionInputSchema
->;
-export type ExternalDeploymentReportInput = z.infer<
-  typeof ExternalDeploymentReportInputSchema
 >;
 export type ResolveUpdateInteractionInput = z.infer<
   typeof ResolveUpdateInteractionInputSchema

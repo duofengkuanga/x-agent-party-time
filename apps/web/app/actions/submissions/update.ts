@@ -1,17 +1,14 @@
 'use server';
 
 import {
-  formField,
-  integerFormField,
-  optionalFormField,
   mutationAction,
-  runInteractiveMutation,
   type InteractiveActionResult,
 } from '@/app/actions/actionTransport';
 import { updateService } from '../../../server/runtime/services';
 import type {
   SynchronizeUpdateSessionInput,
   ResolveUpdateInteractionInput,
+  RetryUpdateInput,
   UpdateMutationResult,
 } from '../../../contracts/submissions/update';
 
@@ -26,6 +23,13 @@ export async function freezeUpdateNowAction(
   );
 }
 
+export async function retryUpdateAction(
+  batchId: string,
+  input: RetryUpdateInput,
+): Promise<UpdateActionResult> {
+  return runUpdateAction((userId) => updateService().retryUpdate(userId, batchId, input));
+}
+
 export async function synchronizeUpdateSessionAction(
   batchId: string,
   input: SynchronizeUpdateSessionInput,
@@ -33,43 +37,6 @@ export async function synchronizeUpdateSessionAction(
   return runUpdateAction((userId) =>
     updateService().synchronizeSession(userId, batchId, input),
   );
-}
-
-export async function reportExternalDeploymentAction(
-  batchId: string,
-  formData: FormData,
-): Promise<UpdateActionResult> {
-  return runInteractiveMutation({
-    validationEvent: 'submission_update_action_validation_failed',
-    command: async ({ userId, uploadFiles }) => {
-      const attachmentIds = await uploadFiles(formData, 'attachments');
-      const mutationId = formField(formData, 'mutationId');
-      const expectedVersion = integerFormField(formData, 'expectedVersion');
-      const outcome = formField(formData, 'outcome');
-      const summary = optionalFormField(formData, 'summary');
-      const input =
-        outcome === 'FAILED'
-          ? {
-              mutationId,
-              expectedVersion,
-              outcome: 'FAILED' as const,
-              summary: summary ?? '',
-              attachmentIds,
-            }
-          : {
-              mutationId,
-              expectedVersion,
-              outcome: 'SUCCEEDED' as const,
-              summary,
-              attachmentIds,
-            };
-      return {
-        result: updateService().reportExternalDeployment(userId, batchId, input),
-        boundFileIds: attachmentIds,
-        refreshPaths: ['/submissions'],
-      };
-    },
-  });
 }
 
 export async function resolveUpdateInteractionAction(

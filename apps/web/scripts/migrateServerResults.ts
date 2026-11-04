@@ -1,9 +1,6 @@
 import type { AppDatabase } from '@/server/database/index';
 import { RepairExecutionResultSchema } from '@/contracts/submissions/repair';
-import {
-  CiCdUpdateExecutionResultSchema,
-  LocalScriptUpdateExecutionResultSchema,
-} from '@/contracts/submissions/update';
+import { UpdateExecutionResultSchema } from '@/contracts/submissions/update';
 import { freezeRepairHandoffs } from '@/server/submissions/update/repairHandoffs';
 import { ExecutionOutcomeSchema } from '@agent-party-time/execution-contract';
 
@@ -48,11 +45,10 @@ function normalizeResult(value: unknown, kind: Kind): Result {
     if (!('handoffUse' in result))
       result.handoffUse = { adopted: [], rechecked: [], validationCommands: [] };
     const { technicalFailure: _technicalFailure, ...contract } = result;
-    const schema =
-      result.outcome === 'PUSHED'
-        ? CiCdUpdateExecutionResultSchema
-        : LocalScriptUpdateExecutionResultSchema;
-    if (!schema.safeParse({ result: contract }).success)
+    // Validate the shared historical payload without changing the archived outcome.
+    const validation =
+      contract.outcome === 'PUSHED' ? { ...contract, outcome: 'COMPLETED' } : contract;
+    if (!UpdateExecutionResultSchema.safeParse({ result: validation }).success)
       throw new Error('历史更新结果无法无损转换为当前契约，迁移已中止。');
   }
   return result;

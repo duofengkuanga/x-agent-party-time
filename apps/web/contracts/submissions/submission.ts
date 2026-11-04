@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { UserIdSchema, UserSchema } from '@/contracts/auth';
 import {
   BindingIdSchema,
-  DeploymentMethodSchema,
+  DeploymentScriptSchema,
   EngineeringIdSchema,
   EngineeringIdentifierSchema,
   EngineeringNameSchema,
@@ -53,7 +53,7 @@ export const SubmissionItemSchema = z.object({
   environment: z.object({
     id: EnvironmentIdSchema,
     name: EnvironmentNameSchema,
-    deployment: DeploymentMethodSchema,
+    deployment: DeploymentScriptSchema.nullable(),
   }),
   createdAt: z.iso.datetime(),
 });
@@ -118,7 +118,7 @@ const SubmissionItemViewSchema = SubmissionItemSchema.omit({
     .object({
       bindingId: BindingIdSchema,
       repositoryUrl: RepositoryUrlSchema,
-      deployment: DeploymentMethodSchema,
+      deployment: DeploymentScriptSchema.nullable(),
     })
     .nullable(),
   environmentAccess: z.object({

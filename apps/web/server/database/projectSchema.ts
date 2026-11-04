@@ -106,6 +106,12 @@ CREATE TABLE platform_environment (
 CREATE INDEX platform_environment_engineering
   ON platform_environment(engineering_id, created_at);
 
+CREATE TABLE platform_environment_deployment_cutover (
+  environment_id TEXT PRIMARY KEY REFERENCES platform_environment(id) ON DELETE CASCADE,
+  previous_deployment_json TEXT NOT NULL CHECK (json_valid(previous_deployment_json)),
+  applied_at TEXT NOT NULL
+) STRICT;
+
 CREATE TABLE platform_engineering_binding (
   id TEXT PRIMARY KEY,
   engineering_id TEXT NOT NULL REFERENCES platform_engineering(id) ON DELETE CASCADE,

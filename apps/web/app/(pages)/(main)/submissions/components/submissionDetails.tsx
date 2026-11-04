@@ -146,15 +146,10 @@ export function SubmissionDetails({
                   <td data-label="环境 / 部署">
                     <div className="collab-submission-deployment">
                       <span>{item.environment.name}</span>
-                      {item.technical ? (
-                        <small>
-                          {item.technical.deployment.kind === 'LOCAL_SCRIPT'
-                            ? '本地脚本'
-                            : '持续集成与部署'}
-                        </small>
-                      ) : null}
-                      {item.technical?.deployment.kind === 'LOCAL_SCRIPT' ? (
+                      {item.technical?.deployment ? (
                         <code>{item.technical.deployment.command}</code>
+                      ) : item.technical ? (
+                        <small>历史提测未记录部署脚本</small>
                       ) : null}
                       {cleanup ? (
                         <small>清理：{cleanup.presentation.statusLabel}</small>

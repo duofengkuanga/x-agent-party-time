@@ -63,8 +63,6 @@ export function EngineeringCreateEnvironments({
           <DeploymentFields
             compact
             commandName={`command:${environment.key}`}
-            kindName={`deploymentKind:${environment.key}`}
-            scriptCommandName={`scriptCommand:${environment.key}`}
           />
           {environments.length > 1 ? (
             <button

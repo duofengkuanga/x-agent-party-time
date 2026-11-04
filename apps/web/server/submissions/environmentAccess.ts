@@ -47,7 +47,7 @@ export function environmentBusy(db: AppDatabase, itemId: string): boolean {
     db.get(
       `SELECT 1 FROM submission_update_batch batch
     WHERE batch.submission_item_id = ? AND (
-      batch.state IN ('READY', 'RUNNING', 'WAITING_EXTERNAL') OR
+      batch.state IN ('READY', 'RUNNING') OR
       EXISTS (SELECT 1 FROM submission_update_attempt attempt JOIN platform_execution execution ON execution.id = attempt.execution_id
         WHERE attempt.batch_id = batch.id AND execution.state IN ('QUEUED', 'CLAIMED', 'RUNNING', 'WAITING_FOR_INTERACTION', 'WAITING_TO_RESUME', 'CANCEL_REQUESTED')) OR
       EXISTS (SELECT 1 FROM submission_update_session_sync sync JOIN platform_execution execution ON execution.id = sync.execution_id

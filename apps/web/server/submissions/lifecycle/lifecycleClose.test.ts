@@ -35,14 +35,8 @@ describe('生命周期', () => {
       '2222222222222222222222222222222222222222',
     ]);
     const ciBatch = await completeUpdate(fixture, fixture.items[1]!.id, {
-      outcome: 'PUSHED',
-      summary: '已普通 Push',
-    });
-    fixture.updates.reportExternalDeployment(fixture.users.developer.id, ciBatch.id, {
-      ...mutation(latestBatch(fixture.database, fixture.items[1]!.id).version),
-      outcome: 'SUCCEEDED',
-      summary: '外部部署成功',
-      attachmentIds: [],
+      outcome: 'COMPLETED',
+      summary: '脚本部署完成',
     });
     expect(currentBug(fixture.database, localBug.id).stage).toBe(
       'WAITING_FOR_VERIFICATION',
@@ -340,7 +334,6 @@ describe('生命周期', () => {
       expect.arrayContaining([
         expect.objectContaining({ title: '提测单已关闭' }),
         expect.objectContaining({ kind: 'VERIFICATION' }),
-        expect.objectContaining({ kind: 'EXTERNAL_DEPLOYMENT' }),
       ]),
     );
   });
@@ -441,7 +434,7 @@ test('关闭入口和命令共用阻断规则，保持权限、版本、错误�
   });
   checkActiveExecution(batch.executionId!);
   f.executions.requestCancellation(batch.executionId!);
-  for (const state of ['READY', 'RUNNING', 'WAITING_EXTERNAL', 'FAILED']) {
+  for (const state of ['READY', 'RUNNING', 'FAILED']) {
     f.database.run('UPDATE submission_update_batch SET state = ? WHERE id = ?', [
       state,
       batch.batchId,

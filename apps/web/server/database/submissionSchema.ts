@@ -34,7 +34,7 @@ CREATE TABLE submission_item (
   target_branch TEXT NOT NULL,
   environment_id TEXT NOT NULL,
   environment_name TEXT NOT NULL,
-  deployment_json TEXT NOT NULL,
+  deployment_json TEXT,
   created_at TEXT NOT NULL,
   UNIQUE(submission_id, engineering_id)
 ) STRICT;
@@ -182,21 +182,27 @@ CREATE TABLE submission_update_batch (
   submission_id TEXT NOT NULL REFERENCES test_submission(id) ON DELETE CASCADE,
   submission_item_id TEXT NOT NULL REFERENCES submission_item(id) ON DELETE RESTRICT,
   state TEXT NOT NULL CHECK (state IN (
-    'READY', 'RUNNING', 'WAITING_EXTERNAL', 'FAILED', 'COMPLETED'
+    'READY', 'RUNNING', 'FAILED', 'COMPLETED'
   )),
   version INTEGER NOT NULL CHECK (version > 0),
   active_execution_id TEXT REFERENCES platform_execution(id) ON DELETE RESTRICT,
   session_id TEXT,
-  deployment_json TEXT NOT NULL,
+  deployment_json TEXT CHECK (deployment_json IS NOT NULL OR state = 'COMPLETED'),
+  historical_delivery_json TEXT CHECK (json_valid(historical_delivery_json)),
   frozen_at TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 ) STRICT;
 CREATE UNIQUE INDEX submission_update_batch_active_item
   ON submission_update_batch(submission_item_id)
-  WHERE state IN ('READY', 'RUNNING', 'WAITING_EXTERNAL', 'FAILED');
+  WHERE state IN ('READY', 'RUNNING', 'FAILED');
 CREATE INDEX submission_update_batch_submission
   ON submission_update_batch(submission_id, created_at, id);
+
+CREATE TABLE submission_update_history_file (
+  batch_id TEXT NOT NULL REFERENCES submission_update_batch(id) ON DELETE CASCADE,
+  file_id TEXT PRIMARY KEY REFERENCES platform_file(id) ON DELETE RESTRICT
+) STRICT;
 
 CREATE TABLE submission_update_batch_entry (
   batch_id TEXT NOT NULL REFERENCES submission_update_batch(id) ON DELETE CASCADE,
@@ -211,37 +217,10 @@ CREATE TABLE submission_update_batch_entry (
 CREATE INDEX submission_update_batch_entry_bug
   ON submission_update_batch_entry(bug_id, batch_id);
 
-CREATE TABLE submission_external_deployment_report (
-  id TEXT PRIMARY KEY,
-  batch_id TEXT NOT NULL REFERENCES submission_update_batch(id) ON DELETE CASCADE,
-  round INTEGER NOT NULL CHECK (round > 0),
-  outcome TEXT NOT NULL CHECK (outcome IN ('SUCCEEDED', 'FAILED')),
-  summary TEXT,
-  reported_by_user_id TEXT NOT NULL REFERENCES platform_user(id) ON DELETE RESTRICT,
-  created_at TEXT NOT NULL,
-  UNIQUE(batch_id, round),
-  CHECK (
-    (outcome = 'SUCCEEDED') OR
-    (outcome = 'FAILED' AND summary IS NOT NULL AND length(trim(summary)) > 0)
-  )
-) STRICT;
-CREATE INDEX submission_external_deployment_report_batch
-  ON submission_external_deployment_report(batch_id, round, created_at);
-
-CREATE TABLE submission_external_deployment_report_attachment (
-  file_id TEXT PRIMARY KEY REFERENCES platform_file(id) ON DELETE RESTRICT,
-  report_id TEXT NOT NULL REFERENCES submission_external_deployment_report(id) ON DELETE CASCADE,
-  position INTEGER NOT NULL CHECK (position >= 0),
-  UNIQUE(report_id, position)
-) STRICT;
-CREATE INDEX submission_external_deployment_report_attachment_report
-  ON submission_external_deployment_report_attachment(report_id, position);
-
 CREATE TABLE submission_update_attempt (
   id TEXT PRIMARY KEY,
   batch_id TEXT NOT NULL REFERENCES submission_update_batch(id) ON DELETE CASCADE,
   execution_id TEXT NOT NULL UNIQUE REFERENCES platform_execution(id) ON DELETE RESTRICT,
-  continuation_report_id TEXT UNIQUE REFERENCES submission_external_deployment_report(id) ON DELETE RESTRICT,
   attempt INTEGER NOT NULL CHECK (attempt > 0),
   outcome_json TEXT,
   created_at TEXT NOT NULL,

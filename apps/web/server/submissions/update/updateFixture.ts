@@ -20,7 +20,6 @@ async function setup(
   options: {
     updateCreateId?: () => string;
     secondItem?: boolean;
-    deploymentKind?: 'LOCAL_SCRIPT' | 'CI_CD';
   } = {},
 ) {
   const { directory, database } = await createDatabase();
@@ -37,10 +36,7 @@ async function setup(
           type: 'BACKEND',
           identifier: 'payment-api',
           environment: '支付测试环境',
-          deployment:
-            options.deploymentKind === 'CI_CD'
-              ? { kind: 'CI_CD' }
-              : { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' },
+          deployment: { command: 'bun run deploy:test' },
           repository: 'https://example.com/payment.git',
           branch: 'main',
         },
@@ -52,7 +48,6 @@ async function setup(
                 identifier: 'order-api',
                 environment: '订单测试环境',
                 deployment: {
-                  kind: 'LOCAL_SCRIPT' as const,
                   command: 'bun run deploy:order',
                 },
                 repository: 'https://example.com/order.git',

@@ -18,7 +18,7 @@ export function projectUpdateAttemptResult(outcomeJson: string, technical: boole
       outcome: 'HANDED_OFF' as const,
       questions: technical ? outcome.questions : null,
     };
-  if (outcome.outcome === 'COMPLETED' || outcome.outcome === 'PUSHED')
+  if (outcome.outcome === 'COMPLETED' || outcome.outcome === 'PUSH_CONFIRMED')
     return {
       outcome: outcome.outcome,
       completedActions: stringArray(outcome.completedActions),
@@ -69,7 +69,6 @@ export function batchStateLabel(state: BatchRow['state']): string {
   return {
     READY: '已排队，等待 Agent 启动',
     RUNNING: '正在统一更新',
-    WAITING_EXTERNAL: '等待外部部署结果',
     FAILED: '统一更新未完成',
     COMPLETED: '统一更新已完成',
   }[state];
@@ -95,13 +94,10 @@ export function updateVisual(
     return { state: 'WAITING_TO_RESUME', label: '等待继续', symbol: 'Ⅱ' };
   if (latest && ['CLAIMED', 'RUNNING'].includes(latest.state))
     return { state: 'RUNNING', label: '正在自动处理', symbol: '●' };
-  if (
-    batch.state === 'WAITING_EXTERNAL' ||
-    (latest && ['CANCEL_REQUESTED', 'CANCELLED'].includes(latest.state))
-  )
+  if (latest && ['CANCEL_REQUESTED', 'CANCELLED'].includes(latest.state))
     return {
       state: 'WAITING_TO_RESUME',
-      label: batch.state === 'WAITING_EXTERNAL' ? '等待部署结果' : '等待重新处理',
+      label: '等待重新处理',
       symbol: 'Ⅱ',
     };
   return { state: 'IDLE', label: idleLabel, symbol: '·' };
@@ -109,4 +105,18 @@ export function updateVisual(
 
 export function staleBatch(): PlatformError {
   return new PlatformError('STALE_STATE', '更新批次已变化，请刷新后重试');
+}
+
+export function canRestartAfterSkillMismatch(
+  batch: BatchRow,
+  attempt: AttemptRow | undefined,
+): boolean {
+  return (
+    batch.state === 'FAILED' &&
+    !batch.session_id &&
+    Boolean(
+      attempt?.outcome_json &&
+      JSON.parse(attempt.outcome_json).technicalFailure === 'SKILL_PROTOCOL_MISMATCH',
+    )
+  );
 }

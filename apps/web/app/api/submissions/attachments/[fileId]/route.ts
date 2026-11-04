@@ -19,7 +19,7 @@ export async function GET(
       bugService().requireAttachmentAccess(user.id, fileId);
     } catch (error) {
       if (!(error instanceof PlatformError) || error.code !== 'NOT_FOUND') throw error;
-      updateService().requireExternalAttachmentAccess(user.id, fileId);
+      updateService().requireHistoricalAttachmentAccess(user.id, fileId);
     }
     const { file, bytes } = await applicationFileStore().read(fileId);
     const previewRequested =

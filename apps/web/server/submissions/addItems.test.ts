@@ -135,7 +135,7 @@ test('活动提测实时读取部署方式，关闭提测保留历史配置', as
   const submission = createSubmission(f, [
     item(f, 'front', 'developerA', 'frontA', 'main'),
   ]);
-  const deployment = { kind: 'LOCAL_SCRIPT', command: 'pnpm run deploy:84' };
+  const deployment = { command: 'pnpm run deploy:84' };
   f.database.run('UPDATE platform_environment SET deployment_json = ? WHERE id = ?', [
     JSON.stringify(deployment),
     f.environments.front.id,
@@ -156,7 +156,7 @@ test('活动提测实时读取部署方式，关闭提测保留历史配置', as
   expect(
     f.service.getWorkspace(f.users.developerA.id, submission.id).submission.items[0]
       ?.technical?.deployment,
-  ).toEqual({ kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' });
+  ).toEqual({ command: 'bun run deploy:test' });
 });
 
 test('全部工程已加入后不再显示追加入口', async () => {

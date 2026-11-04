@@ -253,7 +253,7 @@ export class LifecycleQueries {
         | 'REOPEN'
         | 'REPAIR'
         | 'UPDATE'
-        | 'EXTERNAL_DEPLOYMENT'
+        | 'HISTORICAL_DEPLOYMENT'
         | 'CLEANUP'
         | 'SUBMISSION';
       bugId: string | null;
@@ -323,23 +323,24 @@ export class LifecycleQueries {
       created_at: string;
       batch_id: string;
     }>(
-      `SELECT report.id, report.round, report.outcome, report.created_at,
-                batch.id batch_id
-         FROM submission_external_deployment_report report
-         JOIN submission_update_batch batch ON batch.id = report.batch_id
+      `SELECT report.value ->> '$.id' id, report.value ->> '$.round' round,
+                report.value ->> '$.outcome' outcome,
+                report.value ->> '$.created_at' created_at, batch.id batch_id
+         FROM submission_update_batch batch
+         JOIN json_each(batch.historical_delivery_json, '$.confirmations') report
          WHERE batch.submission_id = ?`,
       submissionId,
     );
     for (const row of reports)
       entries.push({
         id: `external:${row.id}`,
-        kind: 'EXTERNAL_DEPLOYMENT',
+        kind: 'HISTORICAL_DEPLOYMENT',
         bugId: null,
         title: `第 ${row.round} 轮外部部署结果`,
         summary:
           row.outcome === 'SUCCEEDED'
             ? '工程负责人已确认外部部署成功。'
-            : '外部部署失败，等待工程负责人继续原批次。',
+            : '工程负责人已记录当时的外部部署失败。',
         createdAt: row.created_at,
       });
     const cleanups = this.db.all<{

@@ -55,7 +55,7 @@ export async function seedBrowserFixture(
           type: 'FRONTEND',
           identifier: 'browser-web',
           environment: '浏览器测试环境',
-          deployment: { kind: 'CI_CD' },
+          deployment: { command: 'bun run deploy:backend' },
           repository: 'https://example.com/browser.git',
           branch: 'feature/browser-test',
         },
@@ -64,7 +64,7 @@ export async function seedBrowserFixture(
           type: 'BACKEND',
           identifier: 'browser-api',
           environment: '浏览器后端环境',
-          deployment: { kind: 'CI_CD' },
+          deployment: { command: 'bun run deploy:backend' },
           repository: 'https://example.com/browser-api.git',
           branch: 'feature/browser-test',
         },
@@ -78,7 +78,7 @@ export async function seedBrowserFixture(
       type: 'FRONTEND',
       identifier: 'browser-extra',
       environment: '追加测试环境',
-      deployment: { kind: 'LOCAL_SCRIPT', command: 'pnpm run deploy:84' },
+      deployment: { command: 'pnpm run deploy:84' },
       repository: 'https://example.com/browser-extra.git',
       developers: { developer: { userId: developer.id, runnerId: paired.runner.id } },
     });
@@ -284,7 +284,7 @@ export async function seedBrowserFixture(
       `browser-scroll-repair-${scrollBug.id}`,
       ['a'.repeat(40)],
     );
-    const scrollBatch = updates.freezeNow(developer.id, item.id, {
+    updates.freezeNow(developer.id, item.id, {
       mutationId: randomUUID(),
     });
     const scrollUpdate = (await executions.claim(paired.runner.id, 1, 0))[0]!;
@@ -313,8 +313,8 @@ export async function seedBrowserFixture(
                 },
               ],
             },
-            outcome: 'PUSHED',
-            completedActions: ['集成修复提交并完成推送'],
+            outcome: 'COMPLETED',
+            completedActions: ['集成修复提交并完成推送和部署'],
             validations: [{ name: '构建检查', status: 'PASSED', detail: '' }],
             warnings: [],
           },
@@ -409,12 +409,6 @@ export async function seedBrowserFixture(
         digest: await observationDigest(payload),
       });
     }
-    updates.reportExternalDeployment(developer.id, scrollBatch.batchId, {
-      mutationId: randomUUID(),
-      expectedVersion: updates.batchView(developer.id, scrollBatch.batchId).version,
-      outcome: 'SUCCEEDED',
-      attachmentIds: [],
-    });
     lifecycle.verifyBug(tester.id, scrollBug.id, {
       mutationId: randomUUID(),
       expectedVersion: bugs
@@ -530,8 +524,11 @@ export async function seedBrowserFixture(
                 },
               ],
             },
-            outcome: 'PUSHED',
-            completedActions: ['合入两条缺陷修复并推送目标分支'],
+            outcome: 'FAILED',
+            failedStep: '部署命令',
+            reason: '测试环境暂时不可用',
+            pendingActions: ['核对环境状态后继续原更新会话'],
+            completedActions: ['已合入并推送两条缺陷修复'],
             validations: [{ name: '共享批次构建', status: 'PASSED', detail: '' }],
             warnings: [],
           },
@@ -559,7 +556,7 @@ export async function seedBrowserFixture(
           type: 'FRONTEND',
           identifier: 'close-web',
           environment: '关闭回归环境',
-          deployment: { kind: 'CI_CD' },
+          deployment: { command: 'bun run deploy:backend' },
           repository: 'https://example.com/close.git',
           branch: 'feature/close',
         },

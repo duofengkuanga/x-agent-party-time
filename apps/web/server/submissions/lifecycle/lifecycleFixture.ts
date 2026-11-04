@@ -38,7 +38,7 @@ async function setup(createDatabase: ReturnType<typeof testDatabases>) {
         type: 'FRONTEND',
         identifier: 'local-web',
         environment: '本地测试环境',
-        deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' },
+        deployment: { command: 'bun run deploy:test' },
         repository: 'https://example.com/local.git',
         branch: 'main',
       },
@@ -47,7 +47,7 @@ async function setup(createDatabase: ReturnType<typeof testDatabases>) {
         type: 'BACKEND',
         identifier: 'ci-api',
         environment: '持续集成环境',
-        deployment: { kind: 'CI_CD' },
+        deployment: { command: 'bun run deploy:backend' },
         repository: 'https://example.com/ci.git',
         branch: 'main',
       },
@@ -148,7 +148,7 @@ export async function completeClaimedRepair(
 export async function completeUpdate(
   fixture: Awaited<ReturnType<typeof setup>>,
   submissionItemId: string,
-  result: { outcome: 'COMPLETED' | 'PUSHED'; summary: string },
+  result: { outcome: 'COMPLETED'; summary: string },
 ) {
   const frozen = fixture.updates.freezeNow(fixture.users.developer.id, submissionItemId, {
     mutationId: randomUUID(),

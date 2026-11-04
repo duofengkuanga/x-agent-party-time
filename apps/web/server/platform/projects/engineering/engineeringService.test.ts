@@ -47,58 +47,6 @@ async function setup() {
 }
 
 describe('EngineeringService', () => {
-  test('切换部署方式时持久保留脚本，持续集成只使用当前部署方式', async () => {
-    const { database, project, service, users } = await setup();
-    const engineering = service.createEngineering(users.owner.id, project.id, {
-      mutationId: randomUUID(),
-      name: '记忆脚本工程',
-      identifier: 'script-memory',
-      type: 'FRONTEND',
-    });
-    const environment = service.createEnvironment(users.owner.id, engineering.id, {
-      mutationId: randomUUID(),
-      name: '测试环境',
-      deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:first' },
-    });
-    const switched = service.updateEnvironment(users.owner.id, environment.id, {
-      mutationId: randomUUID(),
-      expectedVersion: environment.version,
-      name: environment.name,
-      deployment: { kind: 'CI_CD' },
-    });
-    expect(switched.deployment).toEqual({ kind: 'CI_CD' });
-    expect(switched.scriptCommand).toBe('bun run deploy:first');
-    const reloaded = new EngineeringService(database).getWorkspace(
-      users.owner.id,
-      engineering.id,
-    ).environments[0]!;
-    expect(reloaded.scriptCommand).toBe('bun run deploy:first');
-    const changed = service.updateEnvironment(users.owner.id, environment.id, {
-      mutationId: randomUUID(),
-      expectedVersion: reloaded.version,
-      name: environment.name,
-      deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:second' },
-    });
-    expect(changed.scriptCommand).toBeUndefined();
-    const latest = service.updateEnvironment(users.owner.id, environment.id, {
-      mutationId: randomUUID(),
-      expectedVersion: changed.version,
-      name: environment.name,
-      deployment: { kind: 'CI_CD' },
-      scriptCommand: 'bun run deploy:latest-draft',
-    });
-    expect(latest.deployment).toEqual({ kind: 'CI_CD' });
-    expect(latest.scriptCommand).toBe('bun run deploy:latest-draft');
-    expect(
-      JSON.parse(
-        database.get<{ deployment_json: string }>(
-          'SELECT deployment_json FROM platform_environment WHERE id = ?',
-          environment.id,
-        )!.deployment_json,
-      ),
-    ).toEqual({ kind: 'CI_CD', scriptCommand: 'bun run deploy:latest-draft' });
-  });
-
   test('工程初始化原子创建创建者成员、额外成员与多个环境', async () => {
     const { project, service, users } = await setup();
     const engineering = service.createEngineeringSetup(users.owner.id, project.id, {
@@ -113,14 +61,13 @@ describe('EngineeringService', () => {
           mutationId: randomUUID(),
           name: '测试环境',
           deployment: {
-            kind: 'LOCAL_SCRIPT',
             command: 'bun run deploy:test',
           },
         },
         {
           mutationId: randomUUID(),
           name: '预发布环境',
-          deployment: { kind: 'CI_CD' },
+          deployment: { command: 'bun run deploy:backend' },
         },
       ],
     });
@@ -132,11 +79,11 @@ describe('EngineeringService', () => {
     expect(workspace.environments).toEqual([
       expect.objectContaining({
         name: '测试环境',
-        deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' },
+        deployment: { command: 'bun run deploy:test' },
       }),
       expect.objectContaining({
         name: '预发布环境',
-        deployment: { kind: 'CI_CD' },
+        deployment: { command: 'bun run deploy:backend' },
       }),
     ]);
   });
@@ -156,12 +103,12 @@ describe('EngineeringService', () => {
           {
             mutationId: randomUUID(),
             name: '重复环境',
-            deployment: { kind: 'CI_CD' },
+            deployment: { command: 'bun run deploy:backend' },
           },
           {
             mutationId: randomUUID(),
             name: '重复环境',
-            deployment: { kind: 'CI_CD' },
+            deployment: { command: 'bun run deploy:backend' },
           },
         ],
       }),
@@ -201,12 +148,12 @@ describe('EngineeringService', () => {
           {
             mutationId: environmentMutationId,
             name: '测试环境',
-            deployment: { kind: 'CI_CD' },
+            deployment: { command: 'bun run deploy:backend' },
           },
           {
             mutationId: environmentMutationId,
             name: '预发布环境',
-            deployment: { kind: 'CI_CD' },
+            deployment: { command: 'bun run deploy:backend' },
           },
         ],
       }),
@@ -399,28 +346,28 @@ describe('EngineeringService', () => {
     const environment = service.createEnvironment(users.owner.id, engineering.id, {
       mutationId: randomUUID(),
       name: '测试环境',
-      deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' },
+      deployment: { command: 'bun run deploy:test' },
     });
     expect(() =>
       service.createEnvironment(users.owner.id, engineering.id, {
         mutationId: randomUUID(),
         name: '测试环境',
-        deployment: { kind: 'CI_CD' },
+        deployment: { command: 'bun run deploy:backend' },
       }),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
     expect(() =>
       service.updateEnvironment(users.owner.id, environment.id, {
         ...mutation(99),
         name: '测试环境',
-        deployment: { kind: 'CI_CD' },
+        deployment: { command: 'bun run deploy:backend' },
       }),
     ).toThrow(expect.objectContaining({ code: 'STALE_STATE' }));
     const updated = service.updateEnvironment(users.owner.id, environment.id, {
       ...mutation(environment.version),
       name: '持续集成环境',
-      deployment: { kind: 'CI_CD' },
+      deployment: { command: 'bun run deploy:backend' },
     });
-    expect(updated.deployment).toEqual({ kind: 'CI_CD' });
+    expect(updated.deployment).toEqual({ command: 'bun run deploy:backend' });
     expect(updated.version).toBe(2);
     expect(service.listEnvironments(users.member.id, engineering.id)).toEqual([updated]);
   });
@@ -438,12 +385,12 @@ describe('EngineeringService', () => {
         {
           mutationId: randomUUID(),
           name: '重复环境',
-          deployment: { kind: 'CI_CD' },
+          deployment: { command: 'bun run deploy:backend' },
         },
         {
           mutationId: randomUUID(),
           name: '重复环境',
-          deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' },
+          deployment: { command: 'bun run deploy:test' },
         },
       ]),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
@@ -453,12 +400,12 @@ describe('EngineeringService', () => {
       {
         mutationId: randomUUID(),
         name: '测试环境',
-        deployment: { kind: 'LOCAL_SCRIPT', command: 'bun run deploy:test' },
+        deployment: { command: 'bun run deploy:test' },
       },
       {
         mutationId: randomUUID(),
         name: '预发布环境',
-        deployment: { kind: 'CI_CD' },
+        deployment: { command: 'bun run deploy:backend' },
       },
     ]);
     expect(created.map(({ name }) => name)).toEqual(['测试环境', '预发布环境']);
@@ -478,14 +425,14 @@ describe('EngineeringService', () => {
     const environment = service.createEnvironment(users.owner.id, engineering.id, {
       mutationId: randomUUID(),
       name: '共享环境',
-      deployment: { kind: 'CI_CD' },
+      deployment: { command: 'bun run deploy:backend' },
     });
     references.environment.add(environment.id);
     expect(() =>
       service.updateEnvironment(users.owner.id, environment.id, {
         ...mutation(environment.version),
         name: '不可修改',
-        deployment: { kind: 'LOCAL_SCRIPT', command: 'deploy' },
+        deployment: { command: 'deploy' },
       }),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
     expect(() =>

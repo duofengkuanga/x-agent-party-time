@@ -18,7 +18,9 @@ export function requireBindableFiles(
       )
       AND NOT EXISTS (SELECT 1 FROM submission_verification_attachment WHERE file_id = file.id)
       AND NOT EXISTS (SELECT 1 FROM submission_reopen_attachment WHERE file_id = file.id)
-      AND NOT EXISTS (SELECT 1 FROM submission_external_deployment_report_attachment WHERE file_id = file.id)
+      AND NOT EXISTS (
+        SELECT 1 FROM submission_update_history_file WHERE file_id = file.id
+      )
       )
     )
   `);

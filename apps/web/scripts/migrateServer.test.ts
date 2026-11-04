@@ -2,10 +2,15 @@ import { afterEach, expect, spyOn, test } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { LocalFileStore } from '@/server/platform/files/localFileStore';
+import { randomUUID } from 'node:crypto';
 import { AppDatabase, openDatabase } from '@/server/database/index';
 import { createSubmissionWorkflow } from '@/server/runtime/createSubmissionWorkflow';
 import { testDatabases } from '@/testing/database';
-import { completeSuccessfulExecution } from '@/testing/submissions/execution';
+import {
+  completeSuccessfulExecution,
+  testSkillBinding,
+} from '@/testing/submissions/execution';
 import {
   completedUpdate,
   latestBatch,
@@ -18,7 +23,7 @@ import { ExecutionService } from '@/server/platform/execution/service';
 import { projectAttemptResult } from '@/server/submissions/repair/results';
 import { projectUpdateAttemptResult } from '@/server/submissions/update/results';
 import { RepairExecutionResultSchema } from '@/contracts/submissions/repair';
-import { LocalScriptUpdateExecutionResultSchema } from '@/contracts/submissions/update';
+import { UpdateExecutionResultSchema } from '@/contracts/submissions/update';
 
 const setup = updateFixture(testDatabases());
 const opened: Database[] = [];
@@ -26,12 +31,31 @@ afterEach(() => opened.splice(0).forEach((db) => db.close()));
 const legacySql = readFileSync(join(import.meta.dir, 'fixtures/serverV27.sql'), 'utf8');
 const schema30 = readFileSync(join(import.meta.dir, 'fixtures/serverV30.sql'), 'utf8');
 const schema31 = readFileSync(join(import.meta.dir, 'fixtures/serverV31.sql'), 'utf8');
+const schema32 = schema31
+  .replace(
+    'ON platform_execution(binding_id)\n  WHERE state IN (',
+    "ON platform_execution(binding_id, COALESCE(json_extract(workspace_json, '$.isolation'), 'EXCLUSIVE'))\n  WHERE state IN (",
+  )
+  .replace(
+    'CREATE INDEX platform_execution_runner_claim',
+    `CREATE UNIQUE INDEX platform_execution_workspace_reservation
+  ON platform_execution(runner_id, json_extract(workspace_json, '$.key'))
+  WHERE workspace_json IS NOT NULL AND state IN ('CLAIMED', 'RUNNING', 'CANCEL_REQUESTED');
+CREATE INDEX platform_execution_runner_claim`,
+  );
 
-function copyCurrentToLegacy(directory: string, version: 27 | 28 | 29 | 30 | 31) {
+function copyCurrentToLegacy(directory: string, version: 27 | 28 | 29 | 30 | 31 | 32) {
   const path = join(directory, `legacy${version}.sqlite`);
   const db = new AppDatabase(path, { create: true });
   opened.push(db);
-  let sql = version === 27 ? legacySql : version === 31 ? schema31 : schema30;
+  let sql =
+    version === 27
+      ? legacySql
+      : version === 31
+        ? schema31
+        : version === 32
+          ? schema32
+          : schema30;
   if (version === 28 || version === 29) {
     const observationStart = sql.indexOf('CREATE TABLE platform_observation_');
     if (observationStart < 0) throw new Error('旧 Schema 缺少归因表边界');
@@ -43,15 +67,29 @@ function copyCurrentToLegacy(directory: string, version: 27 | 28 | 29 | 30 | 31)
   for (const { name } of db.all<{ name: string }>(
     "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
   )) {
-    const columns = db
+    if (name.includes('external_deployment_report')) continue;
+    const fields = db
       .all<{ name: string }>(`PRAGMA table_info(${name})`)
-      .map(({ name }) => `"${name}"`)
+      .map(({ name }) => name);
+    const columns = fields.map((name) => `"${name}"`).join(', ');
+    const source = fields
+      .map((name) =>
+        name === 'continuation_report_id'
+          ? 'NULL'
+          : name === 'deployment_json'
+            ? `json_set(deployment_json, '$.kind', 'LOCAL_SCRIPT')`
+            : `"${name}"`,
+      )
       .join(', ');
     db.exec(
-      `INSERT INTO ${name} (rowid, ${columns}) SELECT rowid, ${columns} FROM seed.${SCHEMA_31_TABLE_NAMES[name] ?? name}`,
+      `INSERT INTO ${name} (rowid, ${columns}) SELECT rowid, ${source} FROM seed.${SCHEMA_31_TABLE_NAMES[name] ?? name}`,
     );
   }
   db.exec('DETACH DATABASE seed');
+  db.exec(`UPDATE ${version >= 31 ? 'platform' : 'cooking'}_mutation
+    SET result_json=json_set(result_json, '$.deployment.kind', 'LOCAL_SCRIPT')
+    WHERE operation IN ('ENVIRONMENT_CREATE', 'ENVIRONMENT_UPDATE')`);
+
   if (version < 31)
     db.exec(
       "UPDATE platform_execution SET owner_namespace='cooking' WHERE owner_namespace='submissions'",
@@ -105,9 +143,16 @@ function originalRows(db: Database) {
 
 function expectOriginalFacts(db: Database, before: ReturnType<typeof originalRows>) {
   for (const table of before) {
+    if (table.name.includes('external_deployment_report')) {
+      expect(table.rows).toEqual([]);
+      continue;
+    }
+    const columns = table.columns.map((name) =>
+      name === 'continuation_report_id' ? 'NULL AS continuation_report_id' : name,
+    );
     const rows = db
       .query(
-        `SELECT ${table.columns.join(',')} FROM ${SCHEMA_31_TABLE_NAMES[table.name] ?? table.name} ORDER BY rowid`,
+        `SELECT ${columns.join(',')} FROM ${SCHEMA_31_TABLE_NAMES[table.name] ?? table.name} ORDER BY rowid`,
       )
       .values();
     expect(rows).toHaveLength(table.rows.length);
@@ -124,7 +169,15 @@ function expectOriginalFacts(db: Database, before: ReturnType<typeof originalRow
           value === 'cooking'
         )
           expect(rows[index]![column]).toEqual('submissions');
-        else expect(rows[index]![column]).toEqual(value);
+        else if (field === 'deployment_json') {
+          const { kind: _, ...script } = JSON.parse(value as string);
+          expect(JSON.parse(rows[index]![column] as string)).toEqual(script);
+        } else if (field === 'result_json' && table.name.endsWith('_mutation')) {
+          const expected = JSON.parse(value as string);
+          if (expected.deployment?.kind === 'LOCAL_SCRIPT')
+            delete expected.deployment.kind;
+          expect(JSON.parse(rows[index]![column] as string)).toEqual(expected);
+        } else expect(rows[index]![column]).toEqual(value);
       }),
     );
   }
@@ -148,7 +201,7 @@ test('预检只读；迁移备份并逐字段保留全部旧数据、关联和�
   expectOriginalFacts(f.db, before);
   expect(result.rewrittenResults).toBeGreaterThan(0);
   expect(f.db.get<{ user_version: number }>('PRAGMA user_version')).toEqual({
-    user_version: 32,
+    user_version: 33,
   });
   expect(f.db.all('PRAGMA foreign_key_check')).toEqual([]);
   const handoffs = JSON.parse(
@@ -240,7 +293,7 @@ test('提交前故障回滚全部 DDL；备份和旧数据均可重新打开', a
     this: Database,
     sql: string,
   ) {
-    if (sql === 'PRAGMA user_version=32') throw new Error('模拟提交前故障');
+    if (sql === 'PRAGMA user_version=33') throw new Error('模拟提交前故障');
     return originalExec.call(this, sql);
   });
   try {
@@ -305,9 +358,7 @@ test('运行时只接受最新结果契约，无修改结果仍正常显示', ()
     warnings: [],
   };
   expect(() => projectUpdateAttemptResult(JSON.stringify(update), true)).toThrow();
-  expect(
-    LocalScriptUpdateExecutionResultSchema.safeParse({ result: update }).success,
-  ).toBe(false);
+  expect(UpdateExecutionResultSchema.safeParse({ result: update }).success).toBe(false);
   expect(() =>
     projectUpdateAttemptResult(JSON.stringify({ ...update, handoffUse: {} }), true),
   ).toThrow();
@@ -315,13 +366,15 @@ test('运行时只接受最新结果契约，无修改结果仍正常显示', ()
 
 test('Schema31 离线升级并发索引，完整保留活动执行且可幂等重跑', async () => {
   const f = await setup();
-  const { started } = await startCandidateUpdate(
-    f,
-    '并发升级',
-    'repair-index',
-    ['a'.repeat(40)],
-    'update-index',
-  );
+  const bug = f.createBug('并发升级');
+  const [claimed] = await f.executions.claim(f.runner.id, 1, 0);
+  const started = { executionId: claimed!.id };
+  f.executions.start(f.runner.id, claimed!.id, {
+    kind: 'STARTED',
+    leaseToken: claimed!.lease.token,
+    sessionId: 'migration-repair',
+    taskSkillBinding: testSkillBinding('XBugRepaire'),
+  });
   const { db, path } = copyCurrentToLegacy(f.directory, 31);
   const before = originalRows(db);
   expect(migrateServerDatabase(path).status).toBe('ready');
@@ -329,11 +382,11 @@ test('Schema31 离线升级并发索引，完整保留活动执行且可幂等�
   const report = migrateServerDatabase(path, true);
   expect(report).toMatchObject({
     from: 31,
-    to: 32,
+    to: 33,
     rewrittenResults: 0,
     status: 'migrated',
   });
-  expect(originalRows(db)).toEqual(before);
+  expectOriginalFacts(db, before);
   expect(new ExecutionService(db).get(started.executionId).state).toBe('RUNNING');
   expect(
     db.get<{ sql: string }>(
@@ -349,13 +402,15 @@ test('Schema31 离线升级并发索引，完整保留活动执行且可幂等�
 
 test('Schema29保留活动执行并升级归因存储与模块命名', async () => {
   const f = await setup();
-  const { started } = await startCandidateUpdate(
-    f,
-    '归因升级活动执行',
-    'repair-active',
-    ['a'.repeat(40)],
-    'update-active',
-  );
+  const bug = f.createBug('归因升级活动执行');
+  const [claimed] = await f.executions.claim(f.runner.id, 1, 0);
+  const started = { executionId: claimed!.id };
+  f.executions.start(f.runner.id, claimed!.id, {
+    kind: 'STARTED',
+    leaseToken: claimed!.lease.token,
+    sessionId: 'migration-repair',
+    taskSkillBinding: testSkillBinding('XBugRepaire'),
+  });
   const { db, path } = copyCurrentToLegacy(f.directory, 29);
   const before = originalRows(db);
   expect(migrateServerDatabase(path).status).toBe('ready');
@@ -370,20 +425,22 @@ test('Schema29保留活动执行并升级归因存储与模块命名', async () 
 
 test('Schema30逐字段保留活动流程、幂等回执和归因记录，只更新明确的执行归属', async () => {
   const f = await setup();
-  const { bug, started } = await startCandidateUpdate(
-    f,
-    '命名迁移保留活动流程',
-    'repair-live',
-    ['a'.repeat(40)],
-    'update-live',
-  );
+  const bug = f.createBug('命名迁移保留活动流程');
+  const [claimed] = await f.executions.claim(f.runner.id, 1, 0);
+  const started = { executionId: claimed!.id };
+  f.executions.start(f.runner.id, claimed!.id, {
+    kind: 'STARTED',
+    leaseToken: claimed!.lease.token,
+    sessionId: 'migration-repair',
+    taskSkillBinding: testSkillBinding('XBugRepaire'),
+  });
   const { db, path } = copyCurrentToLegacy(f.directory, 30);
   const before = originalRows(db);
   expect(migrateServerDatabase(path).status).toBe('ready');
   expect(originalRows(db)).toEqual(before);
   const report = migrateServerDatabase(path, true);
   expect(report.from).toBe(30);
-  expect(report.to).toBe(32);
+  expect(report.to).toBe(33);
   expect(report.rewrittenResults).toBe(0);
   expectOriginalFacts(db, before);
   expect(db.all("SELECT name FROM sqlite_master WHERE name GLOB 'cooking_*'")).toEqual(
@@ -406,4 +463,163 @@ test('Schema30逐字段保留活动流程、幂等回执和归因记录，只更
   expect(originalRows(backup)).toEqual(before);
   expect(backup.query('PRAGMA user_version').get()).toEqual({ user_version: 30 });
   expect(migrateServerDatabase(path, true).status).toBe('current');
+});
+
+test('Schema 32 要求真实命令并保留历史 Push、人工确认和附件权限', async () => {
+  const f = await setup();
+  const { bug, started } = await startCandidateUpdate(
+    f,
+    '旧流水线交付',
+    'legacy-repair',
+    ['a'.repeat(40)],
+    'legacy-update',
+  );
+  completeSuccessfulExecution(f, started, completedUpdate());
+  const { db, path } = copyCurrentToLegacy(f.directory, 32);
+  const batch = latestBatch(db, f.item.id);
+  const oldConfiguration = JSON.stringify({ kind: 'CI_CD' });
+  const receipt = db.get<{ id: string; result_json: string }>(
+    "SELECT id, result_json FROM platform_mutation WHERE resource_id = ? AND operation = 'ENVIRONMENT_CREATE'",
+    f.item.environment_id,
+  )!;
+  const originalReceipt = {
+    ...JSON.parse(receipt.result_json),
+    deployment: { kind: 'CI_CD' },
+  };
+  db.run('UPDATE platform_mutation SET result_json = ? WHERE id = ?', [
+    JSON.stringify(originalReceipt),
+    receipt.id,
+  ]);
+
+  const environmentId = f.item.environment_id;
+  const reportId = randomUUID();
+  const file = await new LocalFileStore(f.database, join(f.directory, 'files')).put({
+    bytes: new TextEncoder().encode('历史验收依据'),
+    originalName: 'legacy.txt',
+    mediaType: 'text/plain',
+    uploadedByUserId: f.users.developer.id,
+  });
+  db.query('ATTACH DATABASE ? AS seed').run(join(f.directory, 'server.sqlite'));
+  db.run('INSERT INTO platform_file SELECT * FROM seed.platform_file WHERE id = ?', [
+    file.id,
+  ]);
+  db.exec('DETACH DATABASE seed');
+  db.run('UPDATE platform_environment SET deployment_json = ? WHERE id = ?', [
+    JSON.stringify({ kind: 'CI_CD', scriptCommand: 'bun run obsolete-script' }),
+    environmentId,
+  ]);
+  db.run('UPDATE submission_item SET deployment_json = ? WHERE id = ?', [
+    oldConfiguration,
+    f.item.id,
+  ]);
+  db.run('UPDATE submission_bug_deployment SET deployment_json = ? WHERE bug_id = ?', [
+    oldConfiguration,
+    bug.id,
+  ]);
+  db.run('UPDATE submission_update_batch SET deployment_json = ? WHERE id = ?', [
+    oldConfiguration,
+    batch.id,
+  ]);
+  db.run(
+    `UPDATE submission_update_attempt SET outcome_json = json_set(outcome_json, '$.outcome', 'PUSHED')
+          WHERE batch_id = ?`,
+    [batch.id],
+  );
+  db.run(
+    `INSERT INTO submission_external_deployment_report
+    (id, batch_id, round, outcome, summary, reported_by_user_id, created_at)
+    VALUES (?, ?, 1, 'SUCCEEDED', '人工核对了旧流水线', ?, ?)`,
+    [reportId, batch.id, f.users.developer.id, f.clock.now().toISOString()],
+  );
+  db.run(
+    'INSERT INTO submission_external_deployment_report_attachment VALUES (?, ?, 0)',
+    [file.id, reportId],
+  );
+
+  const before = originalRows(db);
+  expect(() => migrateServerDatabase(path, true)).toThrow('需要提供实际部署脚本');
+  expect(originalRows(db)).toEqual(before);
+  expect(readdirSync(f.directory).some((name) => name.includes('.backup-'))).toBe(false);
+
+  const commands = { [environmentId]: 'bun run deploy:verified' };
+  db.run("UPDATE submission_update_batch SET state = 'WAITING_EXTERNAL' WHERE id = ?", [
+    batch.id,
+  ]);
+  expect(() => migrateServerDatabase(path, false, commands)).toThrow(
+    '未完成的旧更新批次',
+  );
+  db.run("UPDATE submission_update_batch SET state = 'COMPLETED' WHERE id = ?", [
+    batch.id,
+  ]);
+  db.run('UPDATE submission_item SET deployment_json = ? WHERE id = ?', [
+    JSON.stringify({ kind: 'LOCAL_SCRIPT', command: ' ' }),
+    f.item.id,
+  ]);
+  expect(() => migrateServerDatabase(path, true, commands)).toThrow('旧部署快照无效');
+  db.run('UPDATE submission_item SET deployment_json = ? WHERE id = ?', [
+    oldConfiguration,
+    f.item.id,
+  ]);
+
+  const result = migrateServerDatabase(path, true, commands);
+  expect(result).toMatchObject({ from: 32, to: 33, historicalConfirmations: 1 });
+  expect(
+    db.get(
+      'SELECT deployment_json FROM platform_environment WHERE id = ?',
+      environmentId,
+    ),
+  ).toEqual({
+    deployment_json: JSON.stringify({ command: 'bun run deploy:verified' }),
+  });
+  expect(
+    db.get(
+      'SELECT operation, result_json FROM platform_mutation WHERE id = ?',
+      receipt.id,
+    ),
+  ).toEqual({
+    operation: 'HISTORICAL_ENVIRONMENT_CREATE',
+    result_json: JSON.stringify(originalReceipt),
+  });
+  expect(
+    db.get(
+      'SELECT applied_at FROM platform_environment_deployment_cutover WHERE environment_id = ?',
+      environmentId,
+    ),
+  ).not.toBeNull();
+  const migrated = openDatabase(path);
+  opened.push(migrated);
+  const historicalFiles = new LocalFileStore(migrated, join(f.directory, 'files'));
+  await expect(
+    historicalFiles.deleteUnbound(file.id, f.users.developer.id),
+  ).rejects.toThrow();
+  expect(historicalFiles.get(file.id)).not.toBeNull();
+  const { updates } = createSubmissionWorkflow(db);
+  const developer = updates.batchView(f.users.developer.id, batch.id);
+  expect(developer.timeline).toContainEqual(
+    expect.objectContaining({
+      kind: 'UPDATE_ATTEMPT',
+      result: expect.objectContaining({ outcome: 'PUSH_CONFIRMED' }),
+    }),
+  );
+  expect(developer.timeline).toContainEqual(
+    expect.objectContaining({
+      id: reportId,
+      kind: 'HISTORICAL_DEPLOYMENT',
+      summary: '人工核对了旧流水线',
+      attachments: [expect.objectContaining({ id: file.id })],
+    }),
+  );
+  expect(updates.batchView(f.users.tester.id, batch.id).timeline).toContainEqual(
+    expect.objectContaining({ id: reportId, attachments: [] }),
+  );
+  expect(() =>
+    updates.requireHistoricalAttachmentAccess(f.users.developer.id, file.id),
+  ).not.toThrow();
+  expect(() =>
+    updates.requireHistoricalAttachmentAccess(f.users.tester.id, file.id),
+  ).toThrow();
+  expect(developer.availableActions).toEqual([]);
+  const backup = new Database(result.backupPath!, { readonly: true });
+  opened.push(backup);
+  expect(originalRows(backup)).toEqual(before);
 });

@@ -180,7 +180,6 @@ describe('UpdateService', () => {
         fixture.submission.id,
         fixture.item.id,
         JSON.stringify({
-          kind: 'LOCAL_SCRIPT',
           command: 'bun run deploy:test',
         }),
         now,

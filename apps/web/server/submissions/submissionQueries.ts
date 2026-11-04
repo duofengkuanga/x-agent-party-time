@@ -1,4 +1,4 @@
-import { EffectiveEnvironmentDeploymentSchema } from '@/contracts/projects/engineering';
+import { DeploymentScriptSchema } from '@/contracts/projects/engineering';
 import { parseRow, type DatabaseRow } from '@/server/database/rowMapper';
 import { submissionCloseBlocker } from '@/server/submissions/lifecycle/submissionClosure';
 import { environmentAccessForItem } from './environmentAccess';
@@ -47,14 +47,14 @@ export type SubmissionItemRow = {
   target_branch: string;
   environment_id: string;
   environment_name: string;
-  deployment_json: string;
+  deployment_json: string | null;
   created_at: string;
 };
 
 type WorkspaceSubmissionItemRow = SubmissionItemRow & {
   bug_count: number;
   current_engineering_name: string;
-  current_deployment_json: string;
+  current_deployment_json: string | null;
 };
 
 export class SubmissionQueries {
@@ -288,9 +288,10 @@ function mapItem(row: SubmissionItemRow): SubmissionItem {
     environment: {
       id: row.environment_id,
       name: row.environment_name,
-      deployment: EffectiveEnvironmentDeploymentSchema.parse(
-        JSON.parse(row.deployment_json),
-      ),
+      deployment:
+        row.deployment_json === null
+          ? null
+          : DeploymentScriptSchema.parse(JSON.parse(row.deployment_json)),
     },
     createdAt: row.created_at,
   });

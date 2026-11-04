@@ -282,7 +282,8 @@ cases:
 
   - name: engineering deployment command expands in place
     steps:
-      - fill: { sel: '.project-settings__search input', text: 浏览器验收 }
+      - open: __BASE_URL__/projects?project=__PROJECT_ID__
+      - wait: '.project-engineering-tabs'
       - click: '.project-engineering-tabs a:nth-child(3)'
       - wait: '.project-engineering[aria-label="浏览器追加工程"]'
       - click: '.project-engineering details summary'
@@ -345,17 +346,11 @@ cases:
             text: 'bun run deploy:integration',
           }
       - wait: '.environment-direct-row .auto-save-form[data-save-state="saved"]'
-      - click: '.environment-direct-row .deployment-kind-choice label:has(input[value="CI_CD"])'
-      - wait: '.environment-direct-row .auto-save-form[data-save-state="saved"]'
-      - wait: 'body:not(:has(.environment-direct-row input[name="command"]))'
       - eval: 'document.documentElement.dataset.testReloading="true";window.location.reload();true'
       - wait: 'html:not([data-test-reloading]) .environment-direct-row'
       - wait: { load: networkidle }
-      - click: '.environment-direct-row .deployment-kind-choice label:has(input[value="LOCAL_SCRIPT"])'
-      - wait: '.environment-direct-row input[name="command"]'
       - eval: >-
-          (()=>{if(document.querySelector('.environment-direct-row input[name=command]').value!=='bun run deploy:integration') throw new Error('Switching deployment mode discarded the saved script command');return true;})()
-      - wait: '.environment-direct-row .auto-save-form[data-save-state="saved"]'
+          document.querySelector('.environment-direct-row input[name=command]').value === 'bun run deploy:integration'
       - click: '.environment-add'
       - fill:
           {
@@ -369,8 +364,6 @@ cases:
           }
       - wait: '.environment-direct-row:nth-child(2)'
       - wait: 'body:not(:has(.environment-direct-form--new))'
-      - click: '.environment-direct-row:first-child .deployment-kind-choice label:has(input[value="CI_CD"])'
-      - wait: '.environment-direct-row:first-child .auto-save-form[data-save-state="saved"]'
       - click: '.environment-add'
       - wait: '.environment-direct-form--new'
       - eval: >-
@@ -398,8 +391,6 @@ cases:
           const cancel=form.querySelector('.environment-direct-form__hint button').getBoundingClientRect();
           sessionStorage.setItem('environmentErrorReadable',String(error.top>=cancel.bottom&&error.bottom<=form.getBoundingClientRect().bottom));return true;})()
       - click: '.environment-direct-form__hint button'
-      - click: '.environment-direct-row:first-child .deployment-kind-choice label:has(input[value="LOCAL_SCRIPT"])'
-      - wait: '.environment-direct-row:first-child .auto-save-form[data-save-state="saved"]'
       - click: '.engineering-member-toggle input'
       - wait: '.engineering-member-toggle[aria-busy="false"] input:not(:checked)'
       - click: '.engineering-member-toggle input'
@@ -1981,9 +1972,7 @@ cases:
             sel: '[aria-label="更新会话 ID"] code',
             equals: browser-shared-update,
           }
-      - text:
-          { sel: '[aria-label="确认整批更新结果"]', contains: 全部 2 条缺陷 }
-      - text: { sel: '.collab-execution-round__delivery', contains: 本轮已推送 }
+      - text: { sel: '.collab-execution-round__delivery', contains: 本轮更新未完成 }
 
   - name: sticky round tabs cover the full scroll edge in batch details
     steps:
@@ -2018,32 +2007,14 @@ cases:
           }
       - eval: 'document.querySelector("[aria-label=\"修复会话 ID\"] code").textContent.startsWith("browser-batch-repair-")'
 
-  - name: switching round tabs preserves the unfinished batch deployment report
+  - name: switching round tabs preserves the batch failure details
     steps:
-      - fill:
-          {
-            sel: '[aria-label="确认整批更新结果"] textarea',
-            text: 切换轮次后保留部署说明,
-          }
       - click: '[role="tablist"][aria-label="修复与更新轮次"] button:last-child'
       - click: '[role="tablist"][aria-label="修复与更新轮次"] button:first-child'
     assert:
       - text: { sel: '[role="tab"][aria-selected="true"]', equals: 第 1 轮更新 }
-      - eval: 'document.querySelector("[aria-label=\"确认整批更新结果\"] textarea").value === "切换轮次后保留部署说明"'
+      - text: { sel: '.collab-execution-round__delivery', contains: 本轮更新未完成 }
       - count: { sel: '[role="tabpanel"]:not([hidden])', eq: 1 }
-      - hidden: '.collab-execution-round details'
-
-  - name: deployment confirmation updates every member of the shared batch
-    steps:
-      - eval: '[...document.querySelectorAll("[role=tabpanel]:not([hidden]) .collab-execution-round button")].find(b=>b.textContent==="查看批次详情").click(); true'
-      - wait: '[aria-label="批次内缺陷"]'
-      - eval: '[...document.querySelectorAll("[aria-label=\"确认整批更新结果\"] button")].find(b=>b.textContent==="提交外部结果").click(); true'
-      - wait: 'article[data-stage="WAITING_FOR_VERIFICATION"] button[aria-label^="批次更新缺陷甲，"]'
-    assert:
-      - visible: 'article[data-stage="WAITING_FOR_VERIFICATION"] button[aria-label^="批次更新缺陷乙，"]'
-      - text: { sel: '[aria-label="环境更新确认"]', contains: 成功 }
-      - text: { sel: '.collab-execution-round__delivery', contains: 本轮已推送 }
-      - hidden: '[aria-label="确认整批更新结果"]'
 
   - name: occupied environment shows explicit takeover confirmation and retains form on cancel
     steps:

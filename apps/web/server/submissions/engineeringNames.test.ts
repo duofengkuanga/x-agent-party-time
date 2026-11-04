@@ -90,5 +90,4 @@ test('工程改名在已有提测、缺陷、关联、流转目标和更新批�
   expect(batch.engineeringName).toBe('前端土壤大屏');
   expect(batch.targetBranch).toBe('feature/front');
   expect(batch.environmentName).toBe('前端测试环境');
-  expect(batch.deploymentKind).toBe('LOCAL_SCRIPT');
 });

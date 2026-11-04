@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { AppDatabase } from '@/server/database/index';
 import { RunnerService } from '@/server/platform/runner/service';
 import { EngineeringService } from '@/server/platform/projects/engineering/engineeringService';
-import type { DeploymentMethod } from '@/contracts/projects/engineering';
+import type { DeploymentScript } from '@/contracts/projects/engineering';
 import { SubmissionService } from '@/server/submissions/submissionService';
 
 export function mutation(expectedVersion: number) {
@@ -31,7 +31,7 @@ export async function deliveryProject(
       type: 'FRONTEND' | 'BACKEND';
       identifier: string;
       environment: string;
-      deployment: DeploymentMethod;
+      deployment: DeploymentScript;
       repository: string;
       branch: string;
     }>;

@@ -8,6 +8,7 @@ import {
 } from '@agent-party-time/execution-contract';
 import Ajv, { type ErrorObject } from 'ajv';
 import { createHash } from 'node:crypto';
+import { join } from 'node:path';
 import type { AuthenticatedRunnerSession } from '../agent/connection';
 import type { CodexExecutor } from '../codex/contract';
 import { CodexAppServerError } from '../codex/errors';
@@ -30,6 +31,10 @@ import type { ExecutionWorkspaceManager } from './workspaces';
 import { failureMessage } from './failureMessage';
 import type { ExecutionObservation } from '../observability/recorder';
 import { protocolObserver } from '../observability/protocol';
+
+const skillProtocolMismatch = new Error(
+  '当前规则包不支持此任务协议，请更新 Agent 规则包',
+);
 
 const sessionResultSchemaValidator = new Ajv({
   allErrors: true,
@@ -131,9 +136,23 @@ export class ExecutionPreparation {
           throw new Error('任务说明校验值不匹配');
         if (!XAPT_SKILL_NAMES.includes(turn.requiredSkillName as XaptSkillName))
           throw new Error('任务请求了未知规则');
-        resolvedSkill = await observation.phase('skill', () =>
-          this.skills.resolveCurrent(turn.requiredSkillName as XaptSkillName),
-        );
+        resolvedSkill = await observation.phase('skill', async () => {
+          const skill = await this.skills.resolveCurrent(
+            turn.requiredSkillName as XaptSkillName,
+          );
+          if (turn.requiredSkillProtocol) {
+            const metadata = await this.files.read(
+              join(skill.path, 'agents', 'openai.yaml'),
+            );
+            const protocol =
+              metadata &&
+              new TextDecoder()
+                .decode(metadata)
+                .match(/^# xapt-execution-protocol: ([a-z0-9-]+)$/mu)?.[1];
+            if (protocol !== turn.requiredSkillProtocol) throw skillProtocolMismatch;
+          }
+          return skill;
+        });
       } else
         resolvedSkill = await observation.phase('skill', () =>
           this.skills.resolveBound({
@@ -144,7 +163,10 @@ export class ExecutionPreparation {
         );
     } catch (error) {
       return failed({
-        code: 'CODEX_START_FAILED',
+        code:
+          error === skillProtocolMismatch
+            ? 'SKILL_PROTOCOL_MISMATCH'
+            : 'CODEX_START_FAILED',
         message: failureMessage(
           error instanceof Error ? error.message : '规则包解析失败',
         ),

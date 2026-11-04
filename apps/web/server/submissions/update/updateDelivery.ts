@@ -1,4 +1,4 @@
-import { DeploymentMethodSchema } from '@/contracts/projects/engineering';
+import { DeploymentScriptSchema } from '@/contracts/projects/engineering';
 import {
   isTerminal,
   requireTaskSkillBinding,
@@ -13,14 +13,11 @@ import {
 } from '@/server/platform/execution/codexTurn';
 import type { ExecutionService } from '@/server/platform/execution/service';
 import type { JsonObject } from '@agent-party-time/execution-contract';
-import {
-  CiCdUpdateOutputJsonSchema,
-  LocalScriptUpdateOutputJsonSchema,
-} from '../../../contracts/submissions/update';
+import { UpdateOutputJsonSchema } from '../../../contracts/submissions/update';
 import type { BatchRow, ItemSourceRow, UpdateQueries } from './updateQueries';
 import { parseCommits } from '@/server/submissions/repair/results';
 
-import { staleBatch } from './results';
+import { canRestartAfterSkillMismatch, staleBatch } from './results';
 import { freezeRepairHandoffs } from './repairHandoffs';
 import { UPDATE_HANDOFF_TEXT_ASSERTION } from '@/contracts/submissions/handoff';
 
@@ -45,29 +42,22 @@ export class UpdateDelivery {
     if (!latest || !isTerminal(latest.state))
       throw new PlatformError('RESOURCE_CONFLICT', '当前更新执行尚未结束');
     const source = batch.source;
-    const deployment = DeploymentMethodSchema.parse(JSON.parse(batch.deployment_json));
-    const externalReport =
-      deployment.kind === 'CI_CD'
-        ? this.queries.latestUnconsumedFailedReport(batchId)
-        : undefined;
-    const attachmentIds = externalReport
-      ? this.queries.externalReportAttachmentIds(externalReport.id)
-      : [];
-    if (!batch.session_id)
-      throw new PlatformError('INVALID_TRANSITION', '原更新任务不存在，不能自动重建');
     const previousExecution = this.executions.get(latest.execution_id);
-    const continuationInput = externalReport
-      ? `继续处理原 Update Batch。新增外部部署失败事实：${JSON.stringify({
-          reportRound: externalReport.round,
-          summary: externalReport.summary!,
-          attachments: this.queries
-            .externalReportAttachments(externalReport.id)
-            .map(({ id, original_name }) => ({
-              fileId: id,
-              originalName: original_name,
-            })),
-        })}`
-      : '继续完成上次未完成的任务。';
+    const codexTurn = batch.session_id
+      ? createContinuationCodexTurn({
+          manualHandoff: 'EXTERNAL_SESSION',
+          taskId: batch.session_id,
+          taskSkillBinding: requireTaskSkillBinding(previousExecution, '更新'),
+          text: '继续完成上次未完成的任务。',
+          resultAssertions: [UPDATE_HANDOFF_TEXT_ASSERTION],
+          outputJsonSchema: UpdateOutputJsonSchema,
+        })
+      : canRestartAfterSkillMismatch(batch, latest) &&
+          previousExecution.codexTurn?.kind === 'INITIAL'
+        ? previousExecution.codexTurn
+        : null;
+    if (!codexTurn)
+      throw new PlatformError('INVALID_TRANSITION', '原更新任务不存在，不能自动重建');
     const attemptId = this.createId();
     const execution = this.executions.enqueue({
       owner: { namespace: 'submissions', kind: 'UPDATE_BATCH', id: attemptId },
@@ -77,38 +67,21 @@ export class UpdateDelivery {
       bindingId: source.binding_id,
       priority: 1,
       approvalPolicy: 'never',
-      codexTurn: createContinuationCodexTurn({
-        manualHandoff: 'EXTERNAL_SESSION',
-        taskId: batch.session_id,
-        taskSkillBinding: requireTaskSkillBinding(previousExecution, '更新'),
-        text: continuationInput,
-        resultAssertions: [UPDATE_HANDOFF_TEXT_ASSERTION],
-        outputJsonSchema:
-          deployment.kind === 'LOCAL_SCRIPT'
-            ? LocalScriptUpdateOutputJsonSchema
-            : CiCdUpdateOutputJsonSchema,
-      }),
+      codexTurn,
       workspace: {
         key: `update-batch:${batchId}`,
         isolation: 'DETACHED_WORKTREE',
         baseRef: `origin/${source.target_branch}`,
       },
-      attachmentIds,
+      attachmentIds: [],
     });
     const now = this.now().toISOString();
     this.db.run(
       `INSERT INTO submission_update_attempt(
-           id, batch_id, execution_id, continuation_report_id, attempt,
+           id, batch_id, execution_id, attempt,
            outcome_json, created_at, finished_at
-         ) VALUES (?, ?, ?, ?, ?, NULL, ?, NULL)`,
-      [
-        attemptId,
-        batchId,
-        execution.id,
-        externalReport?.id ?? null,
-        latest.attempt + 1,
-        now,
-      ],
+         ) VALUES (?, ?, ?, ?, NULL, ?, NULL)`,
+      [attemptId, batchId, execution.id, latest.attempt + 1, now],
     );
     const update = this.db.run(
       `UPDATE submission_update_batch
@@ -202,14 +175,14 @@ export class UpdateDelivery {
       );
       return undefined;
     }
-    const deployment = DeploymentMethodSchema.parse(
+    const deployment = DeploymentScriptSchema.parse(
       JSON.parse(available[0]!.deployment_json),
     );
     const deploymentJson = JSON.stringify(deployment);
     const candidates = available.filter(
       (candidate) =>
         JSON.stringify(
-          DeploymentMethodSchema.parse(JSON.parse(candidate.deployment_json)),
+          DeploymentScriptSchema.parse(JSON.parse(candidate.deployment_json)),
         ) === deploymentJson,
     );
     const batchId = this.createId();
@@ -234,10 +207,7 @@ export class UpdateDelivery {
           ({ attemptId: _attempt, executionId: _execution, ...context }) => context,
         ),
       })),
-      deployment:
-        deployment.kind === 'LOCAL_SCRIPT'
-          ? { mode: 'LOCAL_SCRIPT', command: deployment.command }
-          : { mode: 'CI_CD' },
+      deploymentCommand: deployment.command,
     };
     this.db.run(
       `INSERT INTO submission_update_batch(
@@ -274,12 +244,10 @@ export class UpdateDelivery {
       codexTurn: createInitialCodexTurn({
         manualHandoff: 'EXTERNAL_SESSION',
         requiredSkillName: 'XUpdate',
+        requiredSkillProtocol: 'script-deployment-v1',
         executionBrief,
         resultAssertions: [UPDATE_HANDOFF_TEXT_ASSERTION],
-        outputJsonSchema:
-          deployment.kind === 'LOCAL_SCRIPT'
-            ? LocalScriptUpdateOutputJsonSchema
-            : CiCdUpdateOutputJsonSchema,
+        outputJsonSchema: UpdateOutputJsonSchema,
       }),
       workspace: {
         key: workspaceKey,
@@ -290,9 +258,9 @@ export class UpdateDelivery {
     });
     this.db.run(
       `INSERT INTO submission_update_attempt(
-           id, batch_id, execution_id, continuation_report_id, attempt,
+           id, batch_id, execution_id, attempt,
            outcome_json, created_at, finished_at
-         ) VALUES (?, ?, ?, NULL, 1, NULL, ?, NULL)`,
+         ) VALUES (?, ?, ?, 1, NULL, ?, NULL)`,
       [attemptId, batchId, execution.id, now],
     );
     this.db.run(
