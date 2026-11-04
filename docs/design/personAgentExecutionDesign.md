@@ -17,6 +17,7 @@ status: proposed
 | 修复中途失败留下提交        | 已提出固定原始基线、累计草稿与候选资格分离的方案                                           | 实现并验证提交后失败、多次重试、无新提交完成验证等真实 Git 场景                                          |
 | 跨仓库 Push／部署的恢复状态 | 已明确全部验证、全部 Push 确认、按序部署，以及结果不明时先核实                             | 实现逐工程证据并验证每个副作用前后的中断窗口                                                             |
 | 旧会话与历史结果切换        | 保留原 Session 和原 Bundle；历史展示与未来执行契约分离；8 组实际旧绑定已通过只读完整性核验 | 各版旧 Repair Bundle 的真实同会话续接仍待验证；不通过则阻止实际切换，不静默更换规则或加入旧协议 fallback |
+| 工具缓存隔离与产物复用      | 已核实独立 BABEL_CACHE_PATH 会使当前前端缓存失配，需区分存放位置与构建参数                 | 验证仅缓存路径不同仍命中，而实际构建输入改变时不能误用旧产物；同时验证周期清理与缓存读写互斥             |
 
 其中“提交后失败”的结论来自源码：`repairProjection.ts` 只在完成结果中累加候选，`ExecutionPreparation.prepare` 会为新 Execution 捕获当前 HEAD，`GitExecutionResultVerifier` 校验新基线到 HEAD 的精确提交范围。已用临时真实 Git 仓库调用现有校验器复现边界：先创建 A，再以 A 捕获重试基线并创建 B，`[A, B]` 被拒绝而 `[B]` 被接受。外部会话同步使用原执行基线，是另一条路径。此核验不覆盖完整 Server 修复到交付流程，也不将结论扩大为所有重试都会丢提交。
 
@@ -132,6 +133,8 @@ PersonAgent 的待交付计时按提测单聚合；新的候选重置五分钟�
 现有数据库为 Schema 32，未来需要新 Schema；本设计不执行迁移或清空数据。既有提测保留并归为 AgentParty；旧 CI/CD 配置可能没有真实命令，历史 `PUSHED` 不能改写为脚本部署完成。本机历史数据已作下述只读预检，实施前仍须重新核对当时状态，再确定离线转换和旧会话处置。
 
 `x-skills` 的 XBugRepaire 与 XUpdate 位于独立仓库，当前均按单工作区描述执行。同一 Task 固定 Skill Bundle，不能只升级入口软链接就假定旧会话获得新契约。Server、xapt、两个 Skill 及其已有任务需要作为一个切换组合验证；不在目标工程内复制 Skill 或修改用户全局 Codex 配置。
+
+目标前端工程现有 `scripts/buildTest.js` 还需同步补齐缓存位置参数的匹配规则和周期维护入口；不能仅改 xapt 的 worktree 准备就认为产物复用与清理已经生效。该工程脚本本轮只读核实和隔离诊断，尚未修改。
 
 本轮已核对当前源码并刷新 GitNexus 索引。`environmentDeploymentSettings` 的图中影响为 2 个直接调用方、1 个流程分组；`ExecutionPreparation.prepare` 为 1 个直接调用方、1 个流程分组；`executionsConflict` 为 4 个直接调用方、2 个流程分组。图对 Schema 引用和 `updateService().reportExternalDeployment(...)` 这样的调用存在漏报，因此不能据其 LOW 或零调用方结果判定整体改造低风险；契约、状态机和数据切换必须以源码及真实回归补足。实际修改函数前仍需按最终目标逐个运行影响分析。
 
