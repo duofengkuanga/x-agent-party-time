@@ -67,12 +67,6 @@
   font-weight: 700;
 }
 
-.collab-environment-confirm-deployment {
-  margin-top: 16px;
-  padding-top: 12px;
-  border-top: 1px solid var(--muted);
-}
-
 .collab-environment-notices {
   flex: 0 1 auto;
   max-height: 38dvh;
@@ -81,16 +75,66 @@
   margin-bottom: 12px;
 }
 
-.collab-environment-notices .collab-environment-notice {
-  margin: 0 0 10px;
+.collab-environment-status {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  background: var(--paper);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
-.collab-environment-conflict a {
+.collab-environment-status + .collab-environment-status {
+  border-top: 0;
+}
+
+.collab-environment-status__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+}
+
+.collab-environment-status__row > strong,
+.collab-environment-status__row > span {
+  min-width: 0;
+}
+
+.collab-environment-status__state {
+  font-weight: 700;
+}
+
+.collab-environment-status__next,
+.collab-environment-status__hint {
+  color: var(--muted);
+}
+
+.collab-environment-status__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.collab-environment-status__actions > button {
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: inherit;
+}
+
+.collab-environment-status > p {
+  margin: 6px 0 0;
+}
+
+.collab-environment-conflict a,
+.collab-environment-status a {
   color: var(--ink);
   text-underline-offset: 3px;
 }
 
-.collab-environment-conflict a:focus-visible {
+.collab-environment-conflict a:focus-visible,
+.collab-environment-status a:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
