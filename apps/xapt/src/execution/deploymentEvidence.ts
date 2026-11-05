@@ -67,12 +67,7 @@ export function readEngineeringDelivery(
   environmentKey: string,
 ) {
   try {
-    const agent = git(cwd, 'show', `${commit}:AGENTS.md`);
-    const links = [...agent.matchAll(/^\[工程执行约定\]\(([^)]+)\)\r?$/gmu)];
-    if (links.length !== 1) throw new Error('工程必须提供唯一的工程执行约定链接');
-    const conventionPath = DeploymentReceiptSchema.shape.conventionPath.parse(
-      links[0]![1],
-    );
+    const conventionPath = '.xapt/README.md';
     const document = git(cwd, 'show', `${commit}:${conventionPath}`);
     const blocks = [...document.matchAll(/^```xapt-delivery\r?\n([\s\S]*?)^```\r?$/gmu)];
     if (blocks.length !== 1) throw new Error('工程约定必须提供唯一的交付配置块');
@@ -96,7 +91,7 @@ export function readEngineeringDelivery(
     };
   } catch (error) {
     if (error instanceof Error && error.message.startsWith('工程')) throw error;
-    throw new Error('工程执行约定不可读或交付入口无效');
+    throw new Error('工程执行约定 .xapt/README.md 不可读或交付入口无效');
   }
 }
 

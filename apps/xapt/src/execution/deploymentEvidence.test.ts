@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { execFileSync } from 'node:child_process';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { JsonValue } from '@agent-party-time/execution-contract';
 import { NodeLocalFileSystem } from '../platform/files';
@@ -10,6 +10,7 @@ import { testDirectories } from '../testing/directories';
 import {
   attachDeploymentEvidence,
   observeDeploymentEvidence,
+  readEngineeringDelivery,
   type DeploymentEvidenceTarget,
 } from './deploymentEvidence';
 
@@ -26,11 +27,10 @@ test('只接受目标环境约定中的实际命令回执，并在恢复时沿�
   const repository = join(home, 'repo');
   const git = (...args: string[]) =>
     execFileSync('git', ['-C', repository, ...args], { encoding: 'utf8' }).trim();
-  await mkdir(repository);
+  await mkdir(join(repository, '.xapt'), { recursive: true });
   git('init', '-q');
-  await writeFile(join(repository, 'AGENTS.md'), '[工程执行约定](delivery.md)\n');
   await writeFile(
-    join(repository, 'delivery.md'),
+    join(repository, '.xapt/README.md'),
     '```xapt-delivery\n' +
       JSON.stringify({
         prepare: 'sh tools/prepare.sh',
@@ -116,7 +116,7 @@ test('只接受目标环境约定中的实际命令回执，并在恢复时沿�
   expect(observe('sh tools/install.sh red', repository, '85')).toBeNull();
   expect(observe('sh tools/install.sh red', repository, '84', 1)).toBeNull();
   const evidence = observe("/bin/zsh -lc 'sh tools/install.sh red'");
-  expect(evidence).not.toBeNull();
+  expect(evidence).toMatchObject({ conventionPath: '.xapt/README.md' });
   expect(observe('sh tools/check.sh red')?.commit).toBe(commit);
   expect(
     observe('sh tools/check.sh red', repository, '84', 0, 'b'.repeat(40)),
@@ -143,9 +143,57 @@ test('只接受目标环境约定中的实际命令回执，并在恢复时沿�
     'user.email=fixture@example.invalid',
     'commit',
     '-qm',
-    'ambiguous',
+    'unrelated agent instructions',
+  );
+  expect(
+    observe('sh tools/check.sh red', repository, '84', 0, git('rev-parse', 'HEAD')),
+  ).not.toBeNull();
+  const document = await readFile(join(repository, '.xapt/README.md'), 'utf8');
+  await writeFile(join(repository, '.xapt/README.md'), document + document);
+  expect(observe('sh tools/check.sh red')).toBeNull();
+  git('add', '.');
+  git(
+    '-c',
+    'user.name=Fixture',
+    '-c',
+    'user.email=fixture@example.invalid',
+    'commit',
+    '-qm',
+    'ambiguous delivery blocks',
   );
   expect(
     observe('sh tools/check.sh red', repository, '84', 0, git('rev-parse', 'HEAD')),
   ).toBeNull();
+});
+
+test('缺少固定约定文件时明确失败，不从 AGENTS.md 的旧链接发现交付入口', async () => {
+  const repository = await temporaryHome();
+  const git = (...args: string[]) =>
+    execFileSync('git', ['-C', repository, ...args], { encoding: 'utf8' }).trim();
+  git('init', '-q');
+  await writeFile(join(repository, 'AGENTS.md'), '[工程执行约定](delivery.md)\n');
+  await writeFile(
+    join(repository, 'delivery.md'),
+    '```xapt-delivery\n' +
+      JSON.stringify({
+        prepare: 'sh tools/prepare.sh',
+        environments: [
+          { key: '84', deploy: 'sh tools/deploy.sh', verify: 'sh tools/verify.sh' },
+        ],
+      }) +
+      '\n```\n',
+  );
+  git('add', '.');
+  git(
+    '-c',
+    'user.name=Fixture',
+    '-c',
+    'user.email=fixture@example.invalid',
+    'commit',
+    '-qm',
+    'legacy pointer only',
+  );
+  expect(() =>
+    readEngineeringDelivery(repository, git('rev-parse', 'HEAD'), '84'),
+  ).toThrow('.xapt/README.md');
 });

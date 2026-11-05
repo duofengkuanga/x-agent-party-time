@@ -128,11 +128,12 @@ async function prepareCase(directory: string, language: string) {
   await mkdir(join(source, 'tools'), { recursive: true });
   await mkdir(join(source, 'src'));
   await mkdir(join(source, 'tests'));
-  await writeFile(join(source, 'AGENTS.md'), policy + '\n[工程执行约定](README.md)\n');
+  await mkdir(join(source, '.xapt'));
+  await writeFile(join(source, 'AGENTS.md'), policy);
   await writeFile(join(source, '.gitignore'), '.agents/\n.eval/\ndist/\n__pycache__/\n');
   const driver = language === 'node' ? 'node tools/check.mjs' : 'python3 tools/check.py';
   await writeFile(
-    join(source, 'README.md'),
+    join(source, '.xapt/README.md'),
     `# Billing fixture\n\nThe add function must return the sum of two integers.\n\nRepair acceptance: relevant tests must pass. Delivery acceptance: syntax/compilation, tests, and a package artifact must all be evidenced.\n\nAvailable validation entry points:\n- ${driver} compile\n- ${driver} test\n- ${driver} package\n\nInspect the scripts to select applicable commands and runtime conditions. No external services or package installation are needed. Repair should run the relevant tests against the current files. Update must run the required tests and the preparation command below on the clean final commit before Push. After Push, deploy the prepared artifact. Use the exact listed commands from the worktree root. The fake target only records the deployed commit and artifact digest. On recovery use the listed read-only verification command before any repeated action.\n\n\`\`\`xapt-delivery\n{"prepare":"sh tools/prepare.sh","environments":[{"key":"isolated","deploy":"sh tools/deploy.sh","verify":"sh tools/deploy.sh --verify"}]}\n\`\`\`\n`,
   );
   await writeFile(
@@ -255,8 +256,8 @@ if stage=='package':
     );
     await writeFile(tool, script);
     await writeFile(
-      join(source, 'README.md'),
-      (await readFile(join(source, 'README.md'), 'utf8')) +
+      join(source, '.xapt/README.md'),
+      (await readFile(join(source, '.xapt/README.md'), 'utf8')) +
         '\nThis repository currently has independent addition and subtraction defects. A Repair validates its own feature using the test entry with --focus add or --focus subtract. Delivery must validate both features without a focus selector.\n',
     );
   }
@@ -448,7 +449,7 @@ function assertPublicSummary(
 async function changeDeliveryInputs(source: string): Promise<string> {
   if (values.scenario === 'stale') {
     await rename(join(source, 'tools/check.mjs'), join(source, 'tools/verify.mjs'));
-    for (const file of ['README.md', 'package.json', 'tools/prepare.sh'])
+    for (const file of ['.xapt/README.md', 'package.json', 'tools/prepare.sh'])
       await writeFile(
         join(source, file),
         (await readFile(join(source, file), 'utf8')).replaceAll(
@@ -469,8 +470,8 @@ mkdirSync('.eval',{recursive:true}); appendFileSync('.eval/trace.jsonl',JSON.str
 `,
     );
     await writeFile(
-      join(source, 'README.md'),
-      (await readFile(join(source, 'README.md'), 'utf8')) +
+      join(source, '.xapt/README.md'),
+      (await readFile(join(source, '.xapt/README.md'), 'utf8')) +
         '\nEvery Update must also run node tools/audit.mjs against current delivery policy, even if a Repair check passed. The package lifecycle does not include this check.\n',
     );
   } else return git(source, 'rev-parse', 'HEAD');
