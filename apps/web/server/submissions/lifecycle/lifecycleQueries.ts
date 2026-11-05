@@ -466,7 +466,7 @@ export class LifecycleQueries {
   bugSource(bugId: string): BugSourceRow {
     const row = this.db.get(
       `SELECT bug.id, bug.submission_id, bug.submission_item_id, bug.stage,
-                bug.version, bug.short_id, bug.title, submission.project_id,
+                bug.version, bug.short_id, substr(bug.description, 1, 240) title, submission.project_id,
                 submission.status submission_status,
                 submission.title submission_title,
                 submission.tester_user_id, item.responsible_user_id,

@@ -8,23 +8,22 @@
   gap: var(--project-action-gap);
 }
 
-.project-engineering-toolbar__actions {
-  display: grid;
-  flex: 0 0 auto;
-  gap: var(--project-action-gap);
-  grid-template-columns: var(--project-action-width);
-  margin: 0 0 8px auto;
+.project-engineering-list__actions {
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 18px;
+  padding-top: 12px;
 }
 
-.project-engineering-toolbar__actions > form {
+.project-engineering-list__actions > form {
   margin: 0;
   min-width: 0;
 }
 
 .project-overview__heading .project-members-toggle,
 .project-overview__heading nav > a[href='/submissions'],
-.project-overview__heading .project-engineering-create-trigger,
-.project-engineering-toolbar__actions .engineering-archive-trigger {
+.project-overview__heading .project-engineering-create-trigger {
   align-items: center;
   display: inline-flex;
   flex: 0 0 auto;
@@ -37,6 +36,13 @@
   min-height: var(--project-action-height);
   padding: 0 10px;
   width: var(--project-action-width);
+}
+
+.project-engineering-list__actions .engineering-archive-trigger {
+  font-size: 11px;
+  font-weight: 500;
+  min-height: 32px;
+  padding: 5px 12px;
 }
 
 .project-engineering-create-trigger[aria-expanded='true']:not(:hover) {

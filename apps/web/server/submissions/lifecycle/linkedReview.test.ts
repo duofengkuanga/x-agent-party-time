@@ -20,9 +20,9 @@ async function linkedReady() {
     {
       mutationId: randomUUID(),
       submissionItemIds: [fixture.items[0]!.id, fixture.items[1]!.id],
-      title: '前后端共同缺陷',
-      actualResultAttachmentIds: [],
-      expectedResultAttachmentIds: [],
+      description: '前后端共同缺陷',
+      attachmentIds: [],
+
       startRepair: true,
     },
   );

@@ -31,16 +31,12 @@ const RepairInputSchema = z.object({
   runnerId: z.string().min(1),
   bindingId: z.string().min(1),
   report: z.object({
-    title: z.string().min(1),
-    operationPath: z.string().nullable(),
-    actualResult: z.string().nullable(),
-    expectedResult: z.string().nullable(),
+    description: z.string().min(1).max(8_000),
   }),
   attachmentReferences: z.array(
     z.object({
       fileId: z.string().min(1),
       originalName: z.string().min(1),
-      role: z.enum(['ACTUAL_RESULT', 'EXPECTED_RESULT']),
     }),
   ),
   feedback: z.array(z.string().min(1)),
@@ -66,8 +62,7 @@ export class RepairQueries {
     const row = this.db.get<
       Pick<RepairInput, 'targetBranch' | 'runnerId' | 'bindingId'> & RepairInput['report']
     >(
-      `SELECT bug.title, bug.operation_path operationPath,
-              bug.actual_result actualResult, bug.expected_result expectedResult,
+      `SELECT bug.description,
               item.target_branch targetBranch, item.binding_id bindingId,
               binding.runner_id runnerId
        FROM submission_bug bug
@@ -79,14 +74,11 @@ export class RepairQueries {
     if (!row) throw new PlatformError('NOT_FOUND', '待修复缺陷不存在');
     const { targetBranch, runnerId, bindingId, ...report } = row;
     const attachmentReferences = this.db.all(
-      `SELECT file.id fileId, file.original_name originalName, attachment.role
+      `SELECT file.id fileId, file.original_name originalName
        FROM submission_bug_attachment attachment
        JOIN platform_file file ON file.id = attachment.file_id
        WHERE attachment.bug_id = ?
-       ORDER BY CASE attachment.role
-         WHEN 'ACTUAL_RESULT' THEN 0
-         WHEN 'EXPECTED_RESULT' THEN 1
-       END, attachment.position`,
+       ORDER BY attachment.position`,
       bugId,
     );
     const feedback = this.db

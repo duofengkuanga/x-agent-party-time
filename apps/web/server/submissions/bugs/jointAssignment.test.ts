@@ -14,8 +14,8 @@ test('负责人将未分诊缺陷调整为前端后端，原 ID 和附件保留�
     uploadedByUserId: f.users.tester.id,
   });
   const source = createBug(f, f.users.tester.id, {
-    title: '跨工程问题',
-    expectedResultAttachmentIds: [file.id],
+    description: '跨工程问题',
+    attachmentIds: [file.id],
   }).bug;
   const input = {
     mutationId: randomUUID(),
@@ -40,9 +40,7 @@ test('负责人将未分诊缺陷调整为前端后端，原 ID 和附件保留�
   expect(bugs.map((bug) => bug.submissionItemId).sort()).toEqual(
     [f.items.front, f.items.back].sort(),
   );
-  expect(
-    bugs.every((bug) => bug.report.expectedResultAttachments[0]?.id === file.id),
-  ).toBe(true);
+  expect(bugs.every((bug) => bug.report.attachments[0]?.id === file.id)).toBe(true);
   expect(bugs.every((bug) => bug.relatedBugs.length === 1)).toBe(true);
   expect(f.database.all('SELECT * FROM submission_repair_attempt')).toHaveLength(0);
 });
@@ -50,7 +48,7 @@ test('负责人将未分诊缺陷调整为前端后端，原 ID 和附件保留�
 test('编辑报告时可以同步补建关联单，新单使用保存后的资料和附件', async () => {
   const f = await setup();
   const source = createBug(f, f.users.tester.id, {
-    title: '待补充',
+    description: '待补充',
     submissionItemId: f.items.back,
   }).bug;
   const file = await f.files.put({
@@ -64,28 +62,20 @@ test('编辑报告时可以同步补建关联单，新单使用保存后的资�
     expectedVersion: source.version,
     submissionItemId: f.items.back,
     additionalSubmissionItemId: f.items.front,
-    title: '完整问题',
-    expectedResult: '前后端共同完成',
-    actualResultAttachmentIds: [],
-    expectedResultAttachmentIds: [file.id],
+    description: '完整问题',
+
+    attachmentIds: [file.id],
   });
   expect(result.bug.submissionItemId).toBe(f.items.back);
   const bugs = f.service.workspace(f.users.tester.id, f.submission.id).bugs;
   expect(bugs).toHaveLength(2);
-  expect(
-    bugs.every(
-      (bug) =>
-        bug.report.title === '完整问题' && bug.report.expectedResult === '前后端共同完成',
-    ),
-  ).toBe(true);
-  expect(
-    bugs.every((bug) => bug.report.expectedResultAttachments[0]?.id === file.id),
-  ).toBe(true);
+  expect(bugs.every((bug) => bug.report.description === '完整问题')).toBe(true);
+  expect(bugs.every((bug) => bug.report.attachments[0]?.id === file.id)).toBe(true);
 });
 
 test('无权、重复工程、非当前提测工程和已修复缺陷不能拆单，失败保留原单', async () => {
   const f = await setup();
-  const source = createBug(f, f.users.tester.id, { title: '不能错误拆单' }).bug;
+  const source = createBug(f, f.users.tester.id, { description: '不能错误拆单' }).bug;
   const input = {
     mutationId: randomUUID(),
     expectedVersion: source.version,
@@ -131,7 +121,7 @@ test('无权、重复工程、非当前提测工程和已修复缺陷不能拆�
 
 test('已形成双工程关联后不能再次补建，后续请求不会增加第三张单', async () => {
   const f = await setup();
-  const source = createBug(f, f.users.tester.id, { title: '一次关联' }).bug;
+  const source = createBug(f, f.users.tester.id, { description: '一次关联' }).bug;
   const input = {
     mutationId: randomUUID(),
     expectedVersion: source.version,
@@ -151,7 +141,7 @@ test('已形成双工程关联后不能再次补建，后续请求不会增加�
 
 test('关联写入失败时回滚原单归属、新单与附件关联', async () => {
   const f = await setup();
-  const source = createBug(f, f.users.tester.id, { title: '原子归属调整' }).bug;
+  const source = createBug(f, f.users.tester.id, { description: '原子归属调整' }).bug;
   f.database.exec(
     "CREATE TRIGGER reject_joint BEFORE INSERT ON submission_bug_relation BEGIN SELECT RAISE(ABORT, '模拟关联写入失败'); END",
   );

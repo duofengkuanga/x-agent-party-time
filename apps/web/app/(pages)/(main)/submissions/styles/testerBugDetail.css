@@ -86,7 +86,7 @@
 .collab-tester-detail__comparison {
   display: grid;
   gap: 24px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   margin: 0;
 }
 
@@ -99,8 +99,8 @@
 }
 
 .collab-tester-detail__comparison > div + div {
-  border-left: 1px solid var(--line);
-  padding-left: 24px;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
 }
 
 .collab-tester-detail dt,

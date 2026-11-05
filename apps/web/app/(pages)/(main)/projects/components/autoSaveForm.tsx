@@ -25,6 +25,18 @@ type SaveController = {
 };
 const SaveContext = createContext<Set<SaveController> | null>(null);
 
+export function useAutoSaveFlush() {
+  const controllers = useContext(SaveContext);
+  return async () => {
+    const pending = [...(controllers ?? [])].filter((controller) =>
+      controller.hasChanges(),
+    );
+    return (
+      await Promise.all(pending.map((controller) => controller.flush()))
+    ).every(Boolean);
+  };
+}
+
 type ProjectNavigation = { projectId: string; phase: 'saving' | 'loading' };
 type NavigationTarget = { href: string; projectId?: string };
 const ProjectNavigationContext = createContext<ProjectNavigation | null>(null);

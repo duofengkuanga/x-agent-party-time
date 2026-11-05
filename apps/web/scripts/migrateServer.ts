@@ -19,10 +19,8 @@ import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { PLATFORM_SCHEMA } from '@/server/database/platformSchema';
 import { PROJECT_SCHEMA } from '@/server/database/projectSchema';
-import { SUBMISSION_SCHEMA } from '@/server/database/submissionSchema';
 import { BUG_DEPLOYMENT_SCHEMA } from '@/server/database/bugDeploymentSchema';
 import { OBSERVATION_SCHEMA } from '@/server/database/observationSchema';
-import { SERVER_SCHEMA_VERSION } from '@/server/database/schema';
 import { AppDatabase } from '@/server/database/index';
 import { rewriteHistoricalResults, type ResultRewrite } from './migrateServerResults';
 
@@ -46,15 +44,21 @@ type MigrationReport = {
   tables: Array<{ name: string; rows: number }>;
 };
 
+const MIGRATION_TARGET_VERSION = 35;
+const legacySubmissionSchema = readFileSync(
+  new URL('./fixtures/submissionV35.sql', import.meta.url),
+  'utf8',
+);
 const targetSchema =
-  PLATFORM_SCHEMA + PROJECT_SCHEMA + SUBMISSION_SCHEMA + OBSERVATION_SCHEMA;
+  PLATFORM_SCHEMA + PROJECT_SCHEMA + legacySubmissionSchema + OBSERVATION_SCHEMA;
 export const schema34 =
   PLATFORM_SCHEMA +
   PROJECT_SCHEMA.replace(
     'environment_key TEXT NOT NULL',
     'deployment_json TEXT NOT NULL',
   ).replace(',\n  UNIQUE(engineering_id, environment_key)', '') +
-  SUBMISSION_SCHEMA.replace('environment_key TEXT NOT NULL', 'deployment_json TEXT')
+  legacySubmissionSchema
+    .replace('environment_key TEXT NOT NULL', 'deployment_json TEXT')
     .replace(
       '  historical_delivery_json TEXT',
       "  deployment_json TEXT CHECK (deployment_json IS NOT NULL OR state = 'COMPLETED'),\n  historical_delivery_json TEXT",
@@ -516,7 +520,7 @@ export function migrateServerDatabase(
     transaction = true;
     const version = db.query<{ user_version: number }, []>('PRAGMA user_version').get()!
       .user_version;
-    if (![27, 28, 29, 30, 31, 32, 33, 34, SERVER_SCHEMA_VERSION].includes(version))
+    if (![27, 28, 29, 30, 31, 32, 33, 34, MIGRATION_TARGET_VERSION].includes(version))
       throw new Error(`不支持从版本 ${version} 迁移；原数据已保留。`);
     assertSchema(db, version);
     assertIntegrity(db);
@@ -532,16 +536,16 @@ export function migrateServerDatabase(
     const keys = version === 34 ? planEngineeringCutover(db, environmentKeys) : null;
     const before = snapshot(db);
     const report: MigrationReport = {
-      status: version === SERVER_SCHEMA_VERSION ? 'current' : 'ready',
+      status: version === MIGRATION_TARGET_VERSION ? 'current' : 'ready',
       database: path,
       from: version,
-      to: version < 34 ? 34 : SERVER_SCHEMA_VERSION,
+      to: version < 34 ? 34 : MIGRATION_TARGET_VERSION,
       backupPath: null,
       rewrittenResults: 0,
       historicalConfirmations: 0,
       tables: before.map(({ name, rows }) => ({ name, rows })),
     };
-    if (apply && version !== SERVER_SCHEMA_VERSION) {
+    if (apply && version !== MIGRATION_TARGET_VERSION) {
       report.backupPath = backupDatabase(path, before);
       if (version < 33) {
         const reference = new Database(':memory:');

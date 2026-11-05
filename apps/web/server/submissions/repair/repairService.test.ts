@@ -17,9 +17,8 @@ describe('RepairService', () => {
       {
         mutationId: randomUUID(),
         submissionItemId: null,
-        title: '暂未确定工程的缺陷',
-        actualResultAttachmentIds: [],
-        expectedResultAttachmentIds: [],
+        description: '暂未确定工程的缺陷',
+        attachmentIds: [],
       },
     );
 
@@ -61,21 +60,16 @@ describe('RepairService', () => {
         executionBrief: {
           targetBranch: 'feature/payment',
           bug: {
-            title: '支付按钮无响应',
-            operationPath: '打开结算页',
-            actualResult: '点击后没有反应',
-            expectedResult: '进入支付流程',
+            description: '支付按钮无响应',
           },
           attachmentReferences: [
             {
               fileId: fixture.resultAttachments.actual.id,
               originalName: '实际结果.png',
-              role: 'ACTUAL_RESULT',
             },
             {
               fileId: fixture.resultAttachments.expected.id,
               originalName: '预期结果.txt',
-              role: 'EXPECTED_RESULT',
             },
           ],
         },

@@ -95,7 +95,7 @@ export function drawerTitle(mode: Drawer['mode'], bug: BugView | null): string {
   if (mode === 'create') return '登记缺陷';
   if (mode === 'edit') return '编辑缺陷';
   if (mode === 'batch') return '统一更新批次详情';
-  return bug?.report.title ?? '缺陷详情';
+  return bug?.report.description.slice(0, 120) ?? '缺陷详情';
 }
 
 export function bugLabel(bug: BugView): string {

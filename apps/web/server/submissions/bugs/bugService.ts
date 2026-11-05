@@ -1,11 +1,5 @@
 import { BugRelations } from './bugRelations';
-import {
-  bugRoutingPolicy,
-  BugQueries,
-  type AccessRow,
-  type BugAttachmentRole,
-  type ReportAttachmentIds,
-} from './bugQueries';
+import { bugRoutingPolicy, BugQueries, type AccessRow } from './bugQueries';
 import { projectAttemptResult } from '@/server/submissions/repair/results';
 import { requireBindableFiles } from '@/server/submissions/shared/attachments';
 import { BugDeletion } from './bugDeletion';
@@ -105,7 +99,7 @@ export class BugService {
           submissionItemId: primary?.id ?? parsed.submissionItemId,
         };
         this.queries.requireItem(submissionId, report.submissionItemId);
-        const attachmentIds = reportAttachmentIds(parsed);
+        const attachmentIds = parsed.attachmentIds;
         requireBindableFiles(this.db, actorUserId, attachmentIds);
         const now = this.now().toISOString();
         const bugId = this.insertBug(actorUserId, submissionId, report, now);
@@ -168,7 +162,7 @@ export class BugService {
             'VALIDATION_FAILED',
             '请选择一个前端工程和一个后端工程',
           );
-        const attachmentIds = reportAttachmentIds(parsed);
+        const attachmentIds = parsed.attachmentIds;
         requireBindableFiles(this.db, actorUserId, attachmentIds);
         const now = this.now().toISOString();
         const bugs = items.map((item) => {
@@ -220,27 +214,23 @@ export class BugService {
     now: string,
   ): string {
     const id = this.createId();
-    const report = normalizedReport(input);
     this.db.run(
       `INSERT INTO submission_bug(id, short_id, submission_id, submission_item_id, stage,
-        title, operation_path, actual_result, expected_result, report_locked_at,
+        description, report_locked_at,
         version, created_by_user_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, 'WAITING_FOR_REPAIR', ?, ?, ?, ?, NULL, 1, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, 'WAITING_FOR_REPAIR', ?, NULL, 1, ?, ?, ?)`,
       [
         id,
         this.queries.nextShortId(submissionId),
         submissionId,
         input.submissionItemId ?? null,
-        report.title,
-        report.operationPath ?? null,
-        report.actualResult ?? null,
-        report.expectedResult ?? null,
+        input.description.trim(),
         actorUserId,
         now,
         now,
       ],
     );
-    this.bindReportAttachments(id, input, now);
+    this.bindAttachments(id, input.attachmentIds, now);
     return id;
   }
 
@@ -397,35 +387,30 @@ export class BugService {
           parsed.submissionItemId,
           parsed.additionalSubmissionItemId,
         );
-        const attachmentIds = reportAttachmentIds(parsed);
+        const attachmentIds = parsed.attachmentIds;
         requireBindableFiles(this.db, actorUserId, attachmentIds, bug.id);
-        const report = normalizedReport(parsed);
         const update = this.db.run(
           `UPDATE submission_bug
-             SET submission_item_id = ?, title = ?, operation_path = ?,
-                 actual_result = ?, expected_result = ?,
+             SET submission_item_id = ?, description = ?,
                  version = version + 1, updated_at = ?
              WHERE id = ? AND version = ? AND report_locked_at IS NULL`,
           [
             parsed.submissionItemId,
-            report.title,
-            report.operationPath ?? null,
-            report.actualResult ?? null,
-            report.expectedResult ?? null,
+            parsed.description,
             now,
             bug.id,
             parsed.expectedVersion,
           ],
         );
         if (update.changes !== 1) throw staleBug();
-        this.replaceReportAttachments(bug.id, parsed, now);
+        this.replaceReportAttachments(bug.id, parsed.attachmentIds, now);
         const relatedBugId = this.addAssignedEngineering(
           actorUserId,
           bug.id,
           now,
           parsed.additionalSubmissionItemId,
         );
-        const previousAttachmentIds = reportAttachmentIds(bug.report);
+        const previousAttachmentIds = bug.report.attachmentIds;
         return {
           action: 'BUG_REPORT_UPDATED',
           boundAttachmentIds: attachmentIds,
@@ -653,65 +638,25 @@ export class BugService {
       throw new PlatformError('INVALID_TRANSITION', '首次修复后原始缺陷报告不能修改');
   }
 
-  private bindAttachments(
-    bugId: string,
-    role: BugAttachmentRole,
-    fileIds: string[],
-    now: string,
-  ): void {
+  private bindAttachments(bugId: string, fileIds: string[], now: string): void {
     fileIds.forEach((fileId, position) =>
       this.db.run(
         `INSERT INTO submission_bug_attachment(
-             file_id, bug_id, role, position, created_at
-           ) VALUES (?, ?, ?, ?, ?)`,
-        [fileId, bugId, role, position, now],
+             file_id, bug_id, position, created_at
+           ) VALUES (?, ?, ?, ?)`,
+        [fileId, bugId, position, now],
       ),
     );
   }
 
-  private bindReportAttachments(
-    bugId: string,
-    attachmentIds: ReportAttachmentIds,
-    now: string,
-  ): void {
-    for (const [role, fileIds] of [
-      ['ACTUAL_RESULT', attachmentIds.actualResultAttachmentIds],
-      ['EXPECTED_RESULT', attachmentIds.expectedResultAttachmentIds],
-    ] as const)
-      this.bindAttachments(bugId, role, fileIds, now);
-  }
-
   private replaceReportAttachments(
     bugId: string,
-    attachmentIds: ReportAttachmentIds,
+    attachmentIds: string[],
     now: string,
   ): void {
     this.db.run(`DELETE FROM submission_bug_attachment WHERE bug_id = ?`, [bugId]);
-    this.bindReportAttachments(bugId, attachmentIds, now);
+    this.bindAttachments(bugId, attachmentIds, now);
   }
-}
-
-function normalizedReport(input: {
-  title: string;
-  operationPath?: string;
-  actualResult?: string;
-  expectedResult?: string;
-}) {
-  return {
-    title: input.title.trim(),
-    operationPath: normalizedOptional(input.operationPath),
-    actualResult: normalizedOptional(input.actualResult),
-    expectedResult: normalizedOptional(input.expectedResult),
-  };
-}
-
-function normalizedOptional(value: string | undefined): string | undefined {
-  const normalized = value?.trim();
-  return normalized ? normalized : undefined;
-}
-
-function reportAttachmentIds(report: ReportAttachmentIds): string[] {
-  return [...report.actualResultAttachmentIds, ...report.expectedResultAttachmentIds];
 }
 
 function staleBug(): PlatformError {

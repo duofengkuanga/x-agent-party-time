@@ -11,14 +11,9 @@ export type BugOwnershipDraft = {
 export type BugFormDraft = BugOwnershipDraft & {
   mutationId: string;
   expectedVersion: number | null;
-  title: string;
-  operationPath: string;
-  actualResult: string;
-  expectedResult: string;
-  keptActualResultAttachmentIds: string[];
-  keptExpectedResultAttachmentIds: string[];
-  actualResultFiles: File[];
-  expectedResultFiles: File[];
+  description: string;
+  keptAttachmentIds: string[];
+  files: File[];
 };
 export type BugRegistration = {
   ownership: BugOwnershipDraft;
@@ -57,20 +52,10 @@ export function createBugFormDraft(
   return {
     mutationId: saved?.mutationId ?? createClientId(),
     expectedVersion: saved?.expectedVersion ?? bug?.version ?? null,
-    title: saved?.title ?? bug?.report.title ?? '',
-    operationPath: saved?.operationPath ?? bug?.report.operationPath ?? '',
-    actualResult: saved?.actualResult ?? bug?.report.actualResult ?? '',
-    expectedResult: saved?.expectedResult ?? bug?.report.expectedResult ?? '',
-    keptActualResultAttachmentIds:
-      saved?.keptActualResultAttachmentIds ??
-      bug?.report.actualResultAttachments.map(({ id }) => id) ??
-      [],
-    keptExpectedResultAttachmentIds:
-      saved?.keptExpectedResultAttachmentIds ??
-      bug?.report.expectedResultAttachments.map(({ id }) => id) ??
-      [],
-    actualResultFiles: saved?.actualResultFiles ?? [],
-    expectedResultFiles: saved?.expectedResultFiles ?? [],
+    description: saved?.description ?? bug?.report.description ?? '',
+    keptAttachmentIds:
+      saved?.keptAttachmentIds ?? bug?.report.attachments.map(({ id }) => id) ?? [],
+    files: saved?.files ?? [],
     submissionItemId,
     frontItemId,
     backItemId,

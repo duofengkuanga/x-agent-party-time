@@ -173,34 +173,12 @@ export function BugDetail({
                 {bug.assignment.responsibleUser.displayName}
               </Detail>
             ) : null}
-            {bug.report.expectedResult ||
-            bug.report.expectedResultAttachments.length ? (
-              <Detail label="预期结果">
-                <BugResultDetail
-                  attachments={bug.report.expectedResultAttachments}
-                  text={bug.report.expectedResult}
-                />
-              </Detail>
-            ) : null}
-            {bug.report.actualResult ||
-            bug.report.actualResultAttachments.length ? (
-              <Detail label="实际结果">
-                <BugResultDetail
-                  attachments={bug.report.actualResultAttachments}
-                  text={bug.report.actualResult}
-                />
-              </Detail>
-            ) : null}
-            {bug.report.operationPath ? (
-              <Detail label="操作路径">
-                <span
-                  className="collab-bug-detail-fact"
-                  title={bug.report.operationPath}
-                >
-                  {bug.report.operationPath}
-                </span>
-              </Detail>
-            ) : null}
+            <Detail label="缺陷描述">
+              <BugResultDetail attachments={[]} text={bug.report.description} />
+            </Detail>
+            <Detail label="附件">
+              <BugResultDetail attachments={bug.report.attachments} />
+            </Detail>
           </dl>
         </aside>
       </details>

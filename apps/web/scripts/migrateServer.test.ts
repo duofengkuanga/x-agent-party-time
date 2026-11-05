@@ -5,7 +5,6 @@ import { join } from 'node:path';
 import { LocalFileStore } from '@/server/platform/files/localFileStore';
 import { randomUUID } from 'node:crypto';
 import { AppDatabase, openDatabase } from '@/server/database/index';
-import { createSubmissionWorkflow } from '@/server/runtime/createSubmissionWorkflow';
 import { testDatabases } from '@/testing/database';
 import {
   completeSuccessfulExecution,
@@ -252,21 +251,8 @@ test('预检只读；迁移备份并逐字段保留全部旧数据、关联和�
   expect(handoffs[0].handoff.validationCommands).toEqual([]);
   expect(handoffs[0].handoff.limitations[0]).toContain('旧版本未记录');
   migrateServerDatabase(f.path, true, {}, fixtureEnvironmentKeys(f.db));
-  const migrated = openDatabase(f.path);
-  opened.push(migrated);
-  const submissionWorkflow = createSubmissionWorkflow(migrated);
-  for (const user of [f.users.developer, f.users.tester]) {
-    const repair = submissionWorkflow.repairs.repairView(user.id, f.bug.id);
-    expect(
-      repair?.timeline.some(
-        (node) => node.kind === 'REPAIR_ATTEMPT' && node.result?.outcome === 'COMPLETED',
-      ),
-    ).toBe(true);
-    const update = submissionWorkflow.updates.batchView(user.id, f.batch.id);
-    expect(update.state).toBe('COMPLETED');
-    if (user.id === f.users.tester.id)
-      expect(JSON.stringify(update)).not.toContain('validationCommands');
-  }
+  expect(f.db.get('PRAGMA user_version')).toEqual({ user_version: 35 });
+  expect(() => openDatabase(f.path)).toThrow('数据库版本不匹配');
   expect(migrateServerDatabase(f.path, true).status).toBe('current');
 });
 
@@ -630,39 +616,22 @@ test('Schema 32 要求真实命令并保留历史 Push、人工确认和附件�
     ),
   ).not.toBeNull();
   migrateServerDatabase(path, true, {}, fixtureEnvironmentKeys(db));
-  const migrated = openDatabase(path);
+  expect(() => openDatabase(path)).toThrow('数据库版本不匹配');
+  const migrated = new AppDatabase(path);
   opened.push(migrated);
+  migrated.exec('PRAGMA foreign_keys = ON');
   const historicalFiles = new LocalFileStore(migrated, join(f.directory, 'files'));
   await expect(
     historicalFiles.deleteUnbound(file.id, f.users.developer.id),
   ).rejects.toThrow();
   expect(historicalFiles.get(file.id)).not.toBeNull();
-  const { updates } = createSubmissionWorkflow(db);
-  const developer = updates.batchView(f.users.developer.id, batch.id);
-  expect(developer.timeline).toContainEqual(
-    expect.objectContaining({
-      kind: 'UPDATE_ATTEMPT',
-      result: expect.objectContaining({ outcome: 'PUSH_CONFIRMED' }),
-    }),
-  );
-  expect(developer.timeline).toContainEqual(
-    expect.objectContaining({
-      id: reportId,
-      kind: 'HISTORICAL_DEPLOYMENT',
-      summary: '人工核对了旧流水线',
-      attachments: [expect.objectContaining({ id: file.id })],
-    }),
-  );
-  expect(updates.batchView(f.users.tester.id, batch.id).timeline).toContainEqual(
-    expect.objectContaining({ id: reportId, attachments: [] }),
-  );
-  expect(() =>
-    updates.requireHistoricalAttachmentAccess(f.users.developer.id, file.id),
-  ).not.toThrow();
-  expect(() =>
-    updates.requireHistoricalAttachmentAccess(f.users.tester.id, file.id),
-  ).toThrow();
-  expect(developer.availableActions).toEqual([]);
+  expect(db.get('PRAGMA user_version')).toEqual({ user_version: 35 });
+  expect(
+    db.get(
+      'SELECT file_id FROM submission_update_history_file WHERE batch_id = ?',
+      batch.id,
+    ),
+  ).toEqual({ file_id: file.id });
   const backup = new Database(result.backupPath!, { readonly: true });
   opened.push(backup);
   expect(originalRows(backup)).toEqual(before);

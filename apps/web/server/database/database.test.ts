@@ -37,7 +37,7 @@ afterEach(async () => {
 });
 
 describe('Server SQLite schema', () => {
-  test.each([26, 27, 28])(
+  test.each([26, 27, 28, 35])(
     '交接契约切换拒绝旧 Schema %i 并保留原数据',
     async (version) => {
       const path = await temporaryDatabasePath();
@@ -138,9 +138,10 @@ describe('Server SQLite schema', () => {
           .map(({ name }) => name),
       ).not.toContain('notes');
       expect(
-        database.get<{ sql: string }>(`SELECT sql FROM sqlite_master
-             WHERE type = 'table' AND name = 'submission_bug_attachment'`)?.sql,
-      ).toContain("role IN ('ACTUAL_RESULT', 'EXPECTED_RESULT')");
+        database
+          .all<{ name: string }>('PRAGMA table_info(submission_bug_attachment)')
+          .map(({ name }) => name),
+      ).toEqual(['file_id', 'bug_id', 'position', 'created_at']);
       expect(tableNames(database, 'submission_%update%')).toEqual([
         'submission_update_attempt',
         'submission_update_batch',
@@ -168,7 +169,7 @@ describe('Server SQLite schema', () => {
     } catch (error) {
       expect(error).toBeInstanceOf(PlatformError);
       expect((error as PlatformError).code).toBe('SCHEMA_VERSION_MISMATCH');
-      expect((error as Error).message).toContain('数据已保留');
+      expect((error as Error).message).toContain('空数据目录');
     }
   });
 

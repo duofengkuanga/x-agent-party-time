@@ -272,9 +272,8 @@ test('测试视角在双方就绪后只显示一组通过和还有问题，未�
     {
       mutationId: randomUUID(),
       submissionItemIds: [fixture.items[0]!.id, fixture.items[1]!.id],
-      title: '共同问题',
-      actualResultAttachmentIds: [],
-      expectedResultAttachmentIds: [],
+      description: '共同问题',
+      attachmentIds: [],
     },
   );
   const [front, back] = created.bugs;

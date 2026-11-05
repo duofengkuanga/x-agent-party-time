@@ -19,10 +19,7 @@ import {
 } from '../../../contracts/submissions/bug';
 
 type BugRow = Omit<DatabaseRow<Bug>, 'report'> & {
-  title: string;
-  operation_path: string | null;
-  actual_result: string | null;
-  expected_result: string | null;
+  description: string;
 };
 
 export type AccessRow = {
@@ -47,17 +44,9 @@ type ItemRow = {
   binding_id: string;
 };
 
-export type BugAttachmentRole = 'ACTUAL_RESULT' | 'EXPECTED_RESULT';
-
 export type ReportAttachmentIds = {
-  actualResultAttachmentIds: string[];
-  expectedResultAttachmentIds: string[];
+  attachmentIds: string[];
 };
-
-type BugAttachmentPreview = Pick<
-  StoredFile,
-  'id' | 'originalName' | 'mediaType' | 'sizeBytes' | 'createdAt'
->;
 
 export class BugQueries {
   constructor(private readonly db: AppDatabase) {}
@@ -87,16 +76,8 @@ export class BugQueries {
           relatedBugs: relations.list(bug.id),
           linkedReview,
           report: {
-            title: bug.report.title,
-            ...(bug.report.operationPath
-              ? { operationPath: bug.report.operationPath }
-              : {}),
-            ...(bug.report.actualResult ? { actualResult: bug.report.actualResult } : {}),
-            ...(bug.report.expectedResult
-              ? { expectedResult: bug.report.expectedResult }
-              : {}),
-            actualResultAttachments: attachments.actualResultAttachments,
-            expectedResultAttachments: attachments.expectedResultAttachments,
+            description: bug.report.description,
+            attachments: attachments.previews,
           },
           createdBy: this.getUser(bug.createdByUserId),
           assignment: item
@@ -234,35 +215,20 @@ export class BugQueries {
   }
 
   private attachmentsForBug(bugId: string) {
-    const rows = this.db.all<DatabaseRow<StoredFile> & { role: BugAttachmentRole }>(
-      `SELECT attachment.role, file.id, file.storage_key, file.original_name,
+    const rows = this.db.all<DatabaseRow<StoredFile>>(
+      `SELECT file.id, file.storage_key, file.original_name,
               file.media_type, file.size_bytes, file.sha256,
               file.uploaded_by_user_id, file.created_at
          FROM submission_bug_attachment attachment
          JOIN platform_file file ON file.id = attachment.file_id
          WHERE attachment.bug_id = ?
-         ORDER BY attachment.role, attachment.position`,
+         ORDER BY attachment.position`,
       bugId,
     );
-    const actual = {
-      ids: [] as string[],
-      previews: [] as BugAttachmentPreview[],
-    };
-    const expected = {
-      ids: [] as string[],
-      previews: [] as BugAttachmentPreview[],
-    };
-    for (const row of rows) {
-      const target = row.role === 'ACTUAL_RESULT' ? actual : expected;
-      const file = parseRow(StoredFileSchema, row);
-      target.ids.push(file.id);
-      target.previews.push(AttachmentViewSchema.parse(file));
-    }
+    const files = rows.map((row) => parseRow(StoredFileSchema, row));
     return {
-      actualResultAttachmentIds: actual.ids,
-      expectedResultAttachmentIds: expected.ids,
-      actualResultAttachments: actual.previews,
-      expectedResultAttachments: expected.previews,
+      attachmentIds: files.map(({ id }) => id),
+      previews: files.map((file) => AttachmentViewSchema.parse(file)),
     };
   }
 
@@ -342,11 +308,8 @@ function mapBug(row: BugRow, attachmentIds: ReportAttachmentIds): Bug {
     ...row,
     collaboration_locked: Boolean(row.collaboration_locked),
     report: {
-      title: row.title,
-      ...(row.operation_path ? { operationPath: row.operation_path } : {}),
-      ...(row.actual_result ? { actualResult: row.actual_result } : {}),
-      ...(row.expected_result ? { expectedResult: row.expected_result } : {}),
-      ...attachmentIds,
+      description: row.description,
+      attachmentIds: attachmentIds.attachmentIds,
     },
   });
 }

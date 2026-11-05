@@ -43,9 +43,8 @@ async function finishedBug(
   const source = f.bugs.createBug(f.users.tester.id, f.submission.id, {
     mutationId: randomUUID(),
     submissionItemId: f.items[itemIndex]!.id,
-    title: '需要排查的问题',
-    actualResultAttachmentIds: attachments,
-    expectedResultAttachmentIds: [],
+    description: '需要排查的问题',
+    attachmentIds: attachments,
   }).bug;
   f.bugs.requestRepair(f.users.tester.id, source.id, {
     mutationId: randomUUID(),
@@ -211,9 +210,7 @@ describe('前后端关联 Bug', () => {
       f.bugs.deleteBugs({ bugIds: [source.id] });
       const [remaining] = f.bugs.workspace(f.users.tester.id, f.submission.id).bugs;
       expect(remaining?.id).toBe(routed.createdBug.id);
-      expect(remaining?.report.actualResultAttachments.map(({ id }) => id)).toEqual([
-        file.id,
-      ]);
+      expect(remaining?.report.attachments.map(({ id }) => id)).toEqual([file.id]);
       expect(remaining?.relatedBugs[0]?.stageLabel).toBe('已删除');
       f.bugs.requireAttachmentAccess(f.users.tester.id, file.id);
       f.bugs.requireAttachmentAccess(f.users.developer.id, file.id);
@@ -269,9 +266,8 @@ describe('前后端关联 Bug', () => {
     const source = f.bugs.createBug(f.users.tester.id, f.submission.id, {
       mutationId: randomUUID(),
       submissionItemId: f.items[0]!.id,
-      title: '待排查',
-      actualResultAttachmentIds: [],
-      expectedResultAttachmentIds: [],
+      description: '待排查',
+      attachmentIds: [],
     }).bug;
     const input = {
       mutationId: randomUUID(),
@@ -362,9 +358,8 @@ describe('前后端关联 Bug', () => {
     const input = {
       mutationId: randomUUID(),
       submissionItemIds: [f.items[0]!.id, f.items[0]!.id],
-      title: '不能拆单',
-      actualResultAttachmentIds: [],
-      expectedResultAttachmentIds: [],
+      description: '不能拆单',
+      attachmentIds: [],
     };
     expect(() =>
       f.bugs.createLinkedBugs(f.users.tester.id, f.submission.id, input),
@@ -404,9 +399,8 @@ describe('前后端关联 Bug', () => {
     const source = f.bugs.createBug(f.users.tester.id, f.submission.id, {
       mutationId: randomUUID(),
       submissionItemId: f.items[0]!.id,
-      title: '地块缺少标签',
-      actualResultAttachmentIds: [],
-      expectedResultAttachmentIds: [],
+      description: '地块缺少标签',
+      attachmentIds: [],
     }).bug;
     f.bugs.requestRepair(f.users.tester.id, source.id, {
       mutationId: randomUUID(),
@@ -473,11 +467,9 @@ describe('前后端关联 Bug', () => {
     const input = {
       mutationId: randomUUID(),
       submissionItemIds: f.items.map(({ id }) => id),
-      title: '地图标签不显示',
-      actualResult: '没有标签',
-      expectedResult: '显示标签',
-      actualResultAttachmentIds: [file.id],
-      expectedResultAttachmentIds: [],
+      description: '地图标签不显示',
+
+      attachmentIds: [file.id],
     };
     const created = f.bugs.createLinkedBugs(f.users.tester.id, f.submission.id, input);
     expect(created.bugs).toHaveLength(2);
@@ -492,7 +484,7 @@ describe('前后端关联 Bug', () => {
     ]);
     for (const bug of view.bugs) {
       expect(bug.stage).toBe('WAITING_FOR_REPAIR');
-      expect(bug.report.actualResultAttachments.map(({ id }) => id)).toEqual([file.id]);
+      expect(bug.report.attachments.map(({ id }) => id)).toEqual([file.id]);
       expect(bug.relatedBugs).toHaveLength(1);
       expect(bug.relatedBugs[0]?.id).not.toBe(bug.id);
       expect(bug.collaborationLocked).toBe(true);
@@ -516,9 +508,8 @@ describe('前后端关联 Bug', () => {
       uploadedByUserId: f.users.tester.id,
     });
     const report = {
-      title: '接口与界面',
-      actualResultAttachmentIds: [file.id],
-      expectedResultAttachmentIds: [],
+      description: '接口与界面',
+      attachmentIds: [file.id],
     };
     const { bugs } = f.bugs.createLinkedBugs(f.users.tester.id, f.submission.id, {
       ...report,
@@ -528,14 +519,14 @@ describe('前后端关联 Bug', () => {
     const first = bugs[0]!;
     f.bugs.updateReport(f.users.tester.id, first.id, {
       ...report,
-      title: '单独编辑',
+      description: '单独编辑',
       submissionItemId: first.submissionItemId,
       mutationId: randomUUID(),
       expectedVersion: first.version,
     });
     const removed = f.bugs.updateReport(f.users.tester.id, first.id, {
       ...report,
-      actualResultAttachmentIds: [],
+      attachmentIds: [],
       submissionItemId: first.submissionItemId,
       mutationId: randomUUID(),
       expectedVersion: first.version + 1,
@@ -551,8 +542,8 @@ describe('前后端关联 Bug', () => {
     f.bugs.deleteBugs({ bugIds: [first.id] });
     const remaining = f.bugs.workspace(f.users.tester.id, f.submission.id).bugs;
     expect(remaining).toHaveLength(1);
-    expect(remaining[0]!.report.title).toBe('接口与界面');
-    expect(remaining[0]!.report.actualResultAttachments[0]!.id).toBe(file.id);
+    expect(remaining[0]!.report.description).toBe('接口与界面');
+    expect(remaining[0]!.report.attachments[0]!.id).toBe(file.id);
     expect(remaining[0]!.collaborationLocked).toBe(true);
     expect(remaining[0]!.relatedBugs[0]!.stageLabel).toBe('已删除');
     expect(new TextDecoder().decode((await f.files.read(file.id)).bytes)).toBe('证据');

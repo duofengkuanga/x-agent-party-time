@@ -234,7 +234,7 @@
   display: grid;
   gap: 18px;
   grid-template-columns: minmax(0, 422px) minmax(180px, 1fr);
-  padding: 8px 0 16px;
+  padding: 0 0 12px;
 }
 
 .project-engineering__heading > .engineering-heading-members {
@@ -563,21 +563,6 @@
   padding: 22px;
 }
 
-.project-engineering-toolbar {
-  align-items: end;
-  border-bottom: 1px solid var(--strong-line);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 18px;
-}
-
-.project-engineering-toolbar .project-engineering-tabs {
-  border: 0;
-  flex: 1 1 300px;
-  margin: 0;
-}
-
 .project-engineering .engineering-binding-strip {
   align-items: center;
   border-top: 1px solid var(--line);
@@ -629,7 +614,7 @@
 
 .project-engineering__body {
   display: block;
-  padding-top: 22px;
+  padding-top: 0;
 }
 
 @media (max-width: 620px) {

@@ -7,7 +7,7 @@ import {
 } from '@/app/actions/projects/engineering';
 import { EngineeringFields } from './settingsFields';
 import { AutoSaveForm } from '../components/autoSaveForm';
-import { NewEnvironmentRow } from './newEnvironmentRow';
+import { EnvironmentSelect } from './environmentSelect';
 import { EnvironmentDeleteControl } from './environmentDeleteControl';
 
 export function EngineeringEnvironmentManagement({
@@ -17,47 +17,54 @@ export function EngineeringEnvironmentManagement({
 }) {
   const { id: engineeringId, projectId } = workspace.engineering;
   return (
-    <div className="environment-direct-list">
-      {workspace.environments.map((environment) => (
-        <div
-          aria-label={environment.name}
-          className="environment-direct-row"
-          key={environment.id}
-          role="group"
-        >
-          <AutoSaveForm
-            className="environment-direct-form"
-            save={updateEnvironmentAction}
-            version={environment.version}
+    <EnvironmentSelect
+      engineeringId={engineeringId}
+      environments={workspace.environments.map((environment) => ({
+        ...environment,
+        editor: (
+          <div
+            aria-label={environment.name}
+            className="environment-direct-row"
+            key={environment.id}
+            role="group"
           >
-            <EngineeringFields
+            <AutoSaveForm
+              className="environment-direct-form"
+              save={updateEnvironmentAction}
+              version={environment.version}
+            >
+              <EngineeringFields
+                engineeringId={engineeringId}
+                projectId={projectId}
+              />
+              <input
+                name="environmentId"
+                type="hidden"
+                value={environment.id}
+              />
+              <label className="environment-direct-name">
+                <span>环境名称</span>
+                <input
+                  aria-label="环境名称"
+                  defaultValue={environment.name}
+                  maxLength={120}
+                  name="name"
+                  required
+                />
+              </label>
+            </AutoSaveForm>
+            <EnvironmentDeleteControl
               engineeringId={engineeringId}
+              environmentId={environment.id}
+              environmentName={environment.name}
+              expectedVersion={environment.version}
+              mutationId={randomUUID()}
               projectId={projectId}
             />
-            <input name="environmentId" type="hidden" value={environment.id} />
-            <label className="environment-direct-name">
-              <input
-                aria-label="环境名称"
-                defaultValue={environment.name}
-                maxLength={120}
-                name="name"
-                required
-              />
-            </label>
-            <code title="工程执行约定中的环境标识">{environment.key}</code>
-          </AutoSaveForm>
-          <EnvironmentDeleteControl
-            engineeringId={engineeringId}
-            environmentId={environment.id}
-            environmentName={environment.name}
-            expectedVersion={environment.version}
-            mutationId={randomUUID()}
-            projectId={projectId}
-          />
-        </div>
-      ))}
-      <NewEnvironmentRow engineeringId={engineeringId} />
-    </div>
+          </div>
+        ),
+      }))}
+    />
   );
 }
 
@@ -188,30 +195,8 @@ export function EngineeringDetail({
           className="engineering-detail__environments"
           aria-label={`${workspace.engineering.name}测试环境`}
         >
-          {environmentsEditor ? (
-            environmentsEditor
-          ) : (
-            <>
-              {workspace.environments.length ? (
-                <div className="environment-card-grid">
-                  {workspace.environments.map((environment) => (
-                    <article
-                      className="environment-view-card"
-                      key={environment.id}
-                    >
-                      <div>
-                        <h5>{environment.name}</h5>
-                        <code title="工程执行约定中的环境标识">
-                          {environment.key}
-                        </code>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              ) : (
-                <p className="collaboration-empty">还没有测试环境。</p>
-              )}
-            </>
+          {environmentsEditor ?? (
+            <EnvironmentSelect environments={workspace.environments} />
           )}
         </section>
       </div>

@@ -74,9 +74,8 @@ async function setup(
     const created = bugs.createBug(users.tester.id, submission.id, {
       mutationId: randomUUID(),
       submissionItemId,
-      title,
-      actualResultAttachmentIds: [],
-      expectedResultAttachmentIds: [],
+      description: title,
+      attachmentIds: [],
     });
     return bugs.requestRepair(
       users.tester.id,

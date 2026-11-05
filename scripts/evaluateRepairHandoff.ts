@@ -496,9 +496,10 @@ try {
         fixture.base,
       );
       const repair = await runAgent(repairWorktree, directory, variant, 'repair', {
-        bugTitle: '整数加法结果总是偏大',
-        actualResult: 'add(2,3) 返回 6',
-        expectedResult: '返回 5，且负数相加结果正确',
+        bug: {
+          description:
+            '整数加法结果总是偏大，add(2,3) 返回 6，预期返回 5，负数相加也应正确。',
+        },
         targetBranch: 'main',
       });
       const repairResult = (
@@ -582,9 +583,10 @@ try {
           variant,
           'repair',
           {
-            bugTitle: '整数减法结果偏大',
-            actualResult: 'subtract(7,3) 返回 5',
-            expectedResult: '返回 4，且负数减法正确',
+            bug: {
+              description:
+                '整数减法结果偏大，subtract(7,3) 返回 5，预期返回 4，负数减法也应正确。',
+            },
             targetBranch: 'main',
           },
         );

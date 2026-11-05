@@ -22,42 +22,19 @@ const BugStageSchema = z.enum([
   'CANCELLED',
 ]);
 const BugTitleSchema = z.string().trim().min(1).max(240);
-const OptionalReportTextSchema = z.string().trim().min(1).max(8_000);
+const BugDescriptionSchema = z.string().trim().min(1).max(8_000);
 const BugAttachmentIdsSchema = z
   .array(z.uuid())
   .max(5)
   .refine((ids) => new Set(ids).size === ids.length, {
-    message: '同一结果不能重复添加附件',
+    message: '不能重复添加同一附件',
   });
 const BugMutationAttachmentIdsSchema = z.array(z.uuid()).max(10);
 
-type BugAttachmentGroups = {
-  actualResultAttachmentIds: string[];
-  expectedResultAttachmentIds: string[];
-};
-
-function requireDisjointAttachments(
-  groups: BugAttachmentGroups,
-  context: z.RefinementCtx,
-): void {
-  const actualIds = new Set(groups.actualResultAttachmentIds);
-  if (groups.expectedResultAttachmentIds.some((fileId) => actualIds.has(fileId)))
-    context.addIssue({
-      code: 'custom',
-      message: '同一附件不能同时属于实际结果和预期结果',
-      path: ['expectedResultAttachmentIds'],
-    });
-}
-
-const BugReportBaseSchema = z.object({
-  title: BugTitleSchema,
-  operationPath: OptionalReportTextSchema.optional(),
-  actualResult: OptionalReportTextSchema.optional(),
-  expectedResult: OptionalReportTextSchema.optional(),
-  actualResultAttachmentIds: BugAttachmentIdsSchema,
-  expectedResultAttachmentIds: BugAttachmentIdsSchema,
+const BugReportSchema = z.strictObject({
+  description: BugDescriptionSchema,
+  attachmentIds: BugAttachmentIdsSchema,
 });
-const BugReportSchema = BugReportBaseSchema.superRefine(requireDisjointAttachments);
 
 export const BugSchema = z.object({
   id: BugIdSchema,
@@ -77,37 +54,31 @@ export const BugSchema = z.object({
   updatedAt: z.iso.datetime(),
 });
 
-const CreateBugInputBaseSchema = z.object({
+const CreateBugInputBaseSchema = z.strictObject({
   mutationId: RequestMutationIdSchema,
   submissionItemId: SubmissionItemIdSchema.nullable(),
-  title: BugTitleSchema,
-  operationPath: z.string().max(8_000).optional(),
-  actualResult: z.string().max(8_000).optional(),
-  expectedResult: z.string().max(8_000).optional(),
-  actualResultAttachmentIds: BugAttachmentIdsSchema,
-  expectedResultAttachmentIds: BugAttachmentIdsSchema,
+  description: BugDescriptionSchema,
+  attachmentIds: BugAttachmentIdsSchema,
 });
 export const CreateBugInputSchema = CreateBugInputBaseSchema.extend({
   submissionItemId: CreateBugInputBaseSchema.shape.submissionItemId.default(null),
   startRepair: z.boolean().optional(),
-}).superRefine(requireDisjointAttachments);
+});
 
 export const CreateLinkedBugsInputSchema = CreateBugInputBaseSchema.omit({
   submissionItemId: true,
-})
-  .extend({
-    startRepair: z.boolean().optional(),
-    submissionItemIds: z
-      .array(SubmissionItemIdSchema)
-      .length(2)
-      .refine((ids) => new Set(ids).size === 2, '请选择不同的前端和后端工程'),
-  })
-  .superRefine(requireDisjointAttachments);
+}).extend({
+  startRepair: z.boolean().optional(),
+  submissionItemIds: z
+    .array(SubmissionItemIdSchema)
+    .length(2)
+    .refine((ids) => new Set(ids).size === 2, '请选择不同的前端和后端工程'),
+});
 
 export const UpdateBugReportInputSchema = CreateBugInputBaseSchema.extend({
   expectedVersion: z.number().int().positive(),
   additionalSubmissionItemId: SubmissionItemIdSchema.optional(),
-}).superRefine(requireDisjointAttachments);
+});
 
 export const AssignBugInputSchema = VersionedMutationSchema.extend({
   submissionItemId: SubmissionItemIdSchema.nullable(),
@@ -182,12 +153,10 @@ const BugViewSchema = BugSchema.omit({
       handoffText: z.string(),
     }),
   ),
-  report: BugReportBaseSchema.omit({
-    actualResultAttachmentIds: true,
-    expectedResultAttachmentIds: true,
+  report: BugReportSchema.omit({
+    attachmentIds: true,
   }).extend({
-    actualResultAttachments: z.array(BugAttachmentViewSchema),
-    expectedResultAttachments: z.array(BugAttachmentViewSchema),
+    attachments: z.array(BugAttachmentViewSchema),
   }),
   createdBy: UserSchema,
   assignment: z

@@ -140,7 +140,7 @@ export function StoredBugList({
                     type="button"
                   >
                     <strong>
-                      {bugLabel(bug)} · {bug.report.title}
+                      {bugLabel(bug)} · {bug.report.description.slice(0, 120)}
                     </strong>
                     <small>
                       {bug.presentation.assignmentLabel} ·{' '}

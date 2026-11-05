@@ -157,37 +157,22 @@ export function TesterBugDetail({
         ) : null}
         <div className="collab-tester-detail__report">
           <dl className="collab-tester-detail__comparison">
-            {bug.report.expectedResult ||
-            bug.report.expectedResultAttachments.length ? (
-              <div>
-                <dt>预期结果</dt>
-                <dd>
-                  <BugResultDetail
-                    text={bug.report.expectedResult}
-                    attachments={bug.report.expectedResultAttachments}
-                  />
-                </dd>
-              </div>
-            ) : null}
-            {bug.report.actualResult ||
-            bug.report.actualResultAttachments.length ? (
-              <div>
-                <dt>原始实际结果</dt>
-                <dd>
-                  <BugResultDetail
-                    text={bug.report.actualResult}
-                    attachments={bug.report.actualResultAttachments}
-                  />
-                </dd>
-              </div>
-            ) : null}
+            <div>
+              <dt>缺陷描述</dt>
+              <dd>
+                <BugResultDetail
+                  text={bug.report.description}
+                  attachments={[]}
+                />
+              </dd>
+            </div>
+            <div>
+              <dt>附件</dt>
+              <dd>
+                <BugResultDetail attachments={bug.report.attachments} />
+              </dd>
+            </div>
           </dl>
-          {bug.report.operationPath ? (
-            <section className="collab-tester-detail__path">
-              <h3>操作路径</h3>
-              <p>{bug.report.operationPath}</p>
-            </section>
-          ) : null}
           {bug.stage === 'WAITING_FOR_VERIFICATION' && latestFeedback ? (
             <section
               className="collab-tester-detail__feedback"

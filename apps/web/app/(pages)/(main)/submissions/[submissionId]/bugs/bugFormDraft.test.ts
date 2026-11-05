@@ -26,14 +26,13 @@ test('再次登记沿用明确选择的工程，草稿恢复保留附件和幂�
   const file = new File(['evidence'], '证据.txt', { type: 'text/plain' });
   const saved = {
     ...next,
-    title: '保留报告',
-    actualResult: '实际结果',
-    actualResultFiles: [file],
+    description: '保留报告',
+    files: [file],
     joint: true,
   };
   const restored = createBugFormDraft(null, snapshot, saved, null);
-  expect(restored.title).toBe('保留报告');
-  expect(restored.actualResultFiles[0]).toBe(file);
+  expect(restored.description).toBe('保留报告');
+  expect(restored.files[0]).toBe(file);
   expect(restored.mutationId).toBe(saved.mutationId);
   expect(restored.joint).toBe(true);
   expect(
@@ -49,7 +48,10 @@ test('编辑草稿保持原版本，避免关闭后恢复时覆盖他人已经�
     now: f.clock.now,
   }).workspace.getWorkspace(f.users.tester.id, f.submission.id);
   const bug = snapshot.bugs.find(({ id }) => id === created.id)!;
-  const saved = { ...createBugFormDraft(bug, snapshot, null, null), title: '未保存修改' };
+  const saved = {
+    ...createBugFormDraft(bug, snapshot, null, null),
+    description: '未保存修改',
+  };
   const restored = createBugFormDraft(
     { ...bug, version: bug.version + 1 },
     snapshot,
@@ -57,5 +59,5 @@ test('编辑草稿保持原版本，避免关闭后恢复时覆盖他人已经�
     null,
   );
   expect(restored.expectedVersion).toBe(bug.version);
-  expect(restored.title).toBe('未保存修改');
+  expect(restored.description).toBe('未保存修改');
 });

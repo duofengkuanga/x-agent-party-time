@@ -53,7 +53,7 @@ export function BugCard({
       onDragStart={onDragStart}
     >
       <button
-        aria-label={`${bug.report.title}，${engineeringTypeLabel(bug.assignment?.engineeringType)}，${visual.label}`}
+        aria-label={`${bug.report.description.slice(0, 120)}，${engineeringTypeLabel(bug.assignment?.engineeringType)}，${visual.label}`}
         className="collab-bug-card__open"
         onClick={onOpen}
         type="button"
@@ -61,7 +61,7 @@ export function BugCard({
       <span aria-hidden="true" className="collab-bug-card__state">
         {visual.symbol}
       </span>
-      <h3>{bug.report.title}</h3>
+      <h3>{bug.report.description}</h3>
       {blockedReason ? (
         <p className="collab-bug-card__blocked">{blockedReason}</p>
       ) : null}
@@ -155,7 +155,7 @@ export function LinkedReviewCard({
       data-visual-state="IDLE"
     >
       <button
-        aria-label={`${frontend.report.title}，前端和后端关联缺陷详情`}
+        aria-label={`${frontend.report.description.slice(0, 120)}，前端和后端关联缺陷详情`}
         className="collab-bug-card__open"
         onClick={onOpen}
         type="button"
@@ -163,7 +163,7 @@ export function LinkedReviewCard({
       <span aria-hidden="true" className="collab-bug-card__state">
         ·
       </span>
-      <h3>{frontend.report.title}</h3>
+      <h3>{frontend.report.description}</h3>
       <div className="collab-linked-review-card__sides">
         {[frontend, backend].map((bug) => (
           <div key={bug.id}>

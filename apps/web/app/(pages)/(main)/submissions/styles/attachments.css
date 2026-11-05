@@ -292,27 +292,15 @@
   margin: 0;
 }
 
-.collab-bug-form__grid {
-  align-items: start;
-}
-
-.collab-bug-result-field {
-  background: color-mix(in srgb, var(--panel) 58%, transparent);
-  border: 1px solid var(--strong-line);
+.collab-bug-form__attachments {
   display: grid;
-  gap: 10px;
-  margin: 0;
+  gap: 8px;
   min-width: 0;
-  padding: 12px;
 }
 
-.collab-bug-result-field legend {
-  background: var(--paper);
-  color: var(--accent-dark);
-  font-size: 9px;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  padding: 0 6px;
+.collab-bug-form__attachments > span {
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .collab-image-preview {

@@ -114,10 +114,7 @@ export class RepairService {
     const executionBrief: JsonObject = {
       targetBranch: repairContext.targetBranch,
       bug: {
-        title: report.title,
-        ...(report.operationPath ? { operationPath: report.operationPath } : {}),
-        ...(report.actualResult ? { actualResult: report.actualResult } : {}),
-        ...(report.expectedResult ? { expectedResult: report.expectedResult } : {}),
+        description: report.description,
       },
       ...(attachmentReferences.length ? { attachmentReferences } : {}),
       ...(repairContext.feedback.length ? { feedback: repairContext.feedback } : {}),

@@ -115,20 +115,16 @@ export function createBug(
   fixture: Awaited<ReturnType<typeof setup>>,
   actorUserId: string,
   values: {
-    title: string;
+    description: string;
     submissionItemId?: string;
-    operationPath?: string;
-    actualResultAttachmentIds?: string[];
-    expectedResultAttachmentIds?: string[];
+    attachmentIds?: string[];
   },
 ) {
   return fixture.service.createBug(actorUserId, fixture.submission.id, {
     mutationId: randomUUID(),
     submissionItemId: values.submissionItemId ?? null,
-    title: values.title,
-    operationPath: values.operationPath,
-    actualResultAttachmentIds: values.actualResultAttachmentIds ?? [],
-    expectedResultAttachmentIds: values.expectedResultAttachmentIds ?? [],
+    description: values.description,
+    attachmentIds: values.attachmentIds ?? [],
   });
 }
 
@@ -138,7 +134,7 @@ export function createAssignedBug(
   submissionItemId: string,
 ) {
   return createBug(fixture, fixture.users.tester.id, {
-    title,
+    description: title,
     submissionItemId,
   }).bug;
 }

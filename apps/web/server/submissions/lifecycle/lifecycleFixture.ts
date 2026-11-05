@@ -96,9 +96,8 @@ export function createBug(
   return fixture.bugs.createBug(fixture.users.tester.id, fixture.submission.id, {
     mutationId: randomUUID(),
     submissionItemId,
-    title,
-    actualResultAttachmentIds: [],
-    expectedResultAttachmentIds: [],
+    description: title,
+    attachmentIds: [],
   }).bug;
 }
 

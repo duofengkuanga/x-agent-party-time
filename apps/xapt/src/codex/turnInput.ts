@@ -77,10 +77,9 @@ function materializeInitialAttachments(
   const evidence = references.map((reference) => {
     const value = asRecord(reference);
     const fileId = requiredString(value, 'fileId');
-    const role = requiredString(value, 'role');
     const mapping = paths.get(fileId);
     if (!mapping) throw new CodexAppServerError('任务附件路径映射缺失', null);
-    return { role, name: mapping.originalName, path: mapping.path };
+    return { name: mapping.originalName, path: mapping.path };
   });
   const { attachmentReferences: _attachmentReferences, ...withoutReferences } = brief;
   return JSON.stringify({ ...withoutReferences, attachments: evidence });

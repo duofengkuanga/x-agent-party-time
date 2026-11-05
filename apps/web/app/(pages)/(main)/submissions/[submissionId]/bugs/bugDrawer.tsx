@@ -86,7 +86,7 @@ export function BugDrawer({
         <header className={viewing ? 'collab-bug-drawer__chrome' : undefined}>
           {drawer.mode === 'view' && bug ? (
             <div className="collab-bug-drawer__heading">
-              <h2>{bug.report.title}</h2>
+              <h2>{bug.report.description.slice(0, 120)}</h2>
               {summaryOnly ? (
                 <div className="collab-tester-detail__meta">
                   {pair?.ready ? (

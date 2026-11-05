@@ -268,7 +268,7 @@ export class UpdateQueries {
 
   candidates(submissionItemId: string): CandidateRow[] {
     return this.db.all<CandidateRow>(
-      `SELECT bug.id bug_id, bug.short_id, bug.title,
+      `SELECT bug.id bug_id, bug.short_id, substr(bug.description, 1, 240) title,
                 context.pending_commits_json,
                 context.pending_manual_operations_json,
                 context.last_candidate_at
@@ -302,7 +302,7 @@ export class UpdateQueries {
       manual_operations_json: string;
       handoffs_json: string;
     }>(
-      `SELECT entry.bug_id, bug.short_id, bug.title, entry.commits_json,
+      `SELECT entry.bug_id, bug.short_id, substr(bug.description, 1, 240) title, entry.commits_json,
                 entry.manual_operations_json, entry.handoffs_json
          FROM submission_update_batch_entry entry
          JOIN submission_bug bug ON bug.id = entry.bug_id

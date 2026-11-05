@@ -3,22 +3,46 @@ import { expectRowCount, testDatabases } from '@/testing/database';
 import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { ZodError } from 'zod';
+import { CreateBugInputSchema } from '@/contracts/submissions/bug';
 import { bugFixture, createBug, createAssignedBug } from './bugFixture';
 
 const setup = bugFixture(testDatabases());
 
 describe('BugService', () => {
-  test('只有 Tester 可创建，空白可选字段不保存且附件按实际与预期结果分组', async () => {
+  test('缺陷描述完整保存长文本，并拒绝旧报告字段', async () => {
+    const fixture = await setup();
+    const description = '复现步骤与缺陷表现\n'.repeat(100);
+    const result = createBug(fixture, fixture.users.tester.id, {
+      description,
+    });
+    expect(result.bug.report.description).toBe(description.trim());
+    expect(
+      CreateBugInputSchema.safeParse({
+        mutationId: randomUUID(),
+        description,
+        attachmentIds: [],
+        title: '旧字段',
+      }).success,
+    ).toBe(false);
+    expect(
+      CreateBugInputSchema.safeParse({
+        mutationId: randomUUID(),
+        description: '超'.repeat(8001),
+        attachmentIds: [],
+      }).success,
+    ).toBe(false);
+  });
+  test('只有测试负责人可登记，描述去除首尾空白且附件保持顺序', async () => {
     const fixture = await setup();
     expect(() =>
       createBug(fixture, fixture.users.member.id, {
-        title: '普通成员不能创建',
+        description: '普通成员不能创建',
       }),
     ).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
     expect(() =>
       createBug(fixture, fixture.users.tester.id, {
-        title: '附件过多',
-        actualResultAttachmentIds: Array.from({ length: 6 }, () => randomUUID()),
+        description: '附件过多',
+        attachmentIds: Array.from({ length: 6 }, () => randomUUID()),
       }),
     ).toThrow();
     const file = await fixture.files.put({
@@ -35,35 +59,29 @@ describe('BugService', () => {
     });
     expect(() =>
       createBug(fixture, fixture.users.tester.id, {
-        title: '附件不能跨结果重复使用',
-        actualResultAttachmentIds: [file.id],
-        expectedResultAttachmentIds: [file.id],
-      }),
-    ).toThrow(ZodError);
-    expect(() =>
-      createBug(fixture, fixture.users.tester.id, {
-        title: '同一结果不能重复添加附件',
-        actualResultAttachmentIds: [file.id, file.id],
+        description: '不能重复添加同一附件',
+        attachmentIds: [file.id, file.id],
       }),
     ).toThrow(ZodError);
     const result = createBug(fixture, fixture.users.tester.id, {
-      title: '  结算按钮无响应  ',
-      operationPath: '   ',
-      actualResultAttachmentIds: [file.id],
-      expectedResultAttachmentIds: [expectedFile.id],
+      description: '  结算按钮无响应  ',
+
+      attachmentIds: [file.id, expectedFile.id],
     });
     expect(result.bug).toMatchObject({
       shortId: 1,
       submissionItemId: null,
       stage: 'WAITING_FOR_REPAIR',
       report: {
-        title: '结算按钮无响应',
-        actualResultAttachmentIds: [file.id],
-        expectedResultAttachmentIds: [expectedFile.id],
+        description: '结算按钮无响应',
+        attachmentIds: [file.id, expectedFile.id],
       },
       version: 1,
     });
-    expect(result.bug.report).not.toHaveProperty('operationPath');
+    expect(Object.keys(result.bug.report).sort()).toEqual([
+      'attachmentIds',
+      'description',
+    ]);
     expect(() =>
       fixture.service.requestRepair(
         fixture.users.tester.id,
@@ -77,11 +95,11 @@ describe('BugService', () => {
     ]);
     expect(
       fixture.service.workspace(fixture.users.tester.id, fixture.submission.id).bugs[0]
-        ?.report.actualResultAttachments[0],
+        ?.report.attachments[0],
     ).toMatchObject({ id: file.id, originalName: '复现.txt' });
     expect(
       fixture.service.workspace(fixture.users.tester.id, fixture.submission.id).bugs[0]
-        ?.report.expectedResultAttachments[0],
+        ?.report.attachments[1],
     ).toMatchObject({ id: expectedFile.id, originalName: '预期.txt' });
     expect(() =>
       fixture.service.requireAttachmentAccess(fixture.users.member.id, file.id),
@@ -92,9 +110,8 @@ describe('BugService', () => {
     const updated = fixture.service.updateReport(fixture.users.tester.id, result.bug.id, {
       ...mutation(result.bug.version),
       submissionItemId: null,
-      title: result.bug.report.title,
-      actualResultAttachmentIds: [],
-      expectedResultAttachmentIds: [],
+      description: result.bug.report.description,
+      attachmentIds: [],
     });
     expect(updated.unboundAttachmentIds).toEqual([file.id, expectedFile.id]);
     expect(await fixture.files.deleteUnbound(file.id, fixture.users.tester.id)).toBe(
@@ -108,7 +125,7 @@ describe('BugService', () => {
   test('分诊后测试负责人可开始修复，非创建人的工程负责人不能越权且报告永久锁定', async () => {
     const fixture = await setup();
     const created = createBug(fixture, fixture.users.tester.id, {
-      title: '待分诊缺陷',
+      description: '待分诊缺陷',
     }).bug;
     const assigned = fixture.service.assignBug(fixture.users.developerB.id, created.id, {
       ...mutation(1),
@@ -151,9 +168,8 @@ describe('BugService', () => {
       fixture.service.updateReport(fixture.users.tester.id, repairing.id, {
         ...mutation(repairing.version),
         submissionItemId: fixture.items.front,
-        title: '不能覆盖',
-        actualResultAttachmentIds: [],
-        expectedResultAttachmentIds: [],
+        description: '不能覆盖',
+        attachmentIds: [],
       }),
     ).toThrow(expect.objectContaining({ code: 'INVALID_TRANSITION' }));
     expect(
@@ -226,9 +242,8 @@ describe('BugService', () => {
     const input = {
       mutationId,
       submissionItemId: null,
-      title: '幂等登记',
-      actualResultAttachmentIds: [],
-      expectedResultAttachmentIds: [],
+      description: '幂等登记',
+      attachmentIds: [],
     };
     const first = fixture.service.createBug(
       fixture.users.tester.id,

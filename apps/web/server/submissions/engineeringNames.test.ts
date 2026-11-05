@@ -20,9 +20,8 @@ test('工程改名在已有提测、缺陷、关联、流转目标和更新批�
   const items = app.workspace.getWorkspace(f.users.tester.id, submission.id).submission
     .items;
   const report = {
-    title: '名称展示',
-    actualResultAttachmentIds: [],
-    expectedResultAttachmentIds: [],
+    description: '名称展示',
+    attachmentIds: [],
   };
   const single = app.bugs.createBug(f.users.tester.id, submission.id, {
     ...report,

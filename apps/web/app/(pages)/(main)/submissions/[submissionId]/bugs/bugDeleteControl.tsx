@@ -38,7 +38,7 @@ export function BugDeleteControl({
       {confirmation ? (
         <>
           <p>
-            确认删除“{bug.report.title}
+            确认删除“{bug.report.description.slice(0, 120)}
             ”？缺陷资料及附件将从提测单中移除，删除后无法恢复。
           </p>
           {error ? (

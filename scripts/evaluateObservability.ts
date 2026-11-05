@@ -140,11 +140,9 @@ for (const [index, variant] of preregistration.ordering.entries()) {
       {
         mutationId: randomUUID(),
         submissionItemId: project.items[0]!.id,
-        title: '整数加法结果偏大',
-        actualResult: 'add(2,3) 返回6',
-        expectedResult: '返回5，负数相加也正确',
-        actualResultAttachmentIds: [],
-        expectedResultAttachmentIds: [],
+        description: '整数加法结果偏大',
+
+        attachmentIds: [],
       },
     ).bug;
     submissionWorkflow.bugs.requestRepair(project.users.tester.id, bug.id, {

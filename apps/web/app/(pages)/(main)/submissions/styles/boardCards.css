@@ -1,34 +1,12 @@
 .collab-board {
+  align-content: start;
   display: grid;
-  gap: 0;
-  grid-template-columns: var(--board-columns, repeat(6, minmax(140px, 1fr)));
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr);
   margin-top: 12px;
 }
 
-.collab-board__resize-handle {
-  align-items: center;
-  cursor: col-resize;
-  display: flex;
-  justify-content: center;
-  min-height: 0;
-  touch-action: none;
-  user-select: none;
-}
-
-.collab-board__resize-handle::before {
-  background: var(--line);
-  content: '';
-  height: 42px;
-  width: 2px;
-}
-
-.collab-board__resize-handle:hover::before,
-.collab-board__resize-handle:focus-visible::before {
-  background: var(--accent);
-  width: 3px;
-}
-
-.collab-board__resize-handle:focus-visible {
+.collab-board:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
@@ -39,68 +17,64 @@
   min-width: 0;
 }
 
-@container (max-width: 1080px) {
-  .collab-board {
-    gap: 8px;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .collab-board__resize-handle {
-    display: none;
-  }
-}
-
-@container (max-width: 720px) {
-  .collab-board {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@container (max-width: 420px) {
-  .collab-board {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
 .collab-column > header {
-  border-bottom: 1px solid var(--strong-line);
+  align-items: center;
+  border-bottom: 1px solid var(--line);
   display: grid;
-  gap: 4px;
-  grid-template-columns: 1fr auto;
-  padding: 11px;
+  gap: 10px;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  padding: 11px 14px;
 }
 
 .collab-column > header span {
   color: var(--muted);
-  font-size: 7px;
-  grid-column: 1 / -1;
-  letter-spacing: 0.12em;
+  font-size: 10px;
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
 }
 
 .collab-column > header h2 {
-  font-family: Georgia, 'Times New Roman', serif;
-  font-size: 18px;
-  font-style: italic;
+  font-size: 14px;
+  grid-column: 1;
+  grid-row: 1;
   margin: 0;
 }
 
 .collab-column > header b {
   color: var(--accent);
-  font-size: 13px;
+  font-size: 12px;
+  grid-column: 2;
+  grid-row: 1;
 }
 
 .collab-column__cards {
+  align-items: stretch;
   display: grid;
-  gap: 8px;
-  padding: 8px;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
+  padding: 12px;
 }
 
 .collab-column__empty {
-  color: var(--faint);
-  font-size: 8px;
-  letter-spacing: 0.12em;
-  margin: 18px 0;
-  text-align: center;
+  color: var(--muted);
+  font-size: 11px;
+  grid-column: 1 / -1;
+  margin: 0 2px;
+}
+
+.collab-column:has(.collab-column__empty) {
+  align-items: center;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.collab-column:has(.collab-column__empty) > header {
+  border-bottom: 0;
+}
+
+.collab-column__cards:has(.collab-column__empty) {
+  display: block;
 }
 
 .collab-bug-card {
@@ -383,6 +357,7 @@
 }
 
 .collab-bug-card__footer {
+  align-self: end;
   align-items: flex-end;
   display: flex;
   gap: 8px;
@@ -492,10 +467,8 @@
 }
 
 .collab-linked-review-card {
-  align-content: start;
   cursor: default;
-  grid-template-rows: repeat(3, max-content);
-  height: max-content;
+  grid-template-rows: max-content max-content 1fr;
   min-height: 0;
   overflow: visible;
 }

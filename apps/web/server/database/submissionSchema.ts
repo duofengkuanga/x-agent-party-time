@@ -77,10 +77,7 @@ CREATE TABLE submission_bug (
     'DONE',
     'CANCELLED'
   )),
-  title TEXT NOT NULL,
-  operation_path TEXT,
-  actual_result TEXT,
-  expected_result TEXT,
+  description TEXT NOT NULL,
   report_locked_at TEXT,
   collaboration_locked INTEGER NOT NULL DEFAULT 0 CHECK (collaboration_locked IN (0, 1)),
   transferred_at TEXT,
@@ -130,14 +127,13 @@ CREATE INDEX submission_bug_lifecycle_event_bug
 CREATE TABLE submission_bug_attachment (
   file_id TEXT NOT NULL REFERENCES platform_file(id) ON DELETE RESTRICT,
   bug_id TEXT NOT NULL REFERENCES submission_bug(id) ON DELETE CASCADE,
-  role TEXT NOT NULL CHECK (role IN ('ACTUAL_RESULT', 'EXPECTED_RESULT')),
   position INTEGER NOT NULL CHECK (position >= 0),
   created_at TEXT NOT NULL,
   PRIMARY KEY(bug_id, file_id),
-  UNIQUE(bug_id, role, position)
+  UNIQUE(bug_id, position)
 ) STRICT;
 CREATE INDEX submission_bug_attachment_bug
-  ON submission_bug_attachment(bug_id, role, position);
+  ON submission_bug_attachment(bug_id, position);
 
 CREATE TABLE submission_bug_repair_context (
   bug_id TEXT PRIMARY KEY REFERENCES submission_bug(id) ON DELETE CASCADE,

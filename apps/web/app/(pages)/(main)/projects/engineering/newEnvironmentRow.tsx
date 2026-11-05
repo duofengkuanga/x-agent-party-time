@@ -20,6 +20,7 @@ export function NewEnvironmentRow({
     >
       <input name="engineeringId" type="hidden" value={engineeringId} />
       <label className="environment-direct-name">
+        <span>环境名称</span>
         <input
           aria-label="新环境名称"
           autoFocus
@@ -29,14 +30,16 @@ export function NewEnvironmentRow({
           required
         />
       </label>
-      <input
-        aria-label="环境标识"
-        maxLength={40}
-        name="environmentIdentifier"
-        pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
-        placeholder="环境标识，例如 84"
-        required
-      />
+      <label>
+        <span>环境标识</span>
+        <input
+          maxLength={40}
+          name="environmentIdentifier"
+          pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
+          placeholder="例如 84"
+          required
+        />
+      </label>
       <div className="environment-direct-form__hint">
         <small>填写完整后自动添加</small>
         <button onClick={() => setAdding(false)} type="button">

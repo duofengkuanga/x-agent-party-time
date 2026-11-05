@@ -42,7 +42,7 @@ export async function deleteUnassignedBugAction(
 
 const REPORT_UPLOAD_OPTIONS = {
   maxFiles: 5,
-  maxFilesMessage: '实际结果和预期结果各最多上传 5 个附件',
+  maxFilesMessage: '缺陷最多上传 5 个附件',
 };
 
 export async function createBugAction(
@@ -52,26 +52,16 @@ export async function createBugAction(
   return runInteractiveMutation<BugMutationResult | LinkedBugsMutationResult>({
     validationEvent: 'submission_bug_action_validation_failed',
     command: async ({ userId, uploadFiles }) => {
-      const actualResultAttachmentIds = await uploadFiles(
+      const attachmentIds = await uploadFiles(
         formData,
-        'actualResultAttachments',
-        REPORT_UPLOAD_OPTIONS,
-      );
-      const expectedResultAttachmentIds = await uploadFiles(
-        formData,
-        'expectedResultAttachments',
+        'attachments',
         REPORT_UPLOAD_OPTIONS,
       );
       const report = {
         mutationId: formField(formData, 'mutationId'),
         startRepair: formField(formData, 'startRepair') === 'true',
-        submissionItemId: nullableFormField(formData, 'submissionItemId'),
-        title: formField(formData, 'title'),
-        operationPath: optionalFormField(formData, 'operationPath'),
-        actualResult: optionalFormField(formData, 'actualResult'),
-        expectedResult: optionalFormField(formData, 'expectedResult'),
-        actualResultAttachmentIds,
-        expectedResultAttachmentIds,
+        description: formField(formData, 'description'),
+        attachmentIds,
       };
       const submissionItemIds = formStringList(formData, 'submissionItemIds');
       if (submissionItemIds.length) {
@@ -85,7 +75,10 @@ export async function createBugAction(
           refreshPaths: ['/submissions', `/submissions/${submissionId}`],
         };
       }
-      const result = bugService().createBug(userId, submissionId, report);
+      const result = bugService().createBug(userId, submissionId, {
+        ...report,
+        submissionItemId: nullableFormField(formData, 'submissionItemId'),
+      });
       return bugSuccess(result);
     },
   });
@@ -98,16 +91,7 @@ export async function updateBugReportAction(
   return runInteractiveMutation({
     validationEvent: 'submission_bug_action_validation_failed',
     command: async ({ userId, uploadFiles }) => {
-      const uploadedActual = await uploadFiles(
-        formData,
-        'actualResultAttachments',
-        REPORT_UPLOAD_OPTIONS,
-      );
-      const uploadedExpected = await uploadFiles(
-        formData,
-        'expectedResultAttachments',
-        REPORT_UPLOAD_OPTIONS,
-      );
+      const uploaded = await uploadFiles(formData, 'attachments', REPORT_UPLOAD_OPTIONS);
       const result = bugService().updateReport(userId, bugId, {
         mutationId: formField(formData, 'mutationId'),
         expectedVersion: integerFormField(formData, 'expectedVersion'),
@@ -116,17 +100,10 @@ export async function updateBugReportAction(
           formData,
           'additionalSubmissionItemId',
         ),
-        title: formField(formData, 'title'),
-        operationPath: optionalFormField(formData, 'operationPath'),
-        actualResult: optionalFormField(formData, 'actualResult'),
-        expectedResult: optionalFormField(formData, 'expectedResult'),
-        actualResultAttachmentIds: [
-          ...formStringList(formData, 'existingActualResultAttachmentIds'),
-          ...uploadedActual,
-        ],
-        expectedResultAttachmentIds: [
-          ...formStringList(formData, 'existingExpectedResultAttachmentIds'),
-          ...uploadedExpected,
+        description: formField(formData, 'description'),
+        attachmentIds: [
+          ...formStringList(formData, 'existingAttachmentIds'),
+          ...uploaded,
         ],
       });
       return {

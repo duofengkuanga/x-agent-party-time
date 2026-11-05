@@ -109,7 +109,7 @@ test('人员选项排除无绑定成员和不能与当前工程组合的测试�
     />,
   );
   expect(html).not.toContain('<select');
-  expect(html).toContain('aria-label="Agent"');
+  expect(html).not.toContain('aria-label="Agent"');
   const composer = renderToStaticMarkup(
     <SubmissionComposer
       catalog={[{ ...project, engineerings: [engineering] }]}

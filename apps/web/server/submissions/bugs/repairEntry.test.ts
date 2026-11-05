@@ -18,10 +18,9 @@ for (const joint of [false, true]) {
     });
     const report = {
       mutationId: randomUUID(),
-      title: '登记并修复',
+      description: '登记并修复',
       startRepair: true,
-      actualResultAttachmentIds: [file.id],
-      expectedResultAttachmentIds: [],
+      attachmentIds: [file.id],
     };
     const create = () =>
       joint
@@ -40,7 +39,7 @@ for (const joint of [false, true]) {
     for (const bug of view.bugs) {
       expect(bug.stage).toBe('REPAIRING');
       expect(bug.reportLockedAt).not.toBeNull();
-      expect(bug.report.actualResultAttachments.map(({ id }) => id)).toEqual([file.id]);
+      expect(bug.report.attachments.map(({ id }) => id)).toEqual([file.id]);
       expect(bug.relatedBugs).toHaveLength(joint ? 1 : 0);
       expect(
         f.database.all(
@@ -77,10 +76,9 @@ for (const joint of [false, true]) {
     });
     const report = {
       mutationId: randomUUID(),
-      title: '失败可重试',
+      description: '失败可重试',
       startRepair: true,
-      actualResultAttachmentIds: [file.id],
-      expectedResultAttachmentIds: [],
+      attachmentIds: [file.id],
     };
     const create = () =>
       joint
@@ -118,11 +116,10 @@ test('未确定工程、越权和已关闭提测不能登记并修复', async ()
   const f = await setup();
   const input = {
     mutationId: randomUUID(),
-    title: '不能修复',
+    description: '不能修复',
     startRepair: true,
     submissionItemId: null,
-    actualResultAttachmentIds: [],
-    expectedResultAttachmentIds: [],
+    attachmentIds: [],
   };
   expect(() => f.service.createBug(f.users.tester.id, f.submission.id, input)).toThrow(
     '请先确定',
@@ -152,7 +149,7 @@ test('普通成员作为提测创建人可在归属调整后请求修复，其�
     f.submission.id,
   ]);
   const creatorId = f.users.member.id;
-  const unassigned = createBug(f, f.users.tester.id, { title: '等待分诊' }).bug;
+  const unassigned = createBug(f, f.users.tester.id, { description: '等待分诊' }).bug;
   const actions = (userId: string) =>
     f.service.workspace(userId, f.submission.id).bugs[0]!.availableActions;
   expect(actions(creatorId)).not.toContain('REQUEST_REPAIR');

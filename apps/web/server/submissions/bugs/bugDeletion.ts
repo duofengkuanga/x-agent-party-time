@@ -63,16 +63,13 @@ export class BugDeletion {
               bug.submissionId,
               this.now().toISOString(),
             ),
-            unboundAttachmentIds: [
-              ...bug.report.actualResultAttachmentIds,
-              ...bug.report.expectedResultAttachmentIds,
-            ],
+            unboundAttachmentIds: bug.report.attachmentIds,
           },
           resourceId: bug.id,
           audit: {
             projectId: access.project_id,
             action: 'BUG_DELETED',
-            details: { shortId: bug.shortId, title: bug.report.title },
+            details: { shortId: bug.shortId, description: bug.report.description },
           },
         };
       },

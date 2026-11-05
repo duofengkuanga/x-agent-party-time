@@ -26,8 +26,8 @@ export class BugRelations {
         input.kind,
         source.shortId,
         target.shortId,
-        source.report.title,
-        target.report.title,
+        source.report.description.slice(0, 240),
+        target.report.description.slice(0, 240),
         input.handoffText,
         input.actorUserId,
         input.now,
@@ -47,7 +47,7 @@ export class BugRelations {
       handoff_text: string;
     }>(
       `SELECT other.id, CASE WHEN link.source_bug_id = ? THEN link.target_short_id ELSE link.source_short_id END short_id,
-        COALESCE(other.title, CASE WHEN link.source_bug_id = ? THEN link.target_title ELSE link.source_title END) title,
+        COALESCE(substr(other.description, 1, 240), CASE WHEN link.source_bug_id = ? THEN link.target_title ELSE link.source_title END) title,
         link.kind, other.stage, other.transferred_at, engineering.name engineering_name, link.handoff_text
        FROM submission_bug_relation link
        LEFT JOIN submission_bug other ON other.id = CASE WHEN link.source_bug_id = ? THEN link.target_bug_id ELSE link.source_bug_id END

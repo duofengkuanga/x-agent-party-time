@@ -45,9 +45,6 @@ export function ItemEditor({
   );
   if (!engineering) return <p role="alert">工程配置已变化，请重新选择工程。</p>;
   const responsibleMembers = boundResponsibleMembers(engineering, testerUserId);
-  const runnerChoices = engineering.bindings.filter(
-    ({ userId }) => userId === draft.responsibleUserId,
-  );
   const environment = engineering.environments.find(
     ({ id }) => id === draft.environmentId,
   );
@@ -91,34 +88,23 @@ export function ItemEditor({
           }
         />
         {fixedAssignment ? null : (
-          <>
-            <FormChoice
-              label="开发负责人"
-              value={draft.responsibleUserId}
-              options={responsibleMembers.map((member) => ({
-                value: member.id,
-                label: member.displayName,
-              }))}
-              onChange={(responsibleUserId) =>
-                onChange({
-                  ...draft,
-                  responsibleUserId,
-                  bindingId: engineering.bindings.find(
-                    (candidate) => candidate.userId === responsibleUserId,
-                  )!.id,
-                })
-              }
-            />
-            <FormChoice
-              label="Agent"
-              value={draft.bindingId}
-              options={runnerChoices.map((binding) => ({
-                value: binding.id,
-                label: binding.runnerName,
-              }))}
-              onChange={(bindingId) => onChange({ ...draft, bindingId })}
-            />
-          </>
+          <FormChoice
+            label="开发负责人"
+            value={draft.responsibleUserId}
+            options={responsibleMembers.map((member) => ({
+              value: member.id,
+              label: member.displayName,
+            }))}
+            onChange={(responsibleUserId) =>
+              onChange({
+                ...draft,
+                responsibleUserId,
+                bindingId: engineering.bindings.find(
+                  (candidate) => candidate.userId === responsibleUserId,
+                )!.id,
+              })
+            }
+          />
         )}
       </div>
       <div className="collab-create-item__delivery">

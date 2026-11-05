@@ -16,7 +16,7 @@ const nextConfig = {
   allowedDevOrigins,
   experimental: {
     serverActions: {
-      // Two report groups × five 10 MiB files, plus multipart fields and headers.
+      // Allow attachment uploads plus multipart fields and headers.
       bodySizeLimit: '101mb',
     },
   },

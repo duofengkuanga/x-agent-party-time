@@ -19,7 +19,7 @@ cases:
             sel: '[role="dialog"][aria-labelledby="submission-composer-title"]',
             contains: 提测创建后，协作模式固定,
           }
-      - visible: '[aria-label="Agent"]'
+      - hidden: '.collab-create-item [aria-label="Agent"]'
 
   - name: projects share the main shell in both themes
     steps:
@@ -121,11 +121,11 @@ cases:
       - wait: '.project-name-direct'
       - eval: 'sessionStorage.setItem("activeProjectDeletionHidden",String(!document.querySelector(".project-delete-control")));true'
       - eval: >-
-          (()=>{const selectors=['.project-engineering-create-trigger','.project-members-toggle','.project-overview__heading nav > a[href="/submissions"]','.engineering-archive-trigger'];
+          (()=>{const selectors=['.project-engineering-create-trigger','.project-members-toggle','.project-overview__heading nav > a[href="/submissions"]'];
           const boxes=selectors.map(selector=>document.querySelector(selector).getBoundingClientRect());
           sessionStorage.setItem('projectActionsAligned',String(boxes.every(box=>box.width===104&&box.height===36)
           &&selectors.every(selector=>{const css=getComputedStyle(document.querySelector(selector));return css.fontSize==='12px'&&css.fontWeight==='500';})
-          &&boxes[0].right<boxes[1].left&&boxes[1].right<boxes[2].left&&Math.abs(boxes[2].right-boxes[3].right)<1));return true;})()
+          &&boxes[0].right<boxes[1].left&&boxes[1].right<boxes[2].left));return true;})()
       - wait: { load: networkidle }
       - eval: 'performance.clearResourceTimings();true'
       - click: '.project-engineering-create-trigger'
@@ -201,14 +201,15 @@ cases:
       - eval: 'sessionStorage.getItem("projectPendingFeedback")==="true"'
       - hidden: '.project-loading'
 
-  - name: project overview switches engineering tabs without dialogs
+  - name: project overview expands engineering in the list without dialogs
     steps:
       - open: __BASE_URL__/projects?project=__PROJECT_ID__
-      - wait: '.project-engineering-tabs'
-      - click: '.project-engineering-tabs a:nth-child(2)'
+      - wait: '.project-overview__engineering-list'
+      - click: '.project-overview__engineering-list > li:nth-child(2) .project-engineering-list__link'
       - wait: '.project-engineering[aria-label="浏览器后端工程"]'
     assert:
-      - count: { sel: '.project-engineering-tabs [role="tab"]', eq: 3 }
+      - count: { sel: '.project-engineering-list__link', eq: 3 }
+      - hidden: '[role="tablist"]'
       - count: { sel: '.project-engineering', eq: 1 }
       - count: { sel: '.project-settings__list [aria-current="page"]', eq: 1 }
       - hidden: '[role="dialog"]'
@@ -218,39 +219,49 @@ cases:
       - text: { sel: '.project-members-toggle', contains: 项目成员 }
       - text:
           {
-            sel: '[role="tab"][aria-selected="true"]',
+            sel: '.project-engineering-list__link[aria-expanded="true"]',
             contains: 浏览器后端工程,
           }
-      - text: { sel: '[role="tabpanel"]', contains: 浏览器后端环境 }
-      - hidden: '[role="tabpanel"] .engineering-binding-strip'
+      - text:
+          {
+            sel: '.project-engineering-list__link[aria-expanded="true"]',
+            contains: '1 个环境',
+          }
+      - text: { sel: '.project-engineering', contains: 浏览器后端环境 }
+      - hidden: '.project-engineering .engineering-binding-strip'
+      - eval: >-
+          (()=>{const expanded=document.querySelector('.project-engineering-list__link[aria-expanded=true]');
+          return expanded.closest('li').contains(document.getElementById(expanded.getAttribute('aria-controls')))
+          &&expanded.closest('li').contains(document.querySelector('.project-engineering'));})()
       - eval: >-
           (()=>{const sidebar=document.querySelector('.project-settings__sidebar'),content=document.querySelector('.project-settings__content');
           const a=sidebar.getBoundingClientRect(),b=content.getBoundingClientRect();
           return a.right<=b.left+1&&Math.abs(a.top-b.top)<1
           &&getComputedStyle(content).overflowY==='auto';})()
 
-  - name: engineering tab switching does not refetch the project page
+  - name: opening an engineering row does not refetch the project page
     steps:
       - open: __BASE_URL__/projects?project=__PROJECT_ID__
-      - wait: '.project-engineering-tabs'
+      - wait: '.project-overview__engineering-list'
+      - wait: { load: networkidle }
       - eval: 'performance.clearResourceTimings();true'
-      - click: '.project-engineering-tabs a:nth-child(2)'
+      - click: '.project-overview__engineering-list > li:nth-child(2) .project-engineering-list__link'
       - wait: '.project-engineering[aria-label="浏览器后端工程"]'
     assert:
       - eval: 'performance.getEntriesByType("resource").every(entry=>!entry.name.includes("_rsc="))'
       - text:
           {
-            sel: '[role="tab"][aria-selected="true"]',
+            sel: '.project-engineering-list__link[aria-expanded="true"]',
             contains: 浏览器后端工程,
           }
 
-  - name: engineering tab selection follows browser back and forward
+  - name: engineering expansion follows browser back and forward
     steps:
       - open: __BASE_URL__/projects?project=__PROJECT_ID__
-      - wait: '.project-engineering-tabs'
-      - click: '.project-engineering-tabs a:nth-child(2)'
+      - wait: '.project-overview__engineering-list'
+      - click: '.project-overview__engineering-list > li:nth-child(2) .project-engineering-list__link'
       - wait: '.project-engineering[aria-label="浏览器后端工程"]'
-      - click: '.project-engineering-tabs a:nth-child(3)'
+      - click: '.project-overview__engineering-list > li:nth-child(3) .project-engineering-list__link'
       - wait: '.project-engineering[aria-label="浏览器追加工程"]'
       - eval: 'window.history.back();true'
       - wait: '.project-engineering[aria-label="浏览器后端工程"]'
@@ -259,36 +270,40 @@ cases:
     assert:
       - text:
           {
-            sel: '[role="tab"][aria-selected="true"]',
+            sel: '.project-engineering-list__link[aria-expanded="true"]',
             contains: 浏览器追加工程,
           }
-      - count: { sel: '[role="tabpanel"]', eq: 1 }
+      - count: { sel: '.project-engineering', eq: 1 }
 
-  - name: engineering tabs support keyboard navigation
+  - name: engineering rows can be opened and collapsed with the keyboard
     steps:
-      - click: '.project-engineering-tabs a[aria-selected="true"]'
-      - press: End
-      - press: Enter
-      - wait: '.project-engineering[aria-label="浏览器追加工程"]'
-      - click: '.project-engineering-tabs a[aria-selected="true"]'
-      - press: Home
-      - press: Enter
-      - wait: '.project-engineering[aria-label="浏览器前端工程"]'
-      - click: '.project-engineering-tabs a[aria-selected="true"]'
-      - press: ArrowRight
+      - open: __BASE_URL__/projects?project=__PROJECT_ID__
+      - wait: '.project-engineering-list__link[aria-expanded="true"]'
+      - click: '.project-engineering-list__link[aria-expanded="true"]'
+      - wait: '.project-overview__engineering-list:not(:has([aria-expanded=true]))'
+      - press: Tab
+      - eval: >-
+          (()=>{const link=document.querySelector('.project-overview__engineering-list > li:nth-child(2) .project-engineering-list__link');
+          return document.activeElement===link&&link.matches(':focus-visible')&&getComputedStyle(link).outlineStyle!=='none';})()
       - press: Enter
       - wait: '.project-engineering[aria-label="浏览器后端工程"]'
+      - press: Enter
+      - wait: '.project-overview__engineering-list:not(:has([aria-expanded=true]))'
+      - eval: 'document.documentElement.dataset.engineeringReloading="true";location.reload();true'
+      - wait: 'html:not([data-engineering-reloading]) .project-overview__engineering-list'
     assert:
-      - text:
+      - count:
           {
-            sel: '[role="tab"][aria-selected="true"]',
-            contains: 浏览器后端工程,
+            sel: '.project-engineering-list__link[aria-expanded="false"]',
+            eq: 3,
           }
-      - count: { sel: '[role="tabpanel"]', eq: 1 }
+      - hidden: '.project-engineering'
       - hidden: '.repair-overlay'
 
   - name: project search keeps the selected information visible
     steps:
+      - open: __BASE_URL__/projects?project=__PROJECT_ID__
+      - wait: '.project-engineering'
       - fill: { sel: '.project-settings__search input', text: 不存在的项目 }
     assert:
       - visible: '.project-settings__search-empty'
@@ -298,13 +313,13 @@ cases:
   - name: engineering environment shows stable identity
     steps:
       - open: __BASE_URL__/projects?project=__PROJECT_ID__
-      - wait: '.project-engineering-tabs'
-      - click: '.project-engineering-tabs a:nth-child(3)'
+      - wait: '.project-overview__engineering-list'
+      - click: '.project-overview__engineering-list > li:nth-child(3) .project-engineering-list__link'
       - wait: '.project-engineering[aria-label="浏览器追加工程"]'
     assert:
       - text:
           {
-            sel: '.project-engineering .environment-view-card code',
+            sel: '.project-engineering .environment-selector__key code',
             contains: '84',
           }
       - count: { sel: '.project-engineering input[name="command"]', eq: 0 }
@@ -351,14 +366,16 @@ cases:
       - wait: '.engineering-identity-form[data-save-state="saved"]'
       - eval: >-
           sessionStorage.setItem('directControls',String(!document.querySelector('a[href*="mode="],a[href*="panel=project"],a[href*="panel=collaboration"],.auto-save-form button[type=submit],[role=dialog]:not(.popconfirm),.repair-overlay')));true
+      - click: '.environment-edit'
       - fill:
           { sel: '.environment-direct-row input[name="name"]', text: 集成环境 }
       - wait: '.environment-direct-row .auto-save-form[data-save-state="saved"]'
       - eval: 'document.documentElement.dataset.testReloading="true";window.location.reload();true'
-      - wait: 'html:not([data-test-reloading]) .environment-direct-row'
+      - wait: 'html:not([data-test-reloading]) .environment-selector'
+      - click: '.environment-edit'
       - wait: { load: networkidle }
       - eval: >-
-          document.querySelector('.environment-direct-row code').textContent === 'test'
+          document.querySelector('.environment-selector__key code').textContent === 'test'
       - click: '.environment-add'
       - fill:
           {
@@ -370,22 +387,37 @@ cases:
             sel: '.environment-direct-form--new input[name="environmentIdentifier"]',
             text: staging,
           }
-      - wait: '.environment-direct-row:nth-child(2)'
+      - wait: '.environment-selector:has([role=option]:nth-child(2))'
       - wait: 'body:not(:has(.environment-direct-form--new))'
+      - click: '.environment-selector [role=combobox]'
+      - press: End
+      - press: Enter
+      - wait: '.environment-direct-row[aria-label="预发布环境"]'
+      - fill: { sel: '.environment-direct-row input[name=name]', text: '' }
+      - wait: '.environment-direct-form[data-save-state="error"]'
+      - click: '.environment-selector [role=combobox]'
+      - press: Home
+      - press: Enter
+      - eval: >-
+          sessionStorage.setItem('environmentDraftPreserved',String(document.querySelector('.environment-selector [role=combobox]').textContent.includes('预发布环境')
+          &&document.querySelector('.environment-direct-row input[name=name]').value===''));true
+      - fill:
+          { sel: '.environment-direct-row input[name=name]', text: 预发布环境 }
+      - wait: '.environment-direct-form:not([data-save-state="error"])'
+      - click: '.environment-selector [role=combobox]'
+      - press: Home
+      - press: Enter
+      - wait: '.environment-direct-row[aria-label="集成环境"]'
       - click: '.environment-add'
       - wait: '.environment-direct-form--new'
       - eval: >-
-          (()=>{const cards=[...document.querySelectorAll('.environment-direct-list > *')].map(card=>card.getBoundingClientRect());
-          const footers=[...document.querySelectorAll('.environment-direct-delete > button,.environment-direct-form__hint button')].map(el=>el.getBoundingClientRect());
-          sessionStorage.setItem('mixedEnvironmentCardsAligned',String(cards.length===3&&cards.every(card=>Math.abs(card.top-cards[0].top)<1&&Math.abs(card.height-cards[0].height)<1)
-          &&footers.every(footer=>Math.abs(footer.bottom-footers[0].bottom)<3)));return true;})()
-      - click: '.environment-direct-row:first-child .environment-direct-delete > button'
+          (()=>{const inputs=[...document.querySelectorAll('.environment-direct-form--new input:not([type=hidden])')].map(input=>input.getBoundingClientRect());
+          sessionStorage.setItem('environmentFieldsAligned',String(inputs.length===2&&Math.abs(inputs[0].top-inputs[1].top)<1&&inputs[0].right<inputs[1].left));return true;})()
+      - click: '.environment-direct-delete > button'
       - wait: '.popconfirm:popover-open'
       - eval: >-
-          (()=>{const card=document.querySelector('.environment-direct-row:first-child');
-          const popup=card.querySelector(':popover-open').getBoundingClientRect();
-          const other=document.querySelector('.environment-direct-row:nth-child(2)').getBoundingClientRect();
-          sessionStorage.setItem('environmentConfirmationFits',String(Math.abs(card.getBoundingClientRect().height-other.height)<1&&popup.left>=0&&popup.right<=innerWidth&&popup.top>=0&&popup.bottom<=innerHeight));return true;})()
+          (()=>{const popup=document.querySelector('.environment-direct-delete :popover-open').getBoundingClientRect();
+          sessionStorage.setItem('environmentConfirmationFits',String(popup.left>=0&&popup.right<=innerWidth&&popup.top>=0&&popup.bottom<=innerHeight));return true;})()
       - click: '.popconfirm:popover-open button[type="button"]'
       - fill:
           {
@@ -447,7 +479,7 @@ cases:
           }
       - click: 'text=切换目标工程'
       - eval: >-
-          sessionStorage.setItem('navigationWaitsForSave',String(document.querySelector('[role=tab][aria-selected=true]').textContent.includes('直接编辑工程')
+          sessionStorage.setItem('navigationWaitsForSave',String(document.querySelector('.project-engineering-list__link[aria-expanded=true]').textContent.includes('直接编辑工程')
           &&document.querySelector('.engineering-identity-form input[name=identifier]').value==='连续输入最终名称'));
           window.fetch=window.autosaveFetch;window.releaseAutosave();true
       - wait: '.project-engineering[aria-label="切换目标工程"]'
@@ -465,7 +497,7 @@ cases:
       - click: 'text=切换目标工程'
       - eval: >-
           sessionStorage.setItem('failedDraftPreserved',String(document.querySelector('.engineering-identity-form input[name=identifier]').value==='失败后保留草稿'
-          &&document.querySelector('[role=tab][aria-selected=true]').textContent.includes('直接编辑工程')));window.fetch=window.failureFetch;true
+          &&document.querySelector('.project-engineering-list__link[aria-expanded=true]').textContent.includes('直接编辑工程')));window.fetch=window.failureFetch;true
       - click: '.engineering-identity-form .auto-save-form__status button'
       - wait: '.engineering-identity-form[data-save-state="saved"]'
       - fill:
@@ -476,20 +508,23 @@ cases:
       - wait: '.engineering-identity-form[data-save-state="saved"]'
       - open: __BASE_URL__/projects
       - click: 'text=自动保存验收'
-      - wait: '.project-engineering-tabs'
-      - click: 'text=直接编辑工程'
+      - wait: '.project-overview__engineering-list'
+      - eval: "[...document.querySelectorAll('.project-engineering-list__link[aria-expanded=false]')].find(link=>link.textContent.includes('直接编辑工程'))?.click();true"
       - wait: '.project-engineering[aria-label="直接编辑工程"]'
+      - click: '.environment-edit'
     assert:
       - hidden: '[role="dialog"]'
       - hidden: '.repair-overlay'
       - hidden: '.auto-save-form button[type="submit"]'
-      - count: { sel: '.environment-direct-row', eq: 2 }
+      - count: { sel: '.environment-direct-row', eq: 1 }
+      - count: { sel: '.environment-selector [role=option]', eq: 2 }
+      - hidden: '.environment-card-grid'
       - eval: >-
-          (()=>{const selectors=['.project-engineering-create-trigger','.project-members-toggle','.project-overview__heading nav > a[href="/submissions"]','.engineering-archive-trigger'];
+          (()=>{const selectors=['.project-engineering-create-trigger','.project-members-toggle','.project-overview__heading nav > a[href="/submissions"]'];
           const boxes=selectors.map(selector=>document.querySelector(selector).getBoundingClientRect());
           return boxes.every(box=>box.width===104&&box.height===36)
           &&selectors.every(selector=>{const css=getComputedStyle(document.querySelector(selector));return css.fontSize==='12px'&&css.fontWeight==='500';})
-          &&boxes[0].right<boxes[1].left&&boxes[1].right<boxes[2].left&&Math.abs(boxes[2].right-boxes[3].right)<1;})()
+          &&boxes[0].right<boxes[1].left&&boxes[1].right<boxes[2].left;})()
       - eval: >-
           (()=>{const identifier=document.querySelector('.engineering-identity-form__identifier,.engineering-identifier-readonly');
           const members=document.querySelector('.engineering-heading-members');
@@ -497,14 +532,11 @@ cases:
           &&Math.abs(members.querySelector('.engineering-field-label').getBoundingClientRect().top-identifier.firstElementChild.getBoundingClientRect().top)<1;})()
       - hidden: '.engineering-detail__environments > .collaboration-section-title'
       - eval: >-
-          (()=>{const cards=[...document.querySelectorAll('.environment-direct-row')].map(card=>card.getBoundingClientRect());
-          return Math.abs(cards[0].top-cards[1].top)<1&&cards[0].right<cards[1].left&&cards[0].width<500;})()
-      - eval: >-
           document.querySelector('.project-name-direct input[name=name]').value==='自动保存验收'
           &&document.querySelector('.engineering-identity-form input[name=identifier]').value==='连续输入最终名称'
           &&[...document.querySelectorAll('.environment-direct-row input[name=name]')].some(input=>input.value==='集成环境')
-          &&[...document.querySelectorAll('.environment-direct-row code')].some(code=>code.textContent==='test')
-          &&['directControls','mixedEnvironmentCardsAligned','environmentConfirmationFits','environmentErrorReadable','navigationWaitsForSave','failedDraftPreserved'].every(key=>sessionStorage.getItem(key)==='true')
+          &&document.querySelector('.environment-selector__key code').textContent==='test'
+          &&['directControls','environmentFieldsAligned','environmentDraftPreserved','environmentConfirmationFits','environmentErrorReadable','navigationWaitsForSave','failedDraftPreserved'].every(key=>sessionStorage.getItem(key)==='true')
 
   - name: environment deletion uses a button and anchored confirmation
     steps:
@@ -535,6 +567,7 @@ cases:
           }
       - click: '.engineering-editor > .dialog-actions button[type="submit"]'
       - wait: 'body:not(:has(.engineering-create-modal[open]))'
+      - click: '.environment-edit'
       - wait: '.environment-direct-row'
       - click: '.environment-direct-delete > button'
       - wait: '.popconfirm:popover-open'
@@ -550,6 +583,10 @@ cases:
       - click: '.project-overview__heading'
       - wait: 'body:not(:has(.popconfirm:popover-open))'
       - click: 'button[aria-label="切换暗夜主题"]'
+      - wait: '.collab-shell[data-theme="night"]'
+      - eval: >-
+          (async()=>{const shell=document.querySelector('.collab-shell');
+          await Promise.allSettled(shell.getAnimations().map(animation=>animation.finished));return true;})()
       - click: '.environment-direct-delete > button'
       - wait: '.popconfirm:popover-open'
       - eval: >-
@@ -584,7 +621,7 @@ cases:
       - eval: >-
           (()=>{const flags=Object.fromEntries(['environmentCancelInitiallyFocused','environmentCancelFocusReturned','environmentPopoverAnchored','environmentDeletePendingDisabled'].map(key=>[key,sessionStorage.getItem(key)]));if(Object.values(flags).some(value=>value!=='true'))throw new Error(JSON.stringify({flags,geometry:sessionStorage.getItem('environmentPopoverGeometry')}));return true;})()
 
-  - name: engineering archive stays beside creation and preserves engineering information
+  - name: engineering archive stays with the expanded engineering and preserves its information
     steps:
       - open: __BASE_URL__/projects?project=__PROJECT_ID__
       - wait: { load: networkidle }
@@ -615,7 +652,9 @@ cases:
       - wait: 'body:not(:has(.engineering-create-modal[open]))'
       - wait: '.engineering-identity-form'
       - eval: >-
-          sessionStorage.setItem('archiveBesideCreation',String(Math.abs(document.querySelector('.project-overview__heading nav > a[href="/submissions"]').getBoundingClientRect().right-document.querySelector('.engineering-archive-trigger').getBoundingClientRect().right)<1));true
+          (()=>{const footer=document.querySelector('.project-engineering-list__detail footer');
+          sessionStorage.setItem('archiveWithEngineering',String(!!footer.querySelector('.engineering-archive-trigger')
+          &&footer.getBoundingClientRect().top>=document.querySelector('.project-engineering').getBoundingClientRect().bottom));return true;})()
       - click: '.engineering-archive-trigger'
       - wait: '.engineering-archive-control .popconfirm:popover-open'
       - eval: >-
@@ -631,12 +670,15 @@ cases:
     assert:
       - text: { sel: '.engineering-archive-trigger', contains: 已归档 }
       - text:
-          { sel: '[role="tab"][aria-selected="true"]', contains: 归档保留配置 }
-      - text: { sel: '.environment-view-card', contains: archive }
+          {
+            sel: '.project-engineering-list__link[aria-expanded="true"]',
+            contains: 归档保留配置,
+          }
+      - text: { sel: '.environment-selector__key', contains: archive }
       - hidden: '.engineering-identity-form'
       - hidden: '.environment-direct-form'
       - eval: >-
-          ['archiveBesideCreation','archivePopover','archiveCancelFocus'].every(key=>sessionStorage.getItem(key)==='true')
+          ['archiveWithEngineering','archivePopover','archiveCancelFocus'].every(key=>sessionStorage.getItem(key)==='true')
 
   - name: project members open in a dialog next to the submission action
     steps:
@@ -673,7 +715,11 @@ cases:
       - click: '.collab-rail__create'
       - wait: '.collab-composer-fields input[maxlength="160"]'
     assert:
-      - text: { sel: 'output[aria-label="项目"]', contains: 浏览器验收项目 }
+      - text:
+          {
+            sel: '[aria-label="项目"]:is(output, [role="combobox"])',
+            contains: 浏览器验收项目,
+          }
       - text:
           {
             sel: '[role="combobox"][aria-label="测试负责人"]',
@@ -782,13 +828,9 @@ cases:
           (()=>{const select=document.querySelector('#collab-bug-form select');
           select.value=select.querySelector('optgroup[label=后端] option').value;
           select.dispatchEvent(new Event('change',{bubbles:true}));return true;})()
-      - fill:
-          {
-            sel: '#collab-bug-form input[maxlength="240"]',
-            text: 连续登记第一张,
-          }
+      - fill: { sel: '#collab-bug-form textarea', text: 连续登记第一张 }
       - eval: >-
-          (()=>{const input=document.querySelector('[aria-label="实际结果附件"] input[type=file]');
+          (()=>{const input=document.querySelector('[aria-label="附件"] input[type=file]');
           const transfer=new DataTransfer();transfer.items.add(new File(['draft'],'草稿证据.txt',{type:'text/plain'}));
           Object.defineProperty(input,'files',{configurable:true,value:transfer.files});
           input.dispatchEvent(new Event('change',{bubbles:true}));return true;})()
@@ -796,9 +838,9 @@ cases:
       - eval: "[...document.querySelectorAll('button')].find(button=>button.textContent?.includes('登记缺陷')).click();true"
       - wait: '#collab-bug-form'
     assert:
-      - eval: 'document.querySelector("#collab-bug-form input[maxlength]").value === "连续登记第一张"'
+      - eval: 'document.querySelector("#collab-bug-form textarea").value === "连续登记第一张"'
       - eval: 'document.querySelector("#collab-bug-form select").selectedOptions[0].textContent.includes("browser-api")'
-      - text: { sel: '[aria-label="实际结果附件"]', contains: 草稿证据.txt }
+      - text: { sel: '[aria-label="附件"]', contains: 草稿证据.txt }
 
   - name: confirm closes registration and next report clears content and attachments
     steps:
@@ -809,20 +851,15 @@ cases:
       - wait: '#collab-bug-form'
     assert:
       - visible: '#collab-bug-form'
-      - eval: 'document.querySelector("#collab-bug-form input[maxlength]").value === ""'
+      - eval: 'document.querySelector("#collab-bug-form textarea").value === ""'
       - eval: 'document.querySelector("#collab-bug-form select").selectedOptions[0].textContent.includes("browser-api")'
-      - count:
-          { sel: '[aria-label="实际结果附件"] li[data-source="new"]', eq: 0 }
+      - count: { sel: '[aria-label="附件"] li[data-source="new"]', eq: 0 }
       - count: { sel: 'button[aria-label^="连续登记第一张，后端，"]', eq: 1 }
       - eval: 'window.confirmClosedRegistration'
 
   - name: regular registration remembers the last engineering for the next report
     steps:
-      - fill:
-          {
-            sel: '#collab-bug-form input[maxlength="240"]',
-            text: 连续登记第二张,
-          }
+      - fill: { sel: '#collab-bug-form textarea', text: 连续登记第二张 }
       - click: 'button[form="collab-bug-form"]:not([value])'
       - wait: 800
       - eval: "[...document.querySelectorAll('button')].find(button=>button.textContent?.includes('登记缺陷')).click();true"
@@ -830,7 +867,7 @@ cases:
     assert:
       - count: { sel: 'button[aria-label^="连续登记第二张，后端，"]', eq: 1 }
       - eval: 'document.querySelector("#collab-bug-form select").selectedOptions[0].textContent.includes("browser-api")'
-      - eval: 'document.querySelector("#collab-bug-form input[maxlength]").value === ""'
+      - eval: 'document.querySelector("#collab-bug-form textarea").value === ""'
 
   - name: unique joint engineering values are readable without redundant selectors
     steps:
@@ -841,20 +878,16 @@ cases:
       - visible: 'output[aria-label="后端工程"]'
       - hidden: 'select[aria-label="前端工程"]'
       - hidden: 'select[aria-label="后端工程"]'
-      - eval: 'document.activeElement === document.querySelector("#collab-bug-form input[maxlength]")'
+      - eval: 'document.activeElement === document.querySelector("#collab-bug-form textarea")'
 
   - name: closing bug registration retains its draft without changing saved reports
     steps:
-      - fill:
-          {
-            sel: '#collab-bug-form input[maxlength="240"]',
-            text: 关闭保留这张草稿,
-          }
+      - fill: { sel: '#collab-bug-form textarea', text: 关闭保留这张草稿 }
       - click: '.collab-bug-drawer__actions > button:first-child'
       - eval: "[...document.querySelectorAll('button')].find(button=>button.textContent?.includes('登记缺陷')).click();true"
       - wait: '#collab-bug-form'
     assert:
-      - eval: 'document.querySelector("#collab-bug-form input[maxlength]").value === "关闭保留这张草稿"'
+      - eval: 'document.querySelector("#collab-bug-form textarea").value === "关闭保留这张草稿"'
       - count: { sel: 'button[aria-label^="连续登记第一张，"]', eq: 1 }
       - count: { sel: 'button[aria-label^="连续登记第二张，"]', eq: 1 }
 
@@ -973,10 +1006,9 @@ cases:
       - hidden: '.collab-bug-identity'
       - hidden: '.collab-bug-detail-tabs'
       - hidden: '.collab-repair-timeline'
-      - text: { sel: '.collab-tester-detail__comparison', contains: 预期结果 }
-      - text:
-          { sel: '.collab-tester-detail__comparison', contains: 原始实际结果 }
-      - eval: '(() => { const [expected,actual]=document.querySelectorAll(".collab-tester-detail__comparison > div"); return expected.getBoundingClientRect().right <= actual.getBoundingClientRect().left; })()'
+      - text: { sel: '.collab-tester-detail__comparison', contains: 缺陷描述 }
+      - text: { sel: '.collab-tester-detail__comparison', contains: 附件 }
+      - eval: '(() => { const [expected,actual]=document.querySelectorAll(".collab-tester-detail__comparison > div"); return expected.getBoundingClientRect().bottom <= actual.getBoundingClientRect().top; })()'
       - eval: 'getComputedStyle(document.querySelector(".collab-tester-detail")).overflowY === "auto"'
       - eval: '[...document.querySelectorAll(".collab-tester-detail__actions button")].map(b=>b.textContent.trim()).join("|") === "编辑资料|开始修复"'
 
@@ -1013,13 +1045,9 @@ cases:
       - wait: { load: networkidle }
       - eval: "[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('登记缺陷'))?.click(); true"
       - wait: '#collab-bug-form'
-      - fill:
-          {
-            sel: '#collab-bug-form input[maxlength="240"]',
-            text: 大截图登记回归,
-          }
+      - fill: { sel: '#collab-bug-form textarea', text: 大截图登记回归 }
       - eval: >-
-          (() => { const input = document.querySelector('[aria-label="预期结果附件"] input[type="file"]');
+          (() => { const input = document.querySelector('[aria-label="附件"] input[type="file"]');
           const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
           const bytes = new Uint8Array(Math.ceil(4.1 * 1024 * 1024));
           bytes.set(Uint8Array.from(atob(canvas.toDataURL().split(',')[1]), (c) => c.charCodeAt(0)));
@@ -1038,11 +1066,7 @@ cases:
       - wait: { load: networkidle }
       - eval: "[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('登记缺陷'))?.click(); true"
       - wait: '#collab-bug-form'
-      - fill:
-          {
-            sel: '#collab-bug-form input[maxlength="240"]',
-            text: 网络中断保留草稿,
-          }
+      - fill: { sel: '#collab-bug-form textarea', text: 网络中断保留草稿 }
       - eval: >-
           (() => { const original = window.fetch;
           window.fetch = (...args) => {
@@ -1054,7 +1078,7 @@ cases:
     assert:
       - text: { sel: '[role="alert"]', contains: 未收到服务器响应 }
       - text: { sel: '[role="alert"]', contains: 先核对当前记录 }
-      - eval: 'document.querySelector(''#collab-bug-form input[maxlength="240"]'').value === ''网络中断保留草稿'''
+      - eval: "document.querySelector('#collab-bug-form textarea').value === '网络中断保留草稿'"
       - eval: '!document.querySelector(''button[form="collab-bug-form"]:not([value])'').disabled'
 
   - name: retry succeeds after the connection recovers
@@ -1085,45 +1109,40 @@ cases:
       - eval: "[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('登记缺陷'))?.click(); true"
       - wait: '#collab-bug-form'
       - eval: >-
-          (() => { const input = document.querySelector('[aria-label="实际结果附件"] input[type="file"]');
+          (() => { const input = document.querySelector('[aria-label="附件"] input[type="file"]');
           const transfer = new DataTransfer(); transfer.items.add(new File([new Uint8Array(11 * 1024 * 1024)], 'too-large.png', { type: 'image/png' }));
           Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
           input.dispatchEvent(new Event('change', { bubbles: true })); return true; })()
     assert:
       - text:
           {
-            sel: '[aria-label="实际结果附件"]',
+            sel: '[aria-label="附件"]',
             contains: '「too-large.png」（11.0 MB）超过单个附件 10 MB',
           }
-      - count:
-          { sel: '[aria-label="实际结果附件"] .collab-attachment-tile', eq: 0 }
+      - count: { sel: '[aria-label="附件"] .collab-attachment-tile', eq: 0 }
       - visible: 'button[form="collab-bug-form"]:not([value])'
 
-  - name: both report groups accept five attachments at the 10 MB boundary
+  - name: report accepts five attachments at the 10 MB boundary
     steps:
       - click: 'button[aria-label="关闭详情抽屉"]'
       - click: 'button[aria-label="切换纸张主题"]'
       - eval: "[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('登记缺陷'))?.click(); true"
       - wait: '#collab-bug-form'
-      - fill:
-          {
-            sel: '#collab-bug-form input[maxlength="240"]',
-            text: 双组附件上限登记,
-          }
+      - fill: { sel: '#collab-bug-form textarea', text: 附件上限登记 }
       - eval: >-
-          (() => { for (const label of ['实际结果附件', '预期结果附件']) {
+          (() => { for (const label of ['附件']) {
           const input = document.querySelector(`[aria-label="${label}"] input[type="file"]`);
           const transfer = new DataTransfer(); for (let i = 0; i < 5; i++)
           transfer.items.add(new File([new Uint8Array(10 * 1024 * 1024)], `${label}-${i}.txt`, { type: 'text/plain' }));
           Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
           input.dispatchEvent(new Event('change', { bubbles: true })); } return true; })()
       - click: 'button[form="collab-bug-form"]:not([value])'
-      - wait: 'button[aria-label^="双组附件上限登记，"]'
-      - click: 'button[aria-label^="双组附件上限登记，"]'
+      - wait: 'button[aria-label^="附件上限登记，"]'
+      - click: 'button[aria-label^="附件上限登记，"]'
       - wait: '[role="dialog"]'
     assert:
       - count:
-          { sel: '[role="dialog"] .collab-bug-detail-attachments li', eq: 10 }
+          { sel: '[role="dialog"] .collab-bug-detail-attachments li', eq: 5 }
 
   - name: joint registration creates two independent bugs and shows both statuses without a related module
     steps:
@@ -1132,13 +1151,9 @@ cases:
       - eval: "[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('登记缺陷'))?.click(); true"
       - wait: '#collab-bug-form'
       - click: '#collab-bug-form input[type="checkbox"]'
-      - fill:
-          {
-            sel: '#collab-bug-form input[maxlength="240"]',
-            text: 浏览器前后端关联单,
-          }
+      - fill: { sel: '#collab-bug-form textarea', text: 浏览器前后端关联单 }
       - eval: >-
-          (() => { const input = document.querySelector('[aria-label="实际结果附件"] input[type="file"]');
+          (() => { const input = document.querySelector('[aria-label="附件"] input[type="file"]');
           const transfer = new DataTransfer(); transfer.items.add(new File(['joint proof'], 'joint-proof.txt', { type: 'text/plain' }));
           Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
           input.dispatchEvent(new Event('change', { bubbles: true })); return true; })()
@@ -1296,7 +1311,7 @@ cases:
       - text:
           {
             sel: '.collab-developer-source[open]',
-            contains: 修复更新页签滚动回归 的预期结果,
+            contains: 修复更新页签滚动回归,
           }
       - hidden: '.collab-bug-identity'
       - eval: 'Math.abs(document.querySelector(".collab-bug-drawer").getBoundingClientRect().top-window.developerModalTop)<=1'
@@ -1395,7 +1410,7 @@ cases:
       - visible: '.collab-shell[data-theme="night"]'
       - visible: '[aria-label="前端工程"]'
       - visible: '[aria-label="后端工程"]'
-      - eval: "document.activeElement === document.querySelector('#collab-bug-form input[maxlength]')"
+      - eval: "document.activeElement === document.querySelector('#collab-bug-form textarea')"
       - visible: 'button[form="collab-bug-form"]:not([value])'
 
   - name: tester sees verification readiness without engineering checks
@@ -1443,7 +1458,7 @@ cases:
       - eval: "[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('登记缺陷'))?.click(); true"
       - wait: '#collab-bug-form'
       - eval: >-
-          (() => { const input = document.querySelector('[aria-label="实际结果附件"] input[type="file"]');
+          (() => { const input = document.querySelector('[aria-label="附件"] input[type="file"]');
           const transfer = new DataTransfer(); transfer.items.add(new File(['pdf'], 'unsupported.pdf', { type: 'application/pdf' }));
           Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
           input.dispatchEvent(new Event('change', { bubbles: true })); return true; })()
@@ -1451,7 +1466,7 @@ cases:
     assert:
       - text:
           {
-            sel: '[aria-label="实际结果附件"] [role="status"]',
+            sel: '[aria-label="附件"] [role="status"]',
             contains: 仅支持 PNG、JPG、WEBP、TXT 和 JSON 文件,
           }
 
@@ -1461,23 +1476,9 @@ cases:
       - wait: { load: networkidle }
       - eval: "[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('登记缺陷'))?.click(); true"
       - wait: '#collab-bug-form'
-      - fill:
-          {
-            sel: '#collab-bug-form input[maxlength="240"]',
-            text: 浏览器登记缺陷,
-          }
-      - fill:
-          {
-            sel: '#collab-bug-form .collab-bug-result-field:nth-of-type(1) textarea',
-            text: 应显示成功反馈,
-          }
-      - fill:
-          {
-            sel: '#collab-bug-form .collab-bug-result-field:nth-of-type(2) textarea',
-            text: 当前没有反馈,
-          }
+      - fill: { sel: '#collab-bug-form textarea', text: 浏览器登记缺陷 }
       - eval: >-
-          (() => { const input = document.querySelector('[aria-label="实际结果附件"] input[type="file"]');
+          (() => { const input = document.querySelector('[aria-label="附件"] input[type="file"]');
           const transfer = new DataTransfer(); for (let index = 1; index <= 6; index += 1)
           transfer.items.add(new File([`proof-${index}`], `browser-proof-${index}.txt`, { type: 'text/plain' }));
           Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
@@ -1556,7 +1557,10 @@ cases:
           window.linkedCardFits = () => { const card=document.querySelector('.collab-linked-review-card[data-stage="DONE"]');
           const bounds=card.getBoundingClientRect(), footer=card.querySelector('.collab-bug-card__footer').getBoundingClientRect();
           const buttons=[...card.querySelectorAll('.collab-bug-card__actions button')];
-          return footer.bottom <= bounds.bottom - 1 && card.scrollHeight <= card.clientHeight + 1 &&
+          const peers=[...card.parentElement.children].filter(peer=>Math.abs(peer.getBoundingClientRect().top-bounds.top)<1);
+          return peers.every(peer=>Math.abs(peer.getBoundingClientRect().height-bounds.height)<1)
+          &&peers.filter(peer=>peer.querySelector('.collab-bug-card__actions')).every(peer=>Math.abs(peer.querySelector('.collab-bug-card__actions').getBoundingClientRect().bottom-card.querySelector('.collab-bug-card__actions').getBoundingClientRect().bottom)<1)
+          &&footer.bottom <= bounds.bottom - 1 && card.scrollHeight <= card.clientHeight + 1 &&
           buttons.map(button=>button.textContent.trim()).join('|') === '重新打开|归档' &&
           buttons.every(button=>{const r=button.getBoundingClientRect(); return r.bottom<=bounds.bottom-1 && r.left>=bounds.left && r.right<=bounds.right;}); };
           const shell=document.querySelector('.collab-shell'); const original=shell.dataset.theme;
@@ -1610,81 +1614,128 @@ cases:
           const selected=getComputedStyle(input.closest('label'));
           return selected.boxShadow!=='none' && getComputedStyle(input).opacity==='0';})()
 
-  - name: six board columns resize with keyboard and remember their widths
+  - name: six board statuses stack vertically with wrapping cards
     steps:
       - open: __BASE_URL__/submissions/__SUBMISSION_ID__
-      - wait: '[role="separator"][aria-label^="调整待修复与修复中"]'
-      - eval: >-
-          window.boardFirstColumn=()=>document.querySelector('.collab-board > .collab-column').getBoundingClientRect().width;
-          sessionStorage.setItem('boardInitialWidth',String(window.boardFirstColumn())); document.querySelector('.collab-board > [role="separator"]').focus(); true
-      - press: ArrowRight
-      - press: End
-      - wait: 150
-      - eval: 'sessionStorage.setItem("boardResizedWidth",String(window.boardFirstColumn())); true'
-      - open: __BASE_URL__/submissions/__SUBMISSION_ID__
-      - wait: '[role="separator"][aria-label^="调整待修复与修复中"]'
-      - eval: >-
-          sessionStorage.setItem('boardRestoredWidth',String(document.querySelector('.collab-board > .collab-column').getBoundingClientRect().width));
-          document.querySelector('.collab-board > [role="separator"]').dispatchEvent(new MouseEvent('dblclick',{bubbles:true})); true
+      - wait: '.collab-board > .collab-column'
     assert:
-      - count: { sel: '.collab-board > [role="separator"]', eq: 5 }
+      - count: { sel: '.collab-board > .collab-column', eq: 6 }
+      - hidden: '.collab-board > [role="separator"]'
       - eval: >-
-          (()=>{const before=Number(sessionStorage.boardInitialWidth), after=Number(sessionStorage.boardResizedWidth);
-          if(after<before+100) throw new Error(`列宽调整不足：${before} → ${after}`); return true;})()
-      - eval: 'Math.abs(Number(sessionStorage.boardRestoredWidth)-Number(sessionStorage.boardResizedWidth))<3'
+          (() => {
+            const board = document.querySelector('.collab-board');
+            const sections = [...board.querySelectorAll(':scope > .collab-column')];
+            const boxes = sections.map(section => section.getBoundingClientRect());
+            return sections.map(section => section.getAttribute('aria-label')).join('|') ===
+              '待修复|修复中|待更新|更新中|待验证|已完成'
+              && boxes.every((box, index) => Math.abs(box.left - boxes[0].left) < 1
+                && Math.abs(box.width - boxes[0].width) < 1
+                && (index === 0 || box.top > boxes[index - 1].bottom))
+              && board.scrollWidth <= board.clientWidth + 1
+              && [...board.querySelectorAll('.collab-column__cards')].every(group =>
+                getComputedStyle(group).overflowY === 'visible');
+          })()
       - eval: >-
-          (()=>{const columns=[...document.querySelectorAll('.collab-board > .collab-column')];
-          return Math.abs(columns[0].getBoundingClientRect().width-columns[1].getBoundingClientRect().width)<3;})()
+          (() => {
+            const cards = [...document.querySelectorAll('.collab-column:first-child .collab-bug-card')]
+              .map(card => card.getBoundingClientRect());
+            return cards.length > 1 && Math.abs(cards[0].top - cards[1].top) < 1
+              && cards[1].left > cards[0].right;
+          })()
 
-  - name: dragging a divider borrows width from several columns
+  - name: vertical board scrolls to the final status with keyboard in both themes
     steps:
       - open: __BASE_URL__/submissions/__SUBMISSION_ID__
-      - wait: '.collab-board > [role="separator"]'
+      - wait: '.collab-board > .collab-column'
+      - eval: 'document.querySelector(".collab-board").focus(); true'
+      - press: End
       - eval: >-
-          (()=>{const board=document.querySelector('.collab-board'), handle=board.querySelector('[role="separator"]');
-          const columns=[...board.querySelectorAll(':scope > .collab-column')];
-          sessionStorage.setItem('dragInitialWidth',String(columns[0].getBoundingClientRect().width));
-          handle.setPointerCapture=()=>{}; handle.hasPointerCapture=()=>false;
-          const x=handle.getBoundingClientRect().left+5;
-          handle.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,pointerId:73,clientX:x,button:0}));
-          handle.dispatchEvent(new PointerEvent('pointermove',{bubbles:true,pointerId:73,clientX:x+180,button:0}));
-          handle.dispatchEvent(new PointerEvent('pointerup',{bubbles:true,pointerId:73,clientX:x+180,button:0}));
-          return true;})()
-      - wait: 150
+          (async () => {
+            const board = document.querySelector('.collab-board');
+            const deadline = performance.now() + 2000;
+            while (board.scrollTop + board.clientHeight < board.scrollHeight - 1
+              && performance.now() < deadline)
+              await new Promise(requestAnimationFrame);
+            const last = board.lastElementChild.getBoundingClientRect();
+            sessionStorage.setItem('boardEndReachable', String(
+              board.scrollTop > 0 && last.bottom <= board.getBoundingClientRect().bottom + 1));
+            return true;
+          })()
+      - click: 'button[aria-label="切换暗夜主题"]'
+      - wait: '.collab-shell[data-theme="night"]'
+      - eval: 'document.querySelector(".collab-board").focus(); true'
+      - press: Home
       - eval: >-
-          (()=>{const board=document.querySelector('.collab-board');
-          const columns=[...board.querySelectorAll(':scope > .collab-column')].map(node=>node.getBoundingClientRect().width);
-          sessionStorage.setItem('dragResizedWidth',String(columns[0]));
-          sessionStorage.setItem('dragMinWidth',String(Math.min(...columns)));
-          board.querySelector('[role="separator"]').dispatchEvent(new MouseEvent('dblclick',{bubbles:true})); return true;})()
+          (async () => {
+            const board = document.querySelector('.collab-board');
+            const deadline = performance.now() + 2000;
+            while (board.scrollTop > 0 && performance.now() < deadline)
+              await new Promise(requestAnimationFrame);
+            board.style.width = 'min(100%, 560px)';
+            return true;
+          })()
     assert:
-      - eval: 'Number(sessionStorage.dragResizedWidth)>=Number(sessionStorage.dragInitialWidth)+100 && Number(sessionStorage.dragMinWidth)>=139'
+      - eval: 'sessionStorage.getItem("boardEndReachable") === "true"'
+      - eval: >-
+          (() => {
+            const board = document.querySelector('.collab-board');
+            const sections = [...board.children].map(section => section.getBoundingClientRect());
+            return board.scrollTop === 0 && board.scrollWidth <= board.clientWidth + 1
+              && sections.every((box, index) => index === 0 || box.top > sections[index - 1].bottom);
+          })()
+
+  - name: registration notice keeps cards inside their status sections
+    steps:
+      - open: __BASE_URL__/submissions/__SUBMISSION_ID__
+      - wait: '.collab-board-heading'
+      - click: '.collab-board-heading__actions > button:not([title])'
+      - wait: '#collab-bug-form'
+      - fill: { sel: '#collab-bug-form textarea', text: 通知布局回归 }
+      - eval: >-
+          sessionStorage.setItem('reportFieldsSimplified', String(
+            document.querySelectorAll('#collab-bug-form textarea').length === 1
+            && document.querySelectorAll('#collab-bug-form [aria-label="附件"]').length === 1
+            && !document.querySelector('.collab-bug-result-field'))); true
+      - click: 'button[form="collab-bug-form"]:not([value])'
+      - wait: '.collab-stage > .collab-banner[role=status]'
+      - wait: 'button[aria-label^="通知布局回归，"]'
+      - eval: >-
+          (() => {
+            const notice = document.querySelector('.collab-stage > .collab-banner[role=status]');
+            const sections = [...document.querySelectorAll('.collab-column')];
+            sessionStorage.setItem('noticeKeepsCardBounds', String(
+              notice.textContent.includes('缺陷已登记') && sections.every(section => {
+                const bounds = section.getBoundingClientRect();
+                return [...section.querySelectorAll('.collab-bug-card')].every(card => {
+                  const box = card.getBoundingClientRect();
+                  return box.top >= bounds.top && box.bottom <= bounds.bottom
+                    && box.left >= bounds.left && box.right <= bounds.right;
+                });
+              })));
+            return true;
+          })()
+    assert:
+      - eval: 'sessionStorage.getItem("reportFieldsSimplified") === "true"'
+      - eval: 'sessionStorage.getItem("noticeKeepsCardBounds") === "true"'
 
   - name: narrow verification card keeps the pass confirmation inside its border
     steps:
       - open: __BASE_URL__/submissions/__SUBMISSION_ID__
-      - wait: '.collab-board > [role="separator"]'
-      - eval: >-
-          (()=>{const handle=[...document.querySelectorAll('.collab-board > [role="separator"]')][3];
-          handle.setPointerCapture=()=>{}; handle.hasPointerCapture=()=>false;
-          const x=handle.getBoundingClientRect().left+5;
-          handle.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,pointerId:74,clientX:x,button:0}));
-          handle.dispatchEvent(new PointerEvent('pointermove',{bubbles:true,pointerId:74,clientX:x+180,button:0}));
-          handle.dispatchEvent(new PointerEvent('pointerup',{bubbles:true,pointerId:74,clientX:x+180,button:0})); return true;})()
-      - wait: 150
+      - wait: '.collab-board > .collab-column'
+      - eval: 'document.querySelector(".collab-board").style.width="360px"; true'
       - click: 'article:has(> button[aria-label^="待验证通过缺陷，"]) .collab-pass-confirm > button'
       - wait: 'article:has(> button[aria-label^="待验证通过缺陷，"]) .popconfirm--inline'
       - eval: >-
           (()=>{const card=document.querySelector('article:has(> button[aria-label^="待验证通过缺陷，"])');
           const bounds=card.getBoundingClientRect(), panel=card.querySelector('.popconfirm--inline').getBoundingClientRect();
           const fits=panel.left>=bounds.left && panel.right<=bounds.right && panel.bottom<=bounds.bottom && card.scrollWidth<=card.clientWidth+1;
-          document.querySelector('.collab-board > [role="separator"]').dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));
           window.narrowPassFits=fits; return true;})()
       - click: '.popconfirm--inline .popconfirm__actions button:first-child'
       - eval: 'window.inlineCancelFocus=document.activeElement.textContent.trim()==="通过";true'
       - click: 'article:has(> button[aria-label^="待验证通过缺陷，"]) .collab-pass-confirm > button'
       - wait: '.popconfirm--inline'
       - click: '.collab-board-heading'
+      - eval: 'document.querySelector(".collab-board").style.removeProperty("width"); true'
     assert:
       - eval: 'window.narrowPassFits'
       - eval: 'window.inlineCancelFocus'
@@ -1823,10 +1874,7 @@ cases:
             contains: 上次反馈：刷新后内容仍然丢失,
           }
       - text:
-          {
-            sel: '.collab-tester-detail__comparison',
-            contains: 待验证返修缺陷 的实际结果,
-          }
+          { sel: '.collab-tester-detail__comparison', contains: 待验证返修缺陷 }
       - eval: 'document.activeElement === document.querySelector("#collab-tester-feedback textarea")'
       - visible: 'button[form="collab-tester-feedback"]:disabled'
 
@@ -2102,6 +2150,8 @@ cases:
 
   - name: add engineering opens a compact dialog with keyboard focus
     steps:
+      - open: __BASE_URL__/submissions/__SUBMISSION_ID__
+      - wait: 'button[aria-label="查看浏览器架构验收提测详情"]'
       - click: 'button[aria-label="查看浏览器架构验收提测详情"]'
       - click: '.collab-add-items-trigger'
       - wait: '.collab-add-items-dialog input[aria-label="目标分支"]'
@@ -2111,6 +2161,7 @@ cases:
       - eval: 'document.querySelector(".collab-add-items-dialog").getBoundingClientRect().width <= 620'
       - visible: '.collab-add-items-dialog output[aria-label="工程"]'
       - hidden: '.collab-add-items-dialog select[aria-label="工程"]'
+      - hidden: '.collab-add-items-dialog [aria-label="Agent"]'
       - text: { sel: '.collab-add-items-dialog', contains: 浏览器追加工程 }
 
   - name: invalid added engineering branch prevents submission and retains its draft
@@ -2152,7 +2203,7 @@ cases:
       - hidden: '.collab-add-items-trigger'
       - hidden: '.collab-add-items-dialog'
 
-  - name: registration defaults to the first engineering and repair requires a title
+  - name: registration defaults to the first engineering and repair requires a description
     steps:
       - open: __BASE_URL__/submissions/__SUBMISSION_ID__
       - wait: { load: networkidle }
@@ -2185,11 +2236,7 @@ cases:
 
   - name: register and repair preserves the draft on error and queues on retry
     steps:
-      - fill:
-          {
-            sel: '#collab-bug-form input[maxlength="240"]',
-            text: 一键登记修复回归,
-          }
+      - fill: { sel: '#collab-bug-form textarea', text: 一键登记修复回归 }
       - eval: >-
           (() => { const button = document.querySelector('button[value=repair]'); button.focus();
           window.repairButtonFocused = document.activeElement === button;
@@ -2207,7 +2254,7 @@ cases:
       - eval: 'window.repairButtonFocused'
       - visible: '#collab-bug-form'
       - visible: '#collab-bug-form [role="alert"]'
-      - eval: 'document.querySelector("#collab-bug-form input[maxlength]").value === "一键登记修复回归"'
+      - eval: 'document.querySelector("#collab-bug-form textarea").value === "一键登记修复回归"'
 
   - name: single engineering registration enters repair without a second action
     steps:
@@ -2230,11 +2277,7 @@ cases:
       - eval: "[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('登记缺陷'))?.click(); true"
       - wait: '#collab-bug-form'
       - click: '#collab-bug-form input[type="checkbox"]'
-      - fill:
-          {
-            sel: '#collab-bug-form input[maxlength="240"]',
-            text: 双工程一键修复回归,
-          }
+      - fill: { sel: '#collab-bug-form textarea', text: 双工程一键修复回归 }
       - eval: 'document.querySelector("button[value=repair]").focus(); true'
     assert:
       - visible: '.collab-shell[data-theme="night"] button[value="repair"]:enabled'

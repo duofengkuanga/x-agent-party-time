@@ -12,9 +12,8 @@ test('旧 26 契约明确拒绝且保留旧表记录', async () => {
   f.bugs.createBug(f.users.tester.id, f.submission.id, {
     mutationId: randomUUID(),
     submissionItemId: f.item.id,
-    title: '尚未开始',
-    actualResultAttachmentIds: [],
-    expectedResultAttachmentIds: [],
+    description: '尚未开始',
+    attachmentIds: [],
   }).bug;
   // Mark the disposable fixture as a legacy database to exercise the startup guard.
   f.database.exec('PRAGMA user_version = 26');

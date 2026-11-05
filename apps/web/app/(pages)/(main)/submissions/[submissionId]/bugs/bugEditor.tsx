@@ -89,7 +89,7 @@ export function BugReworkDialog({
           </button>
         </header>
         <div className="collab-dialog__body collab-form collab-bug-rework-dialog__body">
-          <p>{bug.report.title}</p>
+          <p>{bug.report.description}</p>
           {bug.linkedReview?.blockedReason ? (
             <p role="alert">{bug.linkedReview.blockedReason}</p>
           ) : null}
@@ -183,20 +183,11 @@ export function BugForm({
   const [frontItemId, setFrontItemId] = useState(initial.frontItemId);
   const [backItemId, setBackItemId] = useState(initial.backItemId);
   const mutationId = initial.mutationId;
-  const [title, setTitle] = useState(initial.title);
-  const [operationPath, setOperationPath] = useState(initial.operationPath);
-  const [actualResult, setActualResult] = useState(initial.actualResult);
-  const [expectedResult, setExpectedResult] = useState(initial.expectedResult);
-  const [keptActualResultAttachmentIds, setKeptActualResultAttachmentIds] =
-    useState(initial.keptActualResultAttachmentIds);
-  const [keptExpectedResultAttachmentIds, setKeptExpectedResultAttachmentIds] =
-    useState(initial.keptExpectedResultAttachmentIds);
-  const [actualResultFiles, setActualResultFiles] = useState<File[]>(
-    initial.actualResultFiles,
+  const [description, setDescription] = useState(initial.description);
+  const [keptAttachmentIds, setKeptAttachmentIds] = useState(
+    initial.keptAttachmentIds,
   );
-  const [expectedResultFiles, setExpectedResultFiles] = useState<File[]>(
-    initial.expectedResultFiles,
-  );
+  const [files, setFiles] = useState<File[]>(initial.files);
   const [error, setError] = useState<string | null>(null);
   const [saving, startSaving] = useTransition();
 
@@ -213,14 +204,9 @@ export function BugForm({
         joint,
         frontItemId,
         backItemId,
-        title,
-        operationPath,
-        actualResult,
-        expectedResult,
-        keptActualResultAttachmentIds,
-        keptExpectedResultAttachmentIds,
-        actualResultFiles,
-        expectedResultFiles,
+        description,
+        keptAttachmentIds,
+        files,
       }),
     [
       onDraftChange,
@@ -230,14 +216,9 @@ export function BugForm({
       joint,
       frontItemId,
       backItemId,
-      title,
-      operationPath,
-      actualResult,
-      expectedResult,
-      keptActualResultAttachmentIds,
-      keptExpectedResultAttachmentIds,
-      actualResultFiles,
-      expectedResultFiles,
+      description,
+      keptAttachmentIds,
+      files,
     ],
   );
   const canCreateAndRepair =
@@ -301,18 +282,10 @@ export function BugForm({
           formData.append('submissionItemIds', frontItemId);
           formData.append('submissionItemIds', backItemId);
         }
-        formData.set('title', title);
-        formData.set('operationPath', operationPath);
-        formData.set('actualResult', actualResult);
-        formData.set('expectedResult', expectedResult);
-        for (const fileId of keptActualResultAttachmentIds)
-          formData.append('existingActualResultAttachmentIds', fileId);
-        for (const fileId of keptExpectedResultAttachmentIds)
-          formData.append('existingExpectedResultAttachmentIds', fileId);
-        for (const file of actualResultFiles)
-          formData.append('actualResultAttachments', file);
-        for (const file of expectedResultFiles)
-          formData.append('expectedResultAttachments', file);
+        formData.set('description', description);
+        for (const fileId of keptAttachmentIds)
+          formData.append('existingAttachmentIds', fileId);
+        for (const file of files) formData.append('attachments', file);
         const result = bug
           ? await updateBugReportAction(bug.id, formData)
           : await createBugAction(snapshot.submission.submission.id, formData);
@@ -443,65 +416,28 @@ export function BugForm({
         <fieldset disabled={!canEditReport || saving}>
           <legend>缺陷内容</legend>
           <label>
-            <span>标题</span>
-            <input
-              maxLength={240}
-              onChange={(event) => setTitle(event.target.value)}
-              required
-              value={title}
-            />
-          </label>
-          <div className="collab-form__grid collab-bug-form__grid">
-            <fieldset className="collab-bug-result-field">
-              <legend>预期结果</legend>
-              <label>
-                <span>文本说明</span>
-                <textarea
-                  maxLength={8_000}
-                  onChange={(event) => setExpectedResult(event.target.value)}
-                  rows={4}
-                  value={expectedResult}
-                />
-              </label>
-              <AttachmentPicker
-                ariaLabel="预期结果附件"
-                existingAttachments={bug?.report.expectedResultAttachments}
-                files={expectedResultFiles}
-                keptExistingIds={keptExpectedResultAttachmentIds}
-                onChange={setExpectedResultFiles}
-                onExistingChange={setKeptExpectedResultAttachmentIds}
-              />
-            </fieldset>
-            <fieldset className="collab-bug-result-field">
-              <legend>实际结果</legend>
-              <label>
-                <span>文本说明</span>
-                <textarea
-                  maxLength={8_000}
-                  onChange={(event) => setActualResult(event.target.value)}
-                  rows={4}
-                  value={actualResult}
-                />
-              </label>
-              <AttachmentPicker
-                ariaLabel="实际结果附件"
-                existingAttachments={bug?.report.actualResultAttachments}
-                files={actualResultFiles}
-                keptExistingIds={keptActualResultAttachmentIds}
-                onChange={setActualResultFiles}
-                onExistingChange={setKeptActualResultAttachmentIds}
-              />
-            </fieldset>
-          </div>
-          <label>
-            <span>操作路径</span>
+            <span>缺陷描述</span>
             <textarea
+              aria-label="缺陷描述"
               maxLength={8_000}
-              onChange={(event) => setOperationPath(event.target.value)}
-              rows={3}
-              value={operationPath}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="描述遇到的问题，可补充复现步骤和预期表现"
+              required
+              rows={6}
+              value={description}
             />
           </label>
+          <div className="collab-bug-form__attachments">
+            <span>附件</span>
+            <AttachmentPicker
+              ariaLabel="附件"
+              existingAttachments={bug?.report.attachments}
+              files={files}
+              keptExistingIds={keptAttachmentIds}
+              onChange={setFiles}
+              onExistingChange={setKeptAttachmentIds}
+            />
+          </div>
         </fieldset>
         {error ? (
           <p className="collab-form__error" role="alert">
@@ -522,7 +458,7 @@ export function BugForm({
         </button>
         {!bug ? (
           <button
-            disabled={saving || !canCreateAndRepair || !title.trim()}
+            disabled={saving || !canCreateAndRepair || !description.trim()}
             form="collab-bug-form"
             name="intent"
             type="submit"

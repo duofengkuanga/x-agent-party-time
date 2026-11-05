@@ -22,7 +22,7 @@ import {
   EngineeringEnvironmentManagement,
   EngineeringInformationManagement,
 } from '../engineering/engineeringSettings';
-import { EngineeringTabs, ProjectRouteFeedback } from './engineeringTabs';
+import { EngineeringList, ProjectRouteFeedback } from './engineeringList';
 import { AutoSaveBoundary, AutoSaveForm } from './autoSaveForm';
 import { ProjectDeleteControl } from './projectDeleteControl';
 import { ProjectMembersControl } from './projectMembersControl';
@@ -94,6 +94,7 @@ export default async function ProjectSettingsPage({
       id: item.id,
       name: workspace.engineering.name,
       type: workspace.engineering.type,
+      environmentCount: workspace.environments.length,
       archiveControl: owner ? (
         <EngineeringArchiveControl
           key={item.id}
@@ -214,8 +215,9 @@ export default async function ProjectSettingsPage({
               className="project-overview__engineering"
               aria-label="项目工程"
             >
-              <EngineeringTabs
+              <EngineeringList
                 engineering={engineeringPanels}
+                key={selected.project.id}
                 projectId={selected.project.id}
                 projectName={selected.project.name}
                 canManage={Boolean(owner)}

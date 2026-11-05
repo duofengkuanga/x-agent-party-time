@@ -15,7 +15,7 @@ Agent Party Time 将产品测试人员、工程负责人和开发者本机 Agent
 → 测试验证、重开、关闭与异步 Cleanup
 ```
 
-六列主看板：
+缺陷内容统一为缺陷描述和附件。描述最多 8,000 字，附件最多 5 个。缺陷看板按以下六个状态从上到下排列，同一状态内的卡片自动换行。
 
 ```text
 待修复 → 修复中 → 待更新 → 更新中 → 待验证 → 已完成
@@ -82,7 +82,7 @@ bun install --frozen-lockfile
 bun run dev
 ```
 
-`bun run dev` 会在仓库 `.scratch/development/` 中准备数据库并自动创建上述本地开发用户。新流程使用 Schema 35。旧数据库需要先离线预检和迁移。
+`bun run dev` 会在仓库 `.scratch/development/` 中准备数据库并自动创建上述本地开发用户。新流程使用 Schema 36，缺陷报告保存描述和一组附件。Schema 36 从空库初始化，开发数据需要重建。
 
 `bun run dev` 前台管理两个进程：
 
@@ -134,9 +134,11 @@ bun run dev:xapt
 
 `bun run dev`、`bun run dev:app` 和 `bun run seed:app` 使用这个目录。开发启动流程保留数据库和附件，不支持的 Schema 版本会阻止启动；如果 `AGENT_PARTY_TIME_HOME` 指向仓库 `.scratch/` 之外，开发准备脚本会拒绝处理。
 
-正式 Server 数据默认位于 `~/.agent-party-time/`，也可以通过 `AGENT_PARTY_TIME_HOME` 指定。启动只接受 Schema 35 和空数据库，现有旧库不会被启动流程改写。
+正式 Server 数据默认位于 `~/.agent-party-time/`，也可以通过 `AGENT_PARTY_TIME_HOME` 指定。启动接受 Schema 36 或空数据库。旧版本数据库需要另存后使用空数据目录初始化。
 
 ### 保留数据升级 Server
+
+以下离线工具固定处理旧版本到 Schema 35 的历史升级。当前 Schema 36 使用全新的缺陷报告结构，从空数据库建立。
 
 Schema 34 升级到 35 前，用 Schema 34 对应的 Server、xapt 和固定 Bundle 结束未完成的执行、交互和更新批次。历史 `HANDED_OFF` 记录对应的 Bug 已完成或 Update Batch 已完成时，可以原样保留并迁移。准备 JSON 映射文件，键是平台环境 ID，值是对应工程约定中已核对的环境标识。每个现存环境提供一个标识，同一工程内唯一。预检只读，会列出缺少映射的环境 ID。
 
@@ -221,7 +223,7 @@ bun run eval:handoff --skills-root /path/to/x-skills --baseline-app <旧版本�
 
 Repair Handoff 随候选提交冻结，包含历史验证入口、环境经验和剩余事项；Update 核实这些线索后，对最终组合完成当前工程要求的验收。历史通过不代表本轮免检。工程负责人在更新详情中查看来源和使用依据，测试负责人只看到业务结果与验证摘要。
 
-Server Schema 35 使用工程环境标识与结构化 Repair Handoff。旧 Task 固定原 Skill Bundle，更新 Skill 不会改写旧任务；切换前完成或明确处置旧任务，并核对 Server、xapt 和 Skill Bundle 的组合。交接缺失、来源不匹配和冻结矛盾会明确阻止更新。
+Server Schema 36 使用统一缺陷描述、附件列表、工程环境标识与结构化 Repair Handoff。切换前完成或明确处置旧任务，并核对 Server、xapt 和 Skill Bundle 的组合。交接缺失、来源不匹配和冻结矛盾会明确阻止更新。
 
 新任务的 Skill 入口为 `XBugRepaire` 与 `XUpdate`，两者使用同一代 Bundle 的 `XHandoff`。`XBugRepaire` 要求每个 Bug 在本地验证和提交后执行 `gitnexus-review`，无改动修复也需显式审查；`XUpdate` 核对每个候选的审查依据，并在组合多个修复、目标基线变化或集成修改时审查最终批次。执行机器需已安装官方 `gitnexus-review` Skill 与 GitNexus 工具；依赖缺失或审查未完成时不能报告成功。升级配套 Server/xapt 后运行 `xapt skills update` 使用新入口；旧 Task 继续按原名称与内容 Hash 恢复原 Bundle，不自动获得新规则。新规则的完整 Agent 行为验收范围见 `x-skills/evals/`，规则文本检查不能证明审查实际执行。
 
@@ -327,7 +329,7 @@ packages/
 
 `server/platform/mutations/` 统一处理事务、幂等回执和项目审计；低依赖的 `auditEvent.ts` 保持独立，避免审计调用方提前加载业务 Schema。提测工作区 revision 去重与提交后通知由 `testSubmissionWriteStore.ts` 负责。修复结果及候选交接解析归 Repair，Update 直接使用数据拥有者的校验，不通过共享转发层重复包装。
 
-`server/database/` 是整个应用的数据库装配，不承诺领域无关。项目表与提测表分别在 `projectSchema.ts`、`submissionSchema.ts`；运行时只接受 Schema 35。旧表名、旧 namespace 与旧结果解释只在独立离线迁移及其 fixture 中存在，不提供业务运行时双读、双写或 fallback。
+`server/database/` 是整个应用的数据库装配，不承诺领域无关。项目表与提测表分别在 `projectSchema.ts`、`submissionSchema.ts`；运行时接受 Schema 36。旧版本的离线迁移及其 fixture 独立于当前运行时。
 
 单元测试与实现就近放置；跨 Web/xapt 的真实评估脚本位于根 `scripts/`。架构、浏览器组件导入和旧运行时名称由 `server/architectureBoundaries.test.ts` 检查，共享框架由 `app/(pages)/(main)/components/appShell.test.ts` 检查。移动文件时同步导入、扫描范围、文档和验收入口。
 

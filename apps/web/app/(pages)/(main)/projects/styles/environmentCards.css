@@ -1,99 +1,90 @@
-.environment-direct-list,
-.environment-card-grid {
-  align-items: stretch;
-  display: grid;
-  gap: 14px;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+.environment-selector {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
 }
 
-.environment-direct-row,
-.environment-direct-form--new {
-  background: color-mix(in srgb, var(--panel), transparent 40%);
-  border: 1px solid var(--line);
-  min-width: 0;
-  padding: 16px;
-  position: relative;
+.environment-selector__toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 12px;
 }
 
-.environment-direct-row {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+.environment-selector__toolbar > .collab-choice-field {
+  flex: 0 1 280px;
+  min-width: min(100%, 180px);
 }
 
-.environment-direct-list .environment-direct-form {
-  align-content: start;
-  align-items: start;
-  display: grid;
-  gap: 12px;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: 30px 30px minmax(26px, auto);
-  position: relative;
+.environment-selector__toolbar .choice-select__trigger {
+  font-size: 12px;
+  min-height: 38px;
+  padding: 8px 10px;
 }
 
-.environment-direct-list .environment-direct-name input {
-  border-color: transparent;
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 28px;
-  min-height: 30px;
+.environment-selector .environment-selector__key {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.environment-selector .environment-selector__key code {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  display: inline;
+  font: inherit;
   padding: 0;
 }
 
-.environment-direct-list .environment-direct-name input:hover {
-  border-bottom-color: var(--line);
+.environment-selector__empty {
+  color: var(--muted);
+  font-size: 12px;
 }
 
-.environment-direct-list .environment-direct-name input:focus-visible {
-  border-color: var(--accent);
-  outline-offset: 2px;
+.environment-selector__editor {
+  margin-top: 14px;
 }
 
-.environment-direct-list .auto-save-form__status {
-  align-self: center;
-  grid-column: 1;
-  grid-row: 3;
-  margin: 0;
-  min-height: 26px;
-  padding-right: 96px;
+.environment-direct-row {
+  align-items: start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
-.environment-direct-list button {
-  font-size: 11px;
-  line-height: 18px;
-  min-height: 28px;
-  padding: 4px 10px;
+.environment-direct-form {
+  display: grid;
+  flex: 0 1 280px;
+  gap: 8px 12px;
+  min-width: 0;
 }
 
 .environment-direct-delete {
-  bottom: 16px;
-  margin: 0;
-  position: absolute;
-  right: 16px;
+  margin: 21px 0 0;
   width: fit-content;
 }
 
-.environment-direct-row:has([data-save-state='error'])
-  .environment-direct-delete {
-  margin: 10px 0 0 auto;
-  position: static;
+.environment-selector .auto-save-form__status:empty {
+  display: none;
 }
 
-.environment-direct-list [data-save-state='error'] .auto-save-form__status {
-  padding-right: 0;
+.environment-selector__toolbar > .environment-direct-form--new {
+  flex: 1 0 100%;
+  grid-template-columns: repeat(2, minmax(0, 280px));
+  margin-top: 4px;
 }
 
-.environment-direct-list .environment-direct-form--new {
-  border-style: dashed;
+.environment-selector :is(.environment-edit, .environment-add),
+.environment-direct-delete > button {
+  font-size: 11px;
+  min-height: 32px;
+  padding: 5px 10px;
 }
 
 .environment-direct-form__hint {
   align-items: center;
   display: flex;
   gap: 8px;
-  grid-column: 1;
-  grid-row: 3;
-  justify-content: space-between;
-  min-height: 26px;
+  grid-column: 1 / -1;
 }
 
 .environment-direct-form__hint small {
@@ -101,47 +92,14 @@
   font-size: 10px;
 }
 
-.environment-direct-form__hint button {
-  margin-left: auto;
-  position: relative;
-  z-index: 1;
+.environment-selector > [role='alert'] {
+  color: var(--danger);
+  font-size: 11px;
+  margin: 10px 0 0;
 }
 
-.environment-direct-form--new:not([data-save-state='idle'])
-  .environment-direct-form__hint
-  small {
-  visibility: hidden;
-}
-
-.environment-direct-list
-  .environment-direct-form--new[data-save-state='error']
-  .auto-save-form__status {
-  grid-row: 4;
-}
-
-.environment-direct-list > .environment-add {
-  border-style: dashed;
-  color: var(--muted);
-  justify-self: stretch;
-  min-height: 142px;
-}
-
-.environment-direct-list > .environment-add:hover {
-  color: #fff;
-}
-
-.project-engineering
-  .engineering-detail__environments
-  article.environment-view-card {
-  background: color-mix(in srgb, var(--panel), transparent 40%);
-  border: 1px solid var(--line);
-  display: block;
-  margin: 0;
-  min-height: 140px;
-  padding: 16px;
-}
-
-.environment-view-card h5 {
-  font-size: 16px;
-  margin: 0 0 8px;
+@media (max-width: 520px) {
+  .environment-selector__toolbar > .environment-direct-form--new {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

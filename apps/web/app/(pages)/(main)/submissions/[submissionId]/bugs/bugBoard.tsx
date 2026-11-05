@@ -20,12 +20,10 @@ import {
 import { createClientId } from '@/app/(pages)/(main)/components/clientId';
 import type { SubmissionWorkspaceSnapshot } from '@/contracts/submissions/workspace';
 import {
-  Fragment,
   useCallback,
   useEffect,
   useRef,
   useState,
-  type CSSProperties,
   type DragEvent as ReactDragEvent,
 } from 'react';
 import type { BugView } from '../../../../../../contracts/submissions/bug';
@@ -55,7 +53,6 @@ import {
 
 import { BugDrawer } from './bugDrawer';
 import { BugReworkDialog } from './bugEditor';
-import { BoardColumnDivider, useBoardColumnWidths } from './boardColumnResize';
 
 const STORAGE_TRANSITIONS = {
   cancelled: {
@@ -101,7 +98,6 @@ export function BugBoard({
   const [archiveDropActive, setArchiveDropActive] = useState(false);
   const [undoAction, setUndoAction] = useState<UndoAction | null>(null);
   const { error, setError, pending, run } = useWorkspaceMutation(onChanged);
-  const columnResize = useBoardColumnWidths();
   const testerView =
     snapshot.currentUser.id === snapshot.submission.submission.testerUserId;
   const activeBugs = snapshot.bugs.filter(
@@ -290,10 +286,11 @@ export function BugBoard({
       ) : null}
       <div
         className="collab-board"
-        ref={columnResize.boardRef}
-        style={{ '--board-columns': columnResize.template } as CSSProperties}
+        aria-label="缺陷状态看板"
+        role="region"
+        tabIndex={0}
       >
-        {STATUS_COLUMNS.map((column, index) => {
+        {STATUS_COLUMNS.map((column) => {
           const bugs = activeBugs.filter(
             ({ id, stage }) =>
               stage === column.status && !groupedBugIds.has(id),
@@ -315,202 +312,185 @@ export function BugBoard({
             draggingBug && dragTransition(draggingBug, column.status),
           );
           return (
-            <Fragment key={column.status}>
-              <section
-                className="collab-column"
-                data-drop-target={
-                  acceptsDrop && dropTarget === column.status
-                    ? 'true'
-                    : undefined
-                }
-                onDragEnter={() => {
-                  if (acceptsDrop) setDropTarget(column.status);
-                }}
-                onDragLeave={(event) => {
-                  if (
-                    event.relatedTarget instanceof Node &&
-                    event.currentTarget.contains(event.relatedTarget)
-                  )
-                    return;
-                  if (dropTarget === column.status) setDropTarget(null);
-                }}
-                onDragOver={(event) => {
-                  if (!acceptsDrop) return;
-                  event.preventDefault();
-                  event.dataTransfer.dropEffect = 'move';
-                }}
-                onDrop={(event) => dropBug(event, column.status)}
-              >
-                <header>
-                  <span>{column.note}</span>
-                  <h2>{column.label}</h2>
-                  <b>
-                    {showBatches
-                      ? batches.length.toString().padStart(2, '0')
-                      : (bugs.length + reviewPairs.length)
-                          .toString()
-                          .padStart(2, '0')}
-                  </b>
-                </header>
-                <div className="collab-column__cards">
+            <section
+              aria-label={column.label}
+              className="collab-column"
+              key={column.status}
+              data-drop-target={
+                acceptsDrop && dropTarget === column.status ? 'true' : undefined
+              }
+              onDragEnter={() => {
+                if (acceptsDrop) setDropTarget(column.status);
+              }}
+              onDragLeave={(event) => {
+                if (
+                  event.relatedTarget instanceof Node &&
+                  event.currentTarget.contains(event.relatedTarget)
+                )
+                  return;
+                if (dropTarget === column.status) setDropTarget(null);
+              }}
+              onDragOver={(event) => {
+                if (!acceptsDrop) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'move';
+              }}
+              onDrop={(event) => dropBug(event, column.status)}
+            >
+              <header>
+                <span>{column.note}</span>
+                <h2>{column.label}</h2>
+                <b>
                   {showBatches
-                    ? batches.map((batch) => {
-                        const engineeringType = snapshot.bugs.find(
-                          ({ id }) => id === batch.entries[0]?.bugId,
-                        )?.assignment?.engineeringType;
-                        return (
-                          <UpdateBatchCard
-                            batch={batch}
-                            engineeringType={engineeringType}
-                            key={batch.id}
-                            onOpen={() =>
-                              setDrawer({ mode: 'batch', batchId: batch.id })
-                            }
-                          />
-                        );
-                      })
-                    : bugs.map((bug) => {
-                        const pair = testerView
-                          ? linkedReviewPairFor(bug, snapshot.bugs)
-                          : null;
-                        const blockedReason = testerView
-                          ? bug.linkedReview?.blockedReason
-                          : null;
-                        const draggable = Boolean(
-                          (!pair &&
-                            (dragTransition(bug, 'REPAIRING') ||
-                              dragTransition(bug, 'DONE'))) ||
-                          bug.availableActions.includes('CANCEL') ||
-                          bug.availableActions.includes('ARCHIVE'),
-                        );
-                        const visual = snapshot.visualByBug[bug.id]!;
-                        const pendingDelivery = pendingDeliveryFor(
-                          bug,
-                          snapshot,
-                        );
-                        return (
-                          <BugCard
-                            bug={bug}
-                            blockedReason={blockedReason}
-                            draggable={!pending && draggable}
-                            dragging={draggingBugId === bug.id}
-                            eligibleAt={pendingDelivery?.eligibleAt}
-                            key={bug.id}
-                            pending={pending}
-                            onArchive={() => storeBug(bug, 'archived')}
-                            onVerifyPass={() => {
-                              const transition =
-                                verificationPassTransition(bug);
-                              if (transition)
-                                run(transition.command, transition.message);
-                            }}
-                            onDragEnd={() => {
-                              clearDraggingBug();
-                            }}
-                            onDragStart={(event) => {
-                              const dragPreview =
-                                document.createElement('span');
-                              dragPreview.className = 'collab-bug-drag-preview';
-                              dragPreview.setAttribute('aria-hidden', 'true');
-                              dragPreview.textContent = '✊';
-                              document.body.append(dragPreview);
-                              event.dataTransfer.setDragImage(
-                                dragPreview,
-                                14,
-                                14,
-                              );
-                              window.requestAnimationFrame(() =>
-                                dragPreview.remove(),
-                              );
-                              draggingBugIdRef.current = bug.id;
-                              setDraggingBugId(bug.id);
-                              event.dataTransfer.effectAllowed = 'move';
-                              event.dataTransfer.setData(
-                                'application/x-submission-bug-id',
-                                bug.id,
-                              );
-                            }}
-                            onOpen={() => {
-                              setError(null);
-                              setDrawer({ mode: 'view', bugId: bug.id });
-                            }}
-                            onReopen={() => {
-                              setError(null);
-                              setFeedbackIntent({
-                                bugId: bug.id,
-                                kind: 'REOPEN',
-                              });
-                            }}
-                            onRequestRework={() => {
-                              setError(null);
-                              setFeedbackIntent({
-                                bugId: bug.id,
-                                kind: 'VERIFY_FAIL',
-                              });
-                            }}
-                            visual={visual}
-                          />
-                        );
-                      })}
-                  {reviewPairs.map((pair) => (
-                    <LinkedReviewCard
-                      backend={pair.backend}
-                      frontend={pair.frontend}
-                      key={pair.primary.id}
-                      pending={pending}
-                      onArchive={() => archiveLinkedPair(pair)}
-                      onOpen={() => {
-                        setError(null);
-                        setDrawer({ mode: 'view', bugId: pair.primary.id });
-                      }}
-                      onVerifyPass={() => {
-                        const other =
-                          pair.frontend.id === pair.primary.id
-                            ? pair.backend
-                            : pair.frontend;
-                        const formData = new FormData();
-                        formData.set('mutationId', createClientId());
-                        formData.set(
-                          'expectedVersion',
-                          String(pair.primary.version),
-                        );
-                        formData.set(
-                          'relatedExpectedVersion',
-                          String(other.version),
-                        );
-                        formData.set('decision', 'PASSED');
-                        run(
-                          () =>
-                            reviewLinkedBugsAction(pair.primary.id, formData),
-                          '前后端关联缺陷已完成本次验收。',
-                        );
-                      }}
-                      onIssue={() => {
-                        setError(null);
-                        setFeedbackIntent({
-                          bugId: pair.primary.id,
-                          kind:
-                            pair.column === 'DONE' ? 'REOPEN' : 'VERIFY_FAIL',
-                        });
-                      }}
-                    />
-                  ))}
-                  {(showBatches
-                    ? batches.length
-                    : bugs.length + reviewPairs.length) === 0 ? (
-                    <p className="collab-column__empty">暂无卡片</p>
-                  ) : null}
-                </div>
-              </section>
-              {index < STATUS_COLUMNS.length - 1 ? (
-                <BoardColumnDivider
-                  index={index}
-                  leftLabel={column.label}
-                  rightLabel={STATUS_COLUMNS[index + 1]!.label}
-                  resize={columnResize}
-                />
-              ) : null}
-            </Fragment>
+                    ? batches.length.toString().padStart(2, '0')
+                    : (bugs.length + reviewPairs.length)
+                        .toString()
+                        .padStart(2, '0')}
+                </b>
+              </header>
+              <div className="collab-column__cards">
+                {showBatches
+                  ? batches.map((batch) => {
+                      const engineeringType = snapshot.bugs.find(
+                        ({ id }) => id === batch.entries[0]?.bugId,
+                      )?.assignment?.engineeringType;
+                      return (
+                        <UpdateBatchCard
+                          batch={batch}
+                          engineeringType={engineeringType}
+                          key={batch.id}
+                          onOpen={() =>
+                            setDrawer({ mode: 'batch', batchId: batch.id })
+                          }
+                        />
+                      );
+                    })
+                  : bugs.map((bug) => {
+                      const pair = testerView
+                        ? linkedReviewPairFor(bug, snapshot.bugs)
+                        : null;
+                      const blockedReason = testerView
+                        ? bug.linkedReview?.blockedReason
+                        : null;
+                      const draggable = Boolean(
+                        (!pair &&
+                          (dragTransition(bug, 'REPAIRING') ||
+                            dragTransition(bug, 'DONE'))) ||
+                        bug.availableActions.includes('CANCEL') ||
+                        bug.availableActions.includes('ARCHIVE'),
+                      );
+                      const visual = snapshot.visualByBug[bug.id]!;
+                      const pendingDelivery = pendingDeliveryFor(bug, snapshot);
+                      return (
+                        <BugCard
+                          bug={bug}
+                          blockedReason={blockedReason}
+                          draggable={!pending && draggable}
+                          dragging={draggingBugId === bug.id}
+                          eligibleAt={pendingDelivery?.eligibleAt}
+                          key={bug.id}
+                          pending={pending}
+                          onArchive={() => storeBug(bug, 'archived')}
+                          onVerifyPass={() => {
+                            const transition = verificationPassTransition(bug);
+                            if (transition)
+                              run(transition.command, transition.message);
+                          }}
+                          onDragEnd={() => {
+                            clearDraggingBug();
+                          }}
+                          onDragStart={(event) => {
+                            const dragPreview = document.createElement('span');
+                            dragPreview.className = 'collab-bug-drag-preview';
+                            dragPreview.setAttribute('aria-hidden', 'true');
+                            dragPreview.textContent = '✊';
+                            document.body.append(dragPreview);
+                            event.dataTransfer.setDragImage(
+                              dragPreview,
+                              14,
+                              14,
+                            );
+                            window.requestAnimationFrame(() =>
+                              dragPreview.remove(),
+                            );
+                            draggingBugIdRef.current = bug.id;
+                            setDraggingBugId(bug.id);
+                            event.dataTransfer.effectAllowed = 'move';
+                            event.dataTransfer.setData(
+                              'application/x-submission-bug-id',
+                              bug.id,
+                            );
+                          }}
+                          onOpen={() => {
+                            setError(null);
+                            setDrawer({ mode: 'view', bugId: bug.id });
+                          }}
+                          onReopen={() => {
+                            setError(null);
+                            setFeedbackIntent({
+                              bugId: bug.id,
+                              kind: 'REOPEN',
+                            });
+                          }}
+                          onRequestRework={() => {
+                            setError(null);
+                            setFeedbackIntent({
+                              bugId: bug.id,
+                              kind: 'VERIFY_FAIL',
+                            });
+                          }}
+                          visual={visual}
+                        />
+                      );
+                    })}
+                {reviewPairs.map((pair) => (
+                  <LinkedReviewCard
+                    backend={pair.backend}
+                    frontend={pair.frontend}
+                    key={pair.primary.id}
+                    pending={pending}
+                    onArchive={() => archiveLinkedPair(pair)}
+                    onOpen={() => {
+                      setError(null);
+                      setDrawer({ mode: 'view', bugId: pair.primary.id });
+                    }}
+                    onVerifyPass={() => {
+                      const other =
+                        pair.frontend.id === pair.primary.id
+                          ? pair.backend
+                          : pair.frontend;
+                      const formData = new FormData();
+                      formData.set('mutationId', createClientId());
+                      formData.set(
+                        'expectedVersion',
+                        String(pair.primary.version),
+                      );
+                      formData.set(
+                        'relatedExpectedVersion',
+                        String(other.version),
+                      );
+                      formData.set('decision', 'PASSED');
+                      run(
+                        () => reviewLinkedBugsAction(pair.primary.id, formData),
+                        '前后端关联缺陷已完成本次验收。',
+                      );
+                    }}
+                    onIssue={() => {
+                      setError(null);
+                      setFeedbackIntent({
+                        bugId: pair.primary.id,
+                        kind: pair.column === 'DONE' ? 'REOPEN' : 'VERIFY_FAIL',
+                      });
+                    }}
+                  />
+                ))}
+                {(showBatches
+                  ? batches.length
+                  : bugs.length + reviewPairs.length) === 0 ? (
+                  <p className="collab-column__empty">暂无卡片</p>
+                ) : null}
+              </div>
+            </section>
           );
         })}
       </div>

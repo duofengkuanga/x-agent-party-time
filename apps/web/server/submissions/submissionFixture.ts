@@ -129,20 +129,16 @@ export function insertBug(
   const now = '2026-07-30T00:00:00.000Z';
   fixture.database.run(
     `INSERT INTO submission_bug(
-         id, short_id, submission_id, submission_item_id, stage, title,
-         operation_path, actual_result, expected_result,
+         id, short_id, submission_id, submission_item_id, stage, description,
          report_locked_at, archived_at, archived_by_user_id, version,
          created_by_user_id, created_at, updated_at
-       ) VALUES (?, 1, ?, ?, 'WAITING_FOR_REPAIR', ?, ?, ?, ?,
+       ) VALUES (?, 1, ?, ?, 'WAITING_FOR_REPAIR', ?,
                  NULL, NULL, NULL, 1, ?, ?, ?)`,
     [
       randomUUID(),
       submissionId,
       submissionItemId,
       '锁定目标分支',
-      '打开测试页面',
-      '出现缺陷',
-      '应按预期工作',
       fixture.users.tester.id,
       now,
       now,

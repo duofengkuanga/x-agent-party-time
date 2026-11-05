@@ -32,7 +32,7 @@ describe('开发数据库准备', () => {
     oldDatabase.close();
 
     expect(() => prepareDevelopmentDatabase({ AGENT_PARTY_TIME_HOME: home })).toThrow(
-      '数据已保留',
+      '空数据目录',
     );
 
     const currentDatabase = new Database(paths.database, { readonly: true });

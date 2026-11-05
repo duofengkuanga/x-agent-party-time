@@ -25,8 +25,7 @@ const IMAGE_ATTACHMENT_MEDIA_TYPES = new Set([
 
 const MAX_ATTACHMENT_FILES = 5;
 
-export type StoredAttachment =
-  BugView['report']['actualResultAttachments'][number];
+export type StoredAttachment = BugView['report']['attachments'][number];
 
 type ImagePreview = { name: string; src: string };
 

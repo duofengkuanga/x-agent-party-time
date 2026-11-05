@@ -92,12 +92,9 @@ export async function seedBrowserFixture(
       bugs.createBug(tester.id, submission.id, {
         mutationId: randomUUID(),
         submissionItemId: item.id,
-        title,
-        operationPath: '打开浏览器验收页面并执行目标操作',
-        actualResult: `${title} 的实际结果`,
-        expectedResult: `${title} 的预期结果`,
-        actualResultAttachmentIds: [],
-        expectedResultAttachmentIds: [],
+        description: title,
+
+        attachmentIds: [],
       }).bug;
 
     createBug('待取消缺陷');
@@ -106,18 +103,16 @@ export async function seedBrowserFixture(
       bugs.createBug(tester.id, submission.id, {
         mutationId: randomUUID(),
         submissionItemId: null,
-        title,
-        actualResultAttachmentIds: [],
-        expectedResultAttachmentIds: [],
+        description: title,
+        attachmentIds: [],
       });
     }
     bugs.createBug(tester.id, submission.id, {
       mutationId: randomUUID(),
       submissionItemId: null,
-      title: '待前后端分诊缺陷',
-      expectedResult: '前端和后端共同完成',
-      actualResultAttachmentIds: [],
-      expectedResultAttachmentIds: [],
+      description: '待前后端分诊缺陷',
+
+      attachmentIds: [],
     });
 
     for (const title of ['定位数据缺失缺陷', '待增加协作缺陷']) {
@@ -481,11 +476,9 @@ export async function seedBrowserFixture(
       const member = bugs.createBug(tester.id, submission.id, {
         mutationId: randomUUID(),
         submissionItemId: items[1]!.id,
-        title,
-        expectedResult: `${title} 的预期结果`,
-        actualResult: `${title} 的实际结果`,
-        actualResultAttachmentIds: [],
-        expectedResultAttachmentIds: [],
+        description: title,
+
+        attachmentIds: [],
       }).bug;
       bugs.requestRepair(tester.id, member.id, {
         mutationId: randomUUID(),
@@ -550,9 +543,8 @@ export async function seedBrowserFixture(
     const linkedDone = bugs.createLinkedBugs(tester.id, submission.id, {
       mutationId: randomUUID(),
       submissionItemIds: [items[0]!.id, items[1]!.id],
-      title: '区县级自然资源管理部门，需要前后端共同修复的长标题',
-      actualResultAttachmentIds: [],
-      expectedResultAttachmentIds: [],
+      description: '区县级自然资源管理部门，需要前后端共同修复的长标题',
+      attachmentIds: [],
     });
     for (const bug of linkedDone.bugs)
       db.run("UPDATE submission_bug SET stage = 'DONE' WHERE id = ?", [bug.id]);
@@ -581,10 +573,9 @@ export async function seedBrowserFixture(
       {
         mutationId: randomUUID(),
         submissionItemId: closable.items[0]!.id,
-        title: '关闭后应隐藏的任务',
-        operationPath: '完成后关闭提测单',
-        actualResultAttachmentIds: [],
-        expectedResultAttachmentIds: [],
+        description: '关闭后应隐藏的任务',
+
+        attachmentIds: [],
       },
     );
     db.run("UPDATE submission_bug SET stage = 'DONE' WHERE id = ?", [closedBug.bug.id]);

@@ -27,10 +27,10 @@ describe('BugService', () => {
   test('deleteBugs 删除无执行的普通缺陷并推进提测版本', async () => {
     const fixture = await setup();
     const first = createBug(fixture, fixture.users.tester.id, {
-      title: '待删除缺陷一',
+      description: '待删除缺陷一',
     });
     const second = createBug(fixture, fixture.users.tester.id, {
-      title: '待删除缺陷二',
+      description: '待删除缺陷二',
     });
     const revisionBefore = fixture.service.workspace(
       fixture.users.tester.id,
@@ -220,8 +220,8 @@ describe('BugService', () => {
 
   test('deleteBugs --all 删除全部缺陷', async () => {
     const fixture = await setup();
-    createBug(fixture, fixture.users.tester.id, { title: '全部清理一' });
-    createBug(fixture, fixture.users.tester.id, { title: '全部清理二' });
+    createBug(fixture, fixture.users.tester.id, { description: '全部清理一' });
+    createBug(fixture, fixture.users.tester.id, { description: '全部清理二' });
     const result = fixture.service.deleteBugs({ all: true });
     expect(result.deletedBugIds).toHaveLength(2);
     expectRowCount(fixture.database, 'submission_bug', {

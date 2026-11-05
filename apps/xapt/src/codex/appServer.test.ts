@@ -64,7 +64,6 @@ rl.on('line', (line) => {
           {
             fileId: '00000000-0000-4000-8000-000000000603',
             originalName: 'evidence.txt',
-            role: 'ACTUAL_RESULT',
           },
         ],
       }),
@@ -138,7 +137,6 @@ rl.on('line', (line) => {
           task: '只返回 JSON',
           attachments: [
             {
-              role: 'ACTUAL_RESULT',
               name: 'evidence.txt',
               path: join(root, 'evidence.txt'),
             },

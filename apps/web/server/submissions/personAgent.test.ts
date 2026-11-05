@@ -50,10 +50,9 @@ test.each([false, true])(
     expect(created.mode).toBe('PERSON_AGENT');
     const report = f.bugs.createBug(f.users.tester.id, created.id, {
       mutationId: randomUUID(),
-      title: '两端交互结果异常',
+      description: '两端交互结果异常',
       startRepair: true,
-      actualResultAttachmentIds: [],
-      expectedResultAttachmentIds: [],
+      attachmentIds: [],
     });
     expect(report.bug.stage).toBe('REPAIRING');
     const appended = f.submissions.addItems(f.users.developer.id, created.id, {

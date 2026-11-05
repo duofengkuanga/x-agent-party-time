@@ -67,12 +67,9 @@ async function setup(
   const created = bugs.createBug(users.tester.id, submission.id, {
     mutationId: randomUUID(),
     submissionItemId: item.id,
-    title: '支付按钮无响应',
-    operationPath: '打开结算页',
-    actualResult: '点击后没有反应',
-    expectedResult: '进入支付流程',
-    actualResultAttachmentIds: [actualResultAttachment.id],
-    expectedResultAttachmentIds: [expectedResultAttachment.id],
+    description: '支付按钮无响应',
+
+    attachmentIds: [actualResultAttachment.id, expectedResultAttachment.id],
   });
   const requested = bugs.requestRepair(
     users.tester.id,
