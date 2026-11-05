@@ -107,7 +107,7 @@ export function SubmissionDetails({
               <th>工程</th>
               <th>开发负责人</th>
               <th>目标分支</th>
-              <th>测试环境 / 部署方式</th>
+              <th>测试环境方式</th>
             </tr>
           </thead>
           <tbody>
@@ -149,14 +149,9 @@ export function SubmissionDetails({
                       <code>{item.targetBranch}</code>
                     )}
                   </td>
-                  <td data-label="环境 / 部署">
+                  <td data-label="环境">
                     <div className="collab-submission-deployment">
                       <span>{item.environment.name}</span>
-                      {item.technical?.deployment ? (
-                        <code>{item.technical.deployment.command}</code>
-                      ) : item.technical ? (
-                        <small>历史提测未记录部署脚本</small>
-                      ) : null}
                       {cleanup ? (
                         <small>清理：{cleanup.presentation.statusLabel}</small>
                       ) : null}

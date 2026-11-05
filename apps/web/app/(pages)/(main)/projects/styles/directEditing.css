@@ -297,28 +297,24 @@
   margin-bottom: 5px;
 }
 
-.engineering-type-choice > div,
-.deployment-kind-choice {
+.engineering-type-choice > div {
   border: 1px solid var(--line);
   display: flex;
   height: 38px;
 }
 
-.engineering-type-choice label,
-.deployment-kind-choice label {
+.engineering-type-choice label {
   cursor: pointer;
   display: block;
   flex: 1;
   position: relative;
 }
 
-.engineering-type-choice label + label,
-.deployment-kind-choice label + label {
+.engineering-type-choice label + label {
   border-left: 1px solid var(--line);
 }
 
-.engineering-type-choice input[type='radio'],
-.deployment-kind-choice input[type='radio'] {
+.engineering-type-choice input[type='radio'] {
   border: 0;
   height: 1px;
   min-height: 0;
@@ -328,8 +324,7 @@
   width: 1px;
 }
 
-.engineering-type-choice label > span,
-.deployment-kind-choice label > span {
+.engineering-type-choice label > span {
   align-items: center;
   color: var(--muted);
   display: flex;
@@ -338,22 +333,19 @@
   justify-content: center;
 }
 
-.engineering-type-choice input:checked + span,
-.deployment-kind-choice input:checked + span {
+.engineering-type-choice input:checked + span {
   background: var(--paper-deep);
   box-shadow: inset 0 -2px var(--accent);
   color: var(--ink);
   font-weight: 700;
 }
 
-.engineering-type-choice label:hover > span,
-.deployment-kind-choice label:hover > span {
+.engineering-type-choice label:hover > span {
   background: var(--accent);
   color: #fff;
 }
 
-.engineering-type-choice input:focus-visible + span,
-.deployment-kind-choice input:focus-visible + span {
+.engineering-type-choice input:focus-visible + span {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }

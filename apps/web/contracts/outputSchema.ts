@@ -6,6 +6,7 @@ export function outputJsonSchema(schema: z.ZodType): JsonObject {
   const { $schema: _, ...output } = z.toJSONSchema(schema, {
     target: 'draft-7',
     override: ({ jsonSchema }) => {
+      delete jsonSchema.default;
       if (jsonSchema.oneOf) {
         jsonSchema.anyOf = jsonSchema.oneOf;
         delete jsonSchema.oneOf;

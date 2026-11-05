@@ -1,5 +1,9 @@
-import { ExecutionWorkspacesSchema } from '@agent-party-time/execution-contract';
+import {
+  EnvironmentKeySchema,
+  ExecutionWorkspacesSchema,
+} from '@agent-party-time/execution-contract';
 import { Database } from 'bun:sqlite';
+import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import {
   chmodSync,
@@ -43,9 +47,19 @@ type MigrationReport = {
 };
 
 const targetSchema =
+  PLATFORM_SCHEMA + PROJECT_SCHEMA + SUBMISSION_SCHEMA + OBSERVATION_SCHEMA;
+export const schema34 =
   PLATFORM_SCHEMA +
-  PROJECT_SCHEMA +
-  SUBMISSION_SCHEMA +
+  PROJECT_SCHEMA.replace(
+    'environment_key TEXT NOT NULL',
+    'deployment_json TEXT NOT NULL',
+  ).replace(',\n  UNIQUE(engineering_id, environment_key)', '') +
+  SUBMISSION_SCHEMA.replace('environment_key TEXT NOT NULL', 'deployment_json TEXT')
+    .replace(
+      '  historical_delivery_json TEXT',
+      "  deployment_json TEXT CHECK (deployment_json IS NOT NULL OR state = 'COMPLETED'),\n  historical_delivery_json TEXT",
+    )
+    .replaceAll('delivery_scope_json', 'person_agent_scope_json') +
   BUG_DEPLOYMENT_SCHEMA +
   OBSERVATION_SCHEMA;
 const schema30 = readFileSync(
@@ -95,7 +109,9 @@ function assertSchema(db: Database, version: number): void {
             ? schema32
             : version === 33
               ? schema33
-              : targetSchema;
+              : version === 34
+                ? schema34
+                : targetSchema;
     if (version < 30) sql = sql.replace(OBSERVATION_SCHEMA, '');
     if (version < 29) sql = sql.replace('  handoffs_json TEXT NOT NULL,\n', '');
     if (version === 27) sql = sql.replace(",\n    'HANDED_OFF'", '');
@@ -286,7 +302,7 @@ function rebuildTable(db: Database, reference: Database, table: string): void {
 function migrateWorkspaceCollections(db: AppDatabase): void {
   const reference = new Database(':memory:');
   try {
-    reference.exec(targetSchema);
+    reference.exec(schema34);
     const table = 'platform_execution';
     const objects = schemaObjects(reference).filter((row) => row.tbl_name === table);
     const ddl = objects.find((row) => row.type === 'table')!.sql;
@@ -353,7 +369,7 @@ function migrateWorkspaceCollections(db: AppDatabase): void {
 function migrateSubmissionModes(db: AppDatabase): void {
   const reference = new Database(':memory:');
   try {
-    reference.exec(targetSchema);
+    reference.exec(schema34);
     const additions = {
       test_submission: { mode: "'AGENT_PARTY'" },
       submission_item: { target_branch_locked_at: 'NULL' },
@@ -380,13 +396,112 @@ function migrateSubmissionModes(db: AppDatabase): void {
   }
 }
 
+function planEngineeringCutover(db: AppDatabase, mapping: unknown) {
+  const unfinished = db.get(`SELECT 1 FROM platform_execution execution
+    WHERE execution.state NOT IN ('SUCCEEDED', 'FAILED', 'CANCELLED')
+      AND NOT (
+        execution.state = 'HANDED_OFF' AND execution.finished_at IS NOT NULL
+        AND execution.owner_namespace = 'submissions' AND (
+          (execution.owner_kind = 'UPDATE_BATCH' AND EXISTS (
+            SELECT 1 FROM submission_update_attempt attempt
+            JOIN submission_update_batch batch ON batch.id = attempt.batch_id
+            WHERE attempt.execution_id = execution.id AND batch.state = 'COMPLETED'
+          )) OR
+          (execution.owner_kind = 'BUG_REPAIR' AND EXISTS (
+            SELECT 1 FROM submission_repair_attempt attempt
+            JOIN submission_bug bug ON bug.id = attempt.bug_id
+            WHERE attempt.execution_id = execution.id AND bug.stage = 'DONE'
+          ))
+        )
+      )
+    UNION ALL SELECT 1 FROM submission_update_batch WHERE state <> 'COMPLETED'
+    UNION ALL SELECT 1 FROM platform_execution_interaction WHERE state = 'PENDING'
+    LIMIT 1`);
+  if (unfinished)
+    throw new Error(
+      '存在未完成执行、交互或更新批次，请使用 Schema 34 对应版本完成后再切换',
+    );
+  const keys = z.record(z.uuid(), EnvironmentKeySchema).parse(mapping);
+  const environments = db.all<{ id: string; engineering_id: string }>(
+    'SELECT id, engineering_id FROM platform_environment ORDER BY id',
+  );
+  const missing = environments.filter(({ id }) => !keys[id]);
+  if (missing.length)
+    throw new Error(
+      `请为以下环境提供已与工程约定核对的标识（--environment-keys）：${missing.map(({ id }) => id).join('、')}`,
+    );
+  if (Object.keys(keys).length !== environments.length)
+    throw new Error('环境标识映射包含未知环境');
+  const identities = new Set(
+    environments.map(({ id, engineering_id }) => `${engineering_id}:${keys[id]}`),
+  );
+  if (identities.size !== environments.length) throw new Error('同工程环境标识不能重复');
+  return keys;
+}
+
+function applyEngineeringCutover(db: AppDatabase, keys: Record<string, string>) {
+  const reference = new Database(':memory:');
+  try {
+    reference.exec(targetSchema);
+    db.exec(
+      'CREATE TEMP TABLE cutover_environment (id TEXT PRIMARY KEY, key TEXT NOT NULL)',
+    );
+    const insert = db.prepare('INSERT INTO cutover_environment VALUES (?, ?)');
+    for (const [id, key] of Object.entries(keys)) insert.run(id, key);
+    const fields: Record<string, Record<string, string>> = {
+      platform_environment: {
+        environment_key:
+          '(SELECT key FROM cutover_environment WHERE id = platform_environment.id)',
+      },
+      submission_item: {
+        environment_key:
+          'COALESCE((SELECT key FROM cutover_environment WHERE id = submission_item.environment_id), environment_id)',
+      },
+      submission_update_batch: { delivery_scope_json: 'person_agent_scope_json' },
+    };
+    const original = snapshot(db)
+      .filter(
+        ({ name }) => !['submission_bug_deployment', 'platform_mutation'].includes(name),
+      )
+      .map(({ name, columns, ...rest }) => ({
+        name,
+        columns: columns.filter(
+          (column) => !['deployment_json', 'person_agent_scope_json'].includes(column),
+        ),
+        ...rest,
+      }));
+    const before = snapshot(db, original);
+    for (const [table, expressions] of Object.entries(fields)) {
+      const objects = schemaObjects(reference).filter((row) => row.tbl_name === table);
+      const ddl = objects.find((row) => row.type === 'table')!.sql;
+      const columns = reference
+        .query<{ name: string }, []>(`PRAGMA table_info(${table})`)
+        .all()
+        .map(({ name }) => name);
+      const next = `${table}_migrating`;
+      db.exec(ddl.replace(`CREATE TABLE ${table}`, `CREATE TABLE ${next}`));
+      db.exec(`INSERT INTO ${next} (rowid, ${columns.map(quote).join(', ')})
+        SELECT rowid, ${columns.map((column) => expressions[column] ?? quote(column)).join(', ')} FROM ${table}`);
+      db.exec(`DROP TABLE ${table}; ALTER TABLE ${next} RENAME TO ${table}`);
+      for (const object of objects) if (object.type !== 'table') db.exec(object.sql);
+    }
+    db.exec(`DROP TABLE submission_bug_deployment;
+      UPDATE platform_mutation SET operation = 'HISTORICAL_' || operation
+        WHERE operation IN ('ENVIRONMENT_CREATE', 'ENVIRONMENT_UPDATE');
+      DROP TABLE cutover_environment;`);
+    assertUnchanged(db, before);
+  } finally {
+    reference.close();
+  }
+}
+
 /** Explicit offline migration; application startup never invokes this entry point. */
 export function migrateServerDatabase(
   databasePath: string,
   apply = false,
   deploymentCommands: unknown = {},
+  environmentKeys: unknown = {},
 ): MigrationReport {
-  if (SERVER_SCHEMA_VERSION !== 34) throw new Error('此迁移只适用于 Server Schema 34。');
   const path = realpathSync(databasePath);
   if (!statSync(path).isFile()) throw new Error('请指定现有数据库文件。');
   const db = new AppDatabase(
@@ -401,7 +516,7 @@ export function migrateServerDatabase(
     transaction = true;
     const version = db.query<{ user_version: number }, []>('PRAGMA user_version').get()!
       .user_version;
-    if (![27, 28, 29, 30, 31, 32, 33, 34].includes(version))
+    if (![27, 28, 29, 30, 31, 32, 33, 34, SERVER_SCHEMA_VERSION].includes(version))
       throw new Error(`不支持从版本 ${version} 迁移；原数据已保留。`);
     assertSchema(db, version);
     assertIntegrity(db);
@@ -414,18 +529,19 @@ export function migrateServerDatabase(
             version,
             DeploymentCommandsSchema.parse(deploymentCommands),
           );
+    const keys = version === 34 ? planEngineeringCutover(db, environmentKeys) : null;
     const before = snapshot(db);
     const report: MigrationReport = {
-      status: version === 34 ? 'current' : 'ready',
+      status: version === SERVER_SCHEMA_VERSION ? 'current' : 'ready',
       database: path,
       from: version,
-      to: 34,
+      to: version < 34 ? 34 : SERVER_SCHEMA_VERSION,
       backupPath: null,
       rewrittenResults: 0,
       historicalConfirmations: 0,
       tables: before.map(({ name, rows }) => ({ name, rows })),
     };
-    if (apply && version !== 34) {
+    if (apply && version !== SERVER_SCHEMA_VERSION) {
       report.backupPath = backupDatabase(path, before);
       if (version < 33) {
         const reference = new Database(':memory:');
@@ -472,11 +588,14 @@ export function migrateServerDatabase(
           reference.close();
         }
       }
-      migrateWorkspaceCollections(db);
-      migrateSubmissionModes(db);
-      assertSchema(db, 34);
+      if (keys) applyEngineeringCutover(db, keys);
+      else {
+        migrateWorkspaceCollections(db);
+        migrateSubmissionModes(db);
+      }
+      assertSchema(db, report.to);
       assertIntegrity(db);
-      db.exec('PRAGMA user_version=34');
+      db.exec(`PRAGMA user_version=${report.to}`);
       report.status = 'migrated';
     }
     db.exec('COMMIT');
@@ -497,19 +616,22 @@ if (import.meta.main) {
         database: { type: 'string' },
         apply: { type: 'boolean' },
         'deployment-commands': { type: 'string' },
+        'environment-keys': { type: 'string' },
       },
     });
     if (!values.database)
       throw new Error(
-        '用法：bun run migrate:server -- --database /绝对路径/server.sqlite [--deployment-commands 配置.json] [--apply]；默认仅预检，应用前停止 Server。',
+        '用法：bun run migrate:server -- --database /绝对路径/server.sqlite [--deployment-commands 配置.json] [--environment-keys 标识.json] [--apply]；默认仅预检，应用前停止 Server。',
       );
     const commandPath = values['deployment-commands'];
     const commands: unknown = commandPath
       ? JSON.parse(readFileSync(commandPath, 'utf8'))
       : {};
+    const keysPath = values['environment-keys'];
+    const keys: unknown = keysPath ? JSON.parse(readFileSync(keysPath, 'utf8')) : {};
     console.log(
       JSON.stringify(
-        migrateServerDatabase(values.database, values.apply, commands),
+        migrateServerDatabase(values.database, values.apply, commands, keys),
         null,
         2,
       ),

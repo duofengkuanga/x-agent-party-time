@@ -42,7 +42,7 @@ async function setup(createDatabase: ReturnType<typeof testDatabases>) {
     type: 'FRONTEND',
     identifier: 'web',
     environment: '前端测试环境',
-    deployment: { command: 'bun run deploy:test' },
+    key: 'test',
     repository: 'https://example.com/front.git',
     developers: {
       developer: { userId: users.developerA.id, runnerId: runnerA.runner.id },
@@ -53,7 +53,7 @@ async function setup(createDatabase: ReturnType<typeof testDatabases>) {
     type: 'BACKEND',
     identifier: 'api',
     environment: '后端测试环境',
-    deployment: { command: 'bun run deploy:backend' },
+    key: 'backend',
     repository: 'https://example.com/back.git',
     developers: {
       developer: { userId: users.developerB.id, runnerId: runnerB.runner.id },

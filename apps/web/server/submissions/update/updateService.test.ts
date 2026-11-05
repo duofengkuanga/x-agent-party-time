@@ -172,20 +172,10 @@ describe('UpdateService', () => {
     fixture.database.run(
       `INSERT INTO submission_update_batch(
            id, submission_id, submission_item_id, state, version,
-           active_execution_id, session_id, deployment_json, frozen_at,
+           active_execution_id, session_id, frozen_at,
            created_at, updated_at
-         ) VALUES (?, ?, ?, 'COMPLETED', 1, NULL, NULL, ?, ?, ?, ?)`,
-      [
-        randomUUID(),
-        fixture.submission.id,
-        fixture.item.id,
-        JSON.stringify({
-          command: 'bun run deploy:test',
-        }),
-        now,
-        now,
-        now,
-      ],
+         ) VALUES (?, ?, ?, 'COMPLETED', 1, NULL, NULL, ?, ?, ?)`,
+      [randomUUID(), fixture.submission.id, fixture.item.id, now, now, now],
     );
 
     expect(

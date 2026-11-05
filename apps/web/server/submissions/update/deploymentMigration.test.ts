@@ -16,11 +16,8 @@ test('旧 26 契约明确拒绝且保留旧表记录', async () => {
     actualResultAttachmentIds: [],
     expectedResultAttachmentIds: [],
   }).bug;
-  f.database.run('UPDATE platform_environment SET deployment_json = ?', [
-    JSON.stringify({ kind: 'CI_CD' }),
-  ]);
-  // Reconstruct the preceding schema only inside this disposable test database.
-  f.database.exec('DROP TABLE submission_bug_deployment; PRAGMA user_version = 26');
+  // Mark the disposable fixture as a legacy database to exercise the startup guard.
+  f.database.exec('PRAGMA user_version = 26');
   const tables = f.database.all<{ name: string }>(
     "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
   );

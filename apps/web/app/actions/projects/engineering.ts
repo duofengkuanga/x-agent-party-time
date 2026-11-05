@@ -17,11 +17,7 @@ import {
   engineeringSettingsPath,
   bindingSettingsPath,
 } from '@/app/(pages)/(main)/projects/components/routeState';
-import {
-  DeploymentScriptSchema,
-  EngineeringTypeSchema,
-  type DeploymentScript,
-} from '../../../contracts/projects/engineering';
+import { EngineeringTypeSchema } from '../../../contracts/projects/engineering';
 import { engineeringActionError } from '../../../server/platform/projects/engineering/actionError';
 
 import { PlatformError } from '@/server/platform/errors/index';
@@ -44,7 +40,7 @@ export async function createEngineeringAction(formData: FormData): Promise<never
       environments: formStringList(formData, 'environmentKey').map((key) => ({
         mutationId: formField(formData, `environmentMutationId:${key}`),
         name: formField(formData, `environmentName:${key}`),
-        deployment: deploymentField(formData, key),
+        key: formField(formData, `environmentIdentifier:${key}`),
       })),
     });
     return {
@@ -136,7 +132,7 @@ export async function createEnvironmentAction(formData: FormData) {
         {
           mutationId: formField(formData, 'mutationId'),
           name: formField(formData, 'name'),
-          deployment: deploymentField(formData),
+          key: formField(formData, 'environmentIdentifier'),
         },
       ),
       refreshPaths: REFRESH_PATHS,
@@ -155,7 +151,6 @@ export async function updateEnvironmentAction(formData: FormData) {
           mutationId: formField(formData, 'mutationId'),
           expectedVersion: integerFormField(formData, 'expectedVersion'),
           name: formField(formData, 'name'),
-          deployment: deploymentField(formData),
         },
       ),
       refreshPaths: REFRESH_PATHS,
@@ -194,12 +189,6 @@ function runEngineeringRedirect(
       refreshPaths: REFRESH_PATHS,
     }),
   });
-}
-
-function deploymentField(formData: FormData, key?: string): DeploymentScript {
-  const suffix = key === undefined ? '' : `:${key}`;
-  const command = formField(formData, `command${suffix}`).trim();
-  return DeploymentScriptSchema.parse({ command });
 }
 
 export async function createEngineeringBindingAction(formData: FormData): Promise<never> {

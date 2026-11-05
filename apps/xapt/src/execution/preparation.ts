@@ -1,4 +1,4 @@
-import { attachDeploymentEvidence } from './deploymentEvidence';
+import { attachDeploymentEvidence, readEngineeringDelivery } from './deploymentEvidence';
 import {
   serializeDeterministicJson,
   type ClaimedExecution,
@@ -172,7 +172,10 @@ export class ExecutionPreparation {
           turn.executionBriefHash
         )
           throw new Error('任务说明校验值不匹配');
-        if (!XAPT_SKILL_NAMES.includes(turn.requiredSkillName as XaptSkillName))
+        if (
+          turn.requiredSkillName === 'XHandoff' ||
+          !XAPT_SKILL_NAMES.includes(turn.requiredSkillName as XaptSkillName)
+        )
           throw new Error('任务请求了未知规则');
         resolvedSkill = await observation.phase('skill', async () => {
           const skill = await this.skills.resolveCurrent(
@@ -234,6 +237,14 @@ export class ExecutionPreparation {
               )
                 ? { gitHead: baseCommit }
                 : await this.resultVerifier.capture(repositoryPath, resultAssertions));
+            if (resultBaseline && resolvedSkill.handoffPath)
+              for (const assertion of resultAssertions)
+                if (assertion.kind === 'GIT_DELIVERY_STATE' && assertion.environmentKey)
+                  readEngineeringDelivery(
+                    repositoryPath,
+                    resultBaseline.gitHead,
+                    assertion.environmentKey,
+                  );
             await this.state.saveExecutionResultBaseline(
               execution.id,
               resultBaseline,

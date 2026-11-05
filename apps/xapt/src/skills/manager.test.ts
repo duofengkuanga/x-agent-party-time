@@ -48,7 +48,11 @@ describe('SkillBundleManager', () => {
       await readFile(join(namespaceTarget, 'manifest.json'), 'utf8'),
     ) as { sourceRevision: string; skills: Record<string, string> };
     expect(manifest.sourceRevision).toBe(revision);
-    expect(Object.keys(manifest.skills).sort()).toEqual(['XBugRepaire', 'XUpdate']);
+    expect(Object.keys(manifest.skills).sort()).toEqual([
+      'XBugRepaire',
+      'XHandoff',
+      'XUpdate',
+    ]);
     const repair = await manager.resolveCurrent('XBugRepaire');
     expect(repair.sourceRevision).toBe(revision);
     expect(repair.path).toBe(join(paths.skillBundles, repair.bundleHash));
@@ -146,6 +150,31 @@ describe('SkillBundleManager', () => {
     await expect(
       manager.resolveBound({ ...identity, skillName: '../outside' }),
     ).rejects.toThrow('关联无效');
+  });
+
+  test('原任务要求同代的 XHandoff，更新后缺失或损坏均明确拒绝', async () => {
+    const home = await temporaryHome();
+    const paths = xaptPaths(home);
+    let snapshot = generation('a'.repeat(40));
+    const manager = new SkillBundleManager(
+      paths,
+      githubFixture(() => snapshot),
+    );
+    await manager.update();
+    const original = await manager.resolveCurrent('XUpdate');
+    snapshot = generation('c'.repeat(40), {
+      XHandoff: {
+        'SKILL.md': skillMarkdown('XHandoff') + '\n# New',
+        'agents/openai.yaml': openaiYaml('XHandoff'),
+      },
+    });
+    await manager.update();
+    expect((await manager.resolveCurrent('XUpdate')).handoffPath).not.toBe(
+      original.handoffPath,
+    );
+    expect((await manager.resolveBound(original)).handoffPath).toBe(original.handoffPath);
+    await writeFile(original.handoffPath!, 'wrong contents');
+    await expect(manager.resolveBound(original)).rejects.toThrow('内容校验失败');
   });
 
   test('任一 Skill 无效时不切换当前 generation', async () => {
@@ -275,7 +304,7 @@ function generation(
   overrides: Partial<Record<XaptSkillName, Record<string, string>>> = {},
 ): FixtureGeneration {
   const files: Record<string, FixtureFile> = {};
-  for (const name of ['XBugRepaire', 'XUpdate'] as const) {
+  for (const name of ['XBugRepaire', 'XUpdate', 'XHandoff'] as const) {
     const values = overrides[name] ?? {
       'SKILL.md': skillMarkdown(name),
       'agents/openai.yaml': openaiYaml(name),

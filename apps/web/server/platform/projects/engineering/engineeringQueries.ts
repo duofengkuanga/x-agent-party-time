@@ -4,7 +4,6 @@ import type { AppDatabase } from '@/server/database/index';
 import { PlatformError } from '@/server/platform/errors/index';
 import {
   EngineeringIdSchema,
-  DeploymentScriptSchema,
   EngineeringMemberSchema,
   EngineeringMembershipSchema,
   EngineeringSchema,
@@ -23,8 +22,8 @@ export type EngineeringRow = DatabaseRow<Engineering> & {
 
 export type EngineeringMembershipRow = DatabaseRow<EngineeringMembership>;
 
-export type EnvironmentRow = Omit<DatabaseRow<TestEnvironment>, 'deployment'> & {
-  deployment_json: string;
+export type EnvironmentRow = Omit<DatabaseRow<TestEnvironment>, 'key'> & {
+  environment_key: string;
 };
 
 export class EngineeringQueries {
@@ -93,7 +92,7 @@ export class EngineeringQueries {
     this.getEngineering(userId, engineeringId);
     return this.db
       .all<EnvironmentRow>(
-        `SELECT id, engineering_id, name, deployment_json, version,
+        `SELECT id, engineering_id, name, environment_key, version,
                 created_at, updated_at
          FROM platform_environment
          WHERE engineering_id = ?
@@ -137,7 +136,7 @@ export class EngineeringQueries {
 
   requireEnvironmentOwner(userId: string, environmentId: string): TestEnvironment {
     const row = this.db.get(
-      `SELECT env.id, env.engineering_id, env.name, env.deployment_json,
+      `SELECT env.id, env.engineering_id, env.name, env.environment_key,
                 env.version, env.created_at, env.updated_at, p.role
          FROM platform_environment env
          JOIN platform_engineering e ON e.id = env.engineering_id
@@ -218,10 +217,10 @@ export function mapEnvironment(row: EnvironmentRow): TestEnvironment {
   try {
     return parseRow(TestEnvironmentSchema, {
       ...row,
-      deployment: DeploymentScriptSchema.parse(JSON.parse(row.deployment_json)),
+      key: row.environment_key,
     });
   } catch (error) {
-    throw new PlatformError('INTERNAL_ERROR', '环境部署配置无效', { cause: error });
+    throw new PlatformError('INTERNAL_ERROR', '环境身份记录无效', { cause: error });
   }
 }
 

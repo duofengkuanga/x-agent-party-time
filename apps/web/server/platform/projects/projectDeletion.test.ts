@@ -75,7 +75,7 @@ describe('项目删除', () => {
       type: 'FRONTEND',
       identifier: 'web',
       environment: '测试环境',
-      deployment: { command: 'bun run deploy:backend' },
+      key: 'backend',
       repository: 'https://example.com/project.git',
       developers: { member: { userId: users.member.id, runnerId: paired.runner.id } },
     });
@@ -281,7 +281,6 @@ describe('项目删除', () => {
       'test_submission',
       'submission_item',
       'submission_bug',
-      'submission_bug_deployment',
       'submission_bug_repair_context',
       'submission_repair_attempt',
       'submission_update_batch',

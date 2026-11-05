@@ -211,7 +211,7 @@ export class LocalStateStore {
     return await this.readState(
       this.deploymentEvidencePath(workspaceKey),
       DeploymentEvidenceSchema,
-      1,
+      2,
       true,
     );
   }

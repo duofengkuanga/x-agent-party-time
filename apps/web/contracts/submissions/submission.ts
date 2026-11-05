@@ -1,9 +1,9 @@
 import { RunnerIdSchema } from '@agent-party-time/runner-contract';
+import { EnvironmentKeySchema } from '@agent-party-time/execution-contract';
 import { z } from 'zod';
 import { UserIdSchema, UserSchema } from '@/contracts/auth';
 import {
   BindingIdSchema,
-  DeploymentScriptSchema,
   EngineeringIdSchema,
   EngineeringIdentifierSchema,
   EngineeringNameSchema,
@@ -57,7 +57,7 @@ export const SubmissionItemSchema = z.object({
   environment: z.object({
     id: EnvironmentIdSchema,
     name: EnvironmentNameSchema,
-    deployment: DeploymentScriptSchema.nullable(),
+    key: EnvironmentKeySchema,
   }),
   createdAt: z.iso.datetime(),
 });
@@ -128,14 +128,10 @@ const SubmissionItemViewSchema = SubmissionItemSchema.omit({
   engineering: SubmissionItemSchema.shape.engineering.omit({
     repositoryUrl: true,
   }),
-  environment: SubmissionItemSchema.shape.environment.omit({
-    deployment: true,
-  }),
   technical: z
     .object({
       bindingId: BindingIdSchema,
       repositoryUrl: RepositoryUrlSchema,
-      deployment: DeploymentScriptSchema.nullable(),
     })
     .nullable(),
   environmentAccess: z.object({

@@ -22,7 +22,7 @@ async function setup(repairCreateId?: () => string) {
       type: type as 'FRONTEND' | 'BACKEND',
       identifier: type.toLowerCase(),
       environment: `${type}测试环境`,
-      deployment: { command: 'bun run deploy:backend' },
+      key: 'backend',
       repository: `https://example.com/${type}.git`,
       branch: 'main',
     })),

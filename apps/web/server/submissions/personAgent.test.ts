@@ -1,18 +1,9 @@
 import { expect, test } from 'bun:test';
-import { createHash, randomUUID } from 'node:crypto';
-import { testSkillBinding } from '@/testing/submissions/execution';
+import { randomUUID } from 'node:crypto';
+import { testDeploymentReceipt, testSkillBinding } from '@/testing/submissions/execution';
 import { testHandoffUse, testRepairHandoff } from '@/testing/submissions/handoff';
 import { testDatabases } from '@/testing/database';
 import { lifecycleFixture } from './lifecycle/lifecycleFixture';
-
-function receipt(commit: string, command: string) {
-  return {
-    source: 'CODEX_COMMAND',
-    commit,
-    commandSha256: createHash('sha256').update(command).digest('hex'),
-    artifactSha256: 'e'.repeat(64),
-  };
-}
 
 const setup = lifecycleFixture(testDatabases());
 
@@ -208,7 +199,7 @@ test.each([false, true])(
                   state: 'DEPLOYED',
                   commit: 'd'.repeat(40),
                   evidence: '后端启动成功',
-                  receipt: receipt('d'.repeat(40), 'bun run deploy:backend'),
+                  receipt: testDeploymentReceipt('d'.repeat(40), 'backend'),
                 },
               },
             },
@@ -257,7 +248,7 @@ test.each([false, true])(
                   commit: 'b'.repeat(40),
                   pushVerified: true,
                   deploymentVerified: true,
-                  receipt: receipt('b'.repeat(40), 'bun run deploy:test'),
+                  receipt: testDeploymentReceipt('b'.repeat(40), 'test'),
                 },
                 'repo-2': both
                   ? {
@@ -265,7 +256,7 @@ test.each([false, true])(
                       commit: 'd'.repeat(40),
                       pushVerified: true,
                       deploymentVerified: true,
-                      receipt: receipt('d'.repeat(40), 'bun run deploy:backend'),
+                      receipt: testDeploymentReceipt('d'.repeat(40), 'backend'),
                     }
                   : { state: 'UNCHANGED' },
               },

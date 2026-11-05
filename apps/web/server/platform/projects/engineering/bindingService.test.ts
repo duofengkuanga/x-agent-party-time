@@ -305,11 +305,11 @@ describe('删除未使用工程绑定', () => {
            engineering_type, engineering_identifier, repository_url,
            responsible_user_id, responsible_username,
            responsible_display_name, responsible_user_created_at, binding_id,
-           target_branch, environment_id, environment_name, deployment_json,
+           target_branch, environment_id, environment_name, environment_key,
            created_at
          ) VALUES (?, ?, 0, ?, 'Binding 工程', 'FRONTEND', 'binding-web',
                    'https://example.com/team/project.git', ?, ?, ?, ?, ?,
-                   'main', ?, '测试环境', '{"kind":"CI_CD"}', ?)`,
+                   'main', ?, '测试环境', 'test', ?)`,
       [
         itemId,
         submissionId,

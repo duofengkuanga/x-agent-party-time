@@ -1,9 +1,9 @@
+import { EnvironmentKeySchema } from '@agent-party-time/execution-contract';
 import { z } from 'zod';
 import type { AppDatabase } from '@/server/database/index';
 import { PlatformError } from '@/server/platform/errors/index';
 import type { MutationStore } from '@/server/platform/mutations/store';
 import {
-  DeploymentScriptSchema,
   EnvironmentIdSchema,
   EnvironmentNameSchema,
   TestEnvironmentSchema,
@@ -15,7 +15,7 @@ import {
   type EnvironmentRow,
 } from './engineeringQueries';
 
-export type EnvironmentInput = Pick<TestEnvironment, 'name' | 'deployment'> & {
+export type EnvironmentInput = Pick<TestEnvironment, 'name' | 'key'> & {
   mutationId: string;
 };
 
@@ -53,7 +53,7 @@ export class EnvironmentService {
     input: EnvironmentInput,
   ): TestEnvironment {
     const name = EnvironmentNameSchema.parse(input.name);
-    const deployment = DeploymentScriptSchema.parse(input.deployment);
+    const key = EnvironmentKeySchema.parse(input.key);
     return this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
@@ -68,17 +68,25 @@ export class EnvironmentService {
         if (engineering.archivedAt)
           throw new PlatformError('INVALID_TRANSITION', '已归档工程不能创建环境');
         this.queries.ensureEnvironmentNameAvailable(engineeringId, name);
+        if (
+          this.db.get(
+            'SELECT 1 FROM platform_environment WHERE engineering_id = ? AND environment_key = ?',
+            engineeringId,
+            key,
+          )
+        )
+          throw new PlatformError('RESOURCE_CONFLICT', '该工程已使用这个环境标识');
         const id = this.createId();
         const createdAt = this.now().toISOString();
         const stored = this.db.get<EnvironmentRow>(
           `INSERT INTO platform_environment(
-               id, engineering_id, name, deployment_json, version,
+               id, engineering_id, name, environment_key, version,
                created_at, updated_at
              ) VALUES (?, ?, ?, ?, 1, ?, ?) RETURNING *`,
           id,
           engineeringId,
           name,
-          JSON.stringify(deployment),
+          key,
           createdAt,
           createdAt,
         )!;
@@ -88,7 +96,7 @@ export class EnvironmentService {
           audit: {
             projectId: engineering.projectId,
             action: 'ENVIRONMENT_CREATED',
-            details: { name, deployment },
+            details: { name, key },
           },
         };
       },
@@ -98,10 +106,9 @@ export class EnvironmentService {
   updateEnvironment(
     actorUserId: string,
     environmentId: string,
-    input: EnvironmentInput & { expectedVersion: number },
+    input: Omit<EnvironmentInput, 'key'> & { expectedVersion: number },
   ): TestEnvironment {
     const name = EnvironmentNameSchema.parse(input.name);
-    const deployment = DeploymentScriptSchema.parse(input.deployment);
     return this.writes.run({
       mutationId: input.mutationId,
       actorUserId,
@@ -112,11 +119,6 @@ export class EnvironmentService {
         const current = this.queries.requireEnvironmentOwner(actorUserId, environmentId);
         if (current.version !== input.expectedVersion)
           throw new PlatformError('STALE_STATE', '环境已更新，请刷新后重试');
-        if (this.environmentReferenced(environmentId))
-          throw new PlatformError(
-            'RESOURCE_CONFLICT',
-            '环境正在被活动提测引用，暂时不能修改部署配置',
-          );
         if (current.name.toLowerCase() !== name.toLowerCase())
           this.queries.ensureEnvironmentNameAvailable(current.engineeringId, name);
         const engineering = this.queries.requireEngineeringOwner(
@@ -128,11 +130,10 @@ export class EnvironmentService {
         const updatedAt = this.now().toISOString();
         const update = this.db.get<EnvironmentRow>(
           `UPDATE platform_environment
-             SET name = ?, deployment_json = ?, version = version + 1,
+             SET name = ?, version = version + 1,
                  updated_at = ?
              WHERE id = ? AND version = ? RETURNING *`,
           name,
-          JSON.stringify(deployment),
           updatedAt,
           environmentId,
           input.expectedVersion,
@@ -144,7 +145,7 @@ export class EnvironmentService {
           audit: {
             projectId: engineering.projectId,
             action: 'ENVIRONMENT_UPDATED',
-            details: { name, deployment },
+            details: { name, key: current.key },
           },
         };
       },

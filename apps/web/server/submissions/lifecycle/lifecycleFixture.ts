@@ -3,6 +3,7 @@ import { createSubmissionWorkflow } from '@/server/runtime/createSubmissionWorkf
 import {
   completeRepairExecution,
   testSkillBinding,
+  testDeploymentReceipt,
 } from '@/testing/submissions/execution';
 import { deliveryProject, mutableClock, mutation } from '@/testing/submissions/project';
 import type { AppDatabase } from '@/server/database/index';
@@ -38,7 +39,7 @@ async function setup(createDatabase: ReturnType<typeof testDatabases>) {
         type: 'FRONTEND',
         identifier: 'local-web',
         environment: '本地测试环境',
-        deployment: { command: 'bun run deploy:test' },
+        key: 'test',
         repository: 'https://example.com/local.git',
         branch: 'main',
       },
@@ -47,7 +48,7 @@ async function setup(createDatabase: ReturnType<typeof testDatabases>) {
         type: 'BACKEND',
         identifier: 'ci-api',
         environment: '持续集成环境',
-        deployment: { command: 'bun run deploy:backend' },
+        key: 'backend',
         repository: 'https://example.com/ci.git',
         branch: 'main',
       },
@@ -161,6 +162,11 @@ export async function completeUpdate(
     sessionId: `update-${submissionItemId}`,
     taskSkillBinding: testSkillBinding('XUpdate'),
   });
+  const commit = 'a'.repeat(40);
+  const environment = fixture.database.get<{ environment_key: string }>(
+    'SELECT environment_key FROM submission_item WHERE id = ?',
+    submissionItemId,
+  )!;
   fixture.executions.complete(fixture.runner.id, claimed.id, {
     leaseToken: claimed.lease.token,
     sessionId: `update-${submissionItemId}`,
@@ -171,6 +177,15 @@ export async function completeUpdate(
           handoffUse: testHandoffUse(),
           outcome: result.outcome,
           completedActions: ['集成候选并完成更新'],
+          deliveries: {
+            'repo-1': {
+              state: 'DEPLOYED',
+              commit,
+              pushVerified: true,
+              deploymentVerified: true,
+              receipt: testDeploymentReceipt(commit, environment.environment_key),
+            },
+          },
           validations: [{ name: '定向检查', status: 'PASSED', detail: '' }],
           warnings: [],
         },

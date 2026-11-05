@@ -7,10 +7,8 @@ import {
   RepairExecutionResultSchema,
   RepairOutputJsonSchema,
 } from '../apps/web/contracts/submissions/repair';
-import {
-  UpdateExecutionResultSchema,
-  UpdateOutputJsonSchema,
-} from '../apps/web/contracts/submissions/update';
+import { outputJsonSchema } from '../apps/web/contracts/outputSchema';
+import { personAgentUpdateResultSchema } from '../apps/web/server/submissions/update/personAgentUpdate';
 import { bundleHash } from '../apps/xapt/src/skills/manager';
 import { verifyResultContent } from '../apps/xapt/src/execution/resultVerification';
 import {
@@ -38,6 +36,22 @@ const skillsRoot = resolve(values['skills-root']);
 const evaluationRoot = await mkdtemp(join(tmpdir(), 'repair-handoff-eval-'));
 const repairSkill = 'XBugRepaire';
 const updateSkill = 'XUpdate';
+const fixtureId = '11111111-1111-4111-8111-111111111111';
+const UpdateExecutionResultSchema = personAgentUpdateResultSchema([
+  {
+    alias: 'repo-1',
+    itemId: fixtureId,
+    bindingId: fixtureId,
+    engineeringId: fixtureId,
+    repositoryUrl: 'https://example.invalid/eval.git',
+    targetBranch: 'main',
+    environmentId: fixtureId,
+    environmentKey: 'isolated',
+    candidateCommits: [],
+    changed: true,
+  },
+]);
+const UpdateOutputJsonSchema = outputJsonSchema(UpdateExecutionResultSchema);
 // Historical comparison fixtures keep the invocation names at their pinned revision.
 const baselineSkillNames = {
   repair: 'agent-party-time-repair-bug',
@@ -114,12 +128,22 @@ async function prepareCase(directory: string, language: string) {
   await mkdir(join(source, 'tools'), { recursive: true });
   await mkdir(join(source, 'src'));
   await mkdir(join(source, 'tests'));
-  await writeFile(join(source, 'AGENTS.md'), policy);
+  await writeFile(join(source, 'AGENTS.md'), policy + '\n[工程执行约定](README.md)\n');
   await writeFile(join(source, '.gitignore'), '.agents/\n.eval/\ndist/\n__pycache__/\n');
   const driver = language === 'node' ? 'node tools/check.mjs' : 'python3 tools/check.py';
   await writeFile(
     join(source, 'README.md'),
-    `# Billing fixture\n\nThe add function must return the sum of two integers.\n\nRepair acceptance: relevant tests must pass. Delivery acceptance: syntax/compilation, tests, and a package artifact must all be evidenced.\n\nAvailable validation entry points:\n- ${driver} compile\n- ${driver} test\n- ${driver} package\n\nInspect the scripts to select applicable commands and runtime conditions. No external services or package installation are needed. For the fixture deployment, run sh tools/deploy.sh after confirming Push. The .eval/deployed file identifies the deployed commit. On recovery compare it with the expected HEAD before deciding whether to deploy.\n`,
+    `# Billing fixture\n\nThe add function must return the sum of two integers.\n\nRepair acceptance: relevant tests must pass. Delivery acceptance: syntax/compilation, tests, and a package artifact must all be evidenced.\n\nAvailable validation entry points:\n- ${driver} compile\n- ${driver} test\n- ${driver} package\n\nInspect the scripts to select applicable commands and runtime conditions. No external services or package installation are needed. Repair should run the relevant tests against the current files. Update must run the required tests and the preparation command below on the clean final commit before Push. After Push, deploy the prepared artifact. Use the exact listed commands from the worktree root. The fake target only records the deployed commit and artifact digest. On recovery use the listed read-only verification command before any repeated action.\n\n\`\`\`xapt-delivery\n{"prepare":"sh tools/prepare.sh","environments":[{"key":"isolated","deploy":"sh tools/deploy.sh","verify":"sh tools/deploy.sh --verify"}]}\n\`\`\`\n`,
+  );
+  await writeFile(
+    join(source, 'tools/prepare.sh'),
+    `#!/bin/sh
+set -eu
+test -z "$(git status --porcelain)"
+${driver} package --native-git
+mkdir -p .eval
+printf '%s\n' "$(git rev-parse HEAD)" > .eval/prepared
+`,
   );
   await writeFile(
     join(source, 'tools/deploy.sh'),
@@ -128,10 +152,16 @@ set -eu
 head=$(git rev-parse HEAD)
 remote=$(git ls-remote origin refs/heads/main | cut -f1)
 test "$head" = "$remote"
-test ! -e .eval/deployed
-mkdir -p .eval
-printf '%s\n' "$head" > .eval/deployed
+test "$(cat .eval/prepared)" = "$head"
+artifact=$(find dist -type f -exec shasum -a 256 {} + | sort | shasum -a 256 | cut -d ' ' -f 1)
+if [ "\${1:-}" != "--verify" ]; then
+  test ! -e .eval/deployed
+  printf '%s\n' "$head" > .eval/deployed
+  printf '%s\n' "$artifact" > .eval/deployed-sha256
+fi
 test "$(cat .eval/deployed)" = "$head"
+test "$(cat .eval/deployed-sha256)" = "$artifact"
+printf 'XAPT_DEPLOYMENT_V1 {"commit":"%s","artifactSha256":"%s","environmentKey":"isolated"}\n' "$head" "$artifact"
 `,
   );
   if (language === 'node') {
@@ -277,6 +307,14 @@ async function runAgent(
       return { path, bytes };
     }),
   );
+  const handoffPath = join(worktree, '.agents/skills/XHandoff/SKILL.md');
+  if (variant === 'current' && !options.resumeTaskId) {
+    await mkdir(join(handoffPath, '..'), { recursive: true });
+    await writeFile(
+      handoffPath,
+      await readFile(join(skillsRoot, 'skills/XHandoff/SKILL.md')),
+    );
+  }
   const schema =
     variant === 'baseline'
       ? baselineSchemas![phase]
@@ -297,6 +335,10 @@ async function runAgent(
           variant === 'baseline'
             ? git(skillsRoot, 'rev-parse', values['baseline-skills']!)
             : git(skillsRoot, 'rev-parse', 'HEAD'),
+        handoffHash:
+          variant === 'current'
+            ? bundleHash([{ path: 'SKILL.md', bytes: await readFile(handoffPath) }])
+            : null,
         workingTreeChanges:
           variant === 'current' ? git(skillsRoot, 'diff', '--stat') : '',
       },
@@ -307,7 +349,11 @@ async function runAgent(
   const prompt = options.resumeTaskId
     ? '前次终态传输中断，平台尚未确认结果。继续完成同一个冻结更新批次；候选、目标分支、环境和验收要求均未改变。按原 Skill 核对当前事实后返回终态。'
     : `Use $${skillName} at ${join(skillRoot, 'SKILL.md')} to complete this Execution. Your worktree has already been prepared at ${worktree}. Its disposable Git metadata is in the writable fixture directory named fixture-git. This is an authorized isolated evaluation: modify only this worktree, and use only its local origin for any permitted push. Follow the supplied output Schema. Do not change AGENTS.md, tests, validation scripts, or the Skill.\nExecution Brief:\n${JSON.stringify(brief)}\n`;
-  await writeFile(join(directory, `${label}-prompt.txt`), prompt);
+  const input =
+    variant === 'current'
+      ? `Read the fixed companion XHandoff at ${handoffPath}.\n\n${prompt}`
+      : prompt;
+  await writeFile(join(directory, `${label}-prompt.txt`), input);
   const started = Date.now();
   console.log(`${variant}/${directory.split('/').at(-1)}/${phase}: real Codex started`);
   const child = Bun.spawn(
@@ -337,7 +383,7 @@ async function runAgent(
         PYTHONUTF8: '1',
         PYTHONPYCACHEPREFIX: join(worktree, '.eval', 'pycache'),
       },
-      stdin: new TextEncoder().encode(prompt),
+      stdin: new TextEncoder().encode(input),
       stdout: Bun.file(eventsFile),
       stderr: Bun.file(join(directory, `${label}-stderr.log`)),
     },
@@ -402,7 +448,7 @@ function assertPublicSummary(
 async function changeDeliveryInputs(source: string): Promise<string> {
   if (values.scenario === 'stale') {
     await rename(join(source, 'tools/check.mjs'), join(source, 'tools/verify.mjs'));
-    for (const file of ['README.md', 'package.json'])
+    for (const file of ['README.md', 'package.json', 'tools/prepare.sh'])
       await writeFile(
         join(source, file),
         (await readFile(join(source, file), 'utf8')).replaceAll(
@@ -594,24 +640,62 @@ try {
         directory,
         variant,
         'update',
-        {
-          targetBranch: 'main',
-          environment: 'isolated',
-          ...(variant === 'baseline'
-            ? { deployment: { mode: 'CI_CD' } }
-            : { deploymentCommand: 'sh tools/deploy.sh' }),
-          frozenCandidates: candidates,
-        },
+        variant === 'baseline'
+          ? {
+              targetBranch: 'main',
+              environment: 'isolated',
+              deployment: { mode: 'CI_CD' },
+              frozenCandidates: candidates,
+            }
+          : {
+              engineeringDeliveries: [
+                {
+                  alias: 'repo-1',
+                  name: 'Isolated billing',
+                  type: 'BACKEND',
+                  targetBranch: 'main',
+                  environment: 'isolated',
+                  environmentKey: 'isolated',
+                  frozenCandidates: candidates,
+                },
+              ],
+              deploymentOrder: ['repo-1'],
+            },
         { persist: values.scenario === 'resume' },
       );
       if (variant === 'current') {
         const { result } = UpdateExecutionResultSchema.parse(update.outcome);
         if (
           result.outcome !== 'COMPLETED' ||
+          result.deliveries['repo-1']?.commit !==
+            git(updateWorktree, 'rev-parse', 'HEAD') ||
           (await readFile(join(updateWorktree, '.eval/deployed'), 'utf8')).trim() !==
             git(updateWorktree, 'rev-parse', 'HEAD')
         )
           throw new Error('Update 没有完成隔离部署');
+        const updateEvents = (await readFile(update.eventsFile, 'utf8'))
+          .trim()
+          .split('\n')
+          .map((line) => JSON.parse(line));
+        const artifactSha = (
+          await readFile(join(updateWorktree, '.eval/deployed-sha256'), 'utf8')
+        ).trim();
+        const receipt = JSON.stringify({
+          commit: git(updateWorktree, 'rev-parse', 'HEAD'),
+          artifactSha256: artifactSha,
+          environmentKey: 'isolated',
+        });
+        if (
+          !updateEvents.some(
+            (event) =>
+              event.type === 'item.completed' &&
+              event.item?.type === 'command_execution' &&
+              event.item.exit_code === 0 &&
+              /^([^\n]+ -lc ['"])?sh tools\/deploy\.sh['"]?$/u.test(event.item.command) &&
+              event.item.aggregated_output?.includes(`XAPT_DEPLOYMENT_V1 ${receipt}`),
+          )
+        )
+          throw new Error('真实 Codex 事件缺少独立的部署成功命令与回执');
       } else if (
         (update.outcome as { result: { outcome: string } }).result.outcome !== 'PUSHED'
       ) {

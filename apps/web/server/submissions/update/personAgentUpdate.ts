@@ -1,10 +1,10 @@
-import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import type {
-  ExecutionWorkspaceMember,
-  JsonObject,
+import {
+  DeploymentReceiptSchema,
+  EnvironmentKeySchema,
+  type ExecutionWorkspaceMember,
+  type JsonObject,
 } from '@agent-party-time/execution-contract';
-import { DeploymentScriptSchema } from '@/contracts/projects/engineering';
 import { CommitShaSchema } from '@/contracts/submissions/repair';
 import {
   UpdateExecutionResultSchema,
@@ -15,12 +15,6 @@ import { PlatformError } from '@/server/platform/errors/index';
 import { personAgentRepairResultSchema } from '../repair/personAgentScope';
 import type { CandidateRow } from './updateQueries';
 
-const deploymentReceipt = z.strictObject({
-  source: z.literal('CODEX_COMMAND'),
-  commit: CommitShaSchema,
-  artifactSha256: z.string().regex(/^[a-f0-9]{64}$/u),
-  commandSha256: z.string().regex(/^[a-f0-9]{64}$/u),
-});
 const scopeSchema = z
   .array(
     z.strictObject({
@@ -29,7 +23,7 @@ const scopeSchema = z
       bindingId: z.uuid(),
       engineeringId: z.uuid(),
       repositoryUrl: z.string(),
-      deploymentCommand: DeploymentScriptSchema.shape.command,
+      environmentKey: EnvironmentKeySchema,
       candidateCommits: z.array(CommitShaSchema),
       targetBranch: z.string(),
       environmentId: z.uuid(),
@@ -50,7 +44,9 @@ export function personAgentUpdateResultSchema(
   requireReceipt = false,
 ) {
   const [completed, failed] = UpdateExecutionResultSchema.shape.result.options;
-  const receiptFields = requireReceipt ? { receipt: deploymentReceipt.optional() } : {};
+  const receiptFields = requireReceipt
+    ? { receipt: DeploymentReceiptSchema.optional() }
+    : {};
   const completedMembers = Object.fromEntries(
     scope.map(({ alias, changed }) => [
       alias,
@@ -103,16 +99,17 @@ export function personAgentUpdateResultSchema(
           message: '整批交付必须完成必需验证',
         });
       if (!requireReceipt) return;
-      for (const { alias, deploymentCommand } of scope) {
+      for (const { alias, environmentKey } of scope) {
         const delivery = result.deliveries[alias];
         if (!delivery || delivery.state !== 'DEPLOYED') continue;
         const receipt =
-          'receipt' in delivery ? deploymentReceipt.safeParse(delivery.receipt) : null;
-        const command = createHash('sha256').update(deploymentCommand).digest('hex');
+          'receipt' in delivery
+            ? DeploymentReceiptSchema.safeParse(delivery.receipt)
+            : null;
         if (
           !receipt?.success ||
           receipt.data.commit !== delivery.commit ||
-          receipt.data.commandSha256 !== command
+          receipt.data.environmentKey !== environmentKey
         )
           context.addIssue({
             code: 'custom',
@@ -133,7 +130,7 @@ type ScopeRow = {
   target_branch: string;
   environment_id: string;
   environment_name: string;
-  deployment_json: string;
+  environment_key: string;
 };
 
 export function freezePersonAgentUpdate(
@@ -145,10 +142,9 @@ export function freezePersonAgentUpdate(
   const rows = db.all<ScopeRow>(
     `SELECT item.id, item.binding_id, item.engineering_id, engineering.name engineering_name,
       item.engineering_type, item.repository_url, item.target_branch, item.environment_id,
-      item.environment_name, environment.deployment_json
+      item.environment_name, item.environment_key
      FROM submission_item item
      JOIN platform_engineering engineering ON engineering.id = item.engineering_id
-     JOIN platform_environment environment ON environment.id = item.environment_id
      WHERE item.submission_id = ? ORDER BY item.position`,
     submissionId,
   );
@@ -228,16 +224,13 @@ export function freezePersonAgentUpdate(
           }),
         ),
     );
-    const deploymentCommand = DeploymentScriptSchema.parse(
-      JSON.parse(item.deployment_json),
-    ).command;
     scope.push({
       alias,
       itemId: item.id,
       bindingId: item.binding_id,
       engineeringId: item.engineering_id,
       repositoryUrl: item.repository_url,
-      deploymentCommand,
+      environmentKey: item.environment_key,
       candidateCommits: frozenCandidates.flatMap(({ commits }) => commits),
       targetBranch: item.target_branch,
       environmentId: item.environment_id,
@@ -249,7 +242,7 @@ export function freezePersonAgentUpdate(
       type: item.engineering_type,
       targetBranch: item.target_branch,
       environment: item.environment_name,
-      deploymentCommand,
+      environmentKey: item.environment_key,
       frozenCandidates,
     };
   });

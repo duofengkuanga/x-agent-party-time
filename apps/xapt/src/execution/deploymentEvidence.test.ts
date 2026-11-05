@@ -1,4 +1,7 @@
 import { expect, test } from 'bun:test';
+import { execFileSync } from 'node:child_process';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import type { JsonValue } from '@agent-party-time/execution-contract';
 import { NodeLocalFileSystem } from '../platform/files';
 import { xaptPaths } from '../platform/paths';
@@ -12,23 +15,59 @@ import {
 
 const temporaryHome = testDirectories('xapt-deployment-evidence-');
 const executionId = '00000000-0000-4000-8000-000000000314';
-const commit = 'a'.repeat(40);
 const artifactSha256 = 'b'.repeat(64);
 
-test('只接受实际执行的冻结命令回执，并在恢复时沿用同一提交的本机证据', async () => {
+test('只接受目标环境约定中的实际命令回执，并在恢复时沿用同一提交的本机证据', async () => {
   const home = await temporaryHome();
   const paths = xaptPaths(home);
   const files = new NodeLocalFileSystem();
   const state = new LocalStateStore(paths, files);
   await state.initialize();
+  const repository = join(home, 'repo');
+  const git = (...args: string[]) =>
+    execFileSync('git', ['-C', repository, ...args], { encoding: 'utf8' }).trim();
+  await mkdir(repository);
+  git('init', '-q');
+  await writeFile(join(repository, 'AGENTS.md'), '[工程执行约定](delivery.md)\n');
+  await writeFile(
+    join(repository, 'delivery.md'),
+    '```xapt-delivery\n' +
+      JSON.stringify({
+        prepare: 'sh tools/prepare.sh',
+        environments: [
+          {
+            key: '84',
+            deploy: 'sh tools/install.sh red',
+            verify: 'sh tools/check.sh red',
+          },
+          {
+            key: '85',
+            deploy: 'sh tools/install.sh blue',
+            verify: 'sh tools/check.sh blue',
+          },
+        ],
+      }) +
+      '\n```\n',
+  );
+  git('add', '.');
+  git(
+    '-c',
+    'user.name=Fixture',
+    '-c',
+    'user.email=fixture@example.invalid',
+    'commit',
+    '-qm',
+    'convention',
+  );
+  const commit = git('rev-parse', 'HEAD');
   const target: DeploymentEvidenceTarget = {
-    repositoryPath: home,
+    repositoryPath: repository,
     workspaceKey: 'batch-workspace',
     assertion: {
       kind: 'GIT_DELIVERY_STATE',
       workspaceBindingId: '00000000-0000-4000-8000-000000000315',
       targetBranch: 'main',
-      deploymentCommand: 'pnpm run deploy:84',
+      environmentKey: '84',
       resultPath: ['result', 'deliveries', 'repo-1'],
     },
   };
@@ -43,7 +82,13 @@ test('只接受实际执行的冻结命令回执，并在恢复时沿用同一�
   await expect(attachDeploymentEvidence(state, target, result)).rejects.toThrow(
     '本机部署验收回执',
   );
-  const observe = (command: string, cwd = home) =>
+  const observe = (
+    command: string,
+    cwd = repository,
+    environmentKey = '84',
+    exitCode = 0,
+    sourceCommit = commit,
+  ) =>
     observeDeploymentEvidence(
       {
         type: 'receive',
@@ -53,10 +98,10 @@ test('只接受实际执行的冻结命令回执，并在恢复时沿用同一�
             item: {
               type: 'commandExecution',
               status: 'completed',
-              exitCode: 0,
+              exitCode,
               command,
               cwd,
-              aggregatedOutput: `XAPT_DEPLOYMENT_V1 ${JSON.stringify({ commit, artifactSha256 })}\n`,
+              aggregatedOutput: `XAPT_DEPLOYMENT_V1 ${JSON.stringify({ commit: sourceCommit, artifactSha256, environmentKey })}\n`,
             },
           },
         },
@@ -65,11 +110,17 @@ test('只接受实际执行的冻结命令回执，并在恢复时沿用同一�
       executionId,
     );
   expect(observe('printf "XAPT_DEPLOYMENT_V1 ..."')).toBeNull();
-  expect(observe('pnpm run deploy:84', '/unexpected')).toBeNull();
-  expect(observe('SOIL_ENV=unexpected pnpm run deploy:84')).toBeNull();
-  const evidence = observe("/bin/zsh -lc 'pnpm run deploy:84'");
+  expect(observe('sh tools/install.sh red', '/unexpected')).toBeNull();
+  expect(observe('DEPLOY_ENV=unexpected sh tools/install.sh red')).toBeNull();
+  expect(observe('sh tools/install.sh blue')).toBeNull();
+  expect(observe('sh tools/install.sh red', repository, '85')).toBeNull();
+  expect(observe('sh tools/install.sh red', repository, '84', 1)).toBeNull();
+  const evidence = observe("/bin/zsh -lc 'sh tools/install.sh red'");
   expect(evidence).not.toBeNull();
-  expect(observe('pnpm run deploy:84 --verify-only')?.commit).toBe(commit);
+  expect(observe('sh tools/check.sh red')?.commit).toBe(commit);
+  expect(
+    observe('sh tools/check.sh red', repository, '84', 0, 'b'.repeat(40)),
+  ).toBeNull();
   await state.saveDeploymentEvidence(evidence!);
   await attachDeploymentEvidence(new LocalStateStore(paths, files), target, result);
   expect(result).toMatchObject({
@@ -79,4 +130,22 @@ test('只接受实际执行的冻结命令回执，并在恢复时沿用同一�
       },
     },
   });
+  await writeFile(
+    join(repository, 'AGENTS.md'),
+    '[工程执行约定](delivery.md)\n[工程执行约定](other.md)\n',
+  );
+  expect(observe('sh tools/check.sh red')).toBeNull();
+  git('add', '.');
+  git(
+    '-c',
+    'user.name=Fixture',
+    '-c',
+    'user.email=fixture@example.invalid',
+    'commit',
+    '-qm',
+    'ambiguous',
+  );
+  expect(
+    observe('sh tools/check.sh red', repository, '84', 0, git('rev-parse', 'HEAD')),
+  ).toBeNull();
 });

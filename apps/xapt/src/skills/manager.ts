@@ -13,7 +13,7 @@ import {
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import type { XaptPaths } from '../platform/paths';
 
-export const XAPT_SKILL_NAMES = ['XBugRepaire', 'XUpdate'] as const;
+export const XAPT_SKILL_NAMES = ['XBugRepaire', 'XUpdate', 'XHandoff'] as const;
 
 export type XaptSkillName = (typeof XAPT_SKILL_NAMES)[number];
 
@@ -38,7 +38,7 @@ export type SkillIdentity = {
   sourceRevision: string;
 };
 
-export type ResolvedSkill = SkillIdentity & { path: string };
+export type ResolvedSkill = SkillIdentity & { path: string; handoffPath?: string };
 
 export type SkillInstallResult = {
   installed: boolean;
@@ -129,7 +129,7 @@ export class SkillBundleManager {
   async resolveCurrent(skillName: XaptSkillName): Promise<ResolvedSkill> {
     const manifest = await this.currentManifest();
     if (!manifest) throw new SkillBundleError('规则包尚未安装');
-    if (!manifest.skills[skillName])
+    if (!manifest.skills[skillName] || !manifest.skills.XHandoff)
       throw new SkillBundleError(
         `当前规则包缺少 ${skillName}，请运行 xapt skills update`,
       );
@@ -158,7 +158,25 @@ export class SkillBundleManager {
     if (bundleHash(files) !== identity.bundleHash)
       throw new SkillBundleError('规则包内容校验失败');
     validateSkill(identity.skillName, files);
-    return { ...identity, path };
+    if (identity.skillName === 'XHandoff') return { ...identity, path };
+    const requiresHandoff = files.some(
+      (file) =>
+        file.path === 'agents/openai.yaml' &&
+        new TextDecoder()
+          .decode(file.bytes)
+          .includes('# xapt-execution-protocol: engineering-workflow-v1'),
+    );
+    const handoffHash = manifest.skills.XHandoff;
+    if (!handoffHash) {
+      if (requiresHandoff) throw new SkillBundleError('任务规则包缺少 XHandoff');
+      return { ...identity, path };
+    }
+    const handoff = await this.resolveBound({
+      skillName: 'XHandoff',
+      bundleHash: handoffHash,
+      sourceRevision: identity.sourceRevision,
+    });
+    return { ...identity, path, handoffPath: join(handoff.path, 'SKILL.md') };
   }
 
   private async currentManifest(): Promise<GenerationManifest | null> {
@@ -406,7 +424,7 @@ async function readManifest(path: string): Promise<GenerationManifest> {
       return [name, hash];
     }),
   );
-  if (Object.keys(skills).length !== XAPT_SKILL_NAMES.length)
+  if (Object.keys(skills).length !== (result.XHandoff ? XAPT_SKILL_NAMES.length : 2))
     throw new SkillBundleError('规则包版本清单包含未知规则');
   return { sourceRevision: value.sourceRevision as string, skills: result };
 }

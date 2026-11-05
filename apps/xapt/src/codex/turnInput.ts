@@ -12,12 +12,15 @@ export function codexUserInput(input: CodexExecutionInput): unknown[] {
   const instruction = skillPath
     ? `本轮绑定的规则文件：${JSON.stringify(skillPath)}。请先读取并按这份规则执行。\n\n`
     : '';
+  const handoff = input.handoffSkillPath
+    ? `本轮绑定的 XHandoff 规则文件：${JSON.stringify(input.handoffSkillPath)}。只从这个路径读取。\n\n`
+    : '';
   return [
     {
       type: 'text',
       text: input.skill
-        ? `$${input.skill.name}\n\n${instruction}${text}`
-        : `${instruction}${text}`,
+        ? `$${input.skill.name}\n\n${instruction}${handoff}${text}`
+        : `${instruction}${handoff}${text}`,
       text_elements: [],
     },
     ...(input.skill

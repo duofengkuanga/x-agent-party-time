@@ -60,14 +60,12 @@ describe('EngineeringService', () => {
         {
           mutationId: randomUUID(),
           name: '测试环境',
-          deployment: {
-            command: 'bun run deploy:test',
-          },
+          key: 'test',
         },
         {
           mutationId: randomUUID(),
           name: '预发布环境',
-          deployment: { command: 'bun run deploy:backend' },
+          key: 'backend',
         },
       ],
     });
@@ -79,11 +77,11 @@ describe('EngineeringService', () => {
     expect(workspace.environments).toEqual([
       expect.objectContaining({
         name: '测试环境',
-        deployment: { command: 'bun run deploy:test' },
+        key: 'test',
       }),
       expect.objectContaining({
         name: '预发布环境',
-        deployment: { command: 'bun run deploy:backend' },
+        key: 'backend',
       }),
     ]);
   });
@@ -103,12 +101,12 @@ describe('EngineeringService', () => {
           {
             mutationId: randomUUID(),
             name: '重复环境',
-            deployment: { command: 'bun run deploy:backend' },
+            key: 'backend',
           },
           {
             mutationId: randomUUID(),
             name: '重复环境',
-            deployment: { command: 'bun run deploy:backend' },
+            key: 'backend',
           },
         ],
       }),
@@ -148,12 +146,12 @@ describe('EngineeringService', () => {
           {
             mutationId: environmentMutationId,
             name: '测试环境',
-            deployment: { command: 'bun run deploy:backend' },
+            key: 'backend',
           },
           {
             mutationId: environmentMutationId,
             name: '预发布环境',
-            deployment: { command: 'bun run deploy:backend' },
+            key: 'backend',
           },
         ],
       }),
@@ -335,7 +333,7 @@ describe('EngineeringService', () => {
     ]);
   });
 
-  test('环境名称在工程内唯一，Version 和 Deployment 判别联合受保护', async () => {
+  test('环境名称在工程内唯一，环境标识独立于名称，版本冲突时拒绝更新', async () => {
     const { project, service, users } = await setup();
     const engineering = service.createEngineering(users.owner.id, project.id, {
       mutationId: randomUUID(),
@@ -346,28 +344,26 @@ describe('EngineeringService', () => {
     const environment = service.createEnvironment(users.owner.id, engineering.id, {
       mutationId: randomUUID(),
       name: '测试环境',
-      deployment: { command: 'bun run deploy:test' },
+      key: 'test',
     });
     expect(() =>
       service.createEnvironment(users.owner.id, engineering.id, {
         mutationId: randomUUID(),
         name: '测试环境',
-        deployment: { command: 'bun run deploy:backend' },
+        key: 'backend',
       }),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
     expect(() =>
       service.updateEnvironment(users.owner.id, environment.id, {
         ...mutation(99),
         name: '测试环境',
-        deployment: { command: 'bun run deploy:backend' },
       }),
     ).toThrow(expect.objectContaining({ code: 'STALE_STATE' }));
     const updated = service.updateEnvironment(users.owner.id, environment.id, {
       ...mutation(environment.version),
       name: '持续集成环境',
-      deployment: { command: 'bun run deploy:backend' },
     });
-    expect(updated.deployment).toEqual({ command: 'bun run deploy:backend' });
+    expect(updated.key).toBe(environment.key);
     expect(updated.version).toBe(2);
     expect(service.listEnvironments(users.member.id, engineering.id)).toEqual([updated]);
   });
@@ -385,12 +381,12 @@ describe('EngineeringService', () => {
         {
           mutationId: randomUUID(),
           name: '重复环境',
-          deployment: { command: 'bun run deploy:backend' },
+          key: 'backend',
         },
         {
           mutationId: randomUUID(),
           name: '重复环境',
-          deployment: { command: 'bun run deploy:test' },
+          key: 'test',
         },
       ]),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
@@ -400,12 +396,12 @@ describe('EngineeringService', () => {
       {
         mutationId: randomUUID(),
         name: '测试环境',
-        deployment: { command: 'bun run deploy:test' },
+        key: 'test',
       },
       {
         mutationId: randomUUID(),
         name: '预发布环境',
-        deployment: { command: 'bun run deploy:backend' },
+        key: 'backend',
       },
     ]);
     expect(created.map(({ name }) => name)).toEqual(['测试环境', '预发布环境']);
@@ -425,19 +421,17 @@ describe('EngineeringService', () => {
     const environment = service.createEnvironment(users.owner.id, engineering.id, {
       mutationId: randomUUID(),
       name: '共享环境',
-      deployment: { command: 'bun run deploy:backend' },
+      key: 'backend',
     });
     references.environment.add(environment.id);
-    expect(() =>
-      service.updateEnvironment(users.owner.id, environment.id, {
-        ...mutation(environment.version),
-        name: '不可修改',
-        deployment: { command: 'deploy' },
-      }),
-    ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
+    const renamed = service.updateEnvironment(users.owner.id, environment.id, {
+      ...mutation(environment.version),
+      name: '共享环境新名称',
+    });
+    expect(renamed.key).toBe(environment.key);
     expect(() =>
       service.deleteEnvironment(users.owner.id, environment.id, {
-        ...mutation(environment.version),
+        ...mutation(renamed.version),
       }),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
     references.environment.clear();

@@ -24,7 +24,7 @@ import {
 const setup = updateFixture(testDatabases());
 
 describe('UpdateService', () => {
-  test('冻结批次直接把真实部署脚本交给 Agent', async () => {
+  test('冻结批次只把目标环境标识交给 Agent', async () => {
     const fixture = await setup();
     fixture.createBug('更新脚本');
     await completeNextRepair(fixture, 'script-repair', ['a'.repeat(40)]);
@@ -41,7 +41,7 @@ describe('UpdateService', () => {
     expect(turn?.kind).toBe('INITIAL');
     if (turn?.kind !== 'INITIAL') throw new Error('缺少首次更新任务');
     expect(turn.executionBrief).toMatchObject({
-      deploymentCommand: 'bun run deploy:test',
+      engineeringDeliveries: [{ environmentKey: 'test' }],
     });
     expect(turn.executionBrief).not.toHaveProperty('deployment');
   });
@@ -161,6 +161,7 @@ describe('UpdateService', () => {
     const failedResult = {
       handoffUse: testHandoffUse(),
       outcome: 'FAILED',
+      deliveries: { 'repo-1': { state: 'FAILED', commit: null, evidence: '' } },
       failedStep: '质量门：pnpm run tsc',
       reason: '仓库不存在 tsconfig.json',
       completedActions: ['完成候选提交集成'],
@@ -183,8 +184,9 @@ describe('UpdateService', () => {
       .batchView(fixture.users.developer.id, batch.id)
       .timeline.find((node) => node.kind === 'UPDATE_ATTEMPT');
     expect(batch.state).toBe('FAILED');
-    expect(attempt?.kind === 'UPDATE_ATTEMPT' ? attempt.result : null).toEqual({
-      ...failedResult,
+    const { deliveries: _deliveries, ...businessFailure } = failedResult;
+    expect(attempt?.kind === 'UPDATE_ATTEMPT' ? attempt.result : null).toMatchObject({
+      ...businessFailure,
       failureCode: null,
     });
   });

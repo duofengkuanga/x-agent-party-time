@@ -246,6 +246,26 @@ export function UpdateAttemptDetails({
                     </strong>
                     {delivery.evidence ? <p>{delivery.evidence}</p> : null}
                     {delivery.commit ? <code>{delivery.commit}</code> : null}
+                    {delivery.convention ? (
+                      <div className="collab-round-detail">
+                        <p>
+                          环境标识{' '}
+                          <code>{delivery.convention.environmentKey}</code>
+                        </p>
+                        <p>
+                          工程约定{' '}
+                          <code>{delivery.convention.conventionPath}</code>
+                        </p>
+                        <p>
+                          约定摘要{' '}
+                          <code>{delivery.convention.conventionSha256}</code>
+                        </p>
+                        <p>
+                          执行命令摘要{' '}
+                          <code>{delivery.convention.commandSha256}</code>
+                        </p>
+                      </div>
+                    ) : null}
                     {delivery.artifactSha256 ? (
                       <p>
                         验收摘要 <code>{delivery.artifactSha256}</code>

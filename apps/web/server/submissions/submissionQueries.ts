@@ -1,4 +1,3 @@
-import { DeploymentScriptSchema } from '@/contracts/projects/engineering';
 import { parseRow, type DatabaseRow } from '@/server/database/rowMapper';
 import { submissionCloseBlocker } from '@/server/submissions/lifecycle/submissionClosure';
 import { environmentAccessForItem } from './environmentAccess';
@@ -51,14 +50,13 @@ export type SubmissionItemRow = {
   target_branch_locked_at: string | null;
   environment_id: string;
   environment_name: string;
-  deployment_json: string | null;
+  environment_key: string;
   created_at: string;
 };
 
 type WorkspaceSubmissionItemRow = SubmissionItemRow & {
   bug_count: number;
   current_engineering_name: string;
-  current_deployment_json: string | null;
 };
 
 export class SubmissionQueries {
@@ -108,16 +106,12 @@ export class SubmissionQueries {
     const items = this.db
       .all<WorkspaceSubmissionItemRow>(
         `SELECT item.*, engineering.name current_engineering_name,
-                CASE WHEN submission.status = 'ACTIVE' THEN environment.deployment_json
-                  ELSE item.deployment_json END current_deployment_json,
                 (
                   SELECT COUNT(*) FROM submission_bug bug
                   WHERE bug.submission_item_id = item.id
                 ) bug_count
          FROM submission_item item
          JOIN platform_engineering engineering ON engineering.id = item.engineering_id
-         JOIN test_submission submission ON submission.id = item.submission_id
-         LEFT JOIN platform_environment environment ON environment.id = item.environment_id
          WHERE item.submission_id = ?
          ORDER BY item.position, item.id`,
         submissionId,
@@ -126,7 +120,6 @@ export class SubmissionQueries {
         item: mapItem({
           ...item,
           engineering_name: item.current_engineering_name,
-          deployment_json: item.current_deployment_json,
         }),
         branchLocked:
           row.mode === 'PERSON_AGENT'
@@ -164,13 +157,13 @@ export class SubmissionQueries {
           environment: {
             id: item.environment.id,
             name: item.environment.name,
+            key: item.environment.key,
           },
           technical:
             item.responsibleUser.id === userId
               ? {
                   bindingId: item.bindingId,
                   repositoryUrl: item.engineering.repositoryUrl,
-                  deployment: item.environment.deployment,
                 }
               : null,
           environmentAccess,
@@ -295,10 +288,7 @@ function mapItem(row: SubmissionItemRow): SubmissionItem {
     environment: {
       id: row.environment_id,
       name: row.environment_name,
-      deployment:
-        row.deployment_json === null
-          ? null
-          : DeploymentScriptSchema.parse(JSON.parse(row.deployment_json)),
+      key: row.environment_key,
     },
     createdAt: row.created_at,
   });

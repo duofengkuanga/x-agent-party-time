@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { createEnvironmentAction } from '@/app/actions/projects/engineering';
 import { AutoSaveForm } from '../components/autoSaveForm';
-import { DeploymentFields } from './deploymentFields';
 
 export function NewEnvironmentRow({
   engineeringId,
@@ -30,7 +29,14 @@ export function NewEnvironmentRow({
           required
         />
       </label>
-      <DeploymentFields compact />
+      <input
+        aria-label="环境标识"
+        maxLength={40}
+        name="environmentIdentifier"
+        pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
+        placeholder="环境标识，例如 84"
+        required
+      />
       <div className="environment-direct-form__hint">
         <small>填写完整后自动添加</small>
         <button onClick={() => setAdding(false)} type="button">

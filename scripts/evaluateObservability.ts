@@ -12,7 +12,6 @@ import { handleObservationRead } from '../apps/web/server/platform/execution/obs
 import { ExecutionObservations } from '../apps/web/server/platform/execution/observations';
 import { LocalFileStore } from '../apps/web/server/platform/files/localFileStore';
 import { RepairExecutionResultSchema } from '../apps/web/contracts/submissions/repair';
-import { UpdateExecutionResultSchema } from '../apps/web/contracts/submissions/update';
 import type {
   ClaimedExecution,
   JsonValue,
@@ -27,7 +26,15 @@ import { ObservationService } from '../apps/xapt/src/observability/service';
 import { ObservationHttpClient } from '../apps/xapt/src/observability/transport';
 import { protocolObserver } from '../apps/xapt/src/observability/protocol';
 import { createCommandClassifier } from '../apps/xapt/src/observability/commandContext';
-import { verifyResultContent } from '../apps/xapt/src/execution/resultVerification';
+import { GitExecutionResultVerifier } from '../apps/xapt/src/execution/resultVerification';
+import { NodeCommandRunner } from '../apps/xapt/src/platform/system';
+import {
+  attachDeploymentEvidence,
+  observeDeploymentEvidence,
+  readEngineeringDelivery,
+  type DeploymentEvidenceTarget,
+} from '../apps/xapt/src/execution/deploymentEvidence';
+import type { DeploymentEvidence } from '../apps/xapt/src/state/schemas';
 import { prepareBuildCase, fixtureGit, caseTrace } from './observability/fixture';
 
 const { values } = parseArgs({
@@ -35,11 +42,16 @@ const { values } = parseArgs({
     'skills-root': { type: 'string' },
     codex: { type: 'string', default: 'codex' },
     runs: { type: 'string', default: '2' },
+    variant: { type: 'string', default: 'all' },
   },
 });
-if (!values['skills-root'] || !['1', '2'].includes(values.runs!))
+if (
+  !values['skills-root'] ||
+  !['1', '2'].includes(values.runs!) ||
+  !['all', 'baseline', 'optimized'].includes(values.variant!)
+)
   throw new Error(
-    '需要 --skills-root；--runs 只允许 1（pilot）或 2（每变体两次功能回归）',
+    '需要 --skills-root；--runs 为 1 或 2，--variant 为 all、baseline 或 optimized',
   );
 const skillsRoot = resolve(values['skills-root']);
 const scratch = resolve(import.meta.dir, '../.scratch');
@@ -55,10 +67,10 @@ const preregistration = {
   runsPerVariant: runs,
   maximumLiveTurns: runs * 4,
   turnTimeoutMs: 300_000,
-  ordering:
-    runs === 2
-      ? ['baseline', 'optimized', 'optimized', 'baseline']
-      : ['baseline', 'optimized'],
+  ordering: (runs === 2
+    ? ['baseline', 'optimized', 'optimized', 'baseline']
+    : ['baseline', 'optimized']
+  ).filter((variant) => values.variant === 'all' || variant === values.variant),
   performanceSample: false,
   realTargets: false,
   installationConfiguration: '模型继承当前 Codex，执行器使用 medium；记录协议实际值',
@@ -86,7 +98,7 @@ for (const [index, variant] of preregistration.ordering.entries()) {
           type: 'BACKEND',
           identifier: 'addition',
           environment: 'isolated',
-          deployment: { command: 'bun tools/delivery.ts deploy' },
+          key: 'test',
           repository: 'https://example.invalid/isolated.git',
           branch: 'main',
         },
@@ -172,6 +184,34 @@ for (const [index, variant] of preregistration.ordering.entries()) {
           }),
         );
       });
+      const handoffSkillPath = join(worktree, '.agents/skills/XHandoff/SKILL.md');
+      await mkdir(join(handoffSkillPath, '..'), { recursive: true });
+      const handoff = await readFile(join(skillsRoot, 'skills/XHandoff/SKILL.md'));
+      await writeFile(handoffSkillPath, handoff);
+      const assertions = turn.resultAssertions ?? [];
+      const workspace = claimed.workspaces[0]?.workspace;
+      const targets: DeploymentEvidenceTarget[] =
+        workspace && 'key' in workspace
+          ? assertions.flatMap((assertion) =>
+              assertion.kind === 'GIT_DELIVERY_STATE'
+                ? [{ repositoryPath: worktree, workspaceKey: workspace.key, assertion }]
+                : [],
+            )
+          : [];
+      const verifier = new GitExecutionResultVerifier(new NodeCommandRunner());
+      const baseline = await verifier.capture(worktree, assertions);
+      for (const { assertion } of targets)
+        if (assertion.environmentKey && baseline)
+          readEngineeringDelivery(worktree, baseline.gitHead, assertion.environmentKey);
+      let evidence: DeploymentEvidence | null = null;
+      await writeFile(
+        join(directory, `${label}-bundle.json`),
+        JSON.stringify({
+          skill: bundleHash(skillFiles),
+          handoff: bundleHash([{ path: 'SKILL.md', bytes: handoff }]),
+          revision: fixtureGit(skillsRoot, 'rev-parse', 'HEAD'),
+        }),
+      );
       const hash = bundleHash(skillFiles);
       observation.record({
         name: 'configuration.observed',
@@ -193,6 +233,7 @@ for (const [index, variant] of preregistration.ordering.entries()) {
           controller.abort();
         }
       }, 10_000);
+      const observeProtocol = protocolObserver(observation, classifier);
       console.log(`${index + 1}/${variant}/${label}：真实 App Server 开始`);
       try {
         const started = await executor.begin(
@@ -203,12 +244,17 @@ for (const [index, variant] of preregistration.ordering.entries()) {
             approvalPolicy: 'never',
             taskId: null,
             skill: { name, path: target },
+            handoffSkillPath,
             attachments: [],
             outputSchema: turn.outputJsonSchema,
             onInteraction: async () => {
               throw new Error('隔离功能验证不接受交互');
             },
-            observe: protocolObserver(observation, classifier),
+            observe: (notice) => {
+              observeProtocol(notice);
+              evidence =
+                observeDeploymentEvidence(notice, targets, claimed.id) ?? evidence;
+            },
           },
           controller.signal,
         );
@@ -225,19 +271,26 @@ for (const [index, variant] of preregistration.ordering.entries()) {
         const outcome = await started.completion;
         await observation.phase('validation', async () => {
           if (label === 'repair') RepairExecutionResultSchema.parse(outcome);
-          else UpdateExecutionResultSchema.parse(outcome);
-          verifyResultContent(turn.resultAssertions ?? [], outcome);
+          await verifier.verify(worktree, assertions, baseline, outcome);
+          if (evidence) await state.saveDeploymentEvidence(evidence);
+          for (const target of targets)
+            await attachDeploymentEvidence(state, target, outcome);
         });
         observation.record({
           name: 'delivery.started',
           source: 'xapt',
           correlation: { intervalId: 'result' },
         });
-        submissionWorkflow.executions.complete(project.runner.id, claimed.id, {
-          leaseToken: claimed.lease.token,
-          sessionId: started.sessionId,
-          outcome: { kind: 'SUCCEEDED', result: outcome },
-        });
+        const completed = submissionWorkflow.executions.complete(
+          project.runner.id,
+          claimed.id,
+          {
+            leaseToken: claimed.lease.token,
+            sessionId: started.sessionId,
+            outcome: { kind: 'SUCCEEDED', result: outcome },
+          },
+        );
+        if (completed.state !== 'SUCCEEDED') throw new Error('Server 拒绝执行结果');
         observation.record({
           name: 'delivery.accepted',
           source: 'server_response',
@@ -330,8 +383,13 @@ for (const [index, variant] of preregistration.ordering.entries()) {
       fixture.base,
     );
     const updated = await run(update, updateWorktree, 'update');
-    if (UpdateExecutionResultSchema.parse(updated.outcome).result.outcome !== 'COMPLETED')
-      throw new Error('Update 未完成假部署');
+    if (
+      submissionWorkflow.updates.batchView(project.users.developer.id, batch.batchId)
+        .state !== 'COMPLETED' ||
+      db.get<{ stage: string }>('SELECT stage FROM submission_bug WHERE id = ?', bug.id)
+        ?.stage !== 'WAITING_FOR_VERIFICATION'
+    )
+      throw new Error('Update 未完成假部署或未进入待验证');
     if (
       fixtureGit(
         updateWorktree,

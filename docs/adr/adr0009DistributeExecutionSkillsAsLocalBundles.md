@@ -17,3 +17,5 @@ Repair 和 Update 的稳定 Codex 流程放在独立的 `x-skills` 仓库，由 
 - Skill 更新由用户显式运行 `xapt skills update`。
 - `main` 的 Git Commit 和每个 Skill 的内容 Hash 提供身份，不增加 Skill 版本号。
 - 第一版不做签名验证、自动更新或旧 Bundle 自动清理。
+
+新一代 Bundle 同时包含 XBugRepaire、XUpdate 和 XHandoff。xapt 校验执行 Skill 与同来源版本的 XHandoff，并在初次调用和继续 Turn 时提供对应的只读文件路径。旧 Task 解析原清单，使用当时的规则与协议。

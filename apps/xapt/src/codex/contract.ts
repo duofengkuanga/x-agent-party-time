@@ -19,6 +19,7 @@ export type CodexExecutionInput = {
   text: string;
   skill: { name: string; path: string } | null;
   boundSkillPath?: string;
+  handoffSkillPath?: string;
   outputSchema: JsonObject;
   attachments: MaterializedAttachment[];
   taskId: string | null;

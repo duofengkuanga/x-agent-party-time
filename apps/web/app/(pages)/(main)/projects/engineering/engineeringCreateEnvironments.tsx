@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { createClientId } from '@/app/(pages)/(main)/components/clientId';
-import { DeploymentFields } from '@/app/(pages)/(main)/projects/engineering/deploymentFields';
 
 type EnvironmentDraft = {
   key: string;
@@ -60,10 +59,16 @@ export function EngineeringCreateEnvironments({
               required
             />
           </label>
-          <DeploymentFields
-            compact
-            commandName={`command:${environment.key}`}
-          />
+          <label>
+            <span>环境标识</span>
+            <input
+              maxLength={40}
+              name={`environmentIdentifier:${environment.key}`}
+              pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
+              placeholder="与工程执行约定一致，例如 84"
+              required
+            />
+          </label>
           {environments.length > 1 ? (
             <button
               aria-label={`移除环境 ${index + 1}`}

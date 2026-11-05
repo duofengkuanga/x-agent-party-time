@@ -130,20 +130,19 @@ test('追加时环境冲突原子回滚，确认后转移环境并保留原单�
   ).toBe(false);
 });
 
-test('活动提测实时读取部署方式，关闭提测保留历史配置', async () => {
+test('提测固定环境身份，关闭后仍可读取已删除环境的快照', async () => {
   const f = await setup();
   const submission = createSubmission(f, [
     item(f, 'front', 'developerA', 'frontA', 'main'),
   ]);
-  const deployment = { command: 'pnpm run deploy:84' };
-  f.database.run('UPDATE platform_environment SET deployment_json = ? WHERE id = ?', [
-    JSON.stringify(deployment),
+  f.database.run('UPDATE platform_environment SET name = ? WHERE id = ?', [
+    '显示名称改为新名称',
     f.environments.front.id,
   ]);
   expect(
     f.service.getWorkspace(f.users.developerA.id, submission.id).submission.items[0]
-      ?.technical?.deployment,
-  ).toEqual(deployment);
+      ?.environment,
+  ).toMatchObject({ id: f.environments.front.id, key: f.environments.front.key });
   f.database.run("UPDATE test_submission SET status = 'CLOSED' WHERE id = ?", [
     submission.id,
   ]);
@@ -155,8 +154,8 @@ test('活动提测实时读取部署方式，关闭提测保留历史配置', as
   ]);
   expect(
     f.service.getWorkspace(f.users.developerA.id, submission.id).submission.items[0]
-      ?.technical?.deployment,
-  ).toEqual({ command: 'bun run deploy:test' });
+      ?.environment.key,
+  ).toBe(f.environments.front.key);
 });
 
 test('全部工程已加入后不再显示追加入口', async () => {

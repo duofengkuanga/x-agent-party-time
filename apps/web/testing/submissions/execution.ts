@@ -75,3 +75,15 @@ export function completeRepairExecution(
     },
   );
 }
+
+export function testDeploymentReceipt(commit = 'a'.repeat(40), environmentKey = 'test') {
+  return {
+    source: 'CODEX_COMMAND' as const,
+    commit,
+    environmentKey,
+    artifactSha256: 'b'.repeat(64),
+    conventionPath: 'docs/delivery.md',
+    conventionSha256: 'c'.repeat(64),
+    commandSha256: 'd'.repeat(64),
+  };
+}

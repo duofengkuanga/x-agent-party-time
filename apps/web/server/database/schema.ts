@@ -3,17 +3,11 @@ import { PlatformError } from '@/server/platform/errors/index';
 import { PLATFORM_SCHEMA } from './platformSchema';
 import { PROJECT_SCHEMA } from './projectSchema';
 import { SUBMISSION_SCHEMA } from './submissionSchema';
-import { BUG_DEPLOYMENT_SCHEMA } from './bugDeploymentSchema';
 import { OBSERVATION_SCHEMA } from './observationSchema';
 
-export const SERVER_SCHEMA_VERSION = 34;
+export const SERVER_SCHEMA_VERSION = 35;
 
-const SCHEMA =
-  PLATFORM_SCHEMA +
-  PROJECT_SCHEMA +
-  SUBMISSION_SCHEMA +
-  BUG_DEPLOYMENT_SCHEMA +
-  OBSERVATION_SCHEMA;
+const SCHEMA = PLATFORM_SCHEMA + PROJECT_SCHEMA + SUBMISSION_SCHEMA + OBSERVATION_SCHEMA;
 
 export function initializeSchema(database: Database): void {
   database.exec('PRAGMA foreign_keys = ON');

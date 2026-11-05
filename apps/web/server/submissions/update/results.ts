@@ -1,4 +1,7 @@
-import type { Execution } from '@agent-party-time/execution-contract';
+import {
+  DeploymentReceiptSchema,
+  type Execution,
+} from '@agent-party-time/execution-contract';
 import { PlatformError } from '@/server/platform/errors/index';
 import type {
   SubmissionInteractionView,
@@ -36,12 +39,22 @@ export function projectUpdateAttemptResult(outcomeJson: string, technical: boole
             FAILED: '执行失败',
             UNCHANGED: '无改动',
           };
+          const receipt = DeploymentReceiptSchema.safeParse(detail.receipt);
+          const convention = receipt.success
+            ? {
+                environmentKey: receipt.data.environmentKey,
+                conventionPath: receipt.data.conventionPath,
+                conventionSha256: receipt.data.conventionSha256,
+                commandSha256: receipt.data.commandSha256,
+              }
+            : null;
           return {
             alias,
             label: labels[detail.state] ?? '等待核实',
             commit: detail.commit ?? null,
             evidence: detail.evidence ?? null,
             artifactSha256: detail.receipt?.artifactSha256 ?? null,
+            convention,
           };
         })
       : null;

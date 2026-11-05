@@ -1,6 +1,5 @@
 import { originalTaskExecution } from '@/server/submissions/shared/executionState';
 import { executionWorkspaces } from '@agent-party-time/execution-contract';
-import { DeploymentScriptSchema } from '@/contracts/projects/engineering';
 import { requireSubmissionAccess } from '@/server/submissions/shared/access';
 import { isTerminal } from '@/server/submissions/shared/executionState';
 import { requireEnvironment } from '@/server/submissions/environmentAccess';
@@ -90,7 +89,6 @@ export class UpdateService {
       submissionId: () => this.queries.itemSource(submissionItemId).submission_id,
       perform: () => {
         const source = this.requireResponsible(actorUserId, submissionItemId);
-        DeploymentScriptSchema.parse(JSON.parse(source.deployment_json));
         const now = this.now().toISOString();
         const frozen = this.delivery.freezeItem(submissionItemId, now, false);
         if (!frozen)
@@ -207,7 +205,7 @@ export class UpdateService {
             outputJsonSchema: previousExecution.codexTurn.outputJsonSchema,
             resultAssertions: previousExecution.codexTurn.resultAssertions,
           },
-          workspaces: batch.person_agent_scope_json
+          workspaces: batch.delivery_scope_json
             ? previousExecution.workspaces
             : executionWorkspaces(source.binding_id),
           attachmentIds: [],

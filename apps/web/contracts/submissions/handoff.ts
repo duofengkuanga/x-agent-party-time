@@ -43,6 +43,34 @@ export const HandoffRelativePathSchema = z
   .regex(new RegExp(`^${pathSegment}(?:/${pathSegment})*$`), '必须使用仓库内的相对路径');
 
 export const RepairHandoffSchema = z.strictObject({
+  convention: z
+    .strictObject({
+      path: HandoffRelativePathSchema,
+      revision: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u),
+    })
+    .nullable()
+    .default(null),
+  artifact: z
+    .strictObject({
+      path: HandoffRelativePathSchema,
+      sourceAndInputs: HandoffTextSchema.min(1),
+      reuseConditions: HandoffTextSchema.min(1),
+    })
+    .nullable()
+    .default(null),
+  suggestedSkills: z
+    .array(
+      z.strictObject({
+        name: z
+          .string()
+          .min(1)
+          .max(64)
+          .regex(/^[a-zA-Z0-9-]+$/u),
+        reason: HandoffTextSchema.min(1),
+      }),
+    )
+    .max(3)
+    .default([]),
   validationCommands: z
     .array(
       z.strictObject({

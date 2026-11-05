@@ -4,6 +4,7 @@ import { engineeringScenario } from '@/testing/submissions/scenario';
 import {
   completeRepairExecution,
   completeSuccessfulExecution,
+  testDeploymentReceipt,
 } from '@/testing/submissions/execution';
 import { openDatabase } from '@/server/database/index';
 import { ExecutionObservations } from '@/server/platform/execution/observations';
@@ -55,7 +56,7 @@ export async function seedBrowserFixture(
           type: 'FRONTEND',
           identifier: 'browser-web',
           environment: '浏览器测试环境',
-          deployment: { command: 'bun run deploy:backend' },
+          key: 'backend',
           repository: 'https://example.com/browser.git',
           branch: 'feature/browser-test',
         },
@@ -64,7 +65,7 @@ export async function seedBrowserFixture(
           type: 'BACKEND',
           identifier: 'browser-api',
           environment: '浏览器后端环境',
-          deployment: { command: 'bun run deploy:backend' },
+          key: 'backend',
           repository: 'https://example.com/browser-api.git',
           branch: 'feature/browser-test',
         },
@@ -78,7 +79,7 @@ export async function seedBrowserFixture(
       type: 'FRONTEND',
       identifier: 'browser-extra',
       environment: '追加测试环境',
-      deployment: { command: 'pnpm run deploy:84' },
+      key: '84',
       repository: 'https://example.com/browser-extra.git',
       developers: { developer: { userId: developer.id, runnerId: paired.runner.id } },
     });
@@ -315,6 +316,15 @@ export async function seedBrowserFixture(
             },
             outcome: 'COMPLETED',
             completedActions: ['集成修复提交并完成推送和部署'],
+            deliveries: {
+              'repo-1': {
+                state: 'DEPLOYED',
+                commit: 'a'.repeat(40),
+                pushVerified: true,
+                deploymentVerified: true,
+                receipt: testDeploymentReceipt('a'.repeat(40), 'backend'),
+              },
+            },
             validations: [{ name: '构建检查', status: 'PASSED', detail: '' }],
             warnings: [],
           },
@@ -526,6 +536,7 @@ export async function seedBrowserFixture(
             },
             outcome: 'FAILED',
             failedStep: '部署命令',
+            deliveries: { 'repo-1': { state: 'FAILED', commit: null, evidence: '' } },
             reason: '测试环境暂时不可用',
             pendingActions: ['核对环境状态后继续原更新会话'],
             completedActions: ['已合入并推送两条缺陷修复'],
@@ -556,7 +567,7 @@ export async function seedBrowserFixture(
           type: 'FRONTEND',
           identifier: 'close-web',
           environment: '关闭回归环境',
-          deployment: { command: 'bun run deploy:backend' },
+          key: 'backend',
           repository: 'https://example.com/close.git',
           branch: 'feature/close',
         },

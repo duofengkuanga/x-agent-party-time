@@ -64,7 +64,7 @@ describe('UpdateService', () => {
     });
     expect(continuation.codexTurn?.kind).toBe('CONTINUATION');
     if (continuation.codexTurn?.kind !== 'CONTINUATION') throw new Error('需要继续 Turn');
-    expect(continuation.codexTurn.input).toBe('继续完成上次未完成的任务。');
+    expect(continuation.codexTurn.input).toContain('继续原冻结批次');
     const resumed = await startExecution(fixture, continuation.id, 'update-session');
     completeSuccessfulExecution(fixture, resumed, completedUpdate());
     batch = latestBatch(fixture.database, fixture.item.id);

@@ -1,9 +1,12 @@
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { z } from 'zod';
-import type {
-  ExecutionResultAssertion,
-  JsonValue,
+import {
+  DeploymentReceiptSchema,
+  EnvironmentKeySchema,
+  type ExecutionResultAssertion,
+  type JsonValue,
 } from '@agent-party-time/execution-contract';
 import type { CodexObservationNotice } from '../observability/protocol';
 import type { LocalStateStore } from '../state/store';
@@ -21,10 +24,81 @@ export type DeploymentEvidenceTarget = {
 };
 
 const receiptPrefix = 'XAPT_DEPLOYMENT_V1 ';
-const receiptSchema = z.strictObject({
-  commit: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u),
-  artifactSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+const receiptSchema = DeploymentReceiptSchema.pick({
+  commit: true,
+  artifactSha256: true,
+  environmentKey: true,
 });
+const entry = z
+  .string()
+  .trim()
+  .min(1)
+  .max(1000)
+  .regex(/^[a-zA-Z0-9_./:@ -]+$/u);
+const deliverySchema = z.strictObject({
+  prepare: entry,
+  environments: z
+    .array(
+      z.strictObject({
+        key: EnvironmentKeySchema,
+        deploy: entry,
+        verify: entry,
+      }),
+    )
+    .min(1)
+    .max(50),
+});
+
+function git(cwd: string, ...args: string[]): string {
+  const env = { ...process.env };
+  for (const name of Object.keys(env)) if (name.startsWith('GIT_')) delete env[name];
+  return execFileSync('git', ['-C', cwd, ...args], {
+    env,
+    encoding: 'utf8',
+    maxBuffer: 256 * 1024,
+    timeout: 5_000,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}
+
+export function readEngineeringDelivery(
+  cwd: string,
+  commit: string,
+  environmentKey: string,
+) {
+  try {
+    const agent = git(cwd, 'show', `${commit}:AGENTS.md`);
+    const links = [...agent.matchAll(/^\[工程执行约定\]\(([^)]+)\)\r?$/gmu)];
+    if (links.length !== 1) throw new Error('工程必须提供唯一的工程执行约定链接');
+    const conventionPath = DeploymentReceiptSchema.shape.conventionPath.parse(
+      links[0]![1],
+    );
+    const document = git(cwd, 'show', `${commit}:${conventionPath}`);
+    const blocks = [...document.matchAll(/^```xapt-delivery\r?\n([\s\S]*?)^```\r?$/gmu)];
+    if (blocks.length !== 1) throw new Error('工程约定必须提供唯一的交付配置块');
+    const config = deliverySchema.parse(JSON.parse(blocks[0]![1]!));
+    const keys = new Set(config.environments.map(({ key }) => key));
+    const commands = new Set([
+      config.prepare,
+      ...config.environments.flatMap(({ deploy, verify }) => [deploy, verify]),
+    ]);
+    if (
+      keys.size !== config.environments.length ||
+      commands.size !== config.environments.length * 2 + 1
+    )
+      throw new Error('工程约定包含重复的环境或交付入口');
+    const environment = config.environments.find(({ key }) => key === environmentKey);
+    if (!environment) throw new Error('工程约定缺少目标环境的交付入口');
+    return {
+      ...environment,
+      conventionPath,
+      conventionSha256: deploymentCommandDigest(document),
+    };
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('工程')) throw error;
+    throw new Error('工程执行约定不可读或交付入口无效');
+  }
+}
 
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -37,9 +111,10 @@ function commandMatches(actual: string, expected: string): boolean {
     .trim()
     .match(/^(?:\/bin\/)?(?:bash|zsh|sh) (?:-lc|-c) ([\s\S]+)$/u);
   const text = shell?.[1] ?? actual.trim();
-  const single = `'${expected.replaceAll("'", "'\\''")}'`;
-  const double = `"${expected.replace(/[\\"$\x60]/gu, '\\$&')}"`;
-  return text === expected || (Boolean(shell) && (text === single || text === double));
+  return (
+    text === expected ||
+    (Boolean(shell) && (text === `'${expected}'` || text === `"${expected}"`))
+  );
 }
 
 export function deploymentCommandDigest(command: string): string {
@@ -64,22 +139,11 @@ export function observeDeploymentEvidence(
     typeof item.aggregatedOutput !== 'string'
   )
     return null;
-  const target = targets.find(({ repositoryPath, assertion }) => {
-    const expected = assertion.deploymentCommand;
-    if (!expected || resolve(item.cwd as string) !== resolve(repositoryPath))
-      return false;
-    const frontend = /^(npm|pnpm|bun) run deploy:(84|85|88)$/u.exec(expected);
-    const verify = expected.endsWith(' --prepared')
-      ? expected.replace(/ --prepared$/u, ' --verify-prepared')
-      : frontend
-        ? `${expected}${frontend[1] === 'npm' ? ' --' : ''} --verify-only`
-        : null;
-    return (
-      commandMatches(item.command as string, expected) ||
-      (verify !== null && commandMatches(item.command as string, verify))
-    );
-  });
-  if (!target?.assertion.deploymentCommand) return null;
+  const target = targets.find(
+    ({ repositoryPath, assertion }) =>
+      assertion.environmentKey && resolve(item.cwd as string) === resolve(repositoryPath),
+  );
+  if (!target) return null;
   const receipts = item.aggregatedOutput
     .slice(-16_384)
     .split(/\r?\n/u)
@@ -89,12 +153,29 @@ export function observeDeploymentEvidence(
     const receipt = receiptSchema.parse(
       JSON.parse(receipts[0]!.slice(receiptPrefix.length)),
     );
+    if (
+      receipt.environmentKey !== target.assertion.environmentKey ||
+      git(target.repositoryPath, 'rev-parse', 'HEAD').trim() !== receipt.commit ||
+      git(target.repositoryPath, 'status', '--porcelain')
+    )
+      return null;
+    const convention = readEngineeringDelivery(
+      target.repositoryPath,
+      receipt.commit,
+      receipt.environmentKey,
+    );
+    const command = [convention.deploy, convention.verify].find((expected) =>
+      commandMatches(item.command as string, expected),
+    );
+    if (!command) return null;
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       workspaceKey: target.workspaceKey,
       executionId,
       source: 'CODEX_COMMAND',
-      commandSha256: deploymentCommandDigest(target.assertion.deploymentCommand),
+      commandSha256: deploymentCommandDigest(command),
+      conventionPath: convention.conventionPath,
+      conventionSha256: convention.conventionSha256,
       recordedAt: new Date().toISOString(),
       ...receipt,
     };
@@ -108,17 +189,27 @@ export async function attachDeploymentEvidence(
   target: DeploymentEvidenceTarget,
   result: JsonValue,
 ): Promise<void> {
-  const command = target.assertion.deploymentCommand;
-  if (!command) return;
+  const environmentKey = target.assertion.environmentKey;
   const value = valueAtPath(result, target.assertion.resultPath);
   if (!value || typeof value !== 'object' || Array.isArray(value)) return;
   delete value.receipt;
   if (value.state !== 'DEPLOYED') return;
   const evidence = await state.loadDeploymentEvidence(target.workspaceKey);
+  const convention =
+    environmentKey &&
+    evidence &&
+    evidence.commit === value.commit &&
+    evidence.environmentKey === environmentKey
+      ? readEngineeringDelivery(target.repositoryPath, evidence.commit, environmentKey)
+      : null;
   if (
     !evidence ||
-    evidence.commit !== value.commit ||
-    evidence.commandSha256 !== deploymentCommandDigest(command)
+    !convention ||
+    evidence.conventionPath !== convention.conventionPath ||
+    evidence.conventionSha256 !== convention.conventionSha256 ||
+    ![convention.deploy, convention.verify].some(
+      (command) => deploymentCommandDigest(command) === evidence.commandSha256,
+    )
   ) {
     if (valueAtPath(result, ['result', 'outcome']) === 'FAILED') {
       value.state = 'UNKNOWN';
@@ -132,5 +223,8 @@ export async function attachDeploymentEvidence(
     commit: evidence.commit,
     commandSha256: evidence.commandSha256,
     artifactSha256: evidence.artifactSha256,
+    environmentKey: evidence.environmentKey,
+    conventionPath: evidence.conventionPath,
+    conventionSha256: evidence.conventionSha256,
   };
 }

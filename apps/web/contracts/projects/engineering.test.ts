@@ -1,9 +1,6 @@
+import { EnvironmentKeySchema } from '@agent-party-time/execution-contract';
 import { describe, expect, test } from 'bun:test';
-import {
-  DeploymentScriptSchema,
-  EngineeringIdentifierSchema,
-  RepositoryUrlSchema,
-} from './engineering';
+import { EngineeringIdentifierSchema, RepositoryUrlSchema } from './engineering';
 
 describe('EngineeringIdentifier', () => {
   test('接受中文或稳定短标识并拒绝大写、空格和连续分隔符', () => {
@@ -17,12 +14,11 @@ describe('EngineeringIdentifier', () => {
   });
 });
 
-test('部署脚本必须提供非空命令，并拒绝旧的部署方式字段', () => {
-  expect(DeploymentScriptSchema.parse({ command: ' bun run deploy:test ' })).toEqual({
-    command: 'bun run deploy:test',
-  });
-  expect(DeploymentScriptSchema.safeParse({ command: '   ' }).success).toBe(false);
-  expect(DeploymentScriptSchema.safeParse({ kind: 'CI_CD' }).success).toBe(false);
+test('环境标识接受数字和短标识，拒绝空值、大小写混用及不完整分隔符', () => {
+  expect(EnvironmentKeySchema.parse('84')).toBe('84');
+  expect(EnvironmentKeySchema.parse('pre-release')).toBe('pre-release');
+  for (const invalid of ['', 'DEV-84', 'dev--84', 'dev-'])
+    expect(EnvironmentKeySchema.safeParse(invalid).success).toBe(false);
 });
 
 describe('RepositoryUrl', () => {

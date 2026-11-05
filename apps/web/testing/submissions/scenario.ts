@@ -5,7 +5,6 @@ import type { AppDatabase } from '@/server/database/index';
 import { seedUsers } from '@/testing/users';
 import { BindingService } from '@/server/platform/projects/engineering/bindingService';
 import { EngineeringService } from '@/server/platform/projects/engineering/engineeringService';
-import type { DeploymentScript } from '@/contracts/projects/engineering';
 
 /** Creates a real private project; unlisted users remain outside its membership. */
 export async function projectScenario<K extends string>(
@@ -51,7 +50,7 @@ export function engineeringScenario<K extends string>(
     type: 'FRONTEND' | 'BACKEND';
     identifier: string;
     environment: string;
-    deployment: DeploymentScript;
+    key: string;
     repository: string | null;
     developers: Record<K, { userId: string; runnerId: string }>;
   },
@@ -73,7 +72,7 @@ export function engineeringScenario<K extends string>(
   const environment = engineering.createEnvironment(ownerId, source.id, {
     mutationId: randomUUID(),
     name: spec.environment,
-    deployment: spec.deployment,
+    key: spec.key,
   });
   const values = {} as Record<K, ReturnType<BindingService['createBinding']>>;
   for (const key of members) {

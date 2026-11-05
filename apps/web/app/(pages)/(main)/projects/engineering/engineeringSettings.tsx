@@ -5,7 +5,6 @@ import {
   updateEngineeringAction,
   updateEnvironmentAction,
 } from '@/app/actions/projects/engineering';
-import { DeploymentFields } from '@/app/(pages)/(main)/projects/engineering/deploymentFields';
 import { EngineeringFields } from './settingsFields';
 import { AutoSaveForm } from '../components/autoSaveForm';
 import { NewEnvironmentRow } from './newEnvironmentRow';
@@ -45,7 +44,7 @@ export function EngineeringEnvironmentManagement({
                 required
               />
             </label>
-            <DeploymentFields compact deployment={environment.deployment} />
+            <code title="工程执行约定中的环境标识">{environment.key}</code>
           </AutoSaveForm>
           <EnvironmentDeleteControl
             engineeringId={engineeringId}
@@ -202,10 +201,9 @@ export function EngineeringDetail({
                     >
                       <div>
                         <h5>{environment.name}</h5>
-                        <details>
-                          <summary>部署命令</summary>
-                          <code>{environment.deployment.command}</code>
-                        </details>
+                        <code title="工程执行约定中的环境标识">
+                          {environment.key}
+                        </code>
                       </div>
                     </article>
                   ))}

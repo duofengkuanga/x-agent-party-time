@@ -14,7 +14,11 @@ cases:
       - wait: '#submission-composer-title'
     assert:
       - text: { sel: '[aria-label="协作模式"]', contains: PersonAgent }
-      - text: { sel: '[role="dialog"][aria-labelledby="submission-composer-title"]', contains: 提测创建后，协作模式固定 }
+      - text:
+          {
+            sel: '[role="dialog"][aria-labelledby="submission-composer-title"]',
+            contains: 提测创建后，协作模式固定,
+          }
       - visible: '[aria-label="Agent"]'
 
   - name: projects share the main shell in both themes
@@ -291,20 +295,19 @@ cases:
       - count: { sel: '.project-settings__list li', eq: 0 }
       - count: { sel: '.project-engineering', eq: 1 }
 
-  - name: engineering deployment command expands in place
+  - name: engineering environment shows stable identity
     steps:
       - open: __BASE_URL__/projects?project=__PROJECT_ID__
       - wait: '.project-engineering-tabs'
       - click: '.project-engineering-tabs a:nth-child(3)'
       - wait: '.project-engineering[aria-label="浏览器追加工程"]'
-      - click: '.project-engineering details summary'
     assert:
-      - visible: '.project-engineering details[open] code'
       - text:
           {
-            sel: '.project-engineering details[open] code',
-            contains: 'pnpm run deploy:84',
+            sel: '.project-engineering .environment-view-card code',
+            contains: '84',
           }
+      - count: { sel: '.project-engineering input[name="command"]', eq: 0 }
       - hidden: '[role="dialog"]'
 
   - name: direct editing autosaves and waits for pending input before navigation
@@ -336,8 +339,8 @@ cases:
           select.value='FRONTEND';select.dispatchEvent(new Event('change',{bubbles:true}));return true;})()
       - fill:
           {
-            sel: '.engineering-join-environments input[name^="command:"]',
-            text: 'bun run deploy:test',
+            sel: '.engineering-join-environments input[name^="environmentIdentifier:"]',
+            text: test,
           }
       - click: '.engineering-editor > .dialog-actions button[type="submit"]'
       - wait: 'body:not(:has(.engineering-create-modal[open]))'
@@ -351,17 +354,11 @@ cases:
       - fill:
           { sel: '.environment-direct-row input[name="name"]', text: 集成环境 }
       - wait: '.environment-direct-row .auto-save-form[data-save-state="saved"]'
-      - fill:
-          {
-            sel: '.environment-direct-row input[name="command"]',
-            text: 'bun run deploy:integration',
-          }
-      - wait: '.environment-direct-row .auto-save-form[data-save-state="saved"]'
       - eval: 'document.documentElement.dataset.testReloading="true";window.location.reload();true'
       - wait: 'html:not([data-test-reloading]) .environment-direct-row'
       - wait: { load: networkidle }
       - eval: >-
-          document.querySelector('.environment-direct-row input[name=command]').value === 'bun run deploy:integration'
+          document.querySelector('.environment-direct-row code').textContent === 'test'
       - click: '.environment-add'
       - fill:
           {
@@ -370,8 +367,8 @@ cases:
           }
       - fill:
           {
-            sel: '.environment-direct-form--new input[name="command"]',
-            text: 'bun run deploy:staging',
+            sel: '.environment-direct-form--new input[name="environmentIdentifier"]',
+            text: staging,
           }
       - wait: '.environment-direct-row:nth-child(2)'
       - wait: 'body:not(:has(.environment-direct-form--new))'
@@ -394,6 +391,11 @@ cases:
           {
             sel: '.environment-direct-form--new input[name="name"]',
             text: 未完成的环境,
+          }
+      - fill:
+          {
+            sel: '.environment-direct-form--new input[name="environmentIdentifier"]',
+            text: test,
           }
       - wait: '.environment-direct-form--new[data-save-state="error"]'
       - eval: >-
@@ -420,8 +422,8 @@ cases:
           select.value='BACKEND';select.dispatchEvent(new Event('change',{bubbles:true}));return true;})()
       - fill:
           {
-            sel: '.engineering-join-environments input[name^="command:"]',
-            text: 'bun run deploy:test',
+            sel: '.engineering-join-environments input[name^="environmentIdentifier:"]',
+            text: test,
           }
       - click: '.engineering-editor > .dialog-actions button[type="submit"]'
       - wait: 'body:not(:has(.engineering-create-modal[open]))'
@@ -501,7 +503,7 @@ cases:
           document.querySelector('.project-name-direct input[name=name]').value==='自动保存验收'
           &&document.querySelector('.engineering-identity-form input[name=identifier]').value==='连续输入最终名称'
           &&[...document.querySelectorAll('.environment-direct-row input[name=name]')].some(input=>input.value==='集成环境')
-          &&[...document.querySelectorAll('.environment-direct-row input[name=command]')].some(input=>input.value==='bun run deploy:integration')
+          &&[...document.querySelectorAll('.environment-direct-row code')].some(code=>code.textContent==='test')
           &&['directControls','mixedEnvironmentCardsAligned','environmentConfirmationFits','environmentErrorReadable','navigationWaitsForSave','failedDraftPreserved'].every(key=>sessionStorage.getItem(key)==='true')
 
   - name: environment deletion uses a button and anchored confirmation
@@ -528,8 +530,8 @@ cases:
           select.value='FRONTEND';select.dispatchEvent(new Event('change',{bubbles:true}));return true;})()
       - fill:
           {
-            sel: '.engineering-join-environments input[name^="command:"]',
-            text: 'bun run deploy:test',
+            sel: '.engineering-join-environments input[name^="environmentIdentifier:"]',
+            text: test,
           }
       - click: '.engineering-editor > .dialog-actions button[type="submit"]'
       - wait: 'body:not(:has(.engineering-create-modal[open]))'
@@ -606,8 +608,8 @@ cases:
           select.value='FRONTEND';select.dispatchEvent(new Event('change',{bubbles:true}));return true;})()
       - fill:
           {
-            sel: '.engineering-join-environments input[name^="command:"]',
-            text: 'bun run deploy:archive',
+            sel: '.engineering-join-environments input[name^="environmentIdentifier:"]',
+            text: archive,
           }
       - click: '.engineering-editor > .dialog-actions button[type="submit"]'
       - wait: 'body:not(:has(.engineering-create-modal[open]))'
@@ -630,8 +632,7 @@ cases:
       - text: { sel: '.engineering-archive-trigger', contains: 已归档 }
       - text:
           { sel: '[role="tab"][aria-selected="true"]', contains: 归档保留配置 }
-      - text:
-          { sel: '.environment-view-card', contains: bun run deploy:archive }
+      - text: { sel: '.environment-view-card', contains: archive }
       - hidden: '.engineering-identity-form'
       - hidden: '.environment-direct-form'
       - eval: >-
@@ -1983,7 +1984,8 @@ cases:
             sel: '[aria-label="更新会话 ID"] code',
             equals: browser-shared-update,
           }
-      - text: { sel: '.collab-execution-round__delivery', contains: 本轮更新未完成 }
+      - text:
+          { sel: '.collab-execution-round__delivery', contains: 本轮更新未完成 }
 
   - name: sticky round tabs cover the full scroll edge in batch details
     steps:
@@ -2024,7 +2026,8 @@ cases:
       - click: '[role="tablist"][aria-label="修复与更新轮次"] button:first-child'
     assert:
       - text: { sel: '[role="tab"][aria-selected="true"]', equals: 第 1 轮更新 }
-      - text: { sel: '.collab-execution-round__delivery', contains: 本轮更新未完成 }
+      - text:
+          { sel: '.collab-execution-round__delivery', contains: 本轮更新未完成 }
       - count: { sel: '[role="tabpanel"]:not([hidden])', eq: 1 }
 
   - name: occupied environment shows explicit takeover confirmation and retains form on cancel

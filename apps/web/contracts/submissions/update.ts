@@ -20,7 +20,10 @@ import {
   SubmissionIdSchema,
   SubmissionItemIdSchema,
 } from '@/contracts/submissions/submission';
-import { ExecutionStateSchema } from '@agent-party-time/execution-contract';
+import {
+  DeploymentReceiptSchema,
+  ExecutionStateSchema,
+} from '@agent-party-time/execution-contract';
 import { z } from 'zod';
 
 export const UpdateBatchIdSchema = z.uuid();
@@ -128,6 +131,12 @@ const EngineeringDeliveryViewSchema = z.object({
   commit: CommitShaSchema.nullable(),
   evidence: z.string().nullable(),
   artifactSha256: z.string().nullable(),
+  convention: DeploymentReceiptSchema.pick({
+    environmentKey: true,
+    conventionPath: true,
+    conventionSha256: true,
+    commandSha256: true,
+  }).nullable(),
 });
 
 const UpdateAttemptResultViewSchema = z.discriminatedUnion('outcome', [

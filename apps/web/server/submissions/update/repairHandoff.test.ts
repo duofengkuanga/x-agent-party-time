@@ -14,6 +14,9 @@ import { completeRepairExecution } from '@/testing/submissions/execution';
 const setup = updateFixture(testDatabases());
 
 const handoff = {
+  convention: null,
+  artifact: null,
+  suggestedSkills: [],
   validationCommands: [
     {
       validationIndex: 0,
@@ -65,7 +68,9 @@ test('成功修复的交接随候选冻结，更新只获得必要上下文', as
   const update = f.executions.get(frozen.executionId);
   expect(update.codexTurn?.kind).toBe('INITIAL');
   if (update.codexTurn?.kind !== 'INITIAL') throw new Error('需要首次更新');
-  expect(update.codexTurn.executionBrief.frozenCandidates).toEqual([
+  expect(
+    update.codexTurn.executionBrief.engineeringDeliveries[0].frozenCandidates,
+  ).toEqual([
     {
       position: 0,
       bugTitle: '交接付款修复',
@@ -101,7 +106,7 @@ test('同一缺陷多次成功修复保留各自交接，冻结后不随来源�
   const before = f.executions.get(frozen.executionId).codexTurn;
   expect(before?.kind).toBe('INITIAL');
   if (before?.kind !== 'INITIAL') throw new Error('需要首次更新');
-  expect(before.executionBrief.frozenCandidates).toMatchObject([
+  expect(before.executionBrief.engineeringDeliveries[0].frozenCandidates).toMatchObject([
     {
       commits: ['a'.repeat(40), 'b'.repeat(40)],
       repairHandoffs: [{ commits: ['a'.repeat(40)] }, { commits: ['b'.repeat(40)] }],

@@ -3,6 +3,7 @@ import { createSubmissionWorkflow } from '@/server/runtime/createSubmissionWorkf
 import {
   completeRepairExecution,
   testSkillBinding,
+  testDeploymentReceipt,
 } from '@/testing/submissions/execution';
 import { deliveryProject, mutableClock, mutation } from '@/testing/submissions/project';
 import type { AppDatabase } from '@/server/database/index';
@@ -36,7 +37,7 @@ async function setup(
           type: 'BACKEND',
           identifier: 'payment-api',
           environment: '支付测试环境',
-          deployment: { command: 'bun run deploy:test' },
+          key: 'test',
           repository: 'https://example.com/payment.git',
           branch: 'main',
         },
@@ -47,9 +48,7 @@ async function setup(
                 type: 'BACKEND' as const,
                 identifier: 'order-api',
                 environment: '订单测试环境',
-                deployment: {
-                  command: 'bun run deploy:order',
-                },
+                key: 'test',
                 repository: 'https://example.com/order.git',
                 branch: 'main',
               },
@@ -120,6 +119,15 @@ export function completedUpdate() {
       handoffUse: testHandoffUse(),
       outcome: 'COMPLETED' as const,
       completedActions: ['集成候选并完成部署'],
+      deliveries: {
+        'repo-1': {
+          state: 'DEPLOYED' as const,
+          commit: 'a'.repeat(40),
+          pushVerified: true as const,
+          deploymentVerified: true as const,
+          receipt: testDeploymentReceipt(),
+        },
+      },
       validations: [{ name: '定向检查', status: 'PASSED' as const, detail: '' }],
       warnings: [],
     },
@@ -144,6 +152,7 @@ export function failedUpdate(summary: string) {
       handoffUse: testHandoffUse(),
       outcome: 'FAILED' as const,
       failedStep: '执行统一更新',
+      deliveries: { 'repo-1': { state: 'FAILED', commit: null, evidence: '' } },
       reason: summary,
       completedActions: [],
       validations: [],

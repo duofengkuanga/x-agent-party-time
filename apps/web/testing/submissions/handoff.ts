@@ -3,6 +3,9 @@ import type { UpdateHandoffUse } from '@/contracts/submissions/update';
 
 export function testRepairHandoff(): RepairHandoff {
   return {
+    convention: null,
+    artifact: null,
+    suggestedSkills: [],
     validationCommands: [],
     environmentNotes: [],
     impact: [],

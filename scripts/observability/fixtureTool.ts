@@ -87,9 +87,12 @@ function awaitBuild() {
   );
   return { success: true };
 }
-const deploy = () => {
+const deploy = (verifyOnly = false) => {
   const started = performance.now();
-  if (JSON.parse(readFileSync('build-config.json', 'utf8')).variant === 'baseline')
+  if (
+    !verifyOnly &&
+    JSON.parse(readFileSync('build-config.json', 'utf8')).variant === 'baseline'
+  )
     build();
   const manifest = JSON.parse(readFileSync(join(state, 'manifest.json'), 'utf8'));
   if (
@@ -117,8 +120,9 @@ const deploy = () => {
   )
     throw new Error('Independent audit missing');
   const target = join(state, 'target');
-  mkdirSync(target, { recursive: true });
   const targetReceipt = join(target, 'receipt.json');
+  if (verifyOnly && !existsSync(targetReceipt)) throw new Error('Deployment missing');
+  if (!verifyOnly) mkdirSync(target, { recursive: true });
   if (existsSync(targetReceipt)) {
     const previous = JSON.parse(readFileSync(targetReceipt, 'utf8'));
     if (
@@ -147,6 +151,14 @@ const deploy = () => {
   if (existsSync(join(state, 'lose-response')))
     throw new Error('Synthetic response loss after target receipt');
   receipt('deploy', manifest.workId, performance.now() - started);
+  console.log(
+    'XAPT_DEPLOYMENT_V1 ' +
+      JSON.stringify({
+        commit: manifest.sourceCommit,
+        artifactSha256: manifest.digest,
+        environmentKey: 'test',
+      }),
+  );
 };
 const mode = process.argv[2];
 if (mode === 'test') check();
@@ -155,4 +167,5 @@ else if (mode === 'audit') {
   writeFileSync(join(state, 'audit.json'), JSON.stringify({ inputDigest: input() }));
   log('audit');
 } else if (mode === 'deploy') deploy();
-else throw new Error('Expected test/build/audit/deploy');
+else if (mode === 'verify') deploy(true);
+else throw new Error('Expected test/build/audit/deploy/verify');

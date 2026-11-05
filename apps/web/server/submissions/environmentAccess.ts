@@ -71,7 +71,7 @@ export function environmentBusy(db: AppDatabase, itemId: string): boolean {
       `SELECT 1 FROM submission_update_batch batch
       JOIN submission_item item ON item.id = ?
       WHERE (batch.submission_item_id = item.id
-        OR (batch.person_agent_scope_json IS NOT NULL AND batch.submission_id = item.submission_id)) AND (
+        OR (batch.submission_id = item.submission_id AND EXISTS (SELECT 1 FROM test_submission submission WHERE submission.id = item.submission_id AND submission.mode = 'PERSON_AGENT'))) AND (
       batch.state IN ('READY', 'RUNNING') OR
       EXISTS (SELECT 1 FROM submission_update_attempt attempt JOIN platform_execution execution ON execution.id = attempt.execution_id
         WHERE attempt.batch_id = batch.id AND execution.state IN ('QUEUED', 'CLAIMED', 'RUNNING', 'WAITING_FOR_INTERACTION', 'WAITING_TO_RESUME', 'CANCEL_REQUESTED')) OR

@@ -287,9 +287,9 @@ export class UpdateProjection {
   }
 
   private resultSchema(batch: BatchRow) {
-    return batch.person_agent_scope_json
+    return batch.delivery_scope_json
       ? personAgentUpdateResultSchema(
-          readPersonAgentUpdateScope(batch.person_agent_scope_json),
+          readPersonAgentUpdateScope(batch.delivery_scope_json),
           true,
         )
       : UpdateExecutionResultSchema;

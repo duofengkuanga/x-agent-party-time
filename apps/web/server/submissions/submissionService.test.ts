@@ -222,7 +222,6 @@ describe('Submission workspace', () => {
     expect(developer.submission.items[0]?.technical).toEqual({
       bindingId: fixture.bindings.frontA.id,
       repositoryUrl: 'https://example.com/front.git',
-      deployment: fixture.environments.front.deployment,
     });
     expect(developer.submission.items[0]?.availableActions).toEqual([
       'EDIT_TARGET_BRANCH',
@@ -357,17 +356,12 @@ describe('Submission workspace', () => {
         },
       ),
     ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
-    expect(() =>
-      engineering.updateEnvironment(
-        fixture.users.owner.id,
-        fixture.environments.front.id,
-        {
-          ...mutation(fixture.environments.front.version),
-          name: fixture.environments.front.name,
-          deployment: { command: 'bun run deploy:backend' },
-        },
-      ),
-    ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
+    const renamedEnvironment = engineering.updateEnvironment(
+      fixture.users.owner.id,
+      fixture.environments.front.id,
+      { ...mutation(fixture.environments.front.version), name: '新环境显示名称' },
+    );
+    expect(renamedEnvironment.key).toBe(fixture.environments.front.key);
     const developerMembership = engineering
       .listMembers(fixture.users.owner.id, fixture.engineering.front.id)
       .find(({ user }) => user.id === fixture.users.developerA.id)!.membership;
@@ -471,7 +465,7 @@ test('关联工作区写入原子回滚、提交后去重通知，回放和后�
     {
       mutationId: randomUUID(),
       name: '额外测试环境',
-      deployment: f.environments.front.deployment,
+      key: 'alternate',
     },
   );
   const other = createSubmission(f, [

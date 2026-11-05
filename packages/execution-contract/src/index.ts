@@ -142,6 +142,27 @@ export const TaskSkillBindingSchema = z.strictObject({
   sourceRevision: z.string().regex(/^[a-f0-9]{40}$/u),
 });
 
+export const EnvironmentKeySchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(40)
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u);
+
+const EvidenceHashSchema = z.string().regex(/^[a-f0-9]{64}$/u);
+export const DeploymentReceiptSchema = z.strictObject({
+  source: z.literal('CODEX_COMMAND'),
+  commit: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u),
+  artifactSha256: EvidenceHashSchema,
+  environmentKey: EnvironmentKeySchema,
+  conventionPath: z
+    .string()
+    .max(240)
+    .regex(/^(?!.*(?:^|\/)\.{1,2}(?:\/|$))[a-zA-Z0-9_.-]+(?:\/[a-zA-Z0-9_.-]+)*\.md$/u),
+  conventionSha256: EvidenceHashSchema,
+  commandSha256: EvidenceHashSchema,
+});
+
 const ResultPathSchema = z.array(z.string().trim().min(1).max(120)).min(1).max(8);
 export const ExecutionResultAssertionSchema = z.discriminatedUnion('kind', [
   z.strictObject({
@@ -149,11 +170,11 @@ export const ExecutionResultAssertionSchema = z.discriminatedUnion('kind', [
     workspaceBindingId: BindingIdSchema.optional(),
     resultPath: ResultPathSchema,
   }),
-  z.strictObject({
+  z.object({
     kind: z.literal('GIT_DELIVERY_STATE'),
     workspaceBindingId: BindingIdSchema,
     targetBranch: z.string().trim().min(1).max(240),
-    deploymentCommand: z.string().trim().min(1).max(4000).optional(),
+    environmentKey: EnvironmentKeySchema.optional(),
     candidateCommits: z
       .array(z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u))
       .max(1000)

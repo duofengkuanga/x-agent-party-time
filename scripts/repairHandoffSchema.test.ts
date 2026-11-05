@@ -23,6 +23,9 @@ test('Codex 使用支持的格式 Schema，本机结果断言在上传前拒绝�
     commits: ['a'.repeat(40)],
     manualOperations: [],
     handoff: {
+      convention: null,
+      artifact: null,
+      suggestedSkills: [],
       validationCommands: [],
       environmentNotes: [],
       impact: [],

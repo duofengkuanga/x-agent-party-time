@@ -17,7 +17,7 @@ import {
   startCandidateUpdate,
   updateFixture,
 } from '@/server/submissions/update/updateFixture';
-import { migrateServerDatabase } from './migrateServer';
+import { migrateServerDatabase, schema34 } from './migrateServer';
 import { SCHEMA_31_TABLE_NAMES } from './schema31Migration';
 import { ExecutionService } from '@/server/platform/execution/service';
 import { projectAttemptResult } from '@/server/submissions/repair/results';
@@ -48,7 +48,7 @@ const schema33 = readFileSync(join(import.meta.dir, 'fixtures/serverV33.sql'), '
 
 function copyCurrentToLegacy(
   directory: string,
-  version: 27 | 28 | 29 | 30 | 31 | 32 | 33,
+  version: 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34,
 ) {
   const path = join(directory, `legacy${version}.sqlite`);
   const db = new AppDatabase(path, { create: true });
@@ -62,7 +62,9 @@ function copyCurrentToLegacy(
           ? schema32
           : version === 33
             ? schema33
-            : schema30;
+            : version === 34
+              ? schema34
+              : schema30;
   if (version === 28 || version === 29) {
     const observationStart = sql.indexOf('CREATE TABLE platform_observation_');
     if (observationStart < 0) throw new Error('旧 Schema 缺少归因表边界');
@@ -75,19 +77,29 @@ function copyCurrentToLegacy(
     "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
   )) {
     if (name.includes('external_deployment_report')) continue;
+    if (name === 'submission_bug_deployment' || name === 'cooking_bug_deployment') {
+      db.exec(`INSERT INTO ${name}(bug_id, deployment_json)
+        SELECT bug_id, '${version < 33 ? '{"kind":"LOCAL_SCRIPT","command":"bun run deploy:test"}' : '{"command":"bun run deploy:test"}'}'
+        FROM seed.submission_bug_repair_context`);
+      continue;
+    }
     const fields = db
       .all<{ name: string }>(`PRAGMA table_info(${name})`)
       .map(({ name }) => name);
     const columns = fields.map((name) => `"${name}"`).join(', ');
     const source = fields
       .map((name) =>
-        name === 'workspace_json'
-          ? "json_extract(workspace_json, '$[0].workspace')"
-          : name === 'continuation_report_id'
-            ? 'NULL'
-            : name === 'deployment_json' && version < 33
-              ? `json_set(deployment_json, '$.kind', 'LOCAL_SCRIPT')`
-              : `"${name}"`,
+        name === 'person_agent_scope_json'
+          ? 'NULL'
+          : name === 'workspace_json' && version < 34
+            ? "json_extract(workspace_json, '$[0].workspace')"
+            : name === 'continuation_report_id'
+              ? 'NULL'
+              : name === 'deployment_json'
+                ? version < 33
+                  ? `'{"kind":"LOCAL_SCRIPT","command":"bun run deploy:test"}'`
+                  : `'{"command":"bun run deploy:test"}'`
+                : `"${name}"`,
       )
       .join(', ');
     db.exec(
@@ -95,9 +107,9 @@ function copyCurrentToLegacy(
     );
   }
   db.exec('DETACH DATABASE seed');
-  if (version < 33)
-    db.exec(`UPDATE ${version >= 31 ? 'platform' : 'cooking'}_mutation
-    SET result_json=json_set(result_json, '$.deployment.kind', 'LOCAL_SCRIPT')
+  db.exec(`UPDATE ${version >= 31 ? 'platform' : 'cooking'}_mutation
+    SET result_json=json_set(json_remove(result_json, '$.key'), '$.deployment',
+      json('${version < 33 ? '{"kind":"LOCAL_SCRIPT","command":"bun run deploy:test"}' : '{"command":"bun run deploy:test"}'}'))
     WHERE operation IN ('ENVIRONMENT_CREATE', 'ENVIRONMENT_UPDATE')`);
 
   if (version < 31)
@@ -106,6 +118,14 @@ function copyCurrentToLegacy(
     );
   db.exec(`PRAGMA user_version=${version}`);
   return { db, path };
+}
+
+function fixtureEnvironmentKeys(db: AppDatabase) {
+  return Object.fromEntries(
+    db
+      .all<{ id: string }>('SELECT id FROM platform_environment')
+      .map(({ id }, index) => [id, `isolated-${index + 1}`]),
+  );
 }
 
 async function legacyFixture() {
@@ -125,12 +145,12 @@ async function legacyFixture() {
     "UPDATE cooking_repair_attempt SET outcome_json=json_remove(outcome_json, '$.handoff')",
   );
   db.exec(
-    "UPDATE cooking_update_attempt SET outcome_json=json_remove(outcome_json, '$.handoffUse')",
+    "UPDATE cooking_update_attempt SET outcome_json=json_remove(outcome_json, '$.handoffUse', '$.deliveries')",
   );
   for (const field of ['outcome_json', 'reported_outcome_json'])
     db.exec(`UPDATE platform_execution SET ${field}=json_remove(${field},
       '$.result.result.handoff', '$.result.result.handoffUse',
-      '$.result.result.result.handoff', '$.result.result.result.handoffUse')`);
+      '$.result.result.result.handoff', '$.result.result.result.handoffUse', '$.result.result.deliveries', '$.result.result.result.deliveries')`);
   db.exec('PRAGMA journal_mode=WAL');
   return { ...f, db, path, bug, batch };
 }
@@ -231,6 +251,7 @@ test('预检只读；迁移备份并逐字段保留全部旧数据、关联和�
   expect(handoffs[0].commits).toEqual(['a'.repeat(40)]);
   expect(handoffs[0].handoff.validationCommands).toEqual([]);
   expect(handoffs[0].handoff.limitations[0]).toContain('旧版本未记录');
+  migrateServerDatabase(f.path, true, {}, fixtureEnvironmentKeys(f.db));
   const migrated = openDatabase(f.path);
   opened.push(migrated);
   const submissionWorkflow = createSubmissionWorkflow(migrated);
@@ -346,6 +367,7 @@ test('Schema 28 同样支持保留数据升级，最新版本重复执行无副�
   const before = originalRows(f.db);
   expect(migrateServerDatabase(f.path, true).from).toBe(28);
   expectOriginalFacts(f.db, before);
+  migrateServerDatabase(f.path, true, {}, fixtureEnvironmentKeys(f.db));
   expect(migrateServerDatabase(f.path, true).status).toBe('current');
 });
 
@@ -415,7 +437,9 @@ test('Schema31 离线升级并发索引，完整保留活动执行且可幂等�
   opened.push(backup);
   expect(originalRows(backup)).toEqual(before);
   expect(backup.query('PRAGMA user_version').get()).toEqual({ user_version: 31 });
-  expect(migrateServerDatabase(path, true).status).toBe('current');
+  expect(() => migrateServerDatabase(path, true, {}, fixtureEnvironmentKeys(db))).toThrow(
+    '未完成',
+  );
 });
 
 test('Schema29保留活动执行并升级归因存储与模块命名', async () => {
@@ -438,7 +462,9 @@ test('Schema29保留活动执行并升级归因存储与模块命名', async () 
   expect(
     db.get<{ count: number }>('SELECT COUNT(*) count FROM platform_observation_event'),
   ).toEqual({ count: 0 });
-  expect(migrateServerDatabase(path, true).status).toBe('current');
+  expect(() => migrateServerDatabase(path, true, {}, fixtureEnvironmentKeys(db))).toThrow(
+    '未完成',
+  );
 });
 
 test('Schema30逐字段保留活动流程、幂等回执和归因记录，只更新明确的执行归属', async () => {
@@ -470,17 +496,16 @@ test('Schema30逐字段保留活动流程、幂等回执和归因记录，只更
   const execution = new ExecutionService(db).get(started.executionId);
   expect(execution.owner.namespace).toBe('submissions');
   expect(execution.state).toBe('RUNNING');
-  const workflow = createSubmissionWorkflow(db);
-  const workspace = workflow.workspace.getWorkspace(
-    f.users.developer.id,
-    f.submission.id,
-  );
-  expect(workspace.bugs.some((item) => item.id === bug.id)).toBe(true);
+  expect(db.get('SELECT id FROM submission_bug WHERE id = ?', bug.id)).toEqual({
+    id: bug.id,
+  });
   const backup = new Database(report.backupPath!, { readonly: true });
   opened.push(backup);
   expect(originalRows(backup)).toEqual(before);
   expect(backup.query('PRAGMA user_version').get()).toEqual({ user_version: 30 });
-  expect(migrateServerDatabase(path, true).status).toBe('current');
+  expect(() => migrateServerDatabase(path, true, {}, fixtureEnvironmentKeys(db))).toThrow(
+    '未完成',
+  );
 });
 
 test('Schema 32 要求真实命令并保留历史 Push、人工确认和附件权限', async () => {
@@ -604,6 +629,7 @@ test('Schema 32 要求真实命令并保留历史 Push、人工确认和附件�
       environmentId,
     ),
   ).not.toBeNull();
+  migrateServerDatabase(path, true, {}, fixtureEnvironmentKeys(db));
   const migrated = openDatabase(path);
   opened.push(migrated);
   const historicalFiles = new LocalFileStore(migrated, join(f.directory, 'files'));
@@ -656,5 +682,88 @@ test('Schema 33 保存原工作区、绑定和租约，升级后只使用成员�
   const execution = new ExecutionService(db).get(claimed!.id);
   expect(execution.workspaces).toEqual(claimed!.workspaces);
   expect(execution.lease).toEqual({ expiresAt: claimed!.lease.expiresAt });
-  expect(migrateServerDatabase(path, true).status).toBe('current');
+  expect(() => migrateServerDatabase(path, true, {}, fixtureEnvironmentKeys(db))).toThrow(
+    '未完成',
+  );
 });
+
+test('Schema 34 切换要求核实环境映射，保留历史回执，且不把旧命令写回活动配置', async () => {
+  const f = await setup();
+  const { bug, started } = await startCandidateUpdate(
+    f,
+    '历史候选',
+    'repair',
+    ['a'.repeat(40)],
+    'update',
+  );
+  const { db, path } = copyCurrentToLegacy(f.directory, 34);
+  const keys = fixtureEnvironmentKeys(db);
+  expect(() => migrateServerDatabase(path, false, {}, keys)).toThrow('未完成');
+  completeSuccessfulExecution(f, started, completedUpdate());
+  f.database.run("UPDATE submission_bug SET stage='DONE' WHERE id=?", [bug.id]);
+  const closed = copyCurrentToLegacy(f.directory, 33);
+  migrateServerDatabase(closed.path, true);
+  expect(() => migrateServerDatabase(closed.path)).toThrow('--environment-keys');
+  const prior = closed.db.all('SELECT id, outcome_json FROM submission_update_attempt');
+  const report = migrateServerDatabase(
+    closed.path,
+    true,
+    {},
+    fixtureEnvironmentKeys(closed.db),
+  );
+  expect(report).toMatchObject({ from: 34, to: 35, status: 'migrated' });
+  expect(closed.db.all('SELECT id, outcome_json FROM submission_update_attempt')).toEqual(
+    prior,
+  );
+  expect(
+    closed.db
+      .all('PRAGMA table_info(platform_environment)')
+      .map((row) => (row as { name: string }).name),
+  ).not.toContain('deployment_json');
+  expect(closed.db.all('PRAGMA foreign_key_check')).toEqual([]);
+});
+
+test.each(['BUG_REPAIR', 'UPDATE_BATCH'] as const)(
+  'Schema 34 保留已完成业务的 %s 历史交接，当前交接仍阻止切换',
+  async (kind) => {
+    const f = await setup();
+    const { bug, started } = await startCandidateUpdate(
+      f,
+      '历史人工交接',
+      'handoff-repair',
+      ['a'.repeat(40)],
+      'handoff-update',
+    );
+    completeSuccessfulExecution(f, started, completedUpdate());
+    f.database.run("UPDATE submission_bug SET stage = 'DONE' WHERE id = ?", [bug.id]);
+    const batch = latestBatch(f.database, f.item.id);
+    const { db, path } = copyCurrentToLegacy(f.directory, 34);
+    const execution = db.get<{ id: string }>(
+      'SELECT id FROM platform_execution WHERE owner_kind = ? ORDER BY created_at DESC LIMIT 1',
+      kind,
+    )!;
+    db.run("UPDATE platform_execution SET state = 'HANDED_OFF' WHERE id = ?", [
+      execution.id,
+    ]);
+    if (kind === 'BUG_REPAIR')
+      db.run("UPDATE submission_bug SET stage = 'REPAIRING' WHERE id = ?", [bug.id]);
+    else
+      db.run("UPDATE submission_update_batch SET state = 'RUNNING' WHERE id = ?", [
+        batch.id,
+      ]);
+    const keys = fixtureEnvironmentKeys(db);
+    expect(() => migrateServerDatabase(path, false, {}, keys)).toThrow('未完成');
+    if (kind === 'BUG_REPAIR')
+      db.run("UPDATE submission_bug SET stage = 'DONE' WHERE id = ?", [bug.id]);
+    else
+      db.run("UPDATE submission_update_batch SET state = 'COMPLETED' WHERE id = ?", [
+        batch.id,
+      ]);
+    const before = db.get('SELECT * FROM platform_execution WHERE id = ?', execution.id);
+    expect(migrateServerDatabase(path, false, {}, keys).status).toBe('ready');
+    expect(migrateServerDatabase(path, true, {}, keys).status).toBe('migrated');
+    expect(db.get('SELECT * FROM platform_execution WHERE id = ?', execution.id)).toEqual(
+      before,
+    );
+  },
+);

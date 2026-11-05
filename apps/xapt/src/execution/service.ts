@@ -355,6 +355,7 @@ export class ExecutionService {
             turn.kind === 'INITIAL'
               ? { name: resolvedSkill.skillName, path: resolvedSkill.path }
               : null,
+          handoffSkillPath: resolvedSkill.handoffPath,
           boundSkillPath:
             turn.kind === 'CONTINUATION'
               ? join(resolvedSkill.path, 'SKILL.md')

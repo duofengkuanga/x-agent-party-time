@@ -1,4 +1,4 @@
-import { readPersonAgentUpdateScope } from './personAgentUpdate';
+import { z } from 'zod';
 import { requireSubmissionAccess } from '@/server/submissions/shared/access';
 import {
   parseCommits,
@@ -148,8 +148,10 @@ export class UpdateQueries {
         .sort((left, right) => left.sortAt.localeCompare(right.sortAt))
         .map(({ sortAt: _sortAt, ...node }) => node),
     ];
-    const scope = batch.person_agent_scope_json
-      ? readPersonAgentUpdateScope(batch.person_agent_scope_json)
+    const scope = batch.delivery_scope_json
+      ? z
+          .array(z.object({ alias: z.string(), engineeringId: z.uuid() }))
+          .parse(JSON.parse(batch.delivery_scope_json))
       : null;
     const engineeringNames = scope
       ? Object.fromEntries(
@@ -199,7 +201,7 @@ export class UpdateQueries {
                 ? (['SYNC_SESSION'] as const)
                 : []),
               ...(canRestartAfterSkillMismatch(batch, latest) ||
-              (batch.person_agent_scope_json &&
+              (batch.delivery_scope_json &&
                 batch.state === 'FAILED' &&
                 batch.session_id &&
                 latest &&
@@ -267,13 +269,11 @@ export class UpdateQueries {
   candidates(submissionItemId: string): CandidateRow[] {
     return this.db.all<CandidateRow>(
       `SELECT bug.id bug_id, bug.short_id, bug.title,
-                deployment.deployment_json,
                 context.pending_commits_json,
                 context.pending_manual_operations_json,
                 context.last_candidate_at
          FROM submission_bug bug
          JOIN submission_bug_repair_context context ON context.bug_id = bug.id
-         JOIN submission_bug_deployment deployment ON deployment.bug_id = bug.id
          WHERE bug.submission_item_id = ?
            AND bug.stage = 'WAITING_FOR_UPDATE'
            AND context.last_candidate_at IS NOT NULL
@@ -317,7 +317,8 @@ export class UpdateQueries {
                 submission.project_id, submission.status submission_status, submission.mode submission_mode,
                 submission.title submission_title,
                 engineering.name engineering_name, item.repository_url, item.target_branch,
-                item.environment_name, item.deployment_json,
+                item.engineering_id, item.engineering_type,
+                item.environment_id, item.environment_name, item.environment_key,
                 item.responsible_user_id, item.binding_id, binding.runner_id
          FROM submission_item item
          JOIN platform_engineering engineering ON engineering.id = item.engineering_id
@@ -353,7 +354,7 @@ export class UpdateQueries {
          WHERE batch.state IN ('READY', 'RUNNING', 'FAILED')
            AND EXISTS (
              SELECT 1 FROM target_resources target
-             JOIN json_each(COALESCE(batch.person_agent_scope_json, json_array(json_object(
+             JOIN json_each(COALESCE(batch.delivery_scope_json, json_array(json_object(
                'itemId', item.id, 'environmentId', item.environment_id,
                'engineeringId', item.engineering_id, 'repositoryUrl', item.repository_url,
                'targetBranch', item.target_branch
@@ -445,17 +446,19 @@ export type ItemSourceRow = {
   submission_status: 'ACTIVE' | 'CLOSED';
   submission_title: string;
   engineering_name: string;
+  engineering_id: string;
+  engineering_type: 'FRONTEND' | 'BACKEND';
+  environment_id: string;
   repository_url: string;
   target_branch: string;
   environment_name: string;
-  deployment_json: string;
+  environment_key: string;
   responsible_user_id: string;
   binding_id: string;
   runner_id: string;
 };
 
 export type CandidateRow = {
-  deployment_json: string;
   bug_id: string;
   short_id: number;
   title: string;
@@ -472,9 +475,8 @@ export type BatchRow = {
   version: number;
   active_execution_id: string | null;
   session_id: string | null;
-  deployment_json: string | null;
   historical_delivery_json: string | null;
-  person_agent_scope_json: string | null;
+  delivery_scope_json: string | null;
   frozen_at: string;
   created_at: string;
   updated_at: string;

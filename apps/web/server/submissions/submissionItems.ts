@@ -1,4 +1,3 @@
-import { DeploymentScriptSchema } from '@/contracts/projects/engineering';
 import type { AppDatabase } from '@/server/database/index';
 import { PlatformError } from '@/server/platform/errors/index';
 import type {
@@ -11,13 +10,8 @@ import type { SubmissionItemRow } from './submissionQueries';
 
 type ItemSnapshotSource = Omit<
   SubmissionItemRow,
-  | 'id'
-  | 'submission_id'
-  | 'target_branch'
-  | 'target_branch_locked_at'
-  | 'created_at'
-  | 'deployment_json'
-> & { deployment_json: string; runner_id: string };
+  'id' | 'submission_id' | 'target_branch' | 'target_branch_locked_at' | 'created_at'
+> & { runner_id: string };
 
 export function environmentConflictsForSubmission(
   db: AppDatabase,
@@ -64,7 +58,7 @@ export function snapshotItemSource(
               runner.id runner_id,
               environment.id environment_id,
               environment.name environment_name,
-              environment.deployment_json
+              environment.environment_key
        FROM platform_engineering engineering
        JOIN platform_project_membership project_membership
          ON project_membership.project_id = engineering.project_id
@@ -101,12 +95,7 @@ export function snapshotItemSource(
       'VALIDATION_FAILED',
       '提测项仓库、负责人、绑定、Agent 或环境配置无效',
     );
-  return {
-    ...source,
-    deployment_json: JSON.stringify(
-      DeploymentScriptSchema.parse(JSON.parse(source.deployment_json)),
-    ),
-  };
+  return source;
 }
 
 /** Caller owns the transaction; an item and its environment use are installed together. */
@@ -131,7 +120,7 @@ export function insertItem(
          responsible_user_id, responsible_username,
          responsible_display_name, responsible_user_created_at,
          binding_id, target_branch, environment_id, environment_name,
-         deployment_json, created_at
+         environment_key, created_at
        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       itemId,
@@ -150,7 +139,7 @@ export function insertItem(
       targetBranch,
       source.environment_id,
       source.environment_name,
-      source.deployment_json,
+      source.environment_key,
       createdAt,
     ],
   );

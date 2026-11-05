@@ -1,7 +1,10 @@
 import { Database } from 'bun:sqlite';
 import { z } from 'zod';
-import { DeploymentScriptSchema } from '@/contracts/projects/engineering';
 import type { AppDatabase } from '@/server/database/index';
+
+const DeploymentScriptSchema = z.strictObject({
+  command: z.string().trim().min(1).max(4_000),
+});
 
 const legacyDeployment = z.discriminatedUnion('kind', [
   DeploymentScriptSchema.extend({ kind: z.literal('LOCAL_SCRIPT') }),

@@ -117,7 +117,7 @@ export function resolvePersonAgentRepair(
   if (
     turn.kind === 'INITIAL' &&
     previous &&
-    turn.requiredSkillProtocol === 'person-agent-repair-v1'
+    'engineeringWorkspaces' in turn.executionBrief
   )
     return undefined;
   const previousWorkspaces = previous
@@ -184,7 +184,7 @@ export function resolvePersonAgentRepair(
     turn.kind === 'INITIAL'
       ? createInitialCodexTurn({
           requiredSkillName: turn.requiredSkillName,
-          requiredSkillProtocol: 'person-agent-repair-v1',
+          requiredSkillProtocol: 'engineering-workflow-v1',
           manualHandoff: turn.manualHandoff,
           executionBrief: {
             ...turn.executionBrief,

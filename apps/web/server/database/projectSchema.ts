@@ -97,11 +97,12 @@ CREATE TABLE platform_environment (
   id TEXT PRIMARY KEY,
   engineering_id TEXT NOT NULL REFERENCES platform_engineering(id) ON DELETE CASCADE,
   name TEXT NOT NULL COLLATE NOCASE,
-  deployment_json TEXT NOT NULL,
+  environment_key TEXT NOT NULL,
   version INTEGER NOT NULL CHECK (version > 0),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  UNIQUE(engineering_id, name)
+  UNIQUE(engineering_id, name),
+  UNIQUE(engineering_id, environment_key)
 ) STRICT;
 CREATE INDEX platform_environment_engineering
   ON platform_environment(engineering_id, created_at);

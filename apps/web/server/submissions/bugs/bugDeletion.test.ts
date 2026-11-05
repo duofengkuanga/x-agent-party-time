@@ -122,9 +122,9 @@ describe('BugService', () => {
     fixture.database.run(
       `INSERT INTO submission_update_batch(
            id, submission_id, submission_item_id, state, version,
-           active_execution_id, session_id, deployment_json, frozen_at,
+           active_execution_id, session_id, frozen_at,
            created_at, updated_at
-         ) VALUES (?, ?, ?, 'RUNNING', 1, ?, NULL, '{}', ?, ?, ?)`,
+         ) VALUES (?, ?, ?, 'RUNNING', 1, ?, NULL, ?, ?, ?)`,
       [batchId, fixture.submission.id, fixture.items.front, executionId, now, now, now],
     );
     fixture.database.run(

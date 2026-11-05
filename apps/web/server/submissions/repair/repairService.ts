@@ -1,6 +1,5 @@
 import { isPersonAgentBug } from './personAgentScope';
 import { executionWorkspaces } from '@agent-party-time/execution-contract';
-import { DeploymentScriptSchema } from '@/contracts/projects/engineering';
 import { requireSubmissionAccess } from '@/server/submissions/shared/access';
 import {
   isTerminal,
@@ -94,23 +93,6 @@ export class RepairService {
     const latest = existingContext ? this.queries.latestAttempt(bugId) : undefined;
     if (latest && !isTerminal(latest.state))
       throw new PlatformError('RESOURCE_CONFLICT', '该缺陷已有正在进行的修复');
-    if (!this.db.get('SELECT 1 FROM submission_bug_deployment WHERE bug_id = ?', bugId)) {
-      const environment = this.db.get<{ deployment_json: string }>(
-        `SELECT environment.deployment_json FROM submission_bug bug
-         JOIN submission_item item ON item.id = bug.submission_item_id
-         JOIN platform_environment environment ON environment.id = item.environment_id
-         WHERE bug.id = ?`,
-        bugId,
-      );
-      if (!environment) throw new PlatformError('NOT_FOUND', '缺陷对应的测试环境不存在');
-      const deployment = DeploymentScriptSchema.parse(
-        JSON.parse(environment.deployment_json),
-      );
-      this.db.run(
-        'INSERT INTO submission_bug_deployment(bug_id, deployment_json) VALUES (?, ?)',
-        [bugId, JSON.stringify(deployment)],
-      );
-    }
     const now = this.now().toISOString();
     const workspaceKey = `bug-repair:${bugId}`;
     const attemptId = this.createId();
@@ -153,6 +135,7 @@ export class RepairService {
       codexTurn: createInitialCodexTurn({
         manualHandoff: 'EXTERNAL_SESSION',
         requiredSkillName: 'XBugRepaire',
+        requiredSkillProtocol: 'engineering-workflow-v1',
         executionBrief,
         outputJsonSchema: RepairOutputJsonSchema,
         resultAssertions: REPAIR_RESULT_ASSERTIONS,

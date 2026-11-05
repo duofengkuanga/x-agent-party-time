@@ -25,7 +25,7 @@ _Avoid_: 全员单人模式、单工程模式
 _Avoid_: 必须多电脑模式、必须多 Agent 模式
 
 **Submission Item**:
-Test Submission 中某个 Engineering 的交付配置，确定负责人、Binding、目标分支和环境；部署使用该环境配置的本地脚本。
+Test Submission 中某个 Engineering 的交付配置，确定负责人、Binding、目标分支和环境；环境标识对应当前 Engineering 工作区的执行约定，作为冻结交付目标。
 _Avoid_: Engineering、子任务
 
 ## 本机执行
@@ -109,7 +109,7 @@ _Avoid_: Execution、Repair Task
 _Avoid_: Validation Certificate、Evidence Cache、Session Summary
 
 **Update Batch**:
-一组待更新 Bug 在同一冻结时刻确定的集成、Push 和部署处理单元。在 PersonAgent 中按同一 Test Submission 跨 Engineering 组织；在 AgentParty 中按同一 Submission Item 及相同部署配置组织。
+一组待更新 Bug 在同一冻结时刻确定的集成、Push 和部署处理单元。在 PersonAgent 中按同一 Test Submission 跨 Engineering 组织；在 AgentParty 中按同一 Submission Item 的冻结环境身份组织。
 _Avoid_: Deployment、Release
 
 **Verification**:

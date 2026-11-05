@@ -40,7 +40,8 @@ describe('UpdateService', () => {
       async (execution) => {
         if (execution.codexTurn?.kind !== 'INITIAL')
           throw new Error('需要首次 Update Turn');
-        const candidates = execution.codexTurn.executionBrief.frozenCandidates as Array<{
+        const candidates = execution.codexTurn.executionBrief.engineeringDeliveries[0]
+          .frozenCandidates as Array<{
           commits: string[];
         }>;
         claimedCommits = candidates.flatMap((candidate) => candidate.commits);

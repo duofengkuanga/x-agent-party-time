@@ -42,7 +42,7 @@ CREATE TABLE submission_item (
   target_branch TEXT NOT NULL,
   environment_id TEXT NOT NULL,
   environment_name TEXT NOT NULL,
-  deployment_json TEXT,
+  environment_key TEXT NOT NULL,
   created_at TEXT NOT NULL,
   target_branch_locked_at TEXT,
   UNIQUE(submission_id, engineering_id)
@@ -196,12 +196,11 @@ CREATE TABLE submission_update_batch (
   version INTEGER NOT NULL CHECK (version > 0),
   active_execution_id TEXT REFERENCES platform_execution(id) ON DELETE RESTRICT,
   session_id TEXT,
-  deployment_json TEXT CHECK (deployment_json IS NOT NULL OR state = 'COMPLETED'),
   historical_delivery_json TEXT CHECK (json_valid(historical_delivery_json)),
   frozen_at TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  person_agent_scope_json TEXT CHECK (json_valid(person_agent_scope_json))
+  delivery_scope_json TEXT CHECK (json_valid(delivery_scope_json))
 ) STRICT;
 CREATE UNIQUE INDEX submission_update_batch_active_item
   ON submission_update_batch(submission_item_id)

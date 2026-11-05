@@ -48,12 +48,6 @@ for (const joint of [false, true]) {
           bug.id,
         ),
       ).toHaveLength(1);
-      expect(
-        f.database.all(
-          'SELECT bug_id FROM submission_bug_deployment WHERE bug_id = ?',
-          bug.id,
-        ),
-      ).toHaveLength(1);
     }
     expect(f.database.all('SELECT id FROM platform_execution')).toHaveLength(
       joint ? 2 : 1,
@@ -105,7 +99,6 @@ for (const joint of [false, true]) {
       'submission_bug',
       'submission_bug_attachment',
       'submission_repair_attempt',
-      'submission_bug_deployment',
       'platform_execution',
     ])
       expect(f.database.all(`SELECT * FROM ${table}`)).toHaveLength(0);

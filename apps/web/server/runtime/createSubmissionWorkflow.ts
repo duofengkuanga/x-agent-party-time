@@ -90,7 +90,7 @@ export function createSubmissionWorkflow(
         const batch = db.get<{ submission_item_id: string }>(
           `SELECT batch.submission_item_id FROM submission_update_attempt attempt
             JOIN submission_update_batch batch ON batch.id = attempt.batch_id
-            WHERE attempt.id = ? AND batch.person_agent_scope_json IS NOT NULL`,
+            WHERE attempt.id = ? AND batch.delivery_scope_json IS NOT NULL`,
           execution.owner.id,
         );
         if (batch && !deliveryEnvironmentAvailable(db, batch.submission_item_id))
