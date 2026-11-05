@@ -1,17 +1,19 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { createClientId } from '@/app/(pages)/(main)/components/clientId';
+import { Popconfirm } from '@/app/(pages)/(main)/components/popconfirm';
 import type {
   BugView,
-  DeleteUnassignedBugInput,
+  DeleteWaitingBugInput,
 } from '../../../../../../contracts/submissions/bug';
-import { deleteUnassignedBugAction } from '../../../../../actions/submissions/bugs';
+import { deleteWaitingBugAction } from '../../../../../actions/submissions/bugs';
 import { bugLabel } from './boardModel';
 import type { RunTesterAction } from './testerBugDetail';
 
 export function BugDeleteControl({
   bug,
+  className = 'collab-form collab-bug-delete-control',
   error,
   pending,
   run,
@@ -19,84 +21,52 @@ export function BugDeleteControl({
   onDeleted,
 }: {
   bug: BugView;
+  className?: string;
   error: string | null;
   pending: boolean;
   run: RunTesterAction;
   onClearError: () => void;
-  onDeleted: () => void;
+  onDeleted?: () => void;
 }) {
   const [confirmation, setConfirmation] =
-    useState<DeleteUnassignedBugInput | null>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
+    useState<DeleteWaitingBugInput | null>(null);
   if (!bug.availableActions.includes('DELETE')) return null;
   return (
     <section
-      className="collab-form collab-bug-delete-control"
-      aria-label="删除待分配缺陷"
+      className={className}
+      aria-label="删除待修复缺陷"
       aria-busy={pending}
     >
-      {confirmation ? (
-        <>
-          <p>
-            确认删除“{bug.report.description.slice(0, 120)}
-            ”？缺陷资料及附件将从提测单中移除，删除后无法恢复。
-          </p>
-          {error ? (
-            <p className="collab-form__error" role="alert">
-              {error}
-            </p>
-          ) : null}
-          {pending ? <span role="status">正在删除…</span> : null}
-          <div
-            className="collab-routing-actions"
-            role="group"
-            aria-label="确认删除缺陷"
-          >
-            <button
-              autoFocus
-              disabled={pending}
-              type="button"
-              onClick={() => {
-                onClearError();
-                setConfirmation(null);
-                window.requestAnimationFrame(() => trigger.current?.focus());
-              }}
-            >
-              取消
-            </button>
-            <button
-              disabled={pending}
-              type="button"
-              onClick={() =>
-                run(
-                  () => deleteUnassignedBugAction(bug.id, confirmation),
-                  `${bugLabel(bug)} 已删除。`,
-                  onDeleted,
-                )
-              }
-            >
-              确认删除
-            </button>
-          </div>
-        </>
-      ) : (
-        <div className="collab-routing-actions">
-          <button
-            ref={trigger}
-            disabled={pending}
-            type="button"
-            onClick={() => {
-              onClearError();
-              setConfirmation({
-                mutationId: createClientId(),
-                expectedVersion: bug.version,
-              });
-            }}
-          >
-            删除缺陷
-          </button>
-        </div>
-      )}
+      <Popconfirm
+        label="删除缺陷"
+        title={`确认删除“${bug.report.description.slice(0, 120)}”？`}
+        description={`缺陷资料及附件将从提测单中移除，删除后无法恢复。${bug.relatedBugs.length ? '仅删除当前缺陷，关联缺陷保留。' : ''}`}
+        confirmLabel="确认删除"
+        pendingLabel="正在删除…"
+        open={confirmation !== null}
+        pending={pending}
+        error={error}
+        onOpenChange={(open) => {
+          if (pending) return;
+          onClearError();
+          setConfirmation(
+            open
+              ? { mutationId: createClientId(), expectedVersion: bug.version }
+              : null,
+          );
+        }}
+        onConfirm={() => {
+          if (!confirmation) return;
+          run(
+            () => deleteWaitingBugAction(bug.id, confirmation),
+            `${bugLabel(bug)} 已删除。`,
+            () => {
+              setConfirmation(null);
+              onDeleted?.();
+            },
+          );
+        }}
+      />
     </section>
   );
 }

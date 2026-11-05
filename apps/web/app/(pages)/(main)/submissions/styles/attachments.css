@@ -286,6 +286,23 @@
   align-content: start;
 }
 
+.collab-bug-form > fieldset {
+  border: 0;
+  display: grid;
+  gap: 16px;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.collab-bug-form > fieldset > legend {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 10px;
+  padding: 0;
+}
+
 .collab-bug-form .collab-attachment-picker {
   background: color-mix(in srgb, var(--panel) 64%, transparent);
   border-color: var(--line);

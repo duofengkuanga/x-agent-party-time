@@ -478,13 +478,3 @@
   color: #285f3d;
   background: color-mix(in srgb, #4d9c68 10%, var(--paper));
 }
-
-@media (prefers-color-scheme: dark) {
-  .panel {
-    background: color-mix(in srgb, var(--paper) 92%, black);
-  }
-
-  .notice-success {
-    color: #a7ddb8;
-  }
-}

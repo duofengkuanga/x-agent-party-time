@@ -43,7 +43,7 @@ export class BugService {
   private readonly queries: BugQueries;
   readonly workspace: BugQueries['workspace'];
   readonly requireAttachmentAccess: BugQueries['requireAttachmentAccess'];
-  readonly deleteUnassignedBug: BugDeletion['deleteUnassignedBug'];
+  readonly deleteWaitingBug: BugDeletion['deleteWaitingBug'];
   readonly deleteBugs: BugDeletion['deleteBugs'];
 
   constructor(
@@ -60,7 +60,7 @@ export class BugService {
     this.requireAttachmentAccess = this.queries.requireAttachmentAccess.bind(
       this.queries,
     );
-    this.deleteUnassignedBug = deletion.deleteUnassignedBug.bind(deletion);
+    this.deleteWaitingBug = deletion.deleteWaitingBug.bind(deletion);
     this.deleteBugs = deletion.deleteBugs.bind(deletion);
   }
 

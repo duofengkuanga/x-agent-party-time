@@ -13,24 +13,24 @@ import { bugService } from '@/server/runtime/services';
 import type {
   AssignBugInput,
   BugMutationResult,
-  DeleteUnassignedBugInput,
-  DeleteUnassignedBugResult,
+  DeleteWaitingBugInput,
+  DeleteWaitingBugResult,
   LinkedBugsMutationResult,
   RequestRepairInput,
 } from '../../../contracts/submissions/bug';
 import type { RouteBugInput } from '../../../contracts/submissions/bug';
 
 export type BugActionResult = InteractiveActionResult<BugMutationResult>;
-export type DeleteBugActionResult = InteractiveActionResult<DeleteUnassignedBugResult>;
+export type DeleteBugActionResult = InteractiveActionResult<DeleteWaitingBugResult>;
 
-export async function deleteUnassignedBugAction(
+export async function deleteWaitingBugAction(
   bugId: string,
-  input: DeleteUnassignedBugInput,
+  input: DeleteWaitingBugInput,
 ): Promise<DeleteBugActionResult> {
   return runInteractiveMutation({
     validationEvent: 'submission_bug_action_validation_failed',
     command: ({ userId }) => {
-      const result = bugService().deleteUnassignedBug(userId, bugId, input);
+      const result = bugService().deleteWaitingBug(userId, bugId, input);
       return {
         result,
         cleanupFileIds: result.unboundAttachmentIds,

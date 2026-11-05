@@ -52,6 +52,7 @@ import {
 } from './testerDetailModel';
 
 import { BugDrawer } from './bugDrawer';
+import { BugDeleteControl } from './bugDeleteControl';
 import { BugReworkDialog } from './bugEditor';
 
 const STORAGE_TRANSITIONS = {
@@ -384,6 +385,16 @@ export function BugBoard({
                       return (
                         <BugCard
                           bug={bug}
+                          deleteControl={
+                            <BugDeleteControl
+                              bug={bug}
+                              className="collab-bug-card__delete"
+                              error={error}
+                              pending={pending}
+                              run={run}
+                              onClearError={() => setError(null)}
+                            />
+                          }
                           blockedReason={blockedReason}
                           draggable={!pending && draggable}
                           dragging={draggingBugId === bug.id}

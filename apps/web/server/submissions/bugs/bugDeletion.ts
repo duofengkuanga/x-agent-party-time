@@ -2,12 +2,12 @@ import type { AppDatabase } from '@/server/database/index';
 import { PlatformError } from '@/server/platform/errors/index';
 import type { TestSubmissionWriteStore } from '@/server/submissions/testSubmissionWriteStore';
 import type { BugQueries } from './bugQueries';
-import { canDeleteUnassignedBug } from './bugQueries';
+import { canDeleteWaitingBug } from './bugQueries';
 import {
-  DeleteUnassignedBugInputSchema,
-  DeleteUnassignedBugResultSchema,
-  type DeleteUnassignedBugInput,
-  type DeleteUnassignedBugResult,
+  DeleteWaitingBugInputSchema,
+  DeleteWaitingBugResultSchema,
+  type DeleteWaitingBugInput,
+  type DeleteWaitingBugResult,
   BugDeleteRequestSchema,
   type BugDeleteRequest,
   type BugDeleteResponse,
@@ -22,18 +22,18 @@ export class BugDeletion {
     private readonly now: () => Date,
   ) {}
 
-  deleteUnassignedBug(
+  deleteWaitingBug(
     actorUserId: string,
     bugId: string,
-    input: DeleteUnassignedBugInput,
-  ): DeleteUnassignedBugResult {
-    const parsed = DeleteUnassignedBugInputSchema.parse(input);
+    input: DeleteWaitingBugInput,
+  ): DeleteWaitingBugResult {
+    const parsed = DeleteWaitingBugInputSchema.parse(input);
     return this.writes.run({
       mutationId: parsed.mutationId,
       actorUserId,
-      operation: `BUG_DELETE_UNASSIGNED:${bugId}`,
+      operation: `BUG_DELETE_WAITING:${bugId}`,
       resourceType: 'BUG',
-      resultSchema: DeleteUnassignedBugResultSchema,
+      resultSchema: DeleteWaitingBugResultSchema,
       submissionId: (result) => result.submissionId,
       perform: () => {
         const bug = this.queries.requireBug(bugId);
@@ -45,14 +45,14 @@ export class BugDeletion {
         if (actorUserId !== access.tester_user_id && !anyResponsible)
           throw new PlatformError(
             'PERMISSION_DENIED',
-            '只有测试负责人或提测项的开发负责人可以删除待分配缺陷',
+            '只有测试负责人或提测项的开发负责人可以删除待修复缺陷',
           );
         if (bug.version !== parsed.expectedVersion)
           throw new PlatformError('RESOURCE_CONFLICT', '缺陷已发生变化，请刷新后重试');
-        if (!canDeleteUnassignedBug(actorUserId, access, bug, anyResponsible))
+        if (!canDeleteWaitingBug(actorUserId, access, bug, anyResponsible))
           throw new PlatformError(
             'INVALID_TRANSITION',
-            '只能删除活动提测单中尚未分配且未开始修复的缺陷',
+            '只能删除活动提测单中尚未开始修复的待修复缺陷',
           );
         this.deleteBugRows([bug.id], []);
         return {

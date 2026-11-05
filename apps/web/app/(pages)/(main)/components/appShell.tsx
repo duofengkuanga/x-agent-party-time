@@ -5,8 +5,6 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { User } from '@/contracts/auth';
 import { logoutAction } from '@/app/actions/logout';
 
-type Theme = 'paper' | 'night';
-
 export function AppShell({
   accountNotifications,
   children,
@@ -18,12 +16,8 @@ export function AppShell({
   className?: string;
   currentUser: User;
 }) {
-  const [theme, setTheme] = useState<Theme>('paper');
   return (
-    <div
-      className={`collab-shell${className ? ` ${className}` : ''}`}
-      data-theme={theme}
-    >
+    <div className={`collab-shell${className ? ` ${className}` : ''}`}>
       <header className="collab-topbar">
         <div className="brand-lockup">
           <Link className="brand" href="/submissions">
@@ -40,16 +34,6 @@ export function AppShell({
           </span>
         </div>
         <div className="collab-topbar__actions">
-          <button
-            aria-label={theme === 'paper' ? '切换暗夜主题' : '切换纸张主题'}
-            className="collab-quiet-button"
-            onClick={() =>
-              setTheme((current) => (current === 'paper' ? 'night' : 'paper'))
-            }
-            type="button"
-          >
-            {theme === 'paper' ? '◐ 暗夜' : '◑ 纸张'}
-          </button>
           <AccountMenu
             currentUser={currentUser}
             notifications={accountNotifications}

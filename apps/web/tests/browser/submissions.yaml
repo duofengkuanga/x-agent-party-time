@@ -1,6 +1,10 @@
 suite: Module architecture browser acceptance
 setup:
   - open: __BASE_URL__/login?next=/submissions/__SUBMISSION_ID__
+  - eval: >-
+      (()=>{const shell=document.querySelector('.auth-shell');
+      if(!shell||getComputedStyle(shell).colorScheme!=='light'||document.querySelector('button[aria-label*=主题]'))
+      throw new Error('登录页应固定使用浅色主题且没有主题切换入口');return true;})()
   - fill: { sel: 'input[name="username"]', text: __USERNAME__ }
   - fill: { sel: 'input[name="password"]', text: __PASSWORD__ }
   - click: '.auth-submit'
@@ -16,48 +20,45 @@ cases:
       - text: { sel: '[aria-label="协作模式"]', contains: PersonAgent }
       - text:
           {
-            sel: '[role="dialog"][aria-labelledby="submission-composer-title"]',
+            sel: '[role="dialog"]:is(:not([popover]),:popover-open)[aria-labelledby="submission-composer-title"]',
             contains: 提测创建后，协作模式固定,
           }
       - hidden: '.collab-create-item [aria-label="Agent"]'
 
-  - name: projects share the main shell in both themes
+  - name: projects share the main shell
     steps:
       - open: __BASE_URL__/projects
       - wait: '.collab-topbar'
-      - click: 'button[aria-label="切换暗夜主题"]'
-      - wait: '.collab-shell[data-theme="night"]'
-      - click: 'button[aria-label="切换纸张主题"]'
     assert:
+      - hidden: 'button[aria-label*="主题"]'
+      - eval: 'getComputedStyle(document.querySelector(".collab-shell")).colorScheme === "light"'
       - url: { contains: /projects }
       - count: { sel: '.collab-topbar', eq: 1 }
-      - visible: '.collab-shell[data-theme="paper"]'
+      - visible: '.collab-shell'
       - text: { sel: h1, contains: 我的项目 }
 
-  - name: agents share the main shell in both themes
+  - name: agents share the main shell
     steps:
       - open: __BASE_URL__/agents
       - wait: '.collab-topbar'
-      - click: 'button[aria-label="切换暗夜主题"]'
-      - wait: '.collab-shell[data-theme="night"]'
-      - click: 'button[aria-label="切换纸张主题"]'
     assert:
+      - hidden: 'button[aria-label*="主题"]'
+      - eval: 'getComputedStyle(document.querySelector(".collab-shell")).colorScheme === "light"'
       - url: { contains: /agents }
       - count: { sel: '.collab-topbar', eq: 1 }
-      - visible: '.collab-shell[data-theme="paper"]'
+      - visible: '.collab-shell'
       - text: { sel: h1, contains: 我的 Agent }
 
-  - name: submissions share the main shell in both themes
+  - name: submissions share the main shell
     steps:
       - open: __BASE_URL__/submissions
       - wait: '.collab-topbar'
-      - click: 'button[aria-label="切换暗夜主题"]'
-      - wait: '.collab-shell[data-theme="night"]'
-      - click: 'button[aria-label="切换纸张主题"]'
     assert:
+      - hidden: 'button[aria-label*="主题"]'
+      - eval: 'getComputedStyle(document.querySelector(".collab-shell")).colorScheme === "light"'
       - url: { contains: /submissions }
       - count: { sel: '.collab-topbar', eq: 1 }
-      - visible: '.collab-shell[data-theme="paper"]'
+      - visible: '.collab-shell'
       - visible: '.collab-board'
 
   - name: project deletion uses a popconfirm and consumes its success message
@@ -212,7 +213,7 @@ cases:
       - hidden: '[role="tablist"]'
       - count: { sel: '.project-engineering', eq: 1 }
       - count: { sel: '.project-settings__list [aria-current="page"]', eq: 1 }
-      - hidden: '[role="dialog"]'
+      - hidden: '[role="dialog"]:is(:not([popover]),:popover-open)'
       - hidden: '.repair-overlay'
       - hidden: '.auto-save-form'
       - hidden: '.project-engineering a[href*="mode="]'
@@ -323,7 +324,7 @@ cases:
             contains: '84',
           }
       - count: { sel: '.project-engineering input[name="command"]', eq: 0 }
-      - hidden: '[role="dialog"]'
+      - hidden: '[role="dialog"]:is(:not([popover]),:popover-open)'
 
   - name: direct editing autosaves and waits for pending input before navigation
     steps:
@@ -365,7 +366,7 @@ cases:
       - click: '.engineering-type-choice label:has(input[value="FRONTEND"])'
       - wait: '.engineering-identity-form[data-save-state="saved"]'
       - eval: >-
-          sessionStorage.setItem('directControls',String(!document.querySelector('a[href*="mode="],a[href*="panel=project"],a[href*="panel=collaboration"],.auto-save-form button[type=submit],[role=dialog]:not(.popconfirm),.repair-overlay')));true
+          sessionStorage.setItem('directControls',String(!document.querySelector('a[href*="mode="],a[href*="panel=project"],a[href*="panel=collaboration"],.auto-save-form button[type=submit],[role=dialog]:is(:not([popover]),:popover-open):not(.popconfirm),.repair-overlay')));true
       - click: '.environment-edit'
       - fill:
           { sel: '.environment-direct-row input[name="name"]', text: 集成环境 }
@@ -513,7 +514,7 @@ cases:
       - wait: '.project-engineering[aria-label="直接编辑工程"]'
       - click: '.environment-edit'
     assert:
-      - hidden: '[role="dialog"]'
+      - hidden: '[role="dialog"]:is(:not([popover]),:popover-open)'
       - hidden: '.repair-overlay'
       - hidden: '.auto-save-form button[type="submit"]'
       - count: { sel: '.environment-direct-row', eq: 1 }
@@ -569,6 +570,7 @@ cases:
       - wait: 'body:not(:has(.engineering-create-modal[open]))'
       - click: '.environment-edit'
       - wait: '.environment-direct-row'
+      - wait: 'body:not(:has(.notice-success)) .environment-direct-delete > button'
       - click: '.environment-direct-delete > button'
       - wait: '.popconfirm:popover-open'
       - eval: >-
@@ -582,11 +584,6 @@ cases:
       - click: '.environment-direct-delete > button'
       - click: '.project-overview__heading'
       - wait: 'body:not(:has(.popconfirm:popover-open))'
-      - click: 'button[aria-label="切换暗夜主题"]'
-      - wait: '.collab-shell[data-theme="night"]'
-      - eval: >-
-          (async()=>{const shell=document.querySelector('.collab-shell');
-          await Promise.allSettled(shell.getAnimations().map(animation=>animation.finished));return true;})()
       - click: '.environment-direct-delete > button'
       - wait: '.popconfirm:popover-open'
       - eval: >-
@@ -601,7 +598,6 @@ cases:
           sessionStorage.setItem('environmentPopoverGeometry',JSON.stringify({popup:box.toJSON(),trigger:trigger.toJSON(),top:document.querySelector('.popconfirm:popover-open').style.top,ready:document.readyState}));
           sessionStorage.setItem('environmentPopoverAnchored',String(Math.abs(box.right-trigger.right)<1&&(Math.abs(trigger.top-box.bottom-8)<1||Math.abs(box.top-trigger.bottom-8)<1)&&box.top>=0&&box.right<=innerWidth));return true;})()
       - click: '.popconfirm:popover-open button[type="button"]'
-      - click: 'button[aria-label="切换纸张主题"]'
       - eval: >-
           window.deleteEnvironmentFetch=window.fetch;window.fetch=(...args)=>new Headers(args[1]?.headers).has('Next-Action')
           ?new Promise((resolve,reject)=>{window.releaseEnvironmentDelete=()=>window.deleteEnvironmentFetch(...args).then(resolve,reject);})
@@ -704,7 +700,7 @@ cases:
       - wait: '.project-invitation-settings'
     assert:
       - visible: '.project-settings__content .project-invitation-settings'
-      - hidden: '[role="dialog"]'
+      - hidden: '[role="dialog"]:is(:not([popover]),:popover-open)'
       - hidden: '.repair-overlay'
       - visible: '.project-settings__sidebar'
 
@@ -798,7 +794,7 @@ cases:
 
   - name: explicit submission discard clears the draft after confirmation
     steps:
-      - eval: "[...document.querySelectorAll('[role=dialog] button')].find(button => button.textContent === '放弃草稿').click(); true"
+      - eval: "[...document.querySelectorAll('[role=dialog]:is(:not([popover]),:popover-open) button')].find(button => button.textContent === '放弃草稿').click(); true"
       - wait: '[aria-label="确认放弃草稿"]'
       - click: '[aria-label="确认放弃草稿"] button:last-child'
       - click: '.collab-rail__create'
@@ -820,7 +816,7 @@ cases:
 
   - name: bug draft retains its backend selection and attachment when temporarily closed
     steps:
-      - eval: "[...document.querySelectorAll('[role=dialog] button')].find(button=>button.textContent==='放弃草稿').click();true"
+      - eval: "[...document.querySelectorAll('[role=dialog]:is(:not([popover]),:popover-open) button')].find(button=>button.textContent==='放弃草稿').click();true"
       - click: '[aria-label="确认放弃草稿"] button:last-child'
       - eval: "[...document.querySelectorAll('button')].find(button=>button.textContent?.includes('登记缺陷')).click();true"
       - wait: '#collab-bug-form'
@@ -895,68 +891,79 @@ cases:
     steps:
       - open: __BASE_URL__/submissions/__SUBMISSION_ID__
       - wait: 'button[aria-label^="待取消缺陷，"]'
-  - name: unassigned deletion asks for confirmation and cancel restores focus
+  - name: waiting card deletion asks for confirmation without opening details
     steps:
       - open: __BASE_URL__/submissions/__SUBMISSION_ID__
       - wait: 'button[aria-label^="测试负责人删除缺陷，"]'
-      - click: 'button[aria-label^="测试负责人删除缺陷，"]'
-      - wait: '[aria-label="删除待分配缺陷"] button'
+      - wait: 'article:has(button[aria-label^="测试负责人删除缺陷，"]) .collab-bug-card__delete > button'
       - eval: >-
-          (() => { const shell=document.querySelector('.collab-shell'), button=document.querySelector('[aria-label="删除待分配缺陷"] button');
-          window.deleteDefaultStyles=['paper','night'].every(theme=>{shell.dataset.theme=theme;return getComputedStyle(button).backgroundColor==='rgba(0, 0, 0, 0)';});
-          shell.dataset.theme='paper';return true;})()
-      - click: '[aria-label="删除待分配缺陷"] button'
-      - wait: '[aria-label="确认删除缺陷"]'
+          (() => { const button=document.querySelector('article:has(button[aria-label^="测试负责人删除缺陷，"]) .collab-bug-card__delete > button');
+          window.deleteControlBounds=()=>JSON.stringify([button,button.closest('article')].map(element=>element.getBoundingClientRect().toJSON()));
+          window.deleteOriginalBounds=window.deleteControlBounds();
+          window.deleteDefaultStyles=getComputedStyle(button).backgroundColor==='rgba(0, 0, 0, 0)';return true;})()
+      - click: 'article:has(button[aria-label^="测试负责人删除缺陷，"]) .collab-bug-card__delete > button'
+      - wait: '.collab-bug-card__delete .popconfirm:popover-open'
     assert:
-      - text: { sel: '[aria-label="删除待分配缺陷"]', contains: 删除后无法恢复 }
+      - text:
+          {
+            sel: '.collab-bug-card__delete .popconfirm:popover-open',
+            contains: 删除后无法恢复,
+          }
       - eval: 'document.activeElement.textContent.trim() === "取消"'
       - eval: 'window.deleteDefaultStyles'
+      - eval: 'window.deleteControlBounds() === window.deleteOriginalBounds'
       - visible: 'button[aria-label^="测试负责人删除缺陷，"]'
+      - hidden: '.collab-bug-drawer'
+      - eval: 'document.querySelector(".collab-bug-card__delete:has(:popover-open) > button").getAttribute("aria-expanded") === "true"'
 
   - name: cancel leaves the unassigned bug intact and the delete trigger focused
     steps:
-      - click: '[aria-label="确认删除缺陷"] button:first-child'
+      - click: '.collab-bug-card__delete .popconfirm:popover-open button:first-child'
     assert:
-      - hidden: '[aria-label="确认删除缺陷"]'
+      - hidden: '.collab-bug-card__delete .popconfirm:popover-open'
       - eval: 'document.activeElement.textContent.trim() === "删除缺陷"'
+      - eval: 'window.deleteControlBounds() === window.deleteOriginalBounds'
       - visible: 'button[aria-label^="测试负责人删除缺陷，"]'
 
-  - name: deletion has reachable confirmation in both themes and disables pending actions
+  - name: deletion has reachable confirmation and disables pending actions
     steps:
-      - click: '[aria-label="删除待分配缺陷"] button'
+      - click: 'article:has(button[aria-label^="测试负责人删除缺陷，"]) .collab-bug-card__delete > button'
       - eval: >-
-          (() => { const shell=document.querySelector('.collab-shell');
-          window.deleteFits=['paper','night'].every(theme=>{ shell.dataset.theme=theme;
-          const group=document.querySelector('[aria-label="确认删除缺陷"]');
-          const box=group.getBoundingClientRect(); return box.top>=0 && box.bottom<=innerHeight && box.right<=innerWidth; });
-          shell.dataset.theme='paper'; window.deleteOriginalFetch=window.fetch;
+          (() => { const group=document.querySelector('.collab-bug-card__delete .popconfirm:popover-open');
+          const box=group.getBoundingClientRect(); window.deleteFits=box.top>=0 && box.bottom<=innerHeight && box.right<=innerWidth;
+          window.deleteOriginalFetch=window.fetch;
           window.fetch=(...args)=>new Headers(args[1]?.headers).has('Next-Action')
           ? new Promise((resolve,reject)=>{window.rejectDelete=reject;}) : window.deleteOriginalFetch(...args); return true; })()
-      - click: '[aria-label="确认删除缺陷"] button:last-child'
-      - wait: '[aria-label="确认删除缺陷"] button:disabled'
+      - click: '.collab-bug-card__delete .popconfirm:popover-open button:last-child'
+      - wait: '.collab-bug-card__delete .popconfirm:popover-open button:disabled'
     assert:
       - eval: 'window.deleteFits'
-      - eval: '[...document.querySelectorAll("[aria-label=确认删除缺陷] button")].every(button=>button.disabled)'
-      - text: { sel: '[aria-label="删除待分配缺陷"]', contains: 正在删除 }
+      - eval: 'window.deleteControlBounds() === window.deleteOriginalBounds'
+      - eval: '[...document.querySelectorAll(".collab-bug-card__delete button")].every(button=>button.disabled)'
+      - text:
+          {
+            sel: '.collab-bug-card__delete .popconfirm:popover-open',
+            contains: 正在删除,
+          }
 
   - name: deletion failure stays visible and permits retry
     steps:
       - eval: 'window.fetch=window.deleteOriginalFetch; window.rejectDelete(new TypeError("Failed to fetch")); true'
-      - wait: '[aria-label="删除待分配缺陷"] [role="alert"]'
+      - wait: '.collab-bug-card__delete .popconfirm:popover-open [role="alert"]'
     assert:
       - visible: 'button[aria-label^="测试负责人删除缺陷，"]'
-      - eval: '[...document.querySelectorAll("[aria-label=确认删除缺陷] button")].every(button=>!button.disabled)'
+      - eval: '[...document.querySelectorAll(".collab-bug-card__delete button")].every(button=>!button.disabled)'
 
   - name: tester confirms deletion and refresh removes the card and drawer
     steps:
-      - click: '[aria-label="确认删除缺陷"] button:last-child'
+      - click: '.collab-bug-card__delete .popconfirm:popover-open button:last-child'
       - wait: 1200
     assert:
       - hidden: 'button[aria-label^="测试负责人删除缺陷，"]'
       - hidden: '.collab-bug-drawer'
       - text: { sel: '[role="status"]', contains: 已删除 }
 
-  - name: submission item developer can delete unassigned bugs from developer details
+  - name: submission item developer can delete waiting bugs directly from cards
     steps:
       - eval: "[...document.querySelectorAll('button')].find(button=>button.textContent?.includes('退出登录'))?.click(); true"
       - wait: 'input[name="username"]'
@@ -966,25 +973,27 @@ cases:
       - wait: { load: networkidle }
       - open: __BASE_URL__/submissions/__SUBMISSION_ID__
       - wait: 'button[aria-label^="开发负责人删除缺陷，"]'
-      - click: 'button[aria-label^="开发负责人删除缺陷，"]'
-      - wait: '.collab-bug-drawer--developer'
-      - click: '[aria-label="删除待分配缺陷"] button'
-      - click: '[aria-label="确认删除缺陷"] button:last-child'
+      - click: 'article:has(button[aria-label^="开发负责人删除缺陷，"]) .collab-bug-card__delete > button'
+      - click: '.collab-bug-card__delete .popconfirm:popover-open button:last-child'
       - wait: 1200
     assert:
       - hidden: 'button[aria-label^="开发负责人删除缺陷，"]'
       - hidden: '.collab-bug-drawer'
 
-  - name: assigned bugs do not offer deletion and tester session is restored
+  - name: assigned waiting bugs also offer deletion in developer details
     steps:
-      - click: 'button[aria-label^="待取消缺陷，"]'
+      - click: 'button[aria-label^="已分配待删除缺陷，"]'
       - wait: '.collab-bug-drawer--developer'
+      - click: '.collab-bug-drawer [aria-label="删除待修复缺陷"] > button'
+      - click: '.collab-bug-drawer [aria-label="删除待修复缺陷"] .popconfirm:popover-open button:last-child'
+      - wait: 1200
     assert:
-      - hidden: '[aria-label="删除待分配缺陷"]'
+      - hidden: 'button[aria-label^="已分配待删除缺陷，"]'
+      - hidden: '.collab-bug-drawer'
+      - hidden: '.collab-bug-card:not([data-stage="WAITING_FOR_REPAIR"]) .collab-bug-card__delete'
 
   - name: return to tester for remaining acceptance cases
     steps:
-      - click: 'button[aria-label="关闭详情抽屉"]'
       - eval: "[...document.querySelectorAll('button')].find(button=>button.textContent?.includes('退出登录'))?.click(); true"
       - wait: 'input[name="username"]'
       - fill: { sel: 'input[name="username"]', text: __USERNAME__ }
@@ -1101,11 +1110,9 @@ cases:
       - hidden: '#collab-bug-form'
       - count: { sel: 'button[aria-label^="网络中断保留草稿，"]', eq: 2 }
 
-  - name: oversized attachment explains which file to replace in night theme
+  - name: oversized attachment explains which file to replace
     steps:
       - open: __BASE_URL__/submissions/__SUBMISSION_ID__
-      - wait: 'button[aria-label="切换暗夜主题"]'
-      - click: 'button[aria-label="切换暗夜主题"]'
       - eval: "[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('登记缺陷'))?.click(); true"
       - wait: '#collab-bug-form'
       - eval: >-
@@ -1125,7 +1132,6 @@ cases:
   - name: report accepts five attachments at the 10 MB boundary
     steps:
       - click: 'button[aria-label="关闭详情抽屉"]'
-      - click: 'button[aria-label="切换纸张主题"]'
       - eval: "[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('登记缺陷'))?.click(); true"
       - wait: '#collab-bug-form'
       - fill: { sel: '#collab-bug-form textarea', text: 附件上限登记 }
@@ -1139,10 +1145,13 @@ cases:
       - click: 'button[form="collab-bug-form"]:not([value])'
       - wait: 'button[aria-label^="附件上限登记，"]'
       - click: 'button[aria-label^="附件上限登记，"]'
-      - wait: '[role="dialog"]'
+      - wait: '[role="dialog"]:is(:not([popover]),:popover-open)'
     assert:
       - count:
-          { sel: '[role="dialog"] .collab-bug-detail-attachments li', eq: 5 }
+          {
+            sel: '[role="dialog"]:is(:not([popover]),:popover-open) .collab-bug-detail-attachments li',
+            eq: 5,
+          }
 
   - name: joint registration creates two independent bugs and shows both statuses without a related module
     steps:
@@ -1160,14 +1169,18 @@ cases:
       - click: 'button[form="collab-bug-form"]:not([value])'
       - wait: 1000
       - click: 'button[aria-label^="浏览器前后端关联单，前端，"]'
-      - wait: '[role="dialog"]'
+      - wait: '[role="dialog"]:is(:not([popover]),:popover-open)'
     assert:
       - count:
           {
             sel: 'article[data-stage="WAITING_FOR_REPAIR"] button[aria-label^="浏览器前后端关联单，"]',
             eq: 2,
           }
-      - text: { sel: '[role="dialog"]', contains: joint-proof.txt }
+      - text:
+          {
+            sel: '[role="dialog"]:is(:not([popover]),:popover-open)',
+            contains: joint-proof.txt,
+          }
       - text: { sel: '[aria-label="前后端关联进度"]', contains: 前端 }
       - text: { sel: '[aria-label="前后端关联进度"]', contains: 后端 }
       - hidden: '[aria-label="关联缺陷"]'
@@ -1179,8 +1192,16 @@ cases:
       - click: 'button[aria-label^="浏览器前后端关联单，后端，"]'
       - wait: 350
     assert:
-      - text: { sel: '[role="dialog"]', contains: 后端 · 浏览器后端工程 }
-      - text: { sel: '[role="dialog"]', contains: joint-proof.txt }
+      - text:
+          {
+            sel: '[role="dialog"]:is(:not([popover]),:popover-open)',
+            contains: 后端 · 浏览器后端工程,
+          }
+      - text:
+          {
+            sel: '[role="dialog"]:is(:not([popover]),:popover-open)',
+            contains: joint-proof.txt,
+          }
       - text: { sel: '[aria-label="前后端关联进度"]', contains: 前端 }
       - hidden: '[aria-label="关联缺陷"]'
       - hidden: '[aria-label="人工工程流转"]'
@@ -1190,7 +1211,7 @@ cases:
       - open: __BASE_URL__/submissions/__SUBMISSION_ID__
       - wait: { load: networkidle }
       - click: 'button[aria-label^="定位数据缺失缺陷，"]'
-      - wait: '[role="dialog"]'
+      - wait: '[role="dialog"]:is(:not([popover]),:popover-open)'
     assert:
       - text: { sel: '.collab-tester-detail__status', contains: 修复遇到问题 }
       - text:
@@ -1323,15 +1344,14 @@ cases:
       - click: 'button[aria-label^="修复更新页签滚动回归，"]'
       - wait: '.collab-execution-round-tabs__list'
       - eval: >-
-          window.stickyGeometry=[];
-          (()=>{const body=document.querySelector('.collab-developer-detail'),tabs=document.querySelector('.collab-execution-round-tabs__list'),shell=document.querySelector('.collab-shell'),theme=shell.dataset.theme;
+          (()=>{const body=document.querySelector('.collab-developer-detail'),tabs=document.querySelector('.collab-execution-round-tabs__list');
           body.scrollTo({top:0,behavior:'instant'}); const origin=tabs.getBoundingClientRect().top-body.getBoundingClientRect().top;
           body.scrollTo({top:origin+40,behavior:'instant'});
-          for(const mode of ['paper','night']){shell.dataset.theme=mode;const b=body.getBoundingClientRect(),t=tabs.getBoundingClientRect();
-          window.stickyGeometry.push({theme:mode,gap:t.top-b.top,covered:tabs.contains(document.elementFromPoint(t.left+t.width/2,b.top+5)),background:getComputedStyle(tabs).backgroundColor});}
-          shell.dataset.theme=theme;body.scrollTo({top:0,behavior:'instant'});return window.stickyGeometry;})()
+          const b=body.getBoundingClientRect(),t=tabs.getBoundingClientRect();
+          window.stickyGeometry={gap:t.top-b.top,covered:tabs.contains(document.elementFromPoint(t.left+t.width/2,b.top+5)),background:getComputedStyle(tabs).backgroundColor};
+          body.scrollTo({top:0,behavior:'instant'});return window.stickyGeometry;})()
     assert:
-      - eval: 'window.stickyGeometry.every(result=>Math.abs(result.gap)<=1 && result.covered && result.background!=="rgba(0, 0, 0, 0)")'
+      - eval: 'Math.abs(window.stickyGeometry.gap)<=1 && window.stickyGeometry.covered && window.stickyGeometry.background!=="rgba(0, 0, 0, 0)"'
 
   - name: developer can return to the source defect for manual routing
     steps:
@@ -1348,7 +1368,11 @@ cases:
       - eval: "[...document.querySelectorAll('[aria-label=确认工程流转] button')].find((button) => button.textContent === '确认转交')?.click(); true"
       - wait: 1200
     assert:
-      - text: { sel: '[role="dialog"]', contains: 已关闭（转交） }
+      - text:
+          {
+            sel: '[role="dialog"]:is(:not([popover]),:popover-open)',
+            contains: 已关闭（转交）,
+          }
       - text: { sel: '[aria-label="关联缺陷"]', contains: 浏览器后端工程 }
       - visible: 'article[data-stage="REPAIRING"] button[aria-label^="定位数据缺失缺陷，后端，"]'
       - hidden: 'article.collab-bug-card button[aria-label^="定位数据缺失缺陷，前端，"]'
@@ -1371,7 +1395,7 @@ cases:
       - open: __BASE_URL__/submissions/__SUBMISSION_ID__
       - wait: { load: networkidle }
       - click: 'button[aria-label^="待增加协作缺陷，前端，"]'
-      - wait: '[role="dialog"]'
+      - wait: '[role="dialog"]:is(:not([popover]),:popover-open)'
       - eval: "[...document.querySelectorAll('[aria-label=人工工程流转] button')].find((button) => button.textContent === '增加后端协作')?.click(); true"
       - wait: '[aria-label="确认工程流转"]'
       - eval: "[...document.querySelectorAll('[aria-label=确认工程流转] button')].find((button) => button.textContent === '确认增加协作')?.click(); true"
@@ -1382,7 +1406,11 @@ cases:
             sel: 'article[data-stage="REPAIRING"] button[aria-label^="待增加协作缺陷，"]',
             eq: 2,
           }
-      - text: { sel: '[role="dialog"]', contains: 自动修复未完成 }
+      - text:
+          {
+            sel: '[role="dialog"]:is(:not([popover]),:popover-open)',
+            contains: 自动修复未完成,
+          }
       - text:
           {
             sel: '[aria-label="关联缺陷"]',
@@ -1390,7 +1418,7 @@ cases:
           }
       - hidden: '[aria-label="人工工程流转"]'
 
-  - name: joint registration remains reachable with keyboard focus in night theme
+  - name: joint registration remains reachable with keyboard focus
     steps:
       - click: 'button[aria-label="关闭详情抽屉"]'
       - eval: "[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('退出登录'))?.click(); true"
@@ -1401,13 +1429,12 @@ cases:
       - wait: { load: networkidle }
       - open: __BASE_URL__/submissions/__SUBMISSION_ID__
       - wait: { load: networkidle }
-      - click: 'button[aria-label="切换暗夜主题"]'
       - eval: "[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('登记缺陷'))?.click(); true"
       - wait: '#collab-bug-form'
       - click: '#collab-bug-form input[type="checkbox"]'
       - press: Tab
     assert:
-      - visible: '.collab-shell[data-theme="night"]'
+      - visible: '.collab-shell'
       - visible: '[aria-label="前端工程"]'
       - visible: '[aria-label="后端工程"]'
       - eval: "document.activeElement === document.querySelector('#collab-bug-form textarea')"
@@ -1416,9 +1443,8 @@ cases:
   - name: tester sees verification readiness without engineering checks
     steps:
       - click: 'button[aria-label="关闭详情抽屉"]'
-      - click: 'button[aria-label="切换纸张主题"]'
       - click: 'button[aria-label^="待验证返修缺陷，"]'
-      - wait: '[role="dialog"]'
+      - wait: '[role="dialog"]:is(:not([popover]),:popover-open)'
     assert:
       - text:
           {
@@ -1426,8 +1452,12 @@ cases:
             contains: 可以在浏览器测试环境复测,
           }
       - eval: '!document.querySelector(".collab-bug-drawer").textContent.includes("夹具验证")'
-      - text: { sel: '[role="dialog"]', contains: 通过 }
-      - hidden: '[role="dialog"] .collab-repair-timeline code'
+      - text:
+          {
+            sel: '[role="dialog"]:is(:not([popover]),:popover-open)',
+            contains: 通过,
+          }
+      - hidden: '[role="dialog"]:is(:not([popover]),:popover-open) .collab-repair-timeline code'
 
   - name: tester sees all seeded workflow states
     steps:
@@ -1487,12 +1517,19 @@ cases:
       - click: 'button[form="collab-bug-form"]:not([value])'
       - wait: 1200
       - eval: "[...document.querySelectorAll('button.collab-bug-card__open')].find((button) => button.getAttribute('aria-label')?.startsWith('浏览器登记缺陷，'))?.click(); true"
-      - wait: '[role="dialog"]'
+      - wait: '[role="dialog"]:is(:not([popover]),:popover-open)'
     assert:
-      - text: { sel: '[role="dialog"]', contains: browser-proof-1.txt }
+      - text:
+          {
+            sel: '[role="dialog"]:is(:not([popover]),:popover-open)',
+            contains: browser-proof-1.txt,
+          }
       - count:
-          { sel: '[role="dialog"] .collab-bug-detail-attachments li', eq: 5 }
-      - hidden: '[role="dialog"] [title="browser-proof-6.txt"]'
+          {
+            sel: '[role="dialog"]:is(:not([popover]),:popover-open) .collab-bug-detail-attachments li',
+            eq: 5,
+          }
+      - hidden: '[role="dialog"]:is(:not([popover]),:popover-open) [title="browser-proof-6.txt"]'
 
   - name: drag cancel and undo restore the bug
     steps:
@@ -1563,27 +1600,22 @@ cases:
           &&footer.bottom <= bounds.bottom - 1 && card.scrollHeight <= card.clientHeight + 1 &&
           buttons.map(button=>button.textContent.trim()).join('|') === '重新打开|归档' &&
           buttons.every(button=>{const r=button.getBoundingClientRect(); return r.bottom<=bounds.bottom-1 && r.left>=bounds.left && r.right<=bounds.right;}); };
-          const shell=document.querySelector('.collab-shell'); const original=shell.dataset.theme;
-          shell.dataset.theme='paper'; window.linkedPaperFits=window.linkedCardFits();
-          shell.dataset.theme='night'; window.linkedNightFits=window.linkedCardFits();
-          shell.dataset.theme=original; true
+          window.linkedPaperFits=window.linkedCardFits(); true
     assert:
-      - eval: 'window.linkedPaperFits && window.linkedNightFits'
+      - eval: 'window.linkedPaperFits'
       - count: { sel: '.collab-linked-review-card[data-stage="DONE"]', eq: 1 }
 
-  - name: completed cards use the success color in both themes
+  - name: completed cards use the success color
     steps:
       - open: __BASE_URL__/submissions/__SUBMISSION_ID__
       - wait: '.collab-linked-review-card[data-stage="DONE"]'
       - eval: >-
-          (()=>{const shell=document.querySelector('.collab-shell'), original=shell.dataset.theme;
+          (()=>{const shell=document.querySelector('.collab-shell');
           const pair=document.querySelector('.collab-linked-review-card[data-stage="DONE"]');
           const single=[...document.querySelectorAll('article.collab-bug-card[data-stage="DONE"]')]
             .find(card=>card.textContent.includes('待归档与重开缺陷'));
-          const matches=['paper','night'].every(theme=>{shell.dataset.theme=theme;
-            const success=getComputedStyle(shell).getPropertyValue('--success').trim();
-            return [pair,single].every(card=>getComputedStyle(card).getPropertyValue('--bug-stage-color').trim()===success);});
-          shell.dataset.theme=original; window.doneColorsMatch=matches; return true;})()
+          const success=getComputedStyle(shell).getPropertyValue('--success').trim();
+          window.doneColorsMatch=[pair,single].every(card=>getComputedStyle(card).getPropertyValue('--bug-stage-color').trim()===success); return true;})()
     assert:
       - eval: 'window.doneColorsMatch'
 
@@ -1643,7 +1675,7 @@ cases:
               && cards[1].left > cards[0].right;
           })()
 
-  - name: vertical board scrolls to the final status with keyboard in both themes
+  - name: vertical board scrolls to the final status with keyboard
     steps:
       - open: __BASE_URL__/submissions/__SUBMISSION_ID__
       - wait: '.collab-board > .collab-column'
@@ -1661,8 +1693,6 @@ cases:
               board.scrollTop > 0 && last.bottom <= board.getBoundingClientRect().bottom + 1));
             return true;
           })()
-      - click: 'button[aria-label="切换暗夜主题"]'
-      - wait: '.collab-shell[data-theme="night"]'
       - eval: 'document.querySelector(".collab-board").focus(); true'
       - press: Home
       - eval: >-
@@ -1718,28 +1748,35 @@ cases:
       - eval: 'sessionStorage.getItem("reportFieldsSimplified") === "true"'
       - eval: 'sessionStorage.getItem("noticeKeepsCardBounds") === "true"'
 
-  - name: narrow verification card keeps the pass confirmation inside its border
+  - name: narrow verification card keeps its layout while confirmation floats nearby
     steps:
       - open: __BASE_URL__/submissions/__SUBMISSION_ID__
       - wait: '.collab-board > .collab-column'
-      - eval: 'document.querySelector(".collab-board").style.width="360px"; true'
+      - eval: >-
+          document.querySelector('.collab-board').style.width='360px';
+          document.querySelector('article:has(> button[aria-label^="待验证通过缺陷，"])').scrollIntoView({block:'center',behavior:'instant'});true
+      - eval: >-
+          window.passControlBounds=()=>{const card=document.querySelector('article:has(> button[aria-label^="待验证通过缺陷，"])');
+          return JSON.stringify([card,...card.querySelectorAll('.collab-bug-card__verification button:not(.popconfirm button)')].map(element=>element.getBoundingClientRect().toJSON()));};
+          window.passOriginalBounds=window.passControlBounds();true
       - click: 'article:has(> button[aria-label^="待验证通过缺陷，"]) .collab-pass-confirm > button'
-      - wait: 'article:has(> button[aria-label^="待验证通过缺陷，"]) .popconfirm--inline'
+      - wait: 'article:has(> button[aria-label^="待验证通过缺陷，"]) .popconfirm:popover-open'
       - eval: >-
           (()=>{const card=document.querySelector('article:has(> button[aria-label^="待验证通过缺陷，"])');
-          const bounds=card.getBoundingClientRect(), panel=card.querySelector('.popconfirm--inline').getBoundingClientRect();
-          const fits=panel.left>=bounds.left && panel.right<=bounds.right && panel.bottom<=bounds.bottom && card.scrollWidth<=card.clientWidth+1;
+          const panel=card.querySelector('.popconfirm:popover-open').getBoundingClientRect();
+          const fits=panel.left>=0 && panel.right<=innerWidth && panel.top>=0 && panel.bottom<=innerHeight
+          && window.passControlBounds()===window.passOriginalBounds && card.scrollWidth<=card.clientWidth+1;
           window.narrowPassFits=fits; return true;})()
-      - click: '.popconfirm--inline .popconfirm__actions button:first-child'
-      - eval: 'window.inlineCancelFocus=document.activeElement.textContent.trim()==="通过";true'
+      - click: '.popconfirm:popover-open .popconfirm__actions button:first-child'
+      - eval: 'window.passCancelFocus=document.activeElement.textContent.trim()==="通过" && window.passControlBounds()===window.passOriginalBounds;true'
       - click: 'article:has(> button[aria-label^="待验证通过缺陷，"]) .collab-pass-confirm > button'
-      - wait: '.popconfirm--inline'
+      - wait: '.popconfirm:popover-open'
       - click: '.collab-board-heading'
       - eval: 'document.querySelector(".collab-board").style.removeProperty("width"); true'
     assert:
       - eval: 'window.narrowPassFits'
-      - eval: 'window.inlineCancelFocus'
-      - hidden: '.popconfirm--inline'
+      - eval: 'window.passCancelFocus'
+      - hidden: '.popconfirm:popover-open'
 
   - name: completed linked card archives both bugs and undo restores the pair
     steps:
@@ -1754,26 +1791,25 @@ cases:
       - eval: 'window.linkedArchiveNoticeCount === 1'
       - count: { sel: '.collab-banner[role="status"]', eq: 1 }
 
-  - name: verification buttons stay side by side and fit the card in both themes
+  - name: verification buttons stay side by side and fit the card
     steps:
       - open: __BASE_URL__/submissions/__SUBMISSION_ID__
       - wait: 'button[aria-label^="待验证通过缺陷，"]'
       - eval: >-
           window.verificationCard = () => [...document.querySelectorAll('article.collab-bug-card')].find(card => card.textContent.includes('待验证通过缺陷'));
-          window.verificationLayoutFits = () => { const card=window.verificationCard(), buttons=[...card.querySelectorAll('.collab-bug-card__verification button')];
+          window.verificationLayoutFits = () => { const card=window.verificationCard(), buttons=[...card.querySelectorAll('.collab-bug-card__verification button')].filter(button=>!button.closest('.popconfirm'));
           const [pass,fail]=buttons.map(button=>button.getBoundingClientRect()), bounds=card.getBoundingClientRect();
           return buttons.map(button=>button.textContent.trim()).join('|') === '通过|还有问题' && pass.right <= fail.left && Math.abs(pass.top-fail.top)<1 && pass.left>=bounds.left && fail.right<=bounds.right && card.scrollWidth<=card.clientWidth; };
-          window.verificationPaperFits = window.verificationLayoutFits(); true
-      - click: 'button[aria-label="切换暗夜主题"]'
+          true
       - eval: 'window.verificationCard().querySelector(".collab-bug-card__verification button").focus(); true'
       - press: Shift+Tab
       - press: Tab
     assert:
-      - eval: 'window.verificationPaperFits && window.verificationLayoutFits()'
-      - visible: '.collab-shell[data-theme="night"]'
+      - eval: 'window.verificationLayoutFits()'
+      - visible: '.collab-shell'
       - eval: 'document.activeElement.textContent.trim() === "通过" && getComputedStyle(document.activeElement).outlineStyle !== "none"'
       - eval: '(() => { const button=document.activeElement, rect=button.getBoundingClientRect(); return document.elementFromPoint(rect.x+rect.width/2, rect.y+rect.height/2) === button; })()'
-      - hidden: '[role="dialog"]'
+      - hidden: '[role="dialog"]:is(:not([popover]),:popover-open)'
 
   - name: verification pass prevents duplicate actions while pending
     steps:
@@ -1783,13 +1819,13 @@ cases:
           if(headers.has('next-action')) return await new Promise((resolve,reject)=>{window.rejectVerification=reject;});
           return window.verificationOriginalFetch(...args); }; true
       - press: Enter
-      - wait: '.popconfirm--inline'
-      - click: '.collab-bug-card__verification .popconfirm__actions button:last-child'
+      - wait: '.popconfirm:popover-open'
+      - click: '.collab-bug-card__verification .popconfirm:popover-open .popconfirm__actions button:last-child'
       - wait: '.collab-bug-card__verification button:disabled'
     assert:
-      - eval: '[...window.verificationCard().querySelectorAll(".collab-bug-card__verification button")].every(button=>button.disabled)'
+      - eval: '[...window.verificationCard().querySelectorAll(".collab-bug-card__verification button")].filter(button=>!button.closest(".popconfirm")).every(button=>button.disabled)'
       - eval: 'window.verificationCard().dataset.stage === "WAITING_FOR_VERIFICATION"'
-      - hidden: '[role="dialog"]'
+      - hidden: '[role="dialog"]:is(:not([popover]),:popover-open)'
 
   - name: verification pass failure preserves the card and allows retry
     steps:
@@ -1797,28 +1833,29 @@ cases:
       - wait: '.collab-banner--error'
     assert:
       - eval: 'window.verificationCard().dataset.stage === "WAITING_FOR_VERIFICATION"'
-      - eval: '[...window.verificationCard().querySelectorAll(".collab-bug-card__verification button")].every(button=>!button.disabled)'
+      - eval: '[...window.verificationCard().querySelectorAll(".collab-bug-card__verification button")].filter(button=>!button.closest(".popconfirm")).every(button=>!button.disabled)'
 
-  - name: detail verification stays visible in both themes at the reduced size
+  - name: detail verification stays visible at the reduced size
     steps:
       - click: 'button[aria-label^="待验证通过缺陷，"]'
       - wait: '.collab-tester-detail__actions'
       - eval: >-
           window.detailVerificationFits = () => { const modal=document.querySelector('.collab-bug-drawer--tester'), rect=modal.getBoundingClientRect(),
-          buttons=[...modal.querySelectorAll('.collab-tester-detail__actions > div button')], [pass,fail]=buttons.map(button=>button.getBoundingClientRect());
+          buttons=[...modal.querySelectorAll('.collab-tester-detail__actions > div button')].filter(button=>!button.closest('.popconfirm')), [pass,fail]=buttons.map(button=>button.getBoundingClientRect());
           return rect.width<=901 && rect.height<=Math.min(739,(innerHeight-48)*.9+1) &&
           buttons.map(button=>button.textContent.trim()).join('|')==='通过|还有问题' && pass.right<=fail.left && Math.abs(pass.top-fail.top)<1 &&
           buttons.every(button=>{const r=button.getBoundingClientRect(); return r.bottom<=rect.bottom && document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===button;}); };
-          window.detailNightFits=window.detailVerificationFits(); document.querySelector('.collab-shell').dataset.theme='paper'; true
+          window.detailInitialFits=window.detailVerificationFits(); true
       - eval: 'document.querySelector(".collab-tester-detail").scrollTop=9999; document.querySelector(".collab-tester-detail__actions > div button").focus(); true'
       - press: Shift+Tab
       - press: Tab
       - press: Enter
-      - wait: '.collab-tester-detail__actions .popconfirm--inline'
+      - wait: '.collab-tester-detail__actions .popconfirm:popover-open'
+      - eval: 'window.detailOpenFits=window.detailVerificationFits();true'
       - press: Escape
-      - wait: '.collab-tester-detail__actions:not(:has(.popconfirm--inline))'
+      - wait: '.collab-tester-detail__actions:not(:has(.popconfirm:popover-open))'
     assert:
-      - eval: 'window.detailNightFits && window.detailVerificationFits()'
+      - eval: 'window.detailInitialFits && window.detailOpenFits && window.detailVerificationFits()'
       - eval: 'document.activeElement.textContent.trim()==="通过" && getComputedStyle(document.activeElement).outlineStyle!=="none"'
       - visible: '.collab-bug-drawer--tester'
       - hidden: '.collab-bug-detail-tabs'
@@ -1830,11 +1867,11 @@ cases:
           if(headers.has('next-action')) return await new Promise((resolve,reject)=>{window.rejectVerification=reject;});
           return window.verificationOriginalFetch(...args); }; true
       - press: Enter
-      - wait: '.collab-tester-detail__actions .popconfirm--inline'
+      - wait: '.collab-tester-detail__actions .popconfirm:popover-open'
       - click: '.collab-tester-detail__actions .popconfirm__actions button:last-child'
       - wait: '.collab-tester-detail__actions button:disabled'
     assert:
-      - eval: '[...document.querySelectorAll(".collab-tester-detail__actions button")].every(button=>button.disabled)'
+      - eval: '[...document.querySelectorAll(".collab-tester-detail__actions button")].filter(button=>!button.closest(".popconfirm")).every(button=>button.disabled)'
       - text: { sel: '.collab-tester-detail__actions', contains: 正在提交 }
 
   - name: detail verification error stays inside the dialog and supports retry
@@ -1842,13 +1879,13 @@ cases:
       - eval: 'window.fetch=window.verificationOriginalFetch; window.rejectVerification(new TypeError("Failed to fetch")); true'
       - wait: '.collab-tester-detail__actions [role="alert"]'
     assert:
-      - eval: '[...document.querySelectorAll(".collab-tester-detail__actions button")].every(button=>!button.disabled)'
+      - eval: '[...document.querySelectorAll(".collab-tester-detail__actions button")].filter(button=>!button.closest(".popconfirm")).every(button=>!button.disabled)'
       - eval: 'window.verificationCard().dataset.stage === "WAITING_FOR_VERIFICATION"'
 
   - name: detail verification pass moves the defect to done
     steps:
-      - click: '.collab-tester-detail__actions > div button:first-child'
-      - wait: '.collab-tester-detail__actions .popconfirm--inline'
+      - click: '.collab-tester-detail__actions .collab-pass-confirm > button'
+      - wait: '.collab-tester-detail__actions .popconfirm:popover-open'
       - click: '.collab-tester-detail__actions .popconfirm__actions button:last-child'
       - wait: 'article[data-stage="DONE"] button[aria-label^="待验证通过缺陷，"]'
     assert:
@@ -1867,7 +1904,8 @@ cases:
       - click: '.collab-tester-detail__actions > div > button:last-child'
       - wait: 'form[aria-label="还有问题"]'
     assert:
-      - count: { sel: '[role="dialog"]', eq: 1 }
+      - count:
+          { sel: '[role="dialog"]:is(:not([popover]),:popover-open)', eq: 1 }
       - text:
           {
             sel: '.collab-tester-detail__feedback',
@@ -1903,7 +1941,8 @@ cases:
     assert:
       - eval: 'document.querySelector("#collab-tester-feedback textarea").value === "浏览器复测仍可复现"'
       - text: { sel: '#collab-tester-feedback', contains: rework-proof.txt }
-      - count: { sel: '[role="dialog"]', eq: 1 }
+      - count:
+          { sel: '[role="dialog"]:is(:not([popover]),:popover-open)', eq: 1 }
 
   - name: verification failure creates a continuation repair with the preserved draft
     steps:
@@ -1927,7 +1966,8 @@ cases:
       - click: 'button[form="collab-tester-feedback"]'
       - wait: 'article[data-stage="REPAIRING"] button[aria-label^="待验证通过缺陷，"]'
     assert:
-      - count: { sel: '[role="dialog"]', eq: 1 }
+      - count:
+          { sel: '[role="dialog"]:is(:not([popover]),:popover-open)', eq: 1 }
       - hidden: '#collab-tester-feedback'
 
   - name: rework dialog starts focused with submit disabled
@@ -1967,38 +2007,57 @@ cases:
       - open: __BASE_URL__/submissions/__SUBMISSION_ID__
       - wait: { load: networkidle }
       - click: 'button[aria-label^="等待审批缺陷，"]'
-      - wait: '[role="dialog"]'
-      - eval: "[...document.querySelectorAll('[role=dialog] button')].find((button) => button.textContent?.includes('仅允许这一次'))?.scrollIntoView({ block: 'center' }); true"
-      - eval: "[...document.querySelectorAll('[role=dialog] button')].find((button) => button.textContent?.includes('仅允许这一次'))?.click(); true"
+      - wait: '[role="dialog"]:is(:not([popover]),:popover-open)'
+      - eval: "[...document.querySelectorAll('[role=dialog]:is(:not([popover]),:popover-open) button')].find((button) => button.textContent?.includes('仅允许这一次'))?.scrollIntoView({ block: 'center' }); true"
+      - eval: "[...document.querySelectorAll('[role=dialog]:is(:not([popover]),:popover-open) button')].find((button) => button.textContent?.includes('仅允许这一次'))?.click(); true"
       - wait: 1000
     assert:
-      - text: { sel: '[role="dialog"]', contains: 实际决定：仅允许这一次 }
+      - text:
+          {
+            sel: '[role="dialog"]:is(:not([popover]),:popover-open)',
+            contains: 实际决定：仅允许这一次,
+          }
 
   - name: manual confirmation offers original session and sync to responsible developer
     steps:
       - open: __BASE_URL__/submissions/__SUBMISSION_ID__
       - wait: 'button[aria-label^="等待人工确认缺陷，"]'
       - click: 'button[aria-label^="等待人工确认缺陷，"]'
-      - wait: '[role="dialog"] a[href^="codex://threads/browser-manual-"]'
-      - eval: 'document.querySelector(''[role="dialog"] a[href^="codex://threads/browser-manual-"]'').focus(); true'
+      - wait: '[role="dialog"]:is(:not([popover]),:popover-open) a[href^="codex://threads/browser-manual-"]'
+      - eval: 'document.querySelector(''[role="dialog"]:is(:not([popover]),:popover-open) a[href^="codex://threads/browser-manual-"]'').focus(); true'
     assert:
-      - text: { sel: '[role="dialog"]', contains: 等待人工确认 }
-      - text: { sel: '[role="dialog"]', contains: 是否确认移除区县大屏访问权限 }
-      - text: { sel: '[role="dialog"]', contains: 同步状态 }
+      - text:
+          {
+            sel: '[role="dialog"]:is(:not([popover]),:popover-open)',
+            contains: 等待人工确认,
+          }
+      - text:
+          {
+            sel: '[role="dialog"]:is(:not([popover]),:popover-open)',
+            contains: 是否确认移除区县大屏访问权限,
+          }
+      - text:
+          {
+            sel: '[role="dialog"]:is(:not([popover]),:popover-open)',
+            contains: 同步状态,
+          }
       - eval: 'document.activeElement.getAttribute("href").startsWith("codex://threads/browser-manual-")'
 
-  - name: manual handoff remains readable in dark theme and can request synchronization
+  - name: manual handoff remains readable and can request synchronization
     steps:
       - click: 'button[aria-label="关闭详情抽屉"]'
-      - click: 'button[aria-label="切换暗夜主题"]'
       - click: 'button[aria-label^="等待人工确认缺陷，"]'
-      - wait: '[role="dialog"] a[href^="codex://threads/browser-manual-"]'
-      - eval: "[...document.querySelectorAll('[role=dialog] button')].find(b => b.textContent.trim() === '同步状态').click(); true"
+      - wait: '[role="dialog"]:is(:not([popover]),:popover-open) a[href^="codex://threads/browser-manual-"]'
+      - eval: "[...document.querySelectorAll('[role=dialog]:is(:not([popover]),:popover-open) button')].find(b => b.textContent.trim() === '同步状态').click(); true"
       - wait: 500
     assert:
-      - visible: '.collab-shell[data-theme="night"]'
-      - text: { sel: '[role="dialog"]', contains: 等待人工确认 }
-      - eval: "![...document.querySelectorAll('[role=dialog] button')].some(b => b.textContent.trim() === '同步状态' && !b.disabled)"
+      - visible: '.collab-shell'
+      - text:
+          {
+            sel: '[role="dialog"]:is(:not([popover]),:popover-open)',
+            contains: 等待人工确认,
+          }
+      - eval: "![...document.querySelectorAll('[role=dialog]:is(:not([popover]),:popover-open) button')].some(b => b.textContent.trim() === '同步状态' && !b.disabled)"
 
   - name: responsible developer can assign an existing defect to frontend and backend
     steps:
@@ -2042,15 +2101,14 @@ cases:
       - click: '.collab-update-batch-card .collab-bug-card__open'
       - wait: '[aria-label="批次内缺陷"]'
       - eval: >-
-          window.stickyGeometry=[];
-          (()=>{const body=document.querySelector('.collab-developer-detail'),tabs=document.querySelector('.collab-execution-round-tabs__list'),shell=document.querySelector('.collab-shell'),theme=shell.dataset.theme;
+          (()=>{const body=document.querySelector('.collab-developer-detail'),tabs=document.querySelector('.collab-execution-round-tabs__list');
           body.scrollTo({top:0,behavior:'instant'}); const origin=tabs.getBoundingClientRect().top-body.getBoundingClientRect().top;
           body.scrollTo({top:origin+40,behavior:'instant'});
-          for(const mode of ['paper','night']){shell.dataset.theme=mode;const b=body.getBoundingClientRect(),t=tabs.getBoundingClientRect();
-          window.stickyGeometry.push({theme:mode,gap:t.top-b.top,covered:tabs.contains(document.elementFromPoint(t.left+t.width/2,b.top+5)),background:getComputedStyle(tabs).backgroundColor});}
-          shell.dataset.theme=theme;body.scrollTo({top:0,behavior:'instant'});return window.stickyGeometry;})()
+          const b=body.getBoundingClientRect(),t=tabs.getBoundingClientRect();
+          window.stickyGeometry={gap:t.top-b.top,covered:tabs.contains(document.elementFromPoint(t.left+t.width/2,b.top+5)),background:getComputedStyle(tabs).backgroundColor};
+          body.scrollTo({top:0,behavior:'instant'});return window.stickyGeometry;})()
     assert:
-      - eval: 'window.stickyGeometry.every(result=>Math.abs(result.gap)<=1 && result.covered && result.background!=="rgba(0, 0, 0, 0)")'
+      - eval: 'Math.abs(window.stickyGeometry.gap)<=1 && window.stickyGeometry.covered && window.stickyGeometry.background!=="rgba(0, 0, 0, 0)"'
 
   - name: a batch member opens its own history and can return to the shared update
     steps:
@@ -2105,16 +2163,14 @@ cases:
       - text: { sel: 'dialog[open]', contains: 缺陷与进度保留 }
       - eval: "document.querySelector('dialog[open]').contains(document.activeElement)"
 
-  - name: takeover confirmation works in night theme and cancel preserves draft
+  - name: takeover confirmation works and cancel preserves draft
     steps:
       - press: Escape
       - click: 'button[aria-label="关闭创建提测单"]'
-      - click: 'button[aria-label="切换暗夜主题"]'
       - click: '.collab-rail__create'
       - wait: '#submission-composer-title'
-      - fill:
-          { sel: '.collab-form input[maxlength="160"]', text: 暗夜环境优先验收 }
-      - fill: { sel: '.collab-form textarea', text: 暗夜确认流程 }
+      - fill: { sel: '.collab-form input[maxlength="160"]', text: 环境优先验收 }
+      - fill: { sel: '.collab-form textarea', text: 环境确认流程 }
       - click: '.collab-dialog__actions button[type="submit"]'
       - wait: '.collab-environment-notice'
       - click: '.collab-environment-notice button.collab-primary'
@@ -2122,8 +2178,8 @@ cases:
       - press: Escape
     assert:
       - hidden: 'dialog[open]'
-      - eval: 'document.querySelector(''.collab-form input[maxlength="160"]'').value === ''暗夜环境优先验收'''
-      - visible: '.collab-shell[data-theme="night"] .collab-environment-notice'
+      - eval: 'document.querySelector(''.collab-form input[maxlength="160"]'').value === ''环境优先验收'''
+      - visible: '.collab-shell .collab-environment-notice'
 
   - name: confirmed takeover creates submission and pauses previous item
     steps:
@@ -2172,14 +2228,13 @@ cases:
       - visible: '.collab-add-items-dialog output[aria-label="工程"]'
       - eval: 'document.querySelector(".collab-add-items-dialog input").value === "   "'
 
-  - name: add engineering remains reachable in night theme and closes with Escape
+  - name: add engineering remains reachable and closes with Escape
     steps:
       - press: Escape
-      - click: 'button[aria-label="切换暗夜主题"]'
       - click: '.collab-add-items-trigger'
       - wait: '.collab-add-items-dialog input[aria-label="目标分支"]'
     assert:
-      - visible: '.collab-shell[data-theme="night"] .collab-add-items-dialog[open]'
+      - visible: '.collab-shell .collab-add-items-dialog[open]'
       - eval: 'getComputedStyle(document.querySelector(".collab-add-items-dialog form")).overflowY === "auto"'
       - eval: 'document.querySelector(".collab-add-items-dialog button[type=submit]").getBoundingClientRect().bottom <= innerHeight'
 
@@ -2215,7 +2270,7 @@ cases:
       - wait: { load: networkidle }
       - open: __BASE_URL__/submissions
       - wait: { load: networkidle }
-      - eval: "document.querySelector('button[aria-label=切换纸张主题]')?.click(); [...document.querySelectorAll('button')].find((button) => button.textContent?.includes('登记缺陷'))?.click(); true"
+      - eval: "[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('登记缺陷'))?.click(); true"
       - wait: '#collab-bug-form'
     assert:
       - eval: 'JSON.stringify([...document.querySelectorAll(".collab-bug-drawer__actions > button")].map(button=>button.textContent.trim())) === JSON.stringify(["关闭","确认","确认并修复"])'
@@ -2269,18 +2324,17 @@ cases:
           }
       - text: { sel: '[role="status"]', contains: 加入修复队列 }
 
-  - name: joint registration and repair stays reachable in night theme
+  - name: joint registration and repair stays reachable
     steps:
       - open: __BASE_URL__/submissions/__SUBMISSION_ID__
       - wait: { load: networkidle }
-      - click: 'button[aria-label="切换暗夜主题"]'
       - eval: "[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('登记缺陷'))?.click(); true"
       - wait: '#collab-bug-form'
       - click: '#collab-bug-form input[type="checkbox"]'
       - fill: { sel: '#collab-bug-form textarea', text: 双工程一键修复回归 }
       - eval: 'document.querySelector("button[value=repair]").focus(); true'
     assert:
-      - visible: '.collab-shell[data-theme="night"] button[value="repair"]:enabled'
+      - visible: '.collab-shell button[value="repair"]:enabled'
       - visible: '[aria-label="前端工程"]'
       - visible: '[aria-label="后端工程"]'
       - eval: 'document.activeElement === document.querySelector("button[value=repair]")'
@@ -2333,7 +2387,7 @@ cases:
       - open: __BASE_URL__/submissions/__SUBMISSION_ID__
       - wait: 'button[aria-label^="修复更新页签滚动回归，"]'
       - click: 'button[aria-label^="修复更新页签滚动回归，"]'
-      - wait: '[role="dialog"]'
+      - wait: '[role="dialog"]:is(:not([popover]),:popover-open)'
       - eval: 'sessionStorage.setItem("observationTesterPrivate",String(document.querySelectorAll(".collab-observation").length===0)); [...document.querySelectorAll("button")].find(button=>button.textContent?.includes("退出登录"))?.click(); true'
       - wait: 'input[name="username"]'
       - fill: { sel: 'input[name="username"]', text: __DEVELOPER_USERNAME__ }
@@ -2358,7 +2412,7 @@ cases:
       - eval: >-
           (()=>{const panel=document.querySelector('[role="tabpanel"]:not([hidden]) .collab-observation__panel');
           window.observationDiagnostic=panel.textContent.includes('疑似重复工作')&&panel.textContent.includes('来源报告');
-          const shell=document.querySelector('.collab-shell');window.observationThemes=['paper','night'].every(theme=>{shell.dataset.theme=theme;const button=panel.querySelector('button');return getComputedStyle(button).backgroundColor==='rgba(0, 0, 0, 0)'&&panel.scrollWidth<=panel.clientWidth+1;});shell.dataset.theme='paper';
+          const button=panel.querySelector('button');window.observationControls=getComputedStyle(button).backgroundColor==='rgba(0, 0, 0, 0)'&&panel.scrollWidth<=panel.clientWidth+1;
           window.observationOriginalCreate=URL.createObjectURL;window.observationOriginalClick=HTMLAnchorElement.prototype.click;
           URL.createObjectURL=blob=>{window.observationDownloaded=blob;return window.observationOriginalCreate(blob);};HTMLAnchorElement.prototype.click=function(){window.observationDownloadName=this.download;};
           window.fetch=(...args)=>String(args[0]).includes('format=')?new Promise(resolve=>{window.observationExportRelease=()=>window.observationOriginalFetch(...args).then(resolve);}):window.observationOriginalFetch(...args);
@@ -2383,7 +2437,7 @@ cases:
       - eval: 'window.observationDenied=!document.querySelector("[role=tabpanel]:not([hidden]) [aria-label=诊断与证据]");window.fetch=window.observationOriginalFetch;true'
     assert:
       - eval: 'sessionStorage.getItem("observationTesterPrivate")==="true" && window.observationLazy && window.observationLoading'
-      - eval: 'window.observationDiagnostic && window.observationThemes && window.observationDisabled'
+      - eval: 'window.observationDiagnostic && window.observationControls && window.observationDisabled'
       - eval: 'window.observationExportPinned && window.observationEmpty && window.observationDenied'
       - text:
           {

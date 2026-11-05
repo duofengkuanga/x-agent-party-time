@@ -98,8 +98,7 @@
   transition:
     background-color 180ms ease,
     border-color 140ms ease,
-    box-shadow 140ms ease,
-    transform 140ms ease;
+    box-shadow 140ms ease;
 }
 
 .collab-bug-card:hover,
@@ -109,7 +108,6 @@
   box-shadow: 4px 4px 0
     color-mix(in srgb, var(--bug-stage-color), transparent 48%);
   outline: none;
-  transform: translate(-1px, -1px);
 }
 
 .collab-bug-card > .collab-bug-card__open {
@@ -519,17 +517,13 @@
   padding: 5px 8px;
 }
 
-.collab-pass-confirm {
+.collab-pass-confirm,
+.collab-bug-card__delete {
   display: inline-grid;
   gap: 6px;
   min-width: 0;
   pointer-events: auto;
   position: relative;
-}
-
-.collab-pass-confirm:has(.popconfirm--inline) {
-  flex-basis: 100%;
-  width: 100%;
 }
 
 .collab-bug-card select {

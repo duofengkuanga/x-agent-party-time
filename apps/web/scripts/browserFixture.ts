@@ -99,6 +99,7 @@ export async function seedBrowserFixture(
 
     createBug('待取消缺陷');
     createBug('待请求修复缺陷');
+    createBug('已分配待删除缺陷');
     for (const title of ['测试负责人删除缺陷', '开发负责人删除缺陷']) {
       bugs.createBug(tester.id, submission.id, {
         mutationId: randomUUID(),

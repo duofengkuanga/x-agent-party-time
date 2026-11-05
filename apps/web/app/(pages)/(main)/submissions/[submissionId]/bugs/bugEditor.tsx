@@ -321,7 +321,7 @@ export function BugForm({
   return (
     <>
       <form
-        className="collab-dialog__body collab-form collab-bug-drawer__body collab-bug-form"
+        className="collab-dialog__body collab-form collab-bug-form"
         id="collab-bug-form"
         onSubmit={submit}
       >
@@ -410,11 +410,8 @@ export function BugForm({
               </label>
             )}
           </fieldset>
-        ) : (
-          <p>缺陷由本次提测的开发负责人统一处理。</p>
-        )}
-        <fieldset disabled={!canEditReport || saving}>
-          <legend>缺陷内容</legend>
+        ) : null}
+        <fieldset aria-label="缺陷内容" disabled={!canEditReport || saving}>
           <label>
             <span>缺陷描述</span>
             <textarea
@@ -423,7 +420,7 @@ export function BugForm({
               onChange={(event) => setDescription(event.target.value)}
               placeholder="描述遇到的问题，可补充复现步骤和预期表现"
               required
-              rows={6}
+              rows={5}
               value={description}
             />
           </label>

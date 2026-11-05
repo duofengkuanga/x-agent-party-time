@@ -1,6 +1,11 @@
 'use client';
 
-import { useEffect, useState, type DragEvent as ReactDragEvent } from 'react';
+import {
+  useEffect,
+  useState,
+  type DragEvent as ReactDragEvent,
+  type ReactNode,
+} from 'react';
 import type { SubmissionVisualPresentation as SubmissionVisualPresentation } from '@/contracts/shared';
 import type { UpdateBatchView } from '@/contracts/submissions/update';
 import type { BugView } from '../../../../../../contracts/submissions/bug';
@@ -14,6 +19,7 @@ import { PassConfirmButton } from './passConfirmButton';
 export function BugCard({
   blockedReason,
   bug,
+  deleteControl,
   draggable,
   dragging,
   eligibleAt,
@@ -29,6 +35,7 @@ export function BugCard({
 }: {
   blockedReason?: string | null;
   bug: BugView;
+  deleteControl: ReactNode;
   draggable: boolean;
   dragging: boolean;
   eligibleAt?: string;
@@ -81,12 +88,13 @@ export function BugCard({
             </strong>
           ) : null}
           {bug.availableActions.some((action) =>
-            ['VERIFY_PASS', 'VERIFY_FAIL', 'REOPEN'].includes(action),
+            ['DELETE', 'VERIFY_PASS', 'VERIFY_FAIL', 'REOPEN'].includes(action),
           ) ? (
             <div
               aria-busy={pending}
               className={`collab-bug-card__actions${bug.availableActions.includes('VERIFY_PASS') ? ' collab-bug-card__verification' : ''}`}
             >
+              {deleteControl}
               {bug.availableActions.includes('VERIFY_PASS') ? (
                 <PassConfirmButton
                   disabled={pending}

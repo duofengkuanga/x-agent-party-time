@@ -2,6 +2,22 @@
   width: min(940px, 100%);
 }
 
+.collab-bug-drawer--form {
+  font-size: 13px;
+  line-height: 1.5;
+  width: min(700px, 100%);
+}
+
+.collab-dialog.collab-bug-drawer--form > header {
+  align-items: center;
+}
+
+.collab-bug-drawer--form > header h2 {
+  font-family: inherit;
+  font-size: 20px;
+  font-style: normal;
+}
+
 .collab-bug-drawer--split {
   height: min(738px, calc(90dvh - 43.2px));
   width: min(1062px, 90%);

@@ -3,8 +3,6 @@
 import { useActionState, useState } from 'react';
 import { loginAction, type LoginState } from '../../actions/login';
 
-type Theme = 'paper' | 'night';
-
 type LoginAccount = {
   id: string;
   username: string;
@@ -21,7 +19,6 @@ export function LoginForm({
   accounts: readonly LoginAccount[];
   next: string;
 }) {
-  const [theme, setTheme] = useState<Theme>('paper');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [state, action, pending] = useActionState(loginAction, INITIAL_STATE);
@@ -32,7 +29,7 @@ export function LoginForm({
   }
 
   return (
-    <main className="auth-shell" data-theme={theme}>
+    <main className="auth-shell">
       <header className="auth-topbar">
         <div className="auth-brand-lockup">
           <span className="auth-brand">
@@ -48,17 +45,6 @@ export function LoginForm({
             <b>watch</b>
           </span>
         </div>
-        <button
-          aria-label={theme === 'paper' ? '切换暗夜主题' : '切换纸张主题'}
-          className="auth-theme-toggle"
-          onClick={() =>
-            setTheme((current) => (current === 'paper' ? 'night' : 'paper'))
-          }
-          type="button"
-        >
-          <span aria-hidden="true">{theme === 'paper' ? '◐' : '◑'}</span>
-          {theme === 'paper' ? '夜间模式' : '纸张模式'}
-        </button>
       </header>
 
       <div className="auth-stage">

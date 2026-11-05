@@ -257,8 +257,7 @@ export class BugQueries {
       | 'ARCHIVE'
       | 'UNARCHIVE'
     > = [];
-    if (canDeleteUnassignedBug(userId, access, bug, anyResponsible))
-      actions.push('DELETE');
+    if (canDeleteWaitingBug(userId, access, bug, anyResponsible)) actions.push('DELETE');
     if (!routing.transferReason) actions.push('TRANSFER');
     if (!routing.collaborationReason) actions.push('COLLABORATE');
     if (!bug.reportLockedAt) {
@@ -323,7 +322,7 @@ function itemUser(item: ItemRow): User {
   });
 }
 
-export function canDeleteUnassignedBug(
+export function canDeleteWaitingBug(
   userId: string,
   access: AccessRow,
   bug: Bug,
@@ -332,10 +331,8 @@ export function canDeleteUnassignedBug(
   return (
     access.submission_status === 'ACTIVE' &&
     (userId === access.tester_user_id || anyResponsible) &&
-    bug.submissionItemId === null &&
     bug.stage === 'WAITING_FOR_REPAIR' &&
     !bug.reportLockedAt &&
-    !bug.collaborationLocked &&
     !bug.transferredAt &&
     !bug.archivedAt
   );

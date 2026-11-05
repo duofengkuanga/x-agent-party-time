@@ -26,7 +26,6 @@ export function PassConfirmButton({
         onOpenChange={setOpen}
         open={open}
         pendingLabel="正在提交…"
-        presentation="inline"
         title={message}
       />
     </span>

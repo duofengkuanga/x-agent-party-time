@@ -53,26 +53,6 @@
   padding: 4px 10px;
 }
 
-.popconfirm.popconfirm--inline {
-  box-shadow: 3px 3px 0 color-mix(in srgb, var(--ink), transparent 80%);
-  display: grid;
-  font-size: 11px;
-  gap: 10px;
-  line-height: 1.5;
-  max-width: 300px;
-  padding: 10px;
-  position: relative;
-  width: 100%;
-  z-index: 4;
-}
-
-.popconfirm--inline > .popconfirm__title {
-  font: inherit;
-}
-.popconfirm--inline > .popconfirm__actions {
-  gap: 6px;
-}
-
 .popconfirm__trigger[aria-expanded='true']:not(:hover) {
   background: var(--paper-deep);
 }

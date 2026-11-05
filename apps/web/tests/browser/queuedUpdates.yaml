@@ -22,20 +22,21 @@ cases:
           }
       - eval: 'document.querySelector("button[aria-label^=\"批次更新缺陷甲，\"]").closest(".collab-column").querySelector("h2").textContent === "待更新"'
 
-  - name: frozen update remains readable in night theme
+  - name: frozen update details remain readable
     steps:
-      - click: 'button[aria-label="切换暗夜主题"]'
-      - wait: '.collab-shell[data-theme="night"]'
       - click: 'button[aria-label^="批次更新缺陷甲，"]'
-      - wait: '[role="dialog"]'
+      - wait: '[role="dialog"]:is(:not([popover]),:popover-open)'
     assert:
-      - text: { sel: '[role="dialog"]', contains: '修复已完成' }
-      - eval: 'document.querySelector("[role=dialog]").scrollWidth <= document.querySelector("[role=dialog]").clientWidth'
+      - text:
+          {
+            sel: '[role="dialog"]:is(:not([popover]),:popover-open)',
+            contains: '修复已完成',
+          }
+      - eval: 'document.querySelector("[role=dialog]:is(:not([popover]),:popover-open)").scrollWidth <= document.querySelector("[role=dialog]:is(:not([popover]),:popover-open)").clientWidth'
 
   - name: developer sees queued status and cannot freeze an already frozen defect
     steps:
       - click: 'button[aria-label="关闭详情抽屉"]'
-      - click: 'button[aria-label="切换纸张主题"]'
       - click: 'button[aria-label="打开账号菜单"]'
       - click: '.collab-account-menu__panel form button'
       - wait: 'input[name="username"]'
@@ -54,20 +55,10 @@ cases:
             contains: '已排队，等待 Agent 启动',
           }
       - hidden: '[aria-label="待更新操作"]'
-      - text: { sel: '[role="dialog"]', contains: '第 1 轮更新' }
-
-  - name: developer queued status remains readable in night theme
-    steps:
-      - click: 'button[aria-label="关闭详情抽屉"]'
-      - click: 'button[aria-label="切换暗夜主题"]'
-      - wait: '.collab-shell[data-theme="night"]'
-      - click: 'button[aria-label^="批次更新缺陷甲，"]'
-      - wait: '.collab-developer-detail'
-    assert:
       - text:
           {
-            sel: '.collab-developer-status',
-            contains: '已排队，等待 Agent 启动',
+            sel: '[role="dialog"]:is(:not([popover]),:popover-open)',
+            contains: '第 1 轮更新',
           }
-      - hidden: '[aria-label="待更新操作"]'
+
       - eval: 'document.querySelector(".collab-bug-drawer").scrollWidth <= document.querySelector(".collab-bug-drawer").clientWidth'

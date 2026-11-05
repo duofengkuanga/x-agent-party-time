@@ -212,6 +212,7 @@ describe('BugService', () => {
       fixture.submission.id,
     ).bugs[0]!;
     expect(waitingView.availableActions).toEqual([
+      'DELETE',
       'EDIT_REPORT',
       'ASSIGN',
       'REQUEST_REPAIR',

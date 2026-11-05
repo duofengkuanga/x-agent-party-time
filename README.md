@@ -317,7 +317,7 @@ packages/
 
 `(pages)` 与 `(main)` 是不进入网址的路由分组。用户页面为 `/projects`、`/agents`、`/agents/connect`、`/submissions` 和 `/submissions/[submissionId]`。共享 Shell 只在 `(main)/layout.tsx` 挂载，登录页面保持独立。组件、交互逻辑和业务样式就近放在对应页面目录；`main.css` 保持既有样式引入顺序。目录按职责划分，页面入口、Server Components、Actions 和 HTTP handlers 可以在服务器运行。
 
-轻量二次确认复用 `(main)/components/popconfirm.tsx`：调用方维护 `open`、`pending`、`error` 和业务回调，并决定确认后何时关闭；组件统一处理定位、布局变化、取消、Esc、点击外部及焦点恢复。默认在按钮旁浮出；`presentation="inline"` 用于卡片内展开，避免窄卡片溢出。`pending` 禁用所有按钮，`disabled` 只禁用触发和确认，仍可取消。Server Action 表单使用同目录的 `ActionPopconfirm`，隐藏字段作为子节点传入，提交与路由刷新不进入纯确认组件。需要展示环境冲突等完整资料的对话框继续由各业务维护。
+轻量二次确认复用 `(main)/components/popconfirm.tsx`：调用方维护 `open`、`pending`、`error` 和业务回调，并决定确认后何时关闭；组件统一处理定位、布局变化、取消、Esc、点击外部及焦点恢复。确认面板统一在按钮旁浮出并限制在视口内，展开和关闭均不改变原按钮的位置、尺寸或卡片布局。`pending` 禁用所有按钮，`disabled` 只禁用触发和确认，仍可取消。Server Action 表单使用同目录的 `ActionPopconfirm`，隐藏字段作为子节点传入，提交与路由刷新不进入纯确认组件。需要展示环境冲突等完整资料的对话框继续由各业务维护。
 
 网页操作使用 `app/actions/`，明确的 HTTP 接口使用 `app/api/`；两个入口都校验身份并调用服务端实现，不重复业务规则。浏览器组件只通过 Actions 或 HTTP 调用服务端，使用 `contracts/` 的纯数据定义。原 `/api/cooking/*` 接口改为 `/api/submissions/*`，工作区接口为 `/api/submissions/[submissionId]/workspace`。xapt 的连接页面与缺陷维护调用同步使用新地址，不保留旧入口转发。
 

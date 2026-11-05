@@ -20,7 +20,7 @@
 
 ## 共享页面框架
 
-- `app/(pages)/(main)/layout.tsx` 统一挂载 `app/(pages)/(main)/components/appShell.tsx`；项目、Agent 与提测页面必须继承该共享品牌区、主题切换、账号菜单、尺寸和间距。
+- `app/(pages)/(main)/layout.tsx` 统一挂载 `app/(pages)/(main)/components/appShell.tsx`；项目、Agent 与提测页面必须继承该共享品牌区、账号菜单、尺寸和间距。
 - 页面或业务组件不得再次引用 `AppShell` 或复制 `.collab-topbar`；头部需求只修改共享 Shell。
 - 修改共享 框架或头部后，在桌面视口对照验证 `/submissions`、`/projects` 和 `/agents`。
 - `app/(pages)/(main)/components/appShell.test.ts` 是架构回归测试，不得删除或绕过；新增共享框架下的页面时加入消费者断言。
@@ -35,7 +35,7 @@
 ## 验收
 
 - 用户界面改动必须验证默认、悬停、焦点、禁用、选中、展开、加载、空状态和错误状态。
-- 明暗主题及桌面视口下的内容与操作必须可达；移动端单独适配不作为当前交付门。
+- 按产品设计文档的单一纸张浅色主题验收，桌面视口下的内容与操作必须可达；移动端单独适配不作为当前交付门。
 - 修改共享 页面框架时除自动化检查外，还必须完成三个顶层页面的浏览器对照验证。
 
 ## Module 组织

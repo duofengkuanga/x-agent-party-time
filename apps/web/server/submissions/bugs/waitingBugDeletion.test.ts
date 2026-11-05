@@ -1,23 +1,32 @@
 import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { testDatabases, expectRowCount } from '@/testing/database';
+import { createSubmissionWorkflow } from '@/server/runtime/createSubmissionWorkflow';
 import { bugFixture, createBug, createAssignedBug } from './bugFixture';
 
 const setup = bugFixture(testDatabases());
 
-describe('删除待分配缺陷', () => {
-  test.each(['tester', 'developerA', 'developerB'] as const)(
-    '%s 可以删除，重试不重复推进版本且保留删除审计',
-    async (role) => {
+describe('删除待修复缺陷', () => {
+  test.each([
+    ['tester', false],
+    ['developerA', false],
+    ['developerB', false],
+    ['tester', true],
+    ['developerA', true],
+    ['developerB', true],
+  ] as const)(
+    '%s 可以删除已分配或未分配的待修复缺陷（已分配：%s），重试幂等且保留审计',
+    async (role, assigned) => {
       const f = await setup();
       const { bug, revision } = createBug(f, f.users.tester.id, {
         description: '误报缺陷',
+        submissionItemId: assigned ? f.items.front : null,
       });
       const input = { mutationId: randomUUID(), expectedVersion: bug.version };
       expect(
         f.service.workspace(f.users[role].id, f.submission.id).bugs[0]!.availableActions,
       ).toContain('DELETE');
-      const result = f.service.deleteUnassignedBug(f.users[role].id, bug.id, input);
+      const result = f.service.deleteWaitingBug(f.users[role].id, bug.id, input);
       expect(result).toMatchObject({
         deletedBugId: bug.id,
         submissionId: f.submission.id,
@@ -31,9 +40,7 @@ describe('删除待分配缺陷', () => {
         actor_user_id: f.users[role].id,
       }).toBe(1);
       const eventCount = f.events.length;
-      expect(f.service.deleteUnassignedBug(f.users[role].id, bug.id, input)).toEqual(
-        result,
-      );
+      expect(f.service.deleteWaitingBug(f.users[role].id, bug.id, input)).toEqual(result);
       expect(f.events).toHaveLength(eventCount);
       expect(f.events.at(-1)).toEqual({
         submissionId: f.submission.id,
@@ -50,7 +57,7 @@ describe('删除待分配缺陷', () => {
         f.service.workspace(f.users[role].id, f.submission.id).bugs[0]!.availableActions,
       ).not.toContain('DELETE');
     expect(() =>
-      f.service.deleteUnassignedBug(f.users[role].id, bug.id, {
+      f.service.deleteWaitingBug(f.users[role].id, bug.id, {
         mutationId: randomUUID(),
         expectedVersion: bug.version,
       }),
@@ -62,21 +69,21 @@ describe('删除待分配缺陷', () => {
     expectRowCount(f.database, 'submission_bug', { id: bug.id }).toBe(1);
   });
 
-  test('已分配或关闭提测不允许删除', async () => {
+  test('关闭提测不允许删除已分配或未分配缺陷', async () => {
     const f = await setup();
     const assigned = createAssignedBug(f, '已分配', f.items.front);
     const unassigned = createBug(f, f.users.tester.id, { description: '未分配' }).bug;
     const attempt = (bug: typeof assigned) =>
-      f.service.deleteUnassignedBug(f.users.tester.id, bug.id, {
+      f.service.deleteWaitingBug(f.users.tester.id, bug.id, {
         mutationId: randomUUID(),
         expectedVersion: bug.version,
       });
-    expect(() => attempt(assigned)).toThrow(
-      expect.objectContaining({ code: 'INVALID_TRANSITION' }),
-    );
     f.database.run("UPDATE test_submission SET status = 'CLOSED' WHERE id = ?", [
       f.submission.id,
     ]);
+    expect(() => attempt(assigned)).toThrow(
+      expect.objectContaining({ code: 'INVALID_TRANSITION' }),
+    );
     expect(() => attempt(unassigned)).toThrow(
       expect.objectContaining({ code: 'INVALID_TRANSITION' }),
     );
@@ -90,9 +97,11 @@ describe('删除待分配缺陷', () => {
 
   test.each([
     ["stage = 'REPAIRING'"],
+    ["stage = 'WAITING_FOR_UPDATE'"],
+    ["stage = 'UPDATING'"],
+    ["stage = 'WAITING_FOR_VERIFICATION'"],
     ["stage = 'CANCELLED'"],
     ["report_locked_at = '2026-10-14T00:00:00.000Z'"],
-    ['collaboration_locked = 1'],
     [
       "stage = 'DONE', archived_at = '2026-10-14T00:00:00.000Z', archived_by_user_id = created_by_user_id",
     ],
@@ -104,7 +113,7 @@ describe('删除待分配缺陷', () => {
       f.service.workspace(f.users.tester.id, f.submission.id).bugs[0]!.availableActions,
     ).not.toContain('DELETE');
     expect(() =>
-      f.service.deleteUnassignedBug(f.users.tester.id, bug.id, {
+      f.service.deleteWaitingBug(f.users.tester.id, bug.id, {
         mutationId: randomUUID(),
         expectedVersion: bug.version,
       }),
@@ -121,7 +130,7 @@ describe('删除待分配缺陷', () => {
       submissionItemId: f.items.front,
     });
     expect(() =>
-      f.service.deleteUnassignedBug(f.users.tester.id, bug.id, {
+      f.service.deleteWaitingBug(f.users.tester.id, bug.id, {
         mutationId: randomUUID(),
         expectedVersion: bug.version,
       }),
@@ -129,15 +138,75 @@ describe('删除待分配缺陷', () => {
     expectRowCount(f.database, 'submission_bug', { id: bug.id }).toBe(1);
   });
 
+  test('确认后已提交修复时拒绝删除，保留排队中的修复执行', async () => {
+    const f = await setup();
+    const bug = createAssignedBug(f, '并发修复', f.items.front);
+    const { bugs } = createSubmissionWorkflow(f.database);
+    const repairing = bugs.requestRepair(f.users.tester.id, bug.id, {
+      mutationId: randomUUID(),
+      expectedVersion: bug.version,
+    }).bug;
+    for (const expectedVersion of [bug.version, repairing.version]) {
+      expect(() =>
+        f.service.deleteWaitingBug(f.users.developerA.id, bug.id, {
+          mutationId: randomUUID(),
+          expectedVersion,
+        }),
+      ).toThrow(
+        expect.objectContaining({
+          code:
+            expectedVersion === bug.version ? 'RESOURCE_CONFLICT' : 'INVALID_TRANSITION',
+        }),
+      );
+    }
+    expectRowCount(f.database, 'submission_bug', { id: bug.id }).toBe(1);
+    expectRowCount(f.database, 'submission_repair_attempt', { bug_id: bug.id }).toBe(1);
+    expectRowCount(f.database, 'platform_execution', { state: 'QUEUED' }).toBe(1);
+  });
+
+  test('删除前后端关联卡片只移除当前缺陷，保留另一张卡片及共享附件', async () => {
+    const f = await setup();
+    const file = await f.files.put({
+      bytes: new TextEncoder().encode('shared proof'),
+      originalName: 'shared.txt',
+      mediaType: 'text/plain',
+      uploadedByUserId: f.users.tester.id,
+    });
+    const result = f.service.createLinkedBugs(f.users.tester.id, f.submission.id, {
+      mutationId: randomUUID(),
+      submissionItemIds: [f.items.front, f.items.back],
+      description: '前后端误报',
+      attachmentIds: [file.id],
+    });
+    const [first, second] = result.bugs;
+    expect(first!.collaborationLocked).toBe(true);
+    f.service.deleteWaitingBug(f.users.developerA.id, first!.id, {
+      mutationId: randomUUID(),
+      expectedVersion: first!.version,
+    });
+    const remaining = f.service.workspace(f.users.tester.id, f.submission.id).bugs;
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]!.id).toBe(second!.id);
+    expect(remaining[0]!.relatedBugs).toMatchObject([
+      { id: null, kind: 'JOINT', stageLabel: '已删除' },
+    ]);
+    expect(remaining[0]!.availableActions).toContain('DELETE');
+    expect(remaining[0]!.report.attachments.map(({ id }) => id)).toEqual([file.id]);
+    expect(() =>
+      f.service.requireAttachmentAccess(f.users.tester.id, file.id),
+    ).not.toThrow();
+    expect(f.database.all('PRAGMA foreign_key_check')).toEqual([]);
+  });
+
   test('同一操作标识不能删除另一条缺陷', async () => {
     const f = await setup();
     const first = createBug(f, f.users.tester.id, { description: '第一条' }).bug;
     const second = createBug(f, f.users.tester.id, { description: '第二条' }).bug;
     const input = { mutationId: randomUUID(), expectedVersion: first.version };
-    f.service.deleteUnassignedBug(f.users.tester.id, first.id, input);
-    expect(() =>
-      f.service.deleteUnassignedBug(f.users.tester.id, second.id, input),
-    ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
+    f.service.deleteWaitingBug(f.users.tester.id, first.id, input);
+    expect(() => f.service.deleteWaitingBug(f.users.tester.id, second.id, input)).toThrow(
+      expect.objectContaining({ code: 'RESOURCE_CONFLICT' }),
+    );
     expectRowCount(f.database, 'submission_bug', { id: second.id }).toBe(1);
   });
 
@@ -153,7 +222,7 @@ describe('删除待分配缺陷', () => {
       description: '有附件的误报',
       attachmentIds: [file.id],
     });
-    const result = f.service.deleteUnassignedBug(f.users.developerA.id, bug.id, {
+    const result = f.service.deleteWaitingBug(f.users.developerA.id, bug.id, {
       mutationId: randomUUID(),
       expectedVersion: bug.version,
     });

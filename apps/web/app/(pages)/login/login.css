@@ -13,10 +13,6 @@
   z-index: 20;
 }
 
-.auth-shell[data-theme='night'] {
-  --accent-dark: #9d4037;
-}
-
 .auth-shell button {
   border-radius: 0;
   min-height: 0;
@@ -45,38 +41,6 @@
   font-size: 20px;
   font-weight: 900;
   letter-spacing: -1.2px;
-}
-
-.auth-theme-toggle {
-  align-items: center;
-  background: var(--panel);
-  border: 1px solid var(--strong-line);
-  box-shadow: 2px 2px 0 color-mix(in srgb, var(--ink), transparent 72%);
-  color: var(--ink);
-  display: inline-flex;
-  font-size: 9px;
-  font-weight: 800;
-  gap: 8px;
-  height: 34px;
-  letter-spacing: 0.08em;
-  padding: 0 11px;
-}
-
-.auth-theme-toggle:hover:not(:disabled) {
-  background: var(--ink);
-  border-color: var(--strong-line);
-  color: var(--paper);
-}
-
-.auth-theme-toggle:focus-visible {
-  background: var(--panel);
-  border-color: var(--strong-line);
-  color: var(--ink);
-}
-
-.auth-theme-toggle span {
-  color: var(--accent);
-  font-size: 15px;
 }
 
 .auth-stage {

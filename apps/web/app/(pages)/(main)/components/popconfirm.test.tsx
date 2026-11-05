@@ -15,11 +15,7 @@ const props: PopconfirmProps = {
 
 test('回调确认可以放在已有表单内，不生成嵌套表单或意外提交按钮', () => {
   const html = renderToStaticMarkup(
-    createElement(
-      'form',
-      null,
-      createElement(Popconfirm, { ...props, presentation: 'inline' }),
-    ),
+    createElement('form', null, createElement(Popconfirm, props)),
   );
   expect(html.match(/<form\b/gu)).toHaveLength(1);
   expect(html.match(/type="button"/gu)).toHaveLength(3);
@@ -48,7 +44,6 @@ test('提交中禁用所有操作并展示调用方的状态和错误', () => {
   const html = renderToStaticMarkup(
     createElement(Popconfirm, {
       ...props,
-      presentation: 'inline',
       pending: true,
       error: '该记录已更新',
     }),
@@ -59,23 +54,23 @@ test('提交中禁用所有操作并展示调用方的状态和错误', () => {
   expect(html).toContain('aria-busy="true"');
 });
 
-test('操作不可用时仍可取消已展开的确认，关闭的行内面板不占布局空间', () => {
+test('操作不可用时仍可取消，确认面板始终使用脱离布局的原生浮层', () => {
   const open = renderToStaticMarkup(
     createElement(Popconfirm, {
       ...props,
-      presentation: 'inline',
       disabled: true,
     }),
   );
   expect(open.match(/disabled=""/gu)).toHaveLength(2);
+  expect(open).toContain('popover="auto"');
   const closed = renderToStaticMarkup(
     createElement(Popconfirm, {
       ...props,
-      presentation: 'inline',
       open: false,
     }),
   );
-  expect(closed).not.toContain('role="dialog"');
+  expect(closed).toContain('popover="auto"');
+  expect(closed).toMatch(/popovertarget=/iu);
   expect(closed).toContain('aria-expanded="false"');
 });
 

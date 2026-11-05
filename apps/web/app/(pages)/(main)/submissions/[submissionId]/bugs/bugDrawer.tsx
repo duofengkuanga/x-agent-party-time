@@ -80,7 +80,7 @@ export function BugDrawer({
             : drawerTitle(drawer.mode, bug)
         }
         aria-modal="true"
-        className={`collab-dialog collab-bug-drawer${drawer.mode === 'view' ? (summaryOnly ? ' collab-bug-drawer--tester' : ' collab-bug-drawer--developer') : drawer.mode === 'batch' ? ' collab-bug-drawer--developer' : ''}`}
+        className={`collab-dialog collab-bug-drawer${drawer.mode === 'view' ? (summaryOnly ? ' collab-bug-drawer--tester' : ' collab-bug-drawer--developer') : drawer.mode === 'batch' ? ' collab-bug-drawer--developer' : ' collab-bug-drawer--form'}`}
         role="dialog"
       >
         <header className={viewing ? 'collab-bug-drawer__chrome' : undefined}>
@@ -116,7 +116,7 @@ export function BugDrawer({
             </div>
           ) : (
             <div>
-              <small>{bug ? bugLabel(bug) : '新缺陷'}</small>
+              {bug ? <small>{bugLabel(bug)}</small> : null}
               <h2>{drawerTitle(drawer.mode, bug)}</h2>
             </div>
           )}

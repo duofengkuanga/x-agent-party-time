@@ -48,6 +48,21 @@ test.each([false, true])(
       items: input.items.slice(0, 1),
     });
     expect(created.mode).toBe('PERSON_AGENT');
+    for (const actor of [f.users.tester, f.users.developer]) {
+      const waiting = f.bugs.createBug(f.users.tester.id, created.id, {
+        mutationId: randomUUID(),
+        description: '仅登记的误报',
+        attachmentIds: [],
+      }).bug;
+      expect(f.bugs.workspace(actor.id, created.id).bugs[0]!.availableActions).toContain(
+        'DELETE',
+      );
+      f.bugs.deleteWaitingBug(actor.id, waiting.id, {
+        mutationId: randomUUID(),
+        expectedVersion: waiting.version,
+      });
+      expect(f.bugs.workspace(actor.id, created.id).bugs).toHaveLength(0);
+    }
     const report = f.bugs.createBug(f.users.tester.id, created.id, {
       mutationId: randomUUID(),
       description: '两端交互结果异常',

@@ -87,15 +87,15 @@ export const AssignBugInputSchema = VersionedMutationSchema.extend({
 
 export const RequestRepairInputSchema = VersionedMutationSchema;
 
-export const DeleteUnassignedBugInputSchema = VersionedMutationSchema;
-export type DeleteUnassignedBugInput = z.infer<typeof DeleteUnassignedBugInputSchema>;
-export const DeleteUnassignedBugResultSchema = z.object({
+export const DeleteWaitingBugInputSchema = VersionedMutationSchema;
+export type DeleteWaitingBugInput = z.infer<typeof DeleteWaitingBugInputSchema>;
+export const DeleteWaitingBugResultSchema = z.object({
   deletedBugId: BugIdSchema,
   submissionId: SubmissionIdSchema,
   revision: z.number().int().positive(),
   unboundAttachmentIds: BugMutationAttachmentIdsSchema,
 });
-export type DeleteUnassignedBugResult = z.infer<typeof DeleteUnassignedBugResultSchema>;
+export type DeleteWaitingBugResult = z.infer<typeof DeleteWaitingBugResultSchema>;
 
 export const RouteBugInputSchema = VersionedMutationSchema.extend({
   kind: z.enum(['TRANSFER', 'COLLABORATE']),

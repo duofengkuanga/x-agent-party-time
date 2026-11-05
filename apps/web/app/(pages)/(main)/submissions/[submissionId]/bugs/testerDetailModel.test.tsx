@@ -21,6 +21,31 @@ import { pendingDeliveryFor } from './boardModel';
 
 const setup = lifecycleFixture(testDatabases());
 
+test.each(['tester', 'developer'] as const)(
+  '%s 的待修复卡片直接显示删除按钮，修复中的卡片不显示',
+  async (role) => {
+    const f = await setup();
+    createBug(f, f.items[1]!.id, '可删除的待修复缺陷');
+    createAndRequestBug(f, f.items[1]!.id, '修复中保留的缺陷');
+    const snapshot = createSubmissionWorkflow(
+      f.database,
+    ).workspace.getWorkspace(f.users[role].id, f.submission.id);
+    const board = renderToStaticMarkup(
+      <BugBoard snapshot={snapshot} onChanged={() => {}} syncLabel="已同步" />,
+    );
+    const cards = board.match(
+      /<article class="collab-bug-card[^]*?<\/article>/g,
+    )!;
+    expect(cards.find((card) => card.includes('可删除的待修复缺陷'))).toContain(
+      '删除缺陷',
+    );
+    expect(
+      cards.find((card) => card.includes('修复中保留的缺陷')),
+    ).not.toContain('删除缺陷');
+    expect(board).not.toContain('collab-bug-drawer');
+  },
+);
+
 test('冻结等待启动不重复倒计时，启动失败向测试者显示负责人的下一步', async () => {
   const f = await setup();
   const flow = createSubmissionWorkflow(f.database, { now: f.clock.now });

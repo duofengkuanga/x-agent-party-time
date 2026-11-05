@@ -76,15 +76,6 @@
   z-index: 100;
 }
 
-.collab-shell[data-theme='night'] {
-  --accent-dark: #f18b7e;
-  --olive: #979b64;
-  --blue: #7198ab;
-  --success: #739d7c;
-  --warning: #d0934d;
-  --danger: #e06c67;
-}
-
 .collab-shell button,
 .collab-shell input,
 .collab-shell select,
