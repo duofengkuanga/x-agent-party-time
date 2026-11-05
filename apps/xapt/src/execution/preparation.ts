@@ -240,11 +240,7 @@ export class ExecutionPreparation {
             if (resultBaseline && resolvedSkill.handoffPath)
               for (const assertion of resultAssertions)
                 if (assertion.kind === 'GIT_DELIVERY_STATE' && assertion.environmentKey)
-                  readEngineeringDelivery(
-                    repositoryPath,
-                    resultBaseline.gitHead,
-                    assertion.environmentKey,
-                  );
+                  readEngineeringDelivery(repositoryPath, assertion.environmentKey);
             await this.state.saveExecutionResultBaseline(
               execution.id,
               resultBaseline,

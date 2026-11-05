@@ -22,7 +22,7 @@ export async function prepareBuildCase(
     join(source, 'tools/delivery.ts'),
     await readFile(join(import.meta.dir, 'fixtureTool.ts')),
   );
-  await writeFile(join(source, '.gitignore'), '.agents/\n.case/\n');
+  await writeFile(join(source, '.gitignore'), '.agents/\n.xapt\n.case/\n');
   await writeFile(
     join(source, 'src/add.ts'),
     'export function add(a: number, b: number) { return a + b + 1; }\n',

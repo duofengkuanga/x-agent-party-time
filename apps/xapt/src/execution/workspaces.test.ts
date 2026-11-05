@@ -2,6 +2,7 @@ import { testDirectories } from '../testing/directories';
 import type { ExecutionWorkspace } from '@agent-party-time/execution-contract';
 import { describe, expect, test } from 'bun:test';
 import {
+  appendFile,
   lstat,
   mkdir,
   readFile,
@@ -18,6 +19,7 @@ import { GitExecutionResultVerifier } from './resultVerification';
 import { NodeCommandRunner } from '../platform/system';
 import { xaptPaths } from '../platform/paths';
 import { GitExecutionWorkspaceManager } from './workspaces';
+import { readEngineeringDelivery } from './deploymentEvidence';
 
 const createTestDirectory = testDirectories('apt-workspaces-');
 
@@ -215,6 +217,56 @@ describe('GitExecutionWorkspaceManager', () => {
     expect(await readlink(join(update, 'node_modules'))).toBe(
       join(binding, 'node_modules'),
     );
+  });
+
+  test('本地忽略的工程约定传递到修复、更新和恢复工作区，保持未跟踪', async () => {
+    const { root, binding } = await createRepository();
+    const exclude = await output([
+      'git',
+      '-C',
+      binding,
+      'rev-parse',
+      '--path-format=absolute',
+      '--git-path',
+      'info/exclude',
+    ]);
+    await appendFile(exclude, '\n.xapt\n');
+    await mkdir(join(binding, '.xapt'));
+    const document =
+      '```xapt-delivery\n' +
+      JSON.stringify({
+        prepare: 'sh tools/prepare.sh',
+        environments: [
+          { key: 'local', deploy: 'sh tools/deploy.sh', verify: 'sh tools/verify.sh' },
+        ],
+      }) +
+      '\n```\n';
+    await writeFile(join(binding, '.xapt/README.md'), document);
+    const paths = xaptPaths(root);
+    const manager = new GitExecutionWorkspaceManager(paths);
+    const repair = cwd(
+      await manager.prepare(binding, repairWorkspace('local-convention')),
+    );
+    const update = cwd(
+      await manager.prepare(binding, updateWorkspace('local-convention')),
+    );
+    for (const worktree of [repair, update]) {
+      expect(readEngineeringDelivery(worktree, 'local').deploy).toBe(
+        'sh tools/deploy.sh',
+      );
+      expect(await readFile(join(worktree, '.xapt/README.md'), 'utf8')).toBe(document);
+      expect(await output(['git', '-C', worktree, 'ls-files', '.xapt'])).toBe('');
+      expect(await output(['git', '-C', worktree, 'status', '--porcelain'])).toBe('');
+    }
+    const changed = document + '\nDeveloper updated local policy.\n';
+    await writeFile(join(binding, '.xapt/README.md'), changed);
+    const restarted = new GitExecutionWorkspaceManager(paths);
+    expect(
+      cwd(await restarted.prepare(binding, repairWorkspace('local-convention'))),
+    ).toBe(repair);
+    expect(await readFile(join(repair, '.xapt/README.md'), 'utf8')).toBe(changed);
+    expect(await readFile(join(update, '.xapt/README.md'), 'utf8')).toBe(changed);
+    expect(await output(['git', '-C', binding, 'status', '--porcelain'])).toBe('');
   });
 
   test('修复与更新 worktree 隔离构建产物，同时复用依赖内文件', async () => {

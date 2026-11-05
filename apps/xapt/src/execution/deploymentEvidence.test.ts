@@ -29,6 +29,7 @@ test('只接受目标环境约定中的实际命令回执，并在恢复时沿�
     execFileSync('git', ['-C', repository, ...args], { encoding: 'utf8' }).trim();
   await mkdir(join(repository, '.xapt'), { recursive: true });
   git('init', '-q');
+  await writeFile(join(repository, '.gitignore'), '.xapt/\n');
   await writeFile(
     join(repository, '.xapt/README.md'),
     '```xapt-delivery\n' +
@@ -60,6 +61,7 @@ test('只接受目标环境约定中的实际命令回执，并在恢复时沿�
     'convention',
   );
   const commit = git('rev-parse', 'HEAD');
+  expect(git('ls-files', '.xapt')).toBe('');
   const target: DeploymentEvidenceTarget = {
     repositoryPath: repository,
     workspaceKey: 'batch-workspace',
@@ -130,6 +132,17 @@ test('只接受目标环境约定中的实际命令回执，并在恢复时沿�
       },
     },
   });
+  const document = await readFile(join(repository, '.xapt/README.md'), 'utf8');
+  await writeFile(
+    join(repository, '.xapt/README.md'),
+    document + '\nLocal policy changed.\n',
+  );
+  expect(git('status', '--porcelain')).toBe('');
+  await expect(attachDeploymentEvidence(state, target, result)).rejects.toThrow(
+    '本机部署验收回执',
+  );
+  await writeFile(join(repository, '.xapt/README.md'), document);
+  await attachDeploymentEvidence(state, target, result);
   await writeFile(
     join(repository, 'AGENTS.md'),
     '[工程执行约定](delivery.md)\n[工程执行约定](other.md)\n',
@@ -148,19 +161,8 @@ test('只接受目标环境约定中的实际命令回执，并在恢复时沿�
   expect(
     observe('sh tools/check.sh red', repository, '84', 0, git('rev-parse', 'HEAD')),
   ).not.toBeNull();
-  const document = await readFile(join(repository, '.xapt/README.md'), 'utf8');
   await writeFile(join(repository, '.xapt/README.md'), document + document);
-  expect(observe('sh tools/check.sh red')).toBeNull();
-  git('add', '.');
-  git(
-    '-c',
-    'user.name=Fixture',
-    '-c',
-    'user.email=fixture@example.invalid',
-    'commit',
-    '-qm',
-    'ambiguous delivery blocks',
-  );
+  expect(git('status', '--porcelain')).toBe('');
   expect(
     observe('sh tools/check.sh red', repository, '84', 0, git('rev-parse', 'HEAD')),
   ).toBeNull();
@@ -193,7 +195,5 @@ test('缺少固定约定文件时明确失败，不从 AGENTS.md 的旧链接发
     '-qm',
     'legacy pointer only',
   );
-  expect(() =>
-    readEngineeringDelivery(repository, git('rev-parse', 'HEAD'), '84'),
-  ).toThrow('.xapt/README.md');
+  expect(() => readEngineeringDelivery(repository, '84')).toThrow('.xapt/README.md');
 });

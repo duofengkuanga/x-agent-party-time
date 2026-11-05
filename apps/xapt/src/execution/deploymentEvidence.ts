@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { z } from 'zod';
@@ -61,14 +62,10 @@ function git(cwd: string, ...args: string[]): string {
   });
 }
 
-export function readEngineeringDelivery(
-  cwd: string,
-  commit: string,
-  environmentKey: string,
-) {
+export function readEngineeringDelivery(cwd: string, environmentKey: string) {
   try {
     const conventionPath = '.xapt/README.md';
-    const document = git(cwd, 'show', `${commit}:${conventionPath}`);
+    const document = readFileSync(resolve(cwd, conventionPath), 'utf8');
     const blocks = [...document.matchAll(/^```xapt-delivery\r?\n([\s\S]*?)^```\r?$/gmu)];
     if (blocks.length !== 1) throw new Error('工程约定必须提供唯一的交付配置块');
     const config = deliverySchema.parse(JSON.parse(blocks[0]![1]!));
@@ -156,7 +153,6 @@ export function observeDeploymentEvidence(
       return null;
     const convention = readEngineeringDelivery(
       target.repositoryPath,
-      receipt.commit,
       receipt.environmentKey,
     );
     const command = [convention.deploy, convention.verify].find((expected) =>
@@ -195,7 +191,7 @@ export async function attachDeploymentEvidence(
     evidence &&
     evidence.commit === value.commit &&
     evidence.environmentKey === environmentKey
-      ? readEngineeringDelivery(target.repositoryPath, evidence.commit, environmentKey)
+      ? readEngineeringDelivery(target.repositoryPath, environmentKey)
       : null;
   if (
     !evidence ||

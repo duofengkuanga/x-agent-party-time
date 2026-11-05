@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { openDatabase } from '../apps/web/server/database/index';
@@ -167,6 +167,7 @@ for (const [index, variant] of preregistration.ordering.entries()) {
       worktree: string,
       label: string,
     ): Promise<{ outcome: JsonValue; report: ObservationReport }> => {
+      await symlink(join(fixture.source, '.xapt'), join(worktree, '.xapt'), 'dir');
       const observation = service.receive(session, claimed);
       const turn = claimed.codexTurn!;
       if (turn.kind !== 'INITIAL') throw new Error('隔离新任务必须为初始调用');
@@ -200,7 +201,7 @@ for (const [index, variant] of preregistration.ordering.entries()) {
       const baseline = await verifier.capture(worktree, assertions);
       for (const { assertion } of targets)
         if (assertion.environmentKey && baseline)
-          readEngineeringDelivery(worktree, baseline.gitHead, assertion.environmentKey);
+          readEngineeringDelivery(worktree, assertion.environmentKey);
       let evidence: DeploymentEvidence | null = null;
       await writeFile(
         join(directory, `${label}-bundle.json`),

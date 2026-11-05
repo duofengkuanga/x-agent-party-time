@@ -130,7 +130,10 @@ async function prepareCase(directory: string, language: string) {
   await mkdir(join(source, 'tests'));
   await mkdir(join(source, '.xapt'));
   await writeFile(join(source, 'AGENTS.md'), policy);
-  await writeFile(join(source, '.gitignore'), '.agents/\n.eval/\ndist/\n__pycache__/\n');
+  await writeFile(
+    join(source, '.gitignore'),
+    '.agents/\n.xapt\n.eval/\ndist/\n__pycache__/\n',
+  );
   const driver = language === 'node' ? 'node tools/check.mjs' : 'python3 tools/check.py';
   await writeFile(
     join(source, '.xapt/README.md'),
@@ -496,6 +499,7 @@ try {
         repairWorktree,
         fixture.base,
       );
+      await symlink(join(fixture.source, '.xapt'), join(repairWorktree, '.xapt'), 'dir');
       const repair = await runAgent(repairWorktree, directory, variant, 'repair', {
         bug: {
           description:
@@ -578,6 +582,11 @@ try {
           secondWorktree,
           fixture.base,
         );
+        await symlink(
+          join(fixture.source, '.xapt'),
+          join(secondWorktree, '.xapt'),
+          'dir',
+        );
         const second = await runAgent(
           secondWorktree,
           secondDirectory,
@@ -638,6 +647,7 @@ try {
       }
       const updateBase = await changeDeliveryInputs(fixture.source);
       git(fixture.source, 'worktree', 'add', '--detach', updateWorktree, updateBase);
+      await symlink(join(fixture.source, '.xapt'), join(updateWorktree, '.xapt'), 'dir');
       const update = await runAgent(
         updateWorktree,
         directory,
