@@ -371,6 +371,22 @@ test('运行时只接受最新结果契约，无修改结果仍正常显示', ()
   expect(RepairExecutionResultSchema.safeParse({ result }).success).toBe(false);
   const noChange = {
     ...result,
+    testingScope: {
+      review: {
+        baseCommit: 'a'.repeat(40),
+        headCommit: 'a'.repeat(40),
+        verdict: 'READY',
+      },
+      points: [
+        {
+          kind: 'ORIGINAL',
+          title: '复测',
+          steps: '重现原操作',
+          expectedResult: '问题不再出现',
+        },
+      ],
+      limitations: [],
+    },
     completionKind: 'TARGET_ALREADY_FIXED',
     changes: [],
     commits: [],

@@ -66,7 +66,7 @@ describe('UpdateService', () => {
     if (continuation.codexTurn?.kind !== 'CONTINUATION') throw new Error('需要继续 Turn');
     expect(continuation.codexTurn.input).toContain('继续原冻结批次');
     const resumed = await startExecution(fixture, continuation.id, 'update-session');
-    completeSuccessfulExecution(fixture, resumed, completedUpdate());
+    completeSuccessfulExecution(fixture, resumed, completedUpdate([0, 1]));
     batch = latestBatch(fixture.database, fixture.item.id);
     expect(batch.state).toBe('COMPLETED');
     expect(currentBug(fixture.database, first.id).stage).toBe('WAITING_FOR_VERIFICATION');

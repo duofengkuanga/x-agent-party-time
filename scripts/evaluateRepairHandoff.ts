@@ -48,6 +48,7 @@ const UpdateExecutionResultSchema = personAgentUpdateResultSchema([
     environmentId: fixtureId,
     environmentKey: 'isolated',
     candidateCommits: [],
+    candidatePositions: values.scenario === 'multi' ? [0, 1] : [0],
     changed: true,
   },
 ]);
@@ -547,6 +548,7 @@ try {
         validations: unknown[];
         warnings: string[];
         handoff: unknown;
+        testingScope: unknown;
       };
       const candidates = [
         {
@@ -562,6 +564,8 @@ try {
                     validations: context.validations,
                     warnings: context.warnings,
                     handoff: context.handoff,
+                    testingScope: context.testingScope,
+                    unchangedTestingScopes: [],
                   },
                 ],
               }
@@ -639,6 +643,8 @@ try {
               validations: secondResult.validations,
               warnings: secondResult.warnings,
               handoff: secondResult.handoff,
+              testingScope: secondResult.testingScope,
+              unchangedTestingScopes: [],
             },
           ],
         });

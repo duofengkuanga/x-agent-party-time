@@ -1,3 +1,4 @@
+import { testTestingScope } from '@/testing/submissions/testingScope';
 import { testRepairHandoff } from '@/testing/submissions/handoff';
 import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
@@ -65,6 +66,9 @@ async function finishedBug(
       result: {
         result: committed
           ? {
+              testingScope: testTestingScope(
+                ['abcdef1111111111111111111111111111111111'].at(-1),
+              ),
               outcome: 'COMPLETED',
               completionKind: 'CHANGES_COMMITTED',
               handoff: testRepairHandoff(),
@@ -103,6 +107,7 @@ describe('前后端关联 Bug', () => {
     const target = (await f.executions.claim(f.runner.id, 1, 0))[0]!;
     const fixed = {
       result: {
+        testingScope: testTestingScope('a'.repeat(40), 'a'.repeat(40)),
         outcome: 'COMPLETED',
         completionKind: 'TARGET_ALREADY_FIXED',
         changes: [],

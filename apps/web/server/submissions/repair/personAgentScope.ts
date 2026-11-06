@@ -168,23 +168,20 @@ export function resolvePersonAgentRepair(
     type: item.engineering_type,
     targetBranch: item.target_branch,
   }));
-  const resultAssertions: ExecutionResultAssertion[] = items.flatMap((item, index) => {
-    const resultPath = ['result', 'repositories', `repo-${index + 1}`];
-    return [
-      { ...REPAIR_HANDOFF_TEXT_ASSERTION, resultPath: [...resultPath, 'handoff'] },
-      {
-        kind: 'GIT_COMMITS_CREATED',
-        workspaceBindingId: item.binding_id,
-        resultPath: [...resultPath, 'commits'],
-      },
-    ];
-  });
+  const resultAssertions: ExecutionResultAssertion[] = [
+    { ...REPAIR_HANDOFF_TEXT_ASSERTION, resultPath: ['result', 'repositories'] },
+    ...items.map((item, index): ExecutionResultAssertion => ({
+      kind: 'GIT_COMMITS_CREATED',
+      workspaceBindingId: item.binding_id,
+      resultPath: ['result', 'repositories', `repo-${index + 1}`, 'commits'],
+    })),
+  ];
   const output = outputJsonSchema(personAgentRepairResultSchema(items.length));
   const codexTurn =
     turn.kind === 'INITIAL'
       ? createInitialCodexTurn({
           requiredSkillName: turn.requiredSkillName,
-          requiredSkillProtocol: 'engineering-workflow-v1',
+          requiredSkillProtocol: 'engineering-workflow-v2',
           manualHandoff: turn.manualHandoff,
           executionBrief: {
             ...turn.executionBrief,

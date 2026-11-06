@@ -1,5 +1,6 @@
 import type { ExecutionService } from '@/server/platform/execution/service';
 import { testRepairHandoff } from './handoff';
+import { testTestingScope } from './testingScope';
 import type {
   CompleteExecutionRequest,
   JsonValue,
@@ -51,6 +52,7 @@ export function completeRepairExecution(
   sessionId: string,
   commits: string[],
   manualOperations: Array<{ kind: 'DATABASE_SQL'; paths: string[] }> = [],
+  testingScope = testTestingScope(commits.at(-1)),
 ) {
   scenario.executions.start(scenario.runner.id, executionId, {
     kind: 'STARTED',
@@ -66,6 +68,7 @@ export function completeRepairExecution(
         outcome: 'COMPLETED',
         completionKind: 'CHANGES_COMMITTED',
         handoff: testRepairHandoff(),
+        testingScope,
         changes: ['完成缺陷修复'],
         validations: [{ name: '定向测试', status: 'PASSED', detail: '' }],
         warnings: [],

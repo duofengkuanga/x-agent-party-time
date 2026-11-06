@@ -280,6 +280,107 @@
   padding-inline: 16px;
 }
 
+.collab-tester-checklist {
+  border-block: 1px solid var(--line);
+  padding-block: 20px;
+}
+
+.collab-tester-checklist > h3 {
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.collab-tester-checklist ol,
+.collab-tester-attachments > ul {
+  display: grid;
+  gap: 16px;
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+}
+
+.collab-tester-checklist ol > li {
+  border-left: 3px solid var(--line);
+  padding-left: 14px;
+}
+
+.collab-tester-checklist ol > .collab-tester-checklist__derived {
+  border-color: var(--accent);
+}
+
+.collab-tester-checklist li > div {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+
+.collab-tester-checklist p,
+.collab-tester-checklist li,
+.collab-tester-checklist h4 {
+  font-size: 13px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.collab-tester-checklist p {
+  margin: 5px 0 0;
+}
+
+.collab-tester-checklist__badge {
+  border: 1px solid var(--accent);
+  color: var(--ink);
+  font-size: 11px;
+  padding: 1px 6px;
+}
+
+.collab-tester-checklist__notice,
+.collab-tester-checklist__reason,
+.collab-tester-attachments__controls {
+  color: var(--muted);
+}
+
+.collab-tester-checklist aside {
+  border-top: 1px dashed var(--line);
+  margin-top: 18px;
+  padding-top: 12px;
+}
+
+.collab-tester-checklist h4 {
+  margin: 0;
+}
+.collab-tester-checklist aside ul {
+  margin: 6px 0 0;
+  padding-left: 20px;
+}
+.collab-tester-attachments figure {
+  margin: 0;
+}
+.collab-tester-attachments img {
+  display: block;
+  height: auto;
+  width: 100%;
+}
+
+.collab-tester-attachments__controls {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-top: 10px;
+}
+
+.collab-tester-attachments__controls span {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.collab-tester-attachments__controls button {
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
 @media (max-width: 640px) {
   .collab-tester-detail__pair {
     grid-template-columns: minmax(0, 1fr);

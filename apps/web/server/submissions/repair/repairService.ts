@@ -42,6 +42,7 @@ import { REPAIR_HANDOFF_TEXT_ASSERTION } from '../../../contracts/submissions/ha
 
 const REPAIR_RESULT_ASSERTIONS: ExecutionResultAssertion[] = [
   REPAIR_HANDOFF_TEXT_ASSERTION,
+  { ...REPAIR_HANDOFF_TEXT_ASSERTION, resultPath: ['result', 'testingScope'] },
   {
     kind: 'GIT_COMMITS_CREATED',
     resultPath: ['result', 'commits'],
@@ -132,7 +133,7 @@ export class RepairService {
       codexTurn: createInitialCodexTurn({
         manualHandoff: 'EXTERNAL_SESSION',
         requiredSkillName: 'XBugRepaire',
-        requiredSkillProtocol: 'engineering-workflow-v1',
+        requiredSkillProtocol: 'engineering-workflow-v2',
         executionBrief,
         outputJsonSchema: RepairOutputJsonSchema,
         resultAssertions: REPAIR_RESULT_ASSERTIONS,

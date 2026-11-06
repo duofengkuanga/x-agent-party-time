@@ -1,3 +1,4 @@
+import { testTestingScope } from '@/testing/submissions/testingScope';
 import { expect, test } from 'bun:test';
 import { testDatabases } from '@/testing/database';
 import {
@@ -57,6 +58,7 @@ test('最后完成的修复重置五分钟；到期更新与仍在修复的任�
     { executionId: repair.id, leaseToken: repair.lease.token, sessionId: 'late' },
     {
       result: {
+        testingScope: testTestingScope(['c'.repeat(40)].at(-1)),
         outcome: 'COMPLETED',
         completionKind: 'CHANGES_COMMITTED',
         handoff: testRepairHandoff(),
@@ -71,7 +73,7 @@ test('最后完成的修复重置五分钟；到期更新与仍在修复的任�
   expect(currentBug(f.database, late.id).stage).toBe('WAITING_FOR_UPDATE');
   expect(pending(f.database, f.item.id)?.eligible_at).toBe('2026-07-27T10:14:00.000Z');
   expect(batchEntries(f.database, batch.id)).toHaveLength(2);
-  completeSuccessfulExecution(f, update, completedUpdate());
+  completeSuccessfulExecution(f, update, completedUpdate([0, 1]));
   f.clock.set('2026-07-27T10:14:00.000Z');
   expect(f.updates.prepareDueExecutions()).toHaveLength(1);
   expect(

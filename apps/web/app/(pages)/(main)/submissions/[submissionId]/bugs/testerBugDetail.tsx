@@ -20,12 +20,10 @@ import {
   verificationPassTransition,
   type WorkspaceActionResult,
 } from './boardModel';
-import {
-  latestTesterFeedback,
-  testerBugStatus,
-  linkedReviewPairFor,
-} from './testerDetailModel';
+import { latestTesterFeedback, linkedReviewPairFor } from './testerDetailModel';
 import { PassConfirmButton } from './passConfirmButton';
+import { TesterChecklist } from './testerChecklist';
+import { TesterAttachments } from './testerAttachments';
 import {
   LinkedOwnershipChoice,
   type LinkedOwnership,
@@ -66,7 +64,6 @@ export function TesterBugDetail({
   const feedbackButton = useRef<HTMLButtonElement>(null);
   const latestFeedback = latestTesterFeedback(bug.id, snapshot);
   const pair = linkedReviewPairFor(bug, snapshot.bugs);
-  const blockedReason = bug.linkedReview?.blockedReason;
   const canPass = pair
     ? pair.ready && pair.column === 'WAITING_FOR_VERIFICATION'
     : bug.availableActions.includes('VERIFY_PASS');
@@ -123,21 +120,17 @@ export function TesterBugDetail({
   return (
     <>
       <div className="collab-dialog__body collab-tester-detail">
-        <section
-          aria-label="当前情况"
-          className="collab-tester-detail__status"
-          aria-live="polite"
-        >
-          <span>{bug.presentation.stageLabel}</span>
-          <p>
-            {blockedReason ??
-              (pair?.ready
-                ? pair.column === 'DONE'
-                  ? '前后端均已完成，可按本次问题归属重新打开。'
-                  : '前后端均已就绪，可以验证完整问题。'
-                : testerBugStatus(bug, snapshot))}
-          </p>
-        </section>
+        <TesterChecklist
+          bug={bug}
+          relatedBug={
+            pair
+              ? pair.frontend.id === bug.id
+                ? pair.backend
+                : pair.frontend
+              : undefined
+          }
+          snapshot={snapshot}
+        />
         {pair ? (
           <section
             className="collab-tester-detail__pair"
@@ -169,7 +162,7 @@ export function TesterBugDetail({
             <div>
               <dt>附件</dt>
               <dd>
-                <BugResultDetail attachments={bug.report.attachments} />
+                <TesterAttachments attachments={bug.report.attachments} />
               </dd>
             </div>
           </dl>
@@ -181,8 +174,9 @@ export function TesterBugDetail({
               <h3>上次仍存在的问题</h3>
               <BugResultDetail
                 text={latestFeedback.text ?? undefined}
-                attachments={latestFeedback.attachments}
+                attachments={[]}
               />
+              <TesterAttachments attachments={latestFeedback.attachments} />
               <time dateTime={latestFeedback.createdAt}>
                 {formatDateTime(latestFeedback.createdAt)}
               </time>

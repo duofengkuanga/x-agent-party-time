@@ -1,9 +1,16 @@
+import {
+  testTestingScope,
+  testUpdateTestingScopes,
+} from '@/testing/submissions/testingScope';
 import { expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { testDeploymentReceipt, testSkillBinding } from '@/testing/submissions/execution';
 import { testHandoffUse, testRepairHandoff } from '@/testing/submissions/handoff';
 import { testDatabases } from '@/testing/database';
 import { lifecycleFixture } from './lifecycle/lifecycleFixture';
+import { createSubmissionWorkflow } from '@/server/runtime/createSubmissionWorkflow';
+import { engineeringScenario } from '@/testing/submissions/scenario';
+import { testerChecklist } from '@/app/(pages)/(main)/submissions/[submissionId]/bugs/testerChecklist';
 
 const setup = lifecycleFixture(testDatabases());
 
@@ -108,6 +115,9 @@ test.each([false, true])(
       taskSkillBinding: testSkillBinding('XBugRepaire'),
     });
     const validation = { name: '双工程回归', status: 'PASSED' as const, detail: '' };
+    const unchangedScope = testTestingScope('a'.repeat(40), 'a'.repeat(40));
+    unchangedScope.points[0]!.title = '后端权限仍然正确';
+    unchangedScope.limitations = ['后端弱网流程尚未验证'];
     const completion = f.executions.complete(f.runner.id, claimed!.id, {
       leaseToken: claimed!.lease.token,
       sessionId: 'multi-repair',
@@ -118,6 +128,7 @@ test.each([false, true])(
             outcome: 'COMPLETED',
             repositories: {
               'repo-1': {
+                testingScope: testTestingScope(['a'.repeat(40)].at(-1)),
                 outcome: 'COMPLETED',
                 completionKind: 'CHANGES_COMMITTED',
                 changes: ['修复交互'],
@@ -129,6 +140,7 @@ test.each([false, true])(
               },
               'repo-2': both
                 ? {
+                    testingScope: testTestingScope(['c'.repeat(40)].at(-1)),
                     outcome: 'COMPLETED',
                     completionKind: 'CHANGES_COMMITTED',
                     changes: ['修复后端'],
@@ -139,6 +151,7 @@ test.each([false, true])(
                     handoff: testRepairHandoff(),
                   }
                 : {
+                    testingScope: unchangedScope,
                     outcome: 'COMPLETED',
                     completionKind: 'TARGET_ALREADY_FIXED',
                     changes: [],
@@ -253,6 +266,10 @@ test.each([false, true])(
             result: {
               outcome: 'COMPLETED',
               completedActions: ['完成并验收部署'],
+              testingScopes: [
+                ...testUpdateTestingScopes([0], 'b'.repeat(40)),
+                ...(both ? testUpdateTestingScopes([0], 'd'.repeat(40), 'repo-2') : []),
+              ],
               validations: [validation],
               warnings: [],
               handoffUse: testHandoffUse(),
@@ -283,6 +300,19 @@ test.each([false, true])(
       'WAITING_FOR_VERIFICATION',
     );
     const beforeRework = f.bugs.workspace(f.users.tester.id, created.id).bugs[0]!;
+    const snapshot = createSubmissionWorkflow(f.database, {
+      now: f.clock.now,
+    }).workspace.getWorkspace(f.users.tester.id, created.id);
+    const scopes = testerChecklist(beforeRework, snapshot).scopes;
+    if (!both) {
+      expect(scopes.flatMap(({ points }) => points).map(({ title }) => title)).toContain(
+        '后端权限仍然正确',
+      );
+      expect(scopes.flatMap(({ limitations }) => limitations)).toContain(
+        '后端弱网流程尚未验证',
+      );
+      expect(JSON.stringify(snapshot)).not.toContain('headCommit');
+    }
     f.lifecycle.verifyBug(f.users.tester.id, beforeRework.id, {
       mutationId: randomUUID(),
       expectedVersion: beforeRework.version,
@@ -303,3 +333,73 @@ test.each([false, true])(
     );
   },
 );
+
+test('20 工程的 PersonAgent 可领取修复，每个工程均有 Git 断言且文本断言不超协议上限', async () => {
+  const f = await setup();
+  f.lifecycle.closeSubmission(f.users.tester.id, f.submission.id, {
+    mutationId: randomUUID(),
+    expectedVersion: f.submission.version,
+  });
+  const items = f.submissions
+    .getWorkspace(f.users.owner.id, f.submission.id)
+    .submission.items.map((item) => ({
+      engineeringId: item.engineering.id,
+      environmentId: item.environment.id,
+      targetBranch: item.targetBranch,
+      responsibleUserId: f.users.developer.id,
+      bindingId: f.database.get<{ binding_id: string }>(
+        'SELECT binding_id FROM submission_item WHERE id = ?',
+        item.id,
+      )!.binding_id,
+    }));
+  for (let index = 2; index < 20; index += 1) {
+    const source = engineeringScenario(f.database, f.users.owner.id, f.project.id, {
+      name: `工程${index}`,
+      type: 'BACKEND',
+      identifier: `scope-${index}`,
+      environment: '测试',
+      key: 'test',
+      repository: `https://example.com/scope-${index}.git`,
+      developers: { developer: { userId: f.users.developer.id, runnerId: f.runner.id } },
+    });
+    items.push({
+      engineeringId: source.source.id,
+      environmentId: source.environment.id,
+      targetBranch: 'main',
+      responsibleUserId: f.users.developer.id,
+      bindingId: source.bindings.developer.id,
+    });
+  }
+  const submission = f.submissions.createSubmission(f.users.owner.id, f.project.id, {
+    mutationId: randomUUID(),
+    mode: 'PERSON_AGENT',
+    personAgent: { responsibleUserId: f.users.developer.id, runnerId: f.runner.id },
+    title: '20 工程范围',
+    requirementDescription: '检查完整工程范围',
+    testerUserId: f.users.tester.id,
+    items,
+  });
+  f.bugs.createBug(f.users.tester.id, submission.id, {
+    mutationId: randomUUID(),
+    description: '跨工程范围检查',
+    attachmentIds: [],
+    startRepair: true,
+  });
+  const [claimed] = await f.executions.claim(f.runner.id, 1, 0);
+  expect(claimed!.workspaces).toHaveLength(20);
+  const assertions = claimed!.codexTurn!.resultAssertions!;
+  expect(assertions.length).toBeLessThanOrEqual(50);
+  expect(
+    new Set(
+      assertions
+        .filter((assertion) => assertion.kind === 'GIT_COMMITS_CREATED')
+        .map((assertion) => assertion.workspaceBindingId),
+    ).size,
+  ).toBe(20);
+  expect(assertions).toContainEqual(
+    expect.objectContaining({
+      kind: 'JSON_STRING_PATTERN',
+      resultPath: ['result', 'repositories'],
+    }),
+  );
+});

@@ -1,3 +1,4 @@
+import { testTestingScope } from '../apps/web/testing/submissions/testingScope';
 import { createRequire } from 'node:module';
 import { expect, test } from 'bun:test';
 import { RepairOutputJsonSchema } from '../apps/web/contracts/submissions/repair';
@@ -15,6 +16,7 @@ test('Codex 使用支持的格式 Schema，本机结果断言在上传前拒绝�
   expect(JSON.stringify(RepairOutputJsonSchema)).not.toMatch(/\(\?[=!<]/u);
   const verifier = new GitExecutionResultVerifier(new NodeCommandRunner());
   const result = {
+    testingScope: testTestingScope(['a'.repeat(40)].at(-1)),
     outcome: 'COMPLETED',
     completionKind: 'CHANGES_COMMITTED',
     changes: [],

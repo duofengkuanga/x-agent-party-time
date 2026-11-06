@@ -164,7 +164,7 @@ export class SkillBundleManager {
         file.path === 'agents/openai.yaml' &&
         new TextDecoder()
           .decode(file.bytes)
-          .includes('# xapt-execution-protocol: engineering-workflow-v1'),
+          .match(/^# xapt-execution-protocol: engineering-workflow-v\d+$/mu),
     );
     const handoffHash = manifest.skills.XHandoff;
     if (!handoffHash) {

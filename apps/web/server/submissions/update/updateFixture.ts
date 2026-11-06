@@ -1,4 +1,5 @@
 import { testHandoffUse } from '@/testing/submissions/handoff';
+import { testUpdateTestingScopes } from '@/testing/submissions/testingScope';
 import { createSubmissionWorkflow } from '@/server/runtime/createSubmissionWorkflow';
 import {
   completeRepairExecution,
@@ -112,11 +113,12 @@ async function setup(
   };
 }
 
-export function completedUpdate() {
+export function completedUpdate(positions = [0]) {
   return {
     result: {
       handoffUse: testHandoffUse(),
       outcome: 'COMPLETED' as const,
+      testingScopes: testUpdateTestingScopes(positions),
       completedActions: ['集成候选并完成部署'],
       deliveries: {
         'repo-1': {

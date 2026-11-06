@@ -1,3 +1,4 @@
+import { testTestingScope } from '@/testing/submissions/testingScope';
 import { testDatabases } from '@/testing/database';
 import { testSkillBinding } from '@/testing/submissions/execution';
 import { expect, test } from 'bun:test';
@@ -49,6 +50,7 @@ test('成功修复的交接随候选冻结，更新只获得必要上下文', as
     taskSkillBinding: testSkillBinding('XBugRepaire'),
   });
   const result = {
+    testingScope: testTestingScope(['a'.repeat(40)].at(-1)),
     outcome: 'COMPLETED',
     completionKind: 'CHANGES_COMMITTED',
     changes: ['修正付款入口'],
@@ -79,6 +81,8 @@ test('成功修复的交接随候选冻结，更新只获得必要上下文', as
         {
           commits: result.commits,
           changes: result.changes,
+          testingScope: result.testingScope,
+          unchangedTestingScopes: [],
           validations: result.validations,
           warnings: [],
           handoff,
@@ -142,6 +146,7 @@ test.each(['missing', 'different-commit'])(
 
 test('交接契约拒绝旧格式、短提交、无效验证引用、本机路径和凭据', () => {
   const valid = {
+    testingScope: testTestingScope(['a'.repeat(40)].at(-1)),
     outcome: 'COMPLETED',
     completionKind: 'CHANGES_COMMITTED',
     changes: [],

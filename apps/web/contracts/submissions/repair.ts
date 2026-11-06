@@ -10,12 +10,12 @@ import { outputJsonSchema } from '@/contracts/outputSchema';
 import { ExecutionStateSchema } from '@agent-party-time/execution-contract';
 import { z } from 'zod';
 import { RepairHandoffSchema } from './handoff';
-
-export const CommitShaSchema = z
-  .string()
-  .trim()
-  .toLowerCase()
-  .regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u);
+import {
+  CommitShaSchema,
+  TestingScopeSchema,
+  TestingScopeViewSchema,
+} from './testingScope';
+export { CommitShaSchema } from './testingScope';
 
 export const RepairValidationSchema = ValidationSchema;
 
@@ -46,6 +46,7 @@ const CompletedRepairFields = {
   warnings: z.array(z.string().trim().min(1).max(300)).max(3),
   commits: z.array(CommitShaSchema).max(5),
   manualOperations: ManualOperationsSchema,
+  testingScope: TestingScopeSchema,
 };
 
 export const CommittedRepairResultSchema = z
@@ -56,6 +57,18 @@ export const CommittedRepairResultSchema = z
     handoff: RepairHandoffSchema,
   })
   .superRefine((result, context) => {
+    if (result.testingScope.review.baseCommit === result.testingScope.review.headCommit)
+      context.addIssue({
+        code: 'custom',
+        path: ['testingScope', 'review'],
+        message: '已提交修复的审查范围不得为空',
+      });
+    if (result.testingScope.review.headCommit !== result.commits.at(-1))
+      context.addIssue({
+        code: 'custom',
+        path: ['testingScope', 'review', 'headCommit'],
+        message: '测试范围必须对应本次最终候选提交',
+      });
     if (new Set(result.commits).size !== result.commits.length)
       context.addIssue({
         code: 'custom',
@@ -90,6 +103,18 @@ const RepairExecutionResultValueSchema = z.union([
       ),
     })
     .superRefine((result, context) => {
+      if (result.testingScope.points.some((point) => point.kind === 'DERIVED'))
+        context.addIssue({
+          code: 'custom',
+          path: ['testingScope', 'points'],
+          message: '无改动修复没有本次改动衍生的回归点',
+        });
+      if (result.testingScope.review.baseCommit !== result.testingScope.review.headCommit)
+        context.addIssue({
+          code: 'custom',
+          path: ['testingScope', 'review'],
+          message: '无需改动的修复必须审查同一版本',
+        });
       if (
         !result.validations.some(({ status }) => status === 'PASSED') ||
         result.validations.some(({ status }) => status === 'FAILED')
@@ -124,6 +149,7 @@ const RepairAttemptResultViewSchema = z.discriminatedUnion('outcome', [
     warnings: z.array(z.string()),
     commitCount: z.number().int().nonnegative(),
     commits: z.array(CommitShaSchema).nullable(),
+    testingScopes: z.array(TestingScopeViewSchema),
   }),
   z.object({
     outcome: z.literal('FAILED'),

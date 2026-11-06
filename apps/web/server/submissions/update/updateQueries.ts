@@ -11,6 +11,7 @@ import {
 import { deliveryEnvironmentAvailable } from '@/server/submissions/environmentAccess';
 import type { AppDatabase } from '@/server/database/index';
 import { PlatformError } from '@/server/platform/errors/index';
+import { projectTestingScope } from '@/contracts/submissions/testingScope';
 import { ExecutionService } from '@/server/platform/execution/service';
 import { isTerminal } from '@/server/submissions/shared/executionState';
 import {
@@ -180,15 +181,25 @@ export class UpdateQueries {
       environmentName: source.environment_name,
       hasManualDatabaseOperation,
       synchronizationError: technical ? this.sessionSynchronizationError(batch.id) : null,
-      entries: entries.map((entry) => ({
-        bugId: entry.bug_id,
-        bugShortId: entry.short_id,
-        bugTitle: entry.title,
-        commits: technical ? parseCommits(entry.commits_json) : null,
-        repairHandoffs: technical
-          ? FrozenRepairHandoffSchema.array().parse(JSON.parse(entry.handoffs_json))
-          : null,
-      })),
+      entries: entries.map((entry) => {
+        const handoffs = FrozenRepairHandoffSchema.array().parse(
+          JSON.parse(entry.handoffs_json),
+        );
+        return {
+          bugId: entry.bug_id,
+          position: entry.position,
+          repairAttemptIds: handoffs.map((handoff) => handoff.attemptId),
+          unchangedTestingScopes: handoffs.flatMap((handoff) =>
+            handoff.unchangedTestingScopes.map(({ testingScope }) =>
+              projectTestingScope(testingScope),
+            ),
+          ),
+          bugShortId: entry.short_id,
+          bugTitle: entry.title,
+          commits: technical ? parseCommits(entry.commits_json) : null,
+          repairHandoffs: technical ? handoffs : null,
+        };
+      }),
       timeline,
       availableActions:
         technical && deliveryEnvironmentAvailable(this.db, batch.submission_item_id)
@@ -288,6 +299,7 @@ export class UpdateQueries {
 
   batchEntries(batchId: string): Array<{
     bug_id: string;
+    position: number;
     short_id: number;
     title: string;
     commits_json: string;
@@ -296,13 +308,14 @@ export class UpdateQueries {
   }> {
     return this.db.all<{
       bug_id: string;
+      position: number;
       short_id: number;
       title: string;
       commits_json: string;
       manual_operations_json: string;
       handoffs_json: string;
     }>(
-      `SELECT entry.bug_id, bug.short_id, substr(bug.description, 1, 240) title, entry.commits_json,
+      `SELECT entry.bug_id, entry.position, bug.short_id, substr(bug.description, 1, 240) title, entry.commits_json,
                 entry.manual_operations_json, entry.handoffs_json
          FROM submission_update_batch_entry entry
          JOIN submission_bug bug ON bug.id = entry.bug_id

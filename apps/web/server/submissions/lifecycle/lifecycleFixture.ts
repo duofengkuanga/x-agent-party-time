@@ -1,4 +1,5 @@
 import { testHandoffUse } from '@/testing/submissions/handoff';
+import { testUpdateTestingScopes } from '@/testing/submissions/testingScope';
 import { createSubmissionWorkflow } from '@/server/runtime/createSubmissionWorkflow';
 import {
   completeRepairExecution,
@@ -175,6 +176,15 @@ export async function completeUpdate(
         result: {
           handoffUse: testHandoffUse(),
           outcome: result.outcome,
+          testingScopes: testUpdateTestingScopes(
+            fixture.database
+              .all<{ position: number }>(
+                'SELECT position FROM submission_update_batch_entry WHERE batch_id = ? ORDER BY position',
+                frozen.batchId,
+              )
+              .map(({ position }) => position),
+            commit,
+          ),
           completedActions: ['集成候选并完成更新'],
           deliveries: {
             'repo-1': {

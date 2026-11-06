@@ -41,6 +41,7 @@ export function freezeRepairHandoffs(
       validations,
       warnings,
       handoff,
+      testingScope,
       commits: sourceCommits,
     } = parsed.data;
     sources.push({
@@ -51,6 +52,8 @@ export function freezeRepairHandoffs(
       validations,
       warnings,
       handoff,
+      testingScope,
+      unchangedTestingScopes: [],
     });
   }
   const covered = sources.flatMap((source) => source.commits);

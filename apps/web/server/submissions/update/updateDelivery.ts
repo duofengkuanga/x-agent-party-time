@@ -216,6 +216,7 @@ export class UpdateDelivery {
         environmentId: source.environment_id,
         environmentKey: source.environment_key,
         candidateCommits: [...new Set(entries.flatMap(({ commits }) => commits))],
+        candidatePositions: entries.map((_, position) => position),
         changed: true,
       },
     ];
@@ -282,10 +283,11 @@ export class UpdateDelivery {
       codexTurn: createInitialCodexTurn({
         manualHandoff: 'EXTERNAL_SESSION',
         requiredSkillName: 'XUpdate',
-        requiredSkillProtocol: 'engineering-workflow-v1',
+        requiredSkillProtocol: 'engineering-workflow-v2',
         executionBrief,
         resultAssertions: [
           UPDATE_HANDOFF_TEXT_ASSERTION,
+          { ...UPDATE_HANDOFF_TEXT_ASSERTION, resultPath: ['result', 'testingScopes'] },
           ...scope.flatMap(
             ({
               alias,

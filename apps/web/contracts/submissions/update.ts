@@ -25,6 +25,12 @@ import {
   ExecutionStateSchema,
 } from '@agent-party-time/execution-contract';
 import { z } from 'zod';
+import {
+  UpdateTestingScopeSchema,
+  UpdateTestingScopeViewSchema,
+  TestingScopeSchema,
+  TestingScopeViewSchema,
+} from './testingScope';
 
 export const UpdateBatchIdSchema = z.uuid();
 const UpdateAttemptIdSchema = z.uuid();
@@ -41,6 +47,15 @@ export const FrozenRepairHandoffSchema = z.strictObject({
   validations: CommittedRepairResultSchema.shape.validations,
   warnings: CommittedRepairResultSchema.shape.warnings,
   handoff: CommittedRepairResultSchema.shape.handoff,
+  testingScope: CommittedRepairResultSchema.shape.testingScope,
+  unchangedTestingScopes: z
+    .array(
+      z.strictObject({
+        engineeringAlias: z.string().regex(/^repo-[1-9]\d*$/u),
+        testingScope: TestingScopeSchema,
+      }),
+    )
+    .max(20),
 });
 
 export const UpdateHandoffUseSchema = z.strictObject({
@@ -88,6 +103,7 @@ const UpdateResultFields = {
 const CompletedUpdateExecutionResultSchema = z
   .strictObject({
     outcome: z.literal('COMPLETED'),
+    testingScopes: z.array(UpdateTestingScopeSchema).min(1),
     ...UpdateResultFields,
   })
   .superRefine(validateHandoffUse);
@@ -119,6 +135,9 @@ const PendingDeliveryViewSchema = z.object({
 
 const UpdateBatchEntryViewSchema = z.object({
   bugId: BugIdSchema,
+  position: z.number().int().nonnegative(),
+  repairAttemptIds: z.array(z.uuid()),
+  unchangedTestingScopes: z.array(TestingScopeViewSchema),
   bugShortId: z.number().int().positive(),
   bugTitle: z.string().trim().min(1).max(240),
   commits: z.array(CommitShaSchema).nullable(),
@@ -147,6 +166,7 @@ const UpdateAttemptResultViewSchema = z.discriminatedUnion('outcome', [
     validations: z.array(UpdateValidationSchema),
     warnings: z.array(z.string()),
     handoffUse: UpdateHandoffUseSchema.nullable(),
+    testingScopes: z.array(UpdateTestingScopeViewSchema),
     engineeringDeliveries: z.array(EngineeringDeliveryViewSchema).optional(),
   }),
   z.object({

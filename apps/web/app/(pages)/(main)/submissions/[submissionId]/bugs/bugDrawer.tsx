@@ -15,7 +15,7 @@ import { BugDetail } from './bugDetail';
 import { BugForm } from './bugEditor';
 import { BugDeleteControl } from './bugDeleteControl';
 import { TesterBugDetail, type RunTesterAction } from './testerBugDetail';
-import { linkedReviewPairFor } from './testerDetailModel';
+import { linkedReviewPairFor, testerBugStatus } from './testerDetailModel';
 
 export function BugDrawer({
   drawer,
@@ -89,11 +89,7 @@ export function BugDrawer({
               <h2>{bug.report.description.slice(0, 120)}</h2>
               {summaryOnly ? (
                 <div className="collab-tester-detail__meta">
-                  {pair?.ready ? (
-                    <span>前端＋后端 · 同一问题</span>
-                  ) : (
-                    <span>{bugLabel(bug)}</span>
-                  )}
+                  {pair?.ready ? <span>前端＋后端 · 同一问题</span> : null}
                   {!pair?.ready && bug.assignment ? (
                     <>
                       <span>
@@ -107,6 +103,15 @@ export function BugDrawer({
                       </span>
                     </>
                   ) : null}
+                  <span>{bug.presentation.stageLabel}</span>
+                  <span aria-live="polite">
+                    {bug.linkedReview?.blockedReason ??
+                      (pair?.ready
+                        ? pair.column === 'DONE'
+                          ? '前后端均已完成，可按本次问题归属重新打开。'
+                          : '前后端均已就绪，可以验证完整问题。'
+                        : testerBugStatus(bug, snapshot))}
+                  </span>
                 </div>
               ) : null}
             </div>

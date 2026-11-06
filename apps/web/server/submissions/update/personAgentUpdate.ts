@@ -25,6 +25,7 @@ const scopeSchema = z
       repositoryUrl: z.string(),
       environmentKey: EnvironmentKeySchema,
       candidateCommits: z.array(CommitShaSchema),
+      candidatePositions: z.array(z.number().int().nonnegative()),
       targetBranch: z.string(),
       environmentId: z.uuid(),
       changed: z.boolean(),
@@ -88,6 +89,38 @@ export function personAgentUpdateResultSchema(
       ]),
     })
     .superRefine(({ result }, context) => {
+      if (result.outcome === 'COMPLETED') {
+        const expected = scope.flatMap(({ alias, candidatePositions }) =>
+          candidatePositions.map((position) => `${alias}:${position}`),
+        );
+        const actual = result.testingScopes.map(
+          ({ engineeringAlias, candidatePosition }) =>
+            `${engineeringAlias}:${candidatePosition}`,
+        );
+        if (
+          actual.length !== expected.length ||
+          new Set(actual).size !== actual.length ||
+          expected.some((key) => !actual.includes(key))
+        )
+          context.addIssue({
+            code: 'custom',
+            path: ['result', 'testingScopes'],
+            message: '测试范围必须完整对应冻结的工程与缺陷，且不得重复',
+          });
+        result.testingScopes.forEach((entry, index) => {
+          const delivery = result.deliveries[entry.engineeringAlias];
+          if (
+            !delivery ||
+            delivery.state !== 'DEPLOYED' ||
+            delivery.commit !== entry.testingScope.review.headCommit
+          )
+            context.addIssue({
+              code: 'custom',
+              path: ['result', 'testingScopes', index],
+              message: '测试范围必须对应本工程实际交付版本',
+            });
+        });
+      }
       if (
         result.outcome === 'COMPLETED' &&
         (!result.validations.some(({ status }) => status === 'PASSED') ||
@@ -174,28 +207,48 @@ export function freezePersonAgentUpdate(
     }).result;
     if (result.outcome !== 'COMPLETED')
       throw new PlatformError('INVALID_TRANSITION', '多工程修复结果无法用于更新');
-    const scoped = workspaces.flatMap(({ bindingId }, index) => {
-      const repository = result.repositories[`repo-${index + 1}`]!;
-      if (repository.completionKind !== 'CHANGES_COMMITTED') return [];
-      if (!rows.some(({ binding_id }) => binding_id === bindingId))
-        throw new PlatformError('INVALID_TRANSITION', '修复候选引用了提测范围外的工程');
-      return [
-        {
-          bindingId,
-          handoff: {
-            attemptId: attempt.id,
-            executionId: attempt.execution_id,
-            commits: repository.commits,
-            changes: repository.changes,
-            validations: repository.validations,
-            warnings: repository.warnings,
-            handoff: repository.handoff,
+    const scoped: Array<{ bindingId: string; handoff: FrozenRepairHandoff }> =
+      workspaces.flatMap(({ bindingId }, index) => {
+        const repository = result.repositories[`repo-${index + 1}`]!;
+        if (repository.completionKind !== 'CHANGES_COMMITTED') return [];
+        if (!rows.some(({ binding_id }) => binding_id === bindingId))
+          throw new PlatformError('INVALID_TRANSITION', '修复候选引用了提测范围外的工程');
+        return [
+          {
+            bindingId,
+            handoff: {
+              attemptId: attempt.id,
+              executionId: attempt.execution_id,
+              commits: repository.commits,
+              changes: repository.changes,
+              validations: repository.validations,
+              warnings: repository.warnings,
+              handoff: repository.handoff,
+              testingScope: repository.testingScope,
+              unchangedTestingScopes: [],
+            },
           },
-        },
-      ];
-    });
+        ];
+      });
     if (!scoped.length)
       throw new PlatformError('INVALID_TRANSITION', '没有可冻结的多工程候选');
+    scoped[0]!.handoff.unchangedTestingScopes = workspaces.flatMap(
+      ({ bindingId }, index) => {
+        const repository = result.repositories[`repo-${index + 1}`]!;
+        if (repository.completionKind !== 'TARGET_ALREADY_FIXED') return [];
+        const engineeringIndex = rows.findIndex(
+          ({ binding_id }) => binding_id === bindingId,
+        );
+        if (engineeringIndex < 0)
+          throw new PlatformError('INVALID_TRANSITION', '验收范围引用了提测范围外的工程');
+        return [
+          {
+            engineeringAlias: `repo-${engineeringIndex + 1}`,
+            testingScope: repository.testingScope,
+          },
+        ];
+      },
+    );
     handoffs.set(candidate.bug_id, scoped);
   }
   const workspaces: ExecutionWorkspaceMember[] = rows.map((item, index) => ({
@@ -232,6 +285,7 @@ export function freezePersonAgentUpdate(
       repositoryUrl: item.repository_url,
       environmentKey: item.environment_key,
       candidateCommits: frozenCandidates.flatMap(({ commits }) => commits),
+      candidatePositions: frozenCandidates.map(({ position }) => position),
       targetBranch: item.target_branch,
       environmentId: item.environment_id,
       changed: frozenCandidates.length > 0,

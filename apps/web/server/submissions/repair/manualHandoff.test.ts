@@ -1,3 +1,4 @@
+import { testTestingScope } from '@/testing/submissions/testingScope';
 import { testRepairHandoff } from '@/testing/submissions/handoff';
 import { expect, test } from 'bun:test';
 import { testDatabases } from '@/testing/database';
@@ -82,6 +83,9 @@ test('人工接管保留等待状态和问题，负责人同步最新结果后�
         turnId: 'finished-turn',
         result: {
           result: {
+            testingScope: testTestingScope(
+              ['abcdef1111111111111111111111111111111111'].at(-1),
+            ),
             outcome: 'COMPLETED',
             completionKind: 'CHANGES_COMMITTED',
             handoff: testRepairHandoff(),
@@ -141,6 +145,7 @@ test('同步结果无效时提示具体字段，补正后保持无需更新的�
           turnId: valid ? 'corrected-turn' : 'invalid-turn',
           result: {
             result: {
+              testingScope: testTestingScope('a'.repeat(40), 'a'.repeat(40)),
               outcome: 'COMPLETED',
               completionKind: 'TARGET_ALREADY_FIXED',
               changes: valid ? [] : ['现有实现已满足要求，无需修改代码'],

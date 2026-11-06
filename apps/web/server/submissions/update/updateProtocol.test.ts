@@ -47,7 +47,7 @@ describe('UpdateService', () => {
         claimedCommits = candidates.flatMap((candidate) => candidate.commits);
         return {
           kind: 'SUCCEEDED',
-          result: completedUpdate(),
+          result: completedUpdate([0, 1]),
         };
       },
       { sessionId: () => 'update-conformance-session' },

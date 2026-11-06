@@ -13,6 +13,10 @@ import {
 } from '@/server/submissions/shared/executionVisual';
 import type { BatchRow, AttemptRow } from './updateQueries';
 import { UpdateHandoffUseSchema } from '../../../contracts/submissions/update';
+import {
+  projectTestingScope,
+  UpdateTestingScopeSchema,
+} from '@/contracts/submissions/testingScope';
 
 export function projectUpdateAttemptResult(outcomeJson: string, technical: boolean) {
   const outcome = JSON.parse(outcomeJson) as Record<string, unknown>;
@@ -67,6 +71,12 @@ export function projectUpdateAttemptResult(outcomeJson: string, technical: boole
       validations: Array.isArray(outcome.validations) ? outcome.validations : [],
       warnings: stringArray(outcome.warnings),
       handoffUse: technical ? UpdateHandoffUseSchema.parse(outcome.handoffUse) : null,
+      testingScopes: UpdateTestingScopeSchema.array()
+        .parse(outcome.testingScopes)
+        .map((entry) => ({
+          ...entry,
+          testingScope: projectTestingScope(entry.testingScope),
+        })),
     };
   return {
     ...engineering,

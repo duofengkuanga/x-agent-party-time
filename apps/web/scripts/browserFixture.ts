@@ -1,3 +1,7 @@
+import {
+  testTestingScope,
+  testUpdateTestingScopes,
+} from '@/testing/submissions/testingScope';
 import { createSubmissionWorkflow } from '@/server/runtime/createSubmissionWorkflow';
 import { deliveryProject } from '@/testing/submissions/project';
 import { engineeringScenario } from '@/testing/submissions/scenario';
@@ -7,6 +11,7 @@ import {
   testDeploymentReceipt,
 } from '@/testing/submissions/execution';
 import { openDatabase } from '@/server/database/index';
+import { LocalFileStore } from '@/server/platform/files/localFileStore';
 import { ExecutionObservations } from '@/server/platform/execution/observations';
 import { submissionObservationAccess } from '@/server/submissions/observationAccess';
 import {
@@ -16,6 +21,7 @@ import {
 } from '@agent-party-time/execution-contract/observability';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
+import { readFile } from 'node:fs/promises';
 
 export type BrowserFixture = {
   closableSubmissionId: string;
@@ -29,7 +35,7 @@ export type BrowserFixture = {
 
 export async function seedBrowserFixture(
   home: string,
-  options: { queuedUpdates?: boolean } = {},
+  options: { queuedUpdates?: boolean; testerScope?: boolean } = {},
 ): Promise<BrowserFixture> {
   const db = openDatabase(join(home, 'server', 'server.sqlite'));
   try {
@@ -88,13 +94,13 @@ export async function seedBrowserFixture(
     const { executions, bugs, lifecycle, repairs, updates } =
       createSubmissionWorkflow(db);
 
-    const createBug = (title: string) =>
+    const createBug = (title: string, attachmentIds: string[] = []) =>
       bugs.createBug(tester.id, submission.id, {
         mutationId: randomUUID(),
         submissionItemId: item.id,
         description: title,
 
-        attachmentIds: [],
+        attachmentIds,
       }).bug;
 
     createBug('待取消缺陷');
@@ -150,8 +156,10 @@ export async function seedBrowserFixture(
     const completeRepair = async (
       title: string,
       stage: 'DONE' | 'WAITING_FOR_VERIFICATION',
+      testingScope = testTestingScope('a'.repeat(40), 'a'.repeat(40)),
+      attachmentIds: string[] = [],
     ) => {
-      const bug = createBug(title);
+      const bug = createBug(title, attachmentIds);
       bugs.requestRepair(tester.id, bug.id, {
         mutationId: randomUUID(),
         expectedVersion: bug.version,
@@ -170,6 +178,7 @@ export async function seedBrowserFixture(
           kind: 'SUCCEEDED',
           result: {
             result: {
+              testingScope,
               outcome: 'COMPLETED',
               completionKind: 'TARGET_ALREADY_FIXED',
               changes: [],
@@ -223,6 +232,7 @@ export async function seedBrowserFixture(
       },
       {
         result: {
+          testingScope: testTestingScope('a'.repeat(40), 'a'.repeat(40)),
           outcome: 'COMPLETED',
           completionKind: 'TARGET_ALREADY_FIXED',
           changes: [],
@@ -234,6 +244,96 @@ export async function seedBrowserFixture(
       },
     );
     await completeRepair('待验证通过缺陷', 'WAITING_FOR_VERIFICATION');
+
+    if (options.testerScope) {
+      const files = new LocalFileStore(db, join(home, 'server', 'files'));
+      const attachmentIds: string[] = [];
+      for (const [index, path] of [
+        'testerScopeFirst.png',
+        'testerScopeSecond.png',
+      ].entries()) {
+        const file = await files.put({
+          bytes: await readFile(new URL(`../tests/browser/${path}`, import.meta.url)),
+          originalName: `截图${index + 1}.png`,
+          mediaType: 'image/png',
+          uploadedByUserId: tester.id,
+        });
+        attachmentIds.push(file.id);
+      }
+      const testingScope = testTestingScope();
+      testingScope.points = [
+        {
+          kind: 'ORIGINAL',
+          title: '保存后刷新，内容仍然保留',
+          steps: '修改报告内容并保存，刷新页面。',
+          expectedResult: '已保存内容完整保留。',
+        },
+        {
+          kind: 'DERIVED',
+          title: '批量保存也能保留内容',
+          steps: '选择两份报告，分别修改后批量保存，再重新打开。',
+          expectedResult: '两份报告分别保留自己的内容。',
+          reason: '本次修复调整了单份与批量保存共用的内容处理。',
+          evidence: [
+            { path: 'src/report.ts', note: '批量保存调用本次修改的公共保存函数。' },
+          ],
+        },
+      ];
+      testingScope.limitations = ['弱网下重复提交尚未覆盖。'];
+      const bug = createBug('测试范围与截图轮播', attachmentIds);
+      bugs.requestRepair(tester.id, bug.id, {
+        mutationId: randomUUID(),
+        expectedVersion: bug.version,
+      });
+      const [repair] = await executions.claim(paired.runner.id, 1, 0);
+      completeRepairExecution(
+        { executions, runner: paired.runner },
+        repair!.id,
+        repair!.lease.token,
+        'browser-tester-scope-repair',
+        ['a'.repeat(40)],
+        [],
+        testingScope,
+      );
+      const frozen = updates.freezeNow(developer.id, item.id, {
+        mutationId: randomUUID(),
+      });
+      const [update] = await executions.claim(paired.runner.id, 1, 0);
+      if (update!.id !== frozen.executionId)
+        throw new Error('测试范围夹具领取到错误批次');
+      const sessionId = 'browser-tester-scope-update';
+      executions.start(paired.runner.id, update!.id, {
+        kind: 'STARTED',
+        leaseToken: update!.lease.token,
+        sessionId,
+        taskSkillBinding: fixtureSkillBinding('XUpdate'),
+      });
+      completeSuccessfulExecution(
+        { executions, runner: paired.runner },
+        { executionId: update!.id, leaseToken: update!.lease.token, sessionId },
+        {
+          result: {
+            outcome: 'COMPLETED',
+            completedActions: ['已部署'],
+            validations: [{ name: '检查', status: 'PASSED', detail: '' }],
+            warnings: [],
+            handoffUse: { adopted: [], rechecked: [], validationCommands: [] },
+            testingScopes: [
+              { candidatePosition: 0, engineeringAlias: 'repo-1', testingScope },
+            ],
+            deliveries: {
+              'repo-1': {
+                state: 'DEPLOYED',
+                commit: 'a'.repeat(40),
+                pushVerified: true,
+                deploymentVerified: true,
+                receipt: testDeploymentReceipt('a'.repeat(40), 'backend'),
+              },
+            },
+          },
+        },
+      );
+    }
 
     // 完成后的返修入口和长时间线一起覆盖页签切换带动遮罩滚动的场景。
     const scrollBug = createBug('修复更新页签滚动回归');
@@ -312,6 +412,7 @@ export async function seedBrowserFixture(
             },
             outcome: 'COMPLETED',
             completedActions: ['集成修复提交并完成推送和部署'],
+            testingScopes: testUpdateTestingScopes(),
             deliveries: {
               'repo-1': {
                 state: 'DEPLOYED',

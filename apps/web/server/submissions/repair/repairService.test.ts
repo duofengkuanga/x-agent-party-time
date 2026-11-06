@@ -1,3 +1,4 @@
+import { testTestingScope } from '@/testing/submissions/testingScope';
 import { testRepairHandoff } from '@/testing/submissions/handoff';
 import { mutation } from '@/testing/submissions/project';
 import { completeSuccessfulExecution } from '@/testing/submissions/execution';
@@ -50,6 +51,11 @@ describe('RepairService', () => {
           {
             kind: 'JSON_STRING_PATTERN',
             resultPath: ['result', 'handoff'],
+            pattern: expect.any(String),
+          },
+          {
+            kind: 'JSON_STRING_PATTERN',
+            resultPath: ['result', 'testingScope'],
             pattern: expect.any(String),
           },
           {
@@ -118,6 +124,12 @@ describe('RepairService', () => {
           kind: 'SUCCEEDED',
           result: {
             result: {
+              testingScope: testTestingScope(
+                [
+                  'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                  'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+                ].at(-1),
+              ),
               outcome: 'COMPLETED',
               completionKind: 'CHANGES_COMMITTED',
               handoff: testRepairHandoff(),
@@ -206,6 +218,7 @@ describe('RepairService', () => {
       'UPDATE submission_repair_attempt SET outcome_json = ? WHERE execution_id = ?',
       [
         JSON.stringify({
+          testingScope: testTestingScope('a'.repeat(40), 'a'.repeat(40)),
           outcome: 'COMPLETED',
           completionKind: 'TARGET_ALREADY_FIXED',
           changes: [],
@@ -238,6 +251,7 @@ describe('RepairService', () => {
     expect(
       completeSuccessfulExecution(fixture, started, {
         result: {
+          testingScope: testTestingScope('a'.repeat(40), 'a'.repeat(40)),
           outcome: 'COMPLETED',
           completionKind: 'TARGET_ALREADY_FIXED',
           changes: [],

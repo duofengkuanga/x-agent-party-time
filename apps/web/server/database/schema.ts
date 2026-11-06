@@ -5,7 +5,7 @@ import { PROJECT_SCHEMA } from './projectSchema';
 import { SUBMISSION_SCHEMA } from './submissionSchema';
 import { OBSERVATION_SCHEMA } from './observationSchema';
 
-export const SERVER_SCHEMA_VERSION = 36;
+export const SERVER_SCHEMA_VERSION = 37;
 
 const SCHEMA = PLATFORM_SCHEMA + PROJECT_SCHEMA + SUBMISSION_SCHEMA + OBSERVATION_SCHEMA;
 

@@ -15,10 +15,11 @@ let browserSession: string | undefined;
 let exitCode = 1;
 try {
   const suiteName = process.env.AGENT_PARTY_TIME_BROWSER_SUITE ?? 'submissions';
-  if (!['submissions', 'queuedUpdates'].includes(suiteName))
+  if (!['submissions', 'queuedUpdates', 'testerScope'].includes(suiteName))
     throw new Error('浏览器测试套件不存在');
   const fixture = await seedBrowserFixture(home, {
     queuedUpdates: suiteName === 'queuedUpdates',
+    testerScope: suiteName === 'testerScope',
   });
   const port = await reservePort();
   const baseUrl = `http://127.0.0.1:${port}`;

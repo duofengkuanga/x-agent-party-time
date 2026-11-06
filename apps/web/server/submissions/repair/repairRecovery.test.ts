@@ -1,3 +1,4 @@
+import { testTestingScope } from '@/testing/submissions/testingScope';
 import { testRepairHandoff } from '@/testing/submissions/handoff';
 import { mutation } from '@/testing/submissions/project';
 import {
@@ -65,6 +66,9 @@ describe('RepairService', () => {
           kind: 'SUCCEEDED',
           result: {
             result: {
+              testingScope: testTestingScope(
+                ['abcdef1111111111111111111111111111111111'].at(-1),
+              ),
               outcome: 'COMPLETED',
               completionKind: 'CHANGES_COMMITTED',
               handoff: testRepairHandoff(),
@@ -112,6 +116,11 @@ describe('RepairService', () => {
             resultPath: ['result', 'handoff'],
             pattern: expect.any(String),
           },
+          {
+            kind: 'JSON_STRING_PATTERN',
+            resultPath: ['result', 'testingScope'],
+            pattern: expect.any(String),
+          },
           { kind: 'GIT_COMMITS_CREATED', resultPath: ['result', 'commits'] },
         ],
       },
@@ -139,6 +148,9 @@ describe('RepairService', () => {
           turnId: 'manual-turn-1',
           result: {
             result: {
+              testingScope: testTestingScope(
+                ['cccccccccccccccccccccccccccccccccccccccc'].at(-1),
+              ),
               outcome: 'COMPLETED',
               completionKind: 'CHANGES_COMMITTED',
               handoff: testRepairHandoff(),
@@ -352,6 +364,11 @@ describe('RepairService', () => {
         {
           kind: 'JSON_STRING_PATTERN',
           resultPath: ['result', 'handoff'],
+          pattern: expect.any(String),
+        },
+        {
+          kind: 'JSON_STRING_PATTERN',
+          resultPath: ['result', 'testingScope'],
           pattern: expect.any(String),
         },
         {

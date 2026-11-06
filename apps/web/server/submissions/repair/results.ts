@@ -14,6 +14,7 @@ import {
   ManualOperationsSchema,
 } from '../../../contracts/submissions/repair';
 import type { AttemptRow } from './repairQueries';
+import { projectTestingScope } from '@/contracts/submissions/testingScope';
 
 export function formatRepairContractIssues(
   issues: ReadonlyArray<{ path: readonly PropertyKey[]; message: string }>,
@@ -53,6 +54,9 @@ export function projectAttemptResult(outcomeJson: string, technical: boolean) {
       warnings: repositories.flatMap((repository) => repository.warnings),
       commitCount: commits.length,
       commits: technical ? commits : null,
+      testingScopes: repositories.map((repository) =>
+        projectTestingScope(repository.testingScope),
+      ),
     };
   }
   const { technicalFailure: _technicalFailure, ...contractResult } = raw;
@@ -70,6 +74,7 @@ export function projectAttemptResult(outcomeJson: string, technical: boolean) {
       warnings: result.warnings,
       commitCount: result.commits.length,
       commits: technical ? result.commits : null,
+      testingScopes: [projectTestingScope(result.testingScope)],
     };
   return {
     outcome: result.outcome,

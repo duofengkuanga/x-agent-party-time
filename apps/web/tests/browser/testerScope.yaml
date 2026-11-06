@@ -1,0 +1,75 @@
+suite: Tester scope and inline screenshots
+setup:
+  - open: __BASE_URL__/login?next=/submissions/__SUBMISSION_ID__
+  - fill: { sel: 'input[name="username"]', text: __USERNAME__ }
+  - fill: { sel: 'input[name="password"]', text: __PASSWORD__ }
+  - click: '.auth-submit'
+  - wait: 'button[aria-label^="测试范围与截图轮播，"]'
+  - click: 'button[aria-label^="测试范围与截图轮播，"]'
+  - wait: '.collab-tester-checklist'
+cases:
+  - name: original and derived coverage are distinct with explicit limitations
+    assert:
+      - text: { sel: '.collab-tester-checklist', contains: '本次要测' }
+      - text:
+          {
+            sel: '.collab-tester-checklist',
+            contains: '保存后刷新，内容仍然保留',
+          }
+      - text: { sel: '.collab-tester-checklist__derived', contains: '衍生回归' }
+      - text:
+          {
+            sel: '.collab-tester-checklist__derived',
+            contains: '本次修复调整了',
+          }
+      - text: { sel: '[aria-label="尚未覆盖"]', contains: '弱网' }
+      - count: { sel: '.collab-tester-checklist__badge', eq: 1 }
+      - eval: '!document.querySelector(".collab-tester-detail").textContent.includes("src/report.ts")'
+      - eval: '!document.querySelector(".collab-tester-detail__meta").textContent.includes("缺陷-")'
+      - text: { sel: '.collab-tester-detail__meta', contains: '待验证' }
+      - hidden: '.collab-tester-detail__status'
+
+  - name: screenshots are inline full width and preserve their aspect ratio
+    steps:
+      - wait: '.collab-tester-attachments figure[data-image-state="loaded"] img'
+    assert:
+      - eval: '(() => { const image = document.querySelector(".collab-tester-attachments img"); return image.complete && image.naturalWidth > 0 && Math.abs(image.width / image.height - image.naturalWidth / image.naturalHeight) < 0.01 && image.width >= image.parentElement.clientWidth - 1; })()'
+      - count: { sel: '.collab-tester-attachments img', eq: 1 }
+      - count:
+          { sel: '[role="dialog"]:is(:not([popover]),:popover-open)', eq: 1 }
+      - eval: 'document.querySelector("button[aria-label=\"上一张截图\"]").disabled'
+      - text: { sel: '.collab-tester-attachments__controls', contains: '1 / 2' }
+
+  - name: carousel switches images without another dialog and supports keyboard focus
+    steps:
+      - click: 'button[aria-label="下一张截图"]'
+      - wait: 'img[alt="截图2.png"]'
+      - press: Shift+Tab
+    assert:
+      - text: { sel: '.collab-tester-attachments__controls', contains: '2 / 2' }
+      - eval: 'document.querySelector("button[aria-label=\"下一张截图\"]").disabled'
+      - count:
+          { sel: '[role="dialog"]:is(:not([popover]),:popover-open)', eq: 1 }
+      - eval: 'document.activeElement?.getAttribute("aria-label") === "上一张截图"'
+
+  - name: previous screenshot and footer remain reachable
+    steps:
+      - press: ArrowLeft
+      - wait: 'img[alt="截图1.png"]'
+    assert:
+      - text: { sel: '.collab-tester-attachments__controls', contains: '1 / 2' }
+      - visible: '.collab-tester-detail__actions'
+      - eval: 'document.querySelector(".collab-bug-drawer").scrollWidth <= document.querySelector(".collab-bug-drawer").clientWidth'
+
+  - name: pending repair has an explicit empty checklist
+    steps:
+      - click: 'button[aria-label="关闭详情抽屉"]'
+      - click: 'button[aria-label^="待请求修复缺陷，"]'
+      - wait: '.collab-tester-checklist'
+    assert:
+      - text:
+          {
+            sel: '.collab-tester-checklist',
+            contains: '本轮尚未生成可用的测试范围',
+          }
+      - count: { sel: '.collab-tester-checklist__badge', eq: 0 }

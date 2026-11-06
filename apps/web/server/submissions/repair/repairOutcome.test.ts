@@ -1,3 +1,4 @@
+import { testTestingScope } from '@/testing/submissions/testingScope';
 import { testRepairHandoff } from '@/testing/submissions/handoff';
 import { mutation } from '@/testing/submissions/project';
 import { completeSuccessfulExecution } from '@/testing/submissions/execution';
@@ -16,6 +17,7 @@ const setup = repairFixture(testDatabases());
 describe('RepairService', () => {
   test('Schema 非法或重复 Commit 时 Execution FAILED 且 Bug 保持修复中', async () => {
     const committed = {
+      testingScope: testTestingScope(['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'].at(-1)),
       outcome: 'COMPLETED',
       completionKind: 'CHANGES_COMMITTED',
       handoff: testRepairHandoff(),
@@ -27,6 +29,7 @@ describe('RepairService', () => {
       manualOperations: [],
     };
     const alreadyFixed = {
+      testingScope: testTestingScope('a'.repeat(40), 'a'.repeat(40)),
       outcome: 'COMPLETED',
       completionKind: 'TARGET_ALREADY_FIXED',
       summary: '仍有改动',
@@ -134,6 +137,9 @@ describe('RepairService', () => {
     expect(() =>
       completeSuccessfulExecution(fixture, started, {
         result: {
+          testingScope: testTestingScope(
+            ['dddddddddddddddddddddddddddddddddddddddd'].at(-1),
+          ),
           outcome: 'COMPLETED',
           completionKind: 'CHANGES_COMMITTED',
           handoff: testRepairHandoff(),

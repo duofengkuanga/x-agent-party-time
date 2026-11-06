@@ -1,3 +1,4 @@
+import { testTestingScope } from '../apps/web/testing/submissions/testingScope';
 import { createRequire } from 'node:module';
 import { expect, test } from 'bun:test';
 import {
@@ -11,6 +12,7 @@ const loadXaptDependency = createRequire(
 );
 const Ajv = loadXaptDependency('ajv');
 const alreadyFixed = {
+  testingScope: testTestingScope('a'.repeat(40), 'a'.repeat(40)),
   outcome: 'COMPLETED',
   completionKind: 'TARGET_ALREADY_FIXED',
   changes: [],
