@@ -538,16 +538,24 @@ test('Schema 32 要求真实命令并保留历史 Push、人工确认和附件�
 
   const environmentId = f.item.environment_id;
   const reportId = randomUUID();
+  const secondReportId = randomUUID();
   const file = await new LocalFileStore(f.database, join(f.directory, 'files')).put({
     bytes: new TextEncoder().encode('历史验收依据'),
     originalName: 'legacy.txt',
     mediaType: 'text/plain',
     uploadedByUserId: f.users.developer.id,
   });
+  const firstFile = await new LocalFileStore(f.database, join(f.directory, 'files')).put({
+    bytes: new TextEncoder().encode('排序在前的历史依据'),
+    originalName: 'first.txt',
+    mediaType: 'text/plain',
+    uploadedByUserId: f.users.developer.id,
+  });
   db.query('ATTACH DATABASE ? AS seed').run(join(f.directory, 'server.sqlite'));
-  db.run('INSERT INTO platform_file SELECT * FROM seed.platform_file WHERE id = ?', [
-    file.id,
-  ]);
+  db.run(
+    'INSERT INTO platform_file SELECT * FROM seed.platform_file WHERE id IN (?, ?)',
+    [file.id, firstFile.id],
+  );
   db.exec('DETACH DATABASE seed');
   db.run('UPDATE platform_environment SET deployment_json = ? WHERE id = ?', [
     JSON.stringify({ kind: 'CI_CD', scriptCommand: 'bun run obsolete-script' }),
@@ -573,12 +581,22 @@ test('Schema 32 要求真实命令并保留历史 Push、人工确认和附件�
   db.run(
     `INSERT INTO submission_external_deployment_report
     (id, batch_id, round, outcome, summary, reported_by_user_id, created_at)
+    VALUES (?, ?, 2, 'SUCCEEDED', '第二次人工核对', ?, ?)`,
+    [secondReportId, batch.id, f.users.developer.id, f.clock.now().toISOString()],
+  );
+  db.run(
+    `INSERT INTO submission_external_deployment_report
+    (id, batch_id, round, outcome, summary, reported_by_user_id, created_at)
     VALUES (?, ?, 1, 'SUCCEEDED', '人工核对了旧流水线', ?, ?)`,
     [reportId, batch.id, f.users.developer.id, f.clock.now().toISOString()],
   );
   db.run(
-    'INSERT INTO submission_external_deployment_report_attachment VALUES (?, ?, 0)',
+    'INSERT INTO submission_external_deployment_report_attachment VALUES (?, ?, 1)',
     [file.id, reportId],
+  );
+  db.run(
+    'INSERT INTO submission_external_deployment_report_attachment VALUES (?, ?, 0)',
+    [firstFile.id, reportId],
   );
 
   const before = originalRows(db);
@@ -607,7 +625,25 @@ test('Schema 32 要求真实命令并保留历史 Push、人工确认和附件�
   ]);
 
   const result = migrateServerDatabase(path, true, commands);
-  expect(result).toMatchObject({ from: 32, to: 34, historicalConfirmations: 1 });
+  expect(result).toMatchObject({ from: 32, to: 34, historicalConfirmations: 2 });
+  const history = JSON.parse(
+    db.get<{ historical_delivery_json: string }>(
+      'SELECT historical_delivery_json FROM submission_update_batch WHERE id = ?',
+      batch.id,
+    )!.historical_delivery_json,
+  );
+  expect(
+    history.confirmations.map(
+      ({ id, round, fileIds }: { id: string; round: number; fileIds: string[] }) => ({
+        id,
+        round,
+        fileIds,
+      }),
+    ),
+  ).toEqual([
+    { id: reportId, round: 1, fileIds: [firstFile.id, file.id] },
+    { id: secondReportId, round: 2, fileIds: [] },
+  ]);
   expect(
     db.get(
       'SELECT deployment_json FROM platform_environment WHERE id = ?',
@@ -643,11 +679,11 @@ test('Schema 32 要求真实命令并保留历史 Push、人工确认和附件�
   expect(historicalFiles.get(file.id)).not.toBeNull();
   expect(db.get('PRAGMA user_version')).toEqual({ user_version: 35 });
   expect(
-    db.get(
-      'SELECT file_id FROM submission_update_history_file WHERE batch_id = ?',
+    db.all(
+      'SELECT file_id FROM submission_update_history_file WHERE batch_id = ? ORDER BY file_id',
       batch.id,
     ),
-  ).toEqual({ file_id: file.id });
+  ).toEqual([file.id, firstFile.id].sort().map((file_id) => ({ file_id })));
   const backup = new Database(result.backupPath!, { readonly: true });
   opened.push(backup);
   expect(originalRows(backup)).toEqual(before);

@@ -158,11 +158,12 @@ export function migrateSchema32Deployment(
             'created_at', report.created_at,
             'continuedByAttemptId', (SELECT attempt.id FROM submission_update_attempt attempt
               WHERE attempt.continuation_report_id = report.id),
-            'fileIds', (SELECT json_group_array(file_id ORDER BY position)
-              FROM submission_external_deployment_report_attachment WHERE report_id = report.id)
-          ) ORDER BY report.round)
-          FROM submission_external_deployment_report report
-          WHERE report.batch_id = submission_update_batch.id)
+            'fileIds', (SELECT json_group_array(file_id) FROM (
+              SELECT file_id FROM submission_external_deployment_report_attachment
+              WHERE report_id = report.id ORDER BY position))
+          ))
+          FROM (SELECT * FROM submission_external_deployment_report
+            WHERE batch_id = submission_update_batch.id ORDER BY round) report)
         ) END`,
     });
 
