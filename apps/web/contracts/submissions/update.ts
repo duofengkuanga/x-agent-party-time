@@ -47,7 +47,7 @@ export const FrozenRepairHandoffSchema = z.strictObject({
   validations: CommittedRepairResultSchema.shape.validations,
   warnings: CommittedRepairResultSchema.shape.warnings,
   handoff: CommittedRepairResultSchema.shape.handoff,
-  testingScope: CommittedRepairResultSchema.shape.testingScope,
+  testingScope: CommittedRepairResultSchema.shape.testingScope.nullable(),
   unchangedTestingScopes: z
     .array(
       z.strictObject({

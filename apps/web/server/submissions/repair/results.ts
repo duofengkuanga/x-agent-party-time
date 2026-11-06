@@ -1,4 +1,4 @@
-import { personAgentRepairResultSchema } from './personAgentScope';
+import { z } from 'zod';
 import type { Execution, ExecutionState } from '@agent-party-time/execution-contract';
 import { PlatformError } from '@/server/platform/errors/index';
 import type {
@@ -10,7 +10,8 @@ import {
   queueVisual,
 } from '@/server/submissions/shared/executionVisual';
 import {
-  RepairExecutionResultSchema,
+  RecordedRepairCompletionSchema,
+  RecordedRepairResultSchema,
   ManualOperationsSchema,
 } from '../../../contracts/submissions/repair';
 import type { AttemptRow } from './repairQueries';
@@ -40,32 +41,31 @@ export function projectAttemptResult(outcomeJson: string, technical: boolean) {
     raw.repositories &&
     typeof raw.repositories === 'object'
   ) {
-    const grouped = personAgentRepairResultSchema(
-      Object.keys(raw.repositories).length,
-    ).parse({ result: raw }).result;
-    if (grouped.outcome !== 'COMPLETED')
-      throw new PlatformError('INTERNAL_ERROR', '多工程修复结果无效');
-    const repositories = Object.values(grouped.repositories);
+    const repositories = Object.values(
+      z
+        .record(z.string().regex(/^repo-[1-9]\d*$/u), RecordedRepairCompletionSchema)
+        .parse(raw.repositories),
+    );
     const commits = repositories.flatMap((repository) => repository.commits);
     return {
-      outcome: grouped.outcome,
+      outcome: 'COMPLETED' as const,
       changes: repositories.flatMap((repository) => repository.changes),
       validations: repositories.flatMap((repository) => repository.validations),
       warnings: repositories.flatMap((repository) => repository.warnings),
       commitCount: commits.length,
       commits: technical ? commits : null,
-      testingScopes: repositories.map((repository) =>
-        projectTestingScope(repository.testingScope),
+      testingScopes: repositories.flatMap((repository) =>
+        repository.testingScope === null
+          ? []
+          : [projectTestingScope(repository.testingScope)],
       ),
     };
   }
   const { technicalFailure: _technicalFailure, ...contractResult } = raw;
-  const parsed = RepairExecutionResultSchema.safeParse({
-    result: contractResult,
-  });
+  const parsed = RecordedRepairResultSchema.safeParse(contractResult);
   if (!parsed.success)
     throw new PlatformError('INTERNAL_ERROR', '已保存的修复记录结果格式无效');
-  const result = parsed.data.result;
+  const result = parsed.data;
   if (result.outcome === 'COMPLETED')
     return {
       outcome: result.outcome,
@@ -74,7 +74,8 @@ export function projectAttemptResult(outcomeJson: string, technical: boolean) {
       warnings: result.warnings,
       commitCount: result.commits.length,
       commits: technical ? result.commits : null,
-      testingScopes: [projectTestingScope(result.testingScope)],
+      testingScopes:
+        result.testingScope === null ? [] : [projectTestingScope(result.testingScope)],
     };
   return {
     outcome: result.outcome,

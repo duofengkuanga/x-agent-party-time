@@ -82,7 +82,7 @@ bun install --frozen-lockfile
 bun run dev
 ```
 
-`bun run dev` 会在仓库 `.scratch/development/` 中准备数据库并自动创建上述本地开发用户。新流程使用 Schema 37，缺陷报告保存描述和一组附件。Schema 37 从空库初始化，开发数据需要重建。
+`bun run dev` 会在仓库 `.scratch/development/` 中准备数据库并自动创建上述本地开发用户。新流程使用 Schema 37，缺陷报告保存描述和一组附件。已有 Schema 36 数据可按下文离线升级后继续使用。
 
 `bun run dev` 前台管理两个进程：
 
@@ -134,11 +134,20 @@ bun run dev:xapt
 
 `bun run dev`、`bun run dev:app` 和 `bun run seed:app` 使用这个目录。开发启动流程保留数据库和附件，不支持的 Schema 版本会阻止启动；如果 `AGENT_PARTY_TIME_HOME` 指向仓库 `.scratch/` 之外，开发准备脚本会拒绝处理。
 
-正式 Server 数据默认位于 `~/.agent-party-time/`，也可以通过 `AGENT_PARTY_TIME_HOME` 指定。启动接受 Schema 37 或空数据库。旧版本数据库需要另存后使用空数据目录初始化。
+正式 Server 数据默认位于 `~/.agent-party-time/`，也可以通过 `AGENT_PARTY_TIME_HOME` 指定。启动接受 Schema 37 或空数据库；升级通过显式离线工具完成，启动时不会自动修改旧库。
 
 ### 保留数据升级 Server
 
-以下离线工具固定处理旧版本到 Schema 35 的历史升级。当前 Schema 37 使用全新的缺陷报告结构，从空数据库建立。
+Schema 36 可保留数据升级至 37。先用原版本结束未完成的缺陷、执行、交互和更新批次，再停止访问数据库的 Server 与 Agent。默认预检只读；加 `--apply` 后取得写锁、保存并验证完整旧库备份，在事务内转换历史结果并核对原有记录、结构与外键。
+
+```bash
+bun run migrate:server -- --database .scratch/development/server/server.sqlite
+bun run migrate:server -- --database .scratch/development/server/server.sqlite --apply
+```
+
+备份保存在原库旁的 `server.sqlite.backup-*/server.sqlite`，附件保留原位。历史缺失的测试范围明确保存为未记录，不补造审查结论、提交或验收点；新执行仍严格要求完整的测试范围。项目、缺陷、附件关联、执行与冻结交接的已有事实全部保留。升级后运行 `bun run dev`。
+
+以下历史路径只处理 Schema 27–34 到 35，不包含 35→36 的缺陷报告转换。
 
 Schema 34 升级到 35 前，用 Schema 34 对应的 Server、xapt 和固定 Bundle 结束未完成的执行、交互和更新批次。历史 `HANDED_OFF` 记录对应的 Bug 已完成或 Update Batch 已完成时，可以原样保留并迁移。准备 JSON 映射文件，键是平台环境 ID，值是对应工程约定中已核对的环境标识。每个现存环境提供一个标识，同一工程内唯一。预检只读，会列出缺少映射的环境 ID。
 

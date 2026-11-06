@@ -140,6 +140,35 @@ export const RepairExecutionResultSchema = z.strictObject({
 
 export const RepairOutputJsonSchema = outputJsonSchema(RepairExecutionResultSchema);
 
+// Stored history can explicitly record absent evidence; new executions cannot.
+export const RecordedRepairCompletionSchema = z
+  .union([
+    z.strictObject({
+      ...CommittedRepairResultSchema.shape,
+      testingScope: TestingScopeSchema.nullable(),
+    }),
+    z.strictObject({
+      ...RepairExecutionResultValueSchema.options[1].shape,
+      testingScope: TestingScopeSchema.nullable(),
+    }),
+  ])
+  .superRefine((result, context) => {
+    if (result.testingScope === null) return;
+    const parsed = RepairExecutionResultSchema.safeParse({ result });
+    if (!parsed.success)
+      for (const issue of parsed.error.issues)
+        context.addIssue({
+          code: 'custom',
+          path: issue.path.slice(1),
+          message: issue.message,
+        });
+  });
+
+export const RecordedRepairResultSchema = z.union([
+  RecordedRepairCompletionSchema,
+  RepairExecutionResultValueSchema.options[2],
+]);
+
 const RepairAttemptResultViewSchema = z.discriminatedUnion('outcome', [
   ManualHandoffResultViewSchema,
   z.object({

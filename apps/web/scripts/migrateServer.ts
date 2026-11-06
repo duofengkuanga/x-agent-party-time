@@ -21,6 +21,7 @@ import { PLATFORM_SCHEMA } from '@/server/database/platformSchema';
 import { PROJECT_SCHEMA } from '@/server/database/projectSchema';
 import { BUG_DEPLOYMENT_SCHEMA } from '@/server/database/bugDeploymentSchema';
 import { OBSERVATION_SCHEMA } from '@/server/database/observationSchema';
+import { SUBMISSION_SCHEMA } from '@/server/database/submissionSchema';
 import { AppDatabase } from '@/server/database/index';
 import { rewriteHistoricalResults, type ResultRewrite } from './migrateServerResults';
 
@@ -30,6 +31,7 @@ import {
   planScriptCutover,
 } from './schema32Migration';
 import { migrateSchema31Names, SCHEMA_31_TABLE_NAMES } from './schema31Migration';
+import { planSchema36Migration } from './schema36Migration';
 
 type SchemaObject = { type: string; name: string; tbl_name: string; sql: string };
 type TableSnapshot = { name: string; columns: string[]; rows: number; hash: string };
@@ -115,7 +117,12 @@ function assertSchema(db: Database, version: number): void {
               ? schema33
               : version === 34
                 ? schema34
-                : targetSchema;
+                : version >= 36
+                  ? PLATFORM_SCHEMA +
+                    PROJECT_SCHEMA +
+                    SUBMISSION_SCHEMA +
+                    OBSERVATION_SCHEMA
+                  : targetSchema;
     if (version < 30) sql = sql.replace(OBSERVATION_SCHEMA, '');
     if (version < 29) sql = sql.replace('  handoffs_json TEXT NOT NULL,\n', '');
     if (version === 27) sql = sql.replace(",\n    'HANDED_OFF'", '');
@@ -520,7 +527,11 @@ export function migrateServerDatabase(
     transaction = true;
     const version = db.query<{ user_version: number }, []>('PRAGMA user_version').get()!
       .user_version;
-    if (![27, 28, 29, 30, 31, 32, 33, 34, MIGRATION_TARGET_VERSION].includes(version))
+    if (
+      ![27, 28, 29, 30, 31, 32, 33, 34, MIGRATION_TARGET_VERSION, 36, 37].includes(
+        version,
+      )
+    )
       throw new Error(`不支持从版本 ${version} 迁移；原数据已保留。`);
     assertSchema(db, version);
     assertIntegrity(db);
@@ -534,18 +545,33 @@ export function migrateServerDatabase(
             DeploymentCommandsSchema.parse(deploymentCommands),
           );
     const keys = version === 34 ? planEngineeringCutover(db, environmentKeys) : null;
+    const resultRewrites = version === 36 ? planSchema36Migration(db) : [];
+    const targetVersion = version >= 36 ? 37 : MIGRATION_TARGET_VERSION;
     const before = snapshot(db);
     const report: MigrationReport = {
-      status: version === MIGRATION_TARGET_VERSION ? 'current' : 'ready',
+      status: version === targetVersion ? 'current' : 'ready',
       database: path,
       from: version,
-      to: version < 34 ? 34 : MIGRATION_TARGET_VERSION,
+      to: version < 34 ? 34 : targetVersion,
       backupPath: null,
       rewrittenResults: 0,
       historicalConfirmations: 0,
       tables: before.map(({ name, rows }) => ({ name, rows })),
     };
-    if (apply && version !== MIGRATION_TARGET_VERSION) {
+    if (apply && version === 36) {
+      report.backupPath = backupDatabase(path, before);
+      for (const change of resultRewrites)
+        db.run(
+          `UPDATE ${quote(change.table)} SET ${quote(change.column)}=? WHERE rowid=?`,
+          [change.after, change.rowid],
+        );
+      assertUnchanged(db, before, resultRewrites);
+      assertSchema(db, report.to);
+      assertIntegrity(db);
+      db.exec(`PRAGMA user_version=${report.to}`);
+      report.rewrittenResults = resultRewrites.length;
+      report.status = 'migrated';
+    } else if (apply && version !== targetVersion) {
       report.backupPath = backupDatabase(path, before);
       if (version < 33) {
         const reference = new Database(':memory:');
