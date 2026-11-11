@@ -13,7 +13,6 @@ import {
 } from '@/server/runtime/services';
 import {
   createEngineeringBindingAction,
-  updateEngineeringAction,
   updateEnvironmentAction,
 } from '@/app/actions/projects/engineering';
 import { EngineeringFields } from './settingsFields';
@@ -81,84 +80,11 @@ export function EngineeringEnvironmentManagement({
   );
 }
 
-export function EngineeringInformationManagement({
-  workspace,
-  identifierLocked,
-}: {
-  workspace: EngineeringWorkspace;
-  identifierLocked: boolean;
-}) {
-  const { engineering } = workspace;
-  const { id: engineeringId, projectId } = engineering;
-  return (
-    <AutoSaveForm
-      className="engineering-identity-form"
-      save={updateEngineeringAction}
-      version={engineering.version}
-    >
-      <EngineeringFields engineeringId={engineeringId} projectId={projectId} />
-      <input name="name" type="hidden" value={engineering.name} />
-      <div className="engineering-type-choice">
-        <span className="engineering-field-label">归属</span>
-        <div aria-label="工程归属" role="radiogroup">
-          {(
-            [
-              { value: 'FRONTEND', label: '前端' },
-              { value: 'BACKEND', label: '后端' },
-            ] as const
-          ).map((option) => (
-            <label key={option.value}>
-              <input
-                defaultChecked={engineering.type === option.value}
-                name="type"
-                type="radio"
-                value={option.value}
-              />
-              <span>{option.label}</span>
-            </label>
-          ))}
-        </div>
-      </div>
-      {identifierLocked ? (
-        <div className="engineering-identifier-readonly">
-          <span className="engineering-field-label">
-            稳定标识{' '}
-            <span className="engineering-readonly-badge">已用于提测</span>
-          </span>
-          <output
-            aria-label="稳定标识，已用于提测，不可修改"
-            title="已用于提测，不可修改"
-          >
-            {engineering.identifier}
-          </output>
-          <input
-            name="identifier"
-            type="hidden"
-            value={engineering.identifier}
-          />
-        </div>
-      ) : (
-        <label className="engineering-identity-form__identifier">
-          <span>稳定标识</span>
-          <input
-            defaultValue={engineering.identifier}
-            maxLength={40}
-            name="identifier"
-            pattern="[a-z\p{Script=Han}][a-z0-9\p{Script=Han}]*(?:-[a-z0-9\p{Script=Han}]+)*"
-            required
-          />
-        </label>
-      )}
-    </AutoSaveForm>
-  );
-}
-
 export function EngineeringDetail({
   workspace,
   userId,
   runners,
   bindingRequestId,
-  informationEditor,
   membersEditor,
   environmentsEditor,
 }: {
@@ -166,7 +92,6 @@ export function EngineeringDetail({
   userId: string;
   runners: RunnerStatus[];
   bindingRequestId?: string;
-  informationEditor?: ReactNode;
   membersEditor?: ReactNode;
   environmentsEditor?: ReactNode;
 }) {
@@ -201,22 +126,20 @@ export function EngineeringDetail({
       aria-label={workspace.engineering.name}
     >
       <header className="project-engineering__heading">
-        {informationEditor || (
-          <div className="engineering-identity-summary">
-            <div>
-              <span className="engineering-field-label">归属</span>
-              <span className="engineering-heading-value">
-                {workspace.engineering.type === 'FRONTEND' ? '前端' : '后端'}
-              </span>
-            </div>
-            <div>
-              <span className="engineering-field-label">稳定标识</span>
-              <span className="engineering-heading-value">
-                {workspace.engineering.identifier}
-              </span>
-            </div>
+        <div className="engineering-identity-summary">
+          <div>
+            <span className="engineering-field-label">归属</span>
+            <span className="engineering-heading-value">
+              {workspace.engineering.type === 'FRONTEND' ? '前端' : '后端'}
+            </span>
           </div>
-        )}
+          <div>
+            <span className="engineering-field-label">稳定标识</span>
+            <span className="engineering-heading-value">
+              {workspace.engineering.identifier}
+            </span>
+          </div>
+        </div>
         <div className="engineering-heading-members">
           <span className="engineering-field-label">工程成员</span>
           {membersEditor || (

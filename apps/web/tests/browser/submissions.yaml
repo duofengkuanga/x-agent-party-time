@@ -360,11 +360,11 @@ cases:
           }
       - click: '.engineering-editor > .dialog-actions button[type="submit"]'
       - wait: 'body:not(:has(.engineering-create-modal[open]))'
-      - wait: '.engineering-identity-form'
-      - click: '.engineering-type-choice label:has(input[value="BACKEND"])'
-      - wait: '.engineering-identity-form[data-save-state="saved"]'
-      - click: '.engineering-type-choice label:has(input[value="FRONTEND"])'
-      - wait: '.engineering-identity-form[data-save-state="saved"]'
+      - wait: '.engineering-identity-summary'
+      - eval: >-
+          sessionStorage.setItem('engineeringIdentityReadOnly',String(document.querySelector('.engineering-identity-summary').textContent.includes('前端')
+          &&document.querySelector('.engineering-identity-summary').textContent.includes('autosave-web')
+          &&!document.querySelector('.project-engineering input[name=type],.project-engineering select[name=type],.project-engineering input[name=identifier]')));true
       - eval: >-
           sessionStorage.setItem('directControls',String(!document.querySelector('a[href*="mode="],a[href*="panel=project"],a[href*="panel=collaboration"],.auto-save-form button[type=submit],[role=dialog]:is(:not([popover]),:popover-open):not(.popconfirm),.repair-overlay')));true
       - click: '.environment-edit'
@@ -468,20 +468,14 @@ cases:
           ?(window.holdAutosave=false,new Promise((resolve,reject)=>{window.releaseAutosave=()=>window.autosaveFetch(...args).then(resolve,reject);}))
           :window.autosaveFetch(...args);true
       - fill:
-          {
-            sel: '.engineering-identity-form input[name="identifier"]',
-            text: 保存中初稿,
-          }
-      - wait: '.engineering-identity-form[data-save-state="saving"]'
+          { sel: '.project-name-direct input[name="name"]', text: 保存中初稿 }
+      - wait: '.project-name-direct[data-save-state="saving"]'
       - fill:
-          {
-            sel: '.engineering-identity-form input[name="identifier"]',
-            text: 连续输入最终名称,
-          }
+          { sel: '.project-name-direct input[name="name"]', text: 自动保存验收 }
       - click: 'text=切换目标工程'
       - eval: >-
           sessionStorage.setItem('navigationWaitsForSave',String(document.querySelector('.project-engineering-list__link[aria-expanded=true]').textContent.includes('直接编辑工程')
-          &&document.querySelector('.engineering-identity-form input[name=identifier]').value==='连续输入最终名称'));
+          &&document.querySelector('.project-name-direct input[name=name]').value==='自动保存验收'));
           window.fetch=window.autosaveFetch;window.releaseAutosave();true
       - wait: '.project-engineering[aria-label="切换目标工程"]'
       - click: 'text=直接编辑工程'
@@ -491,22 +485,19 @@ cases:
           ?(window.failAutosave=false,Promise.reject(new TypeError('Failed to fetch'))):window.failureFetch(...args);true
       - fill:
           {
-            sel: '.engineering-identity-form input[name="identifier"]',
+            sel: '.project-name-direct input[name="name"]',
             text: 失败后保留草稿,
           }
-      - wait: '.engineering-identity-form[data-save-state="error"]'
+      - wait: '.project-name-direct[data-save-state="error"]'
       - click: 'text=切换目标工程'
       - eval: >-
-          sessionStorage.setItem('failedDraftPreserved',String(document.querySelector('.engineering-identity-form input[name=identifier]').value==='失败后保留草稿'
+          sessionStorage.setItem('failedDraftPreserved',String(document.querySelector('.project-name-direct input[name=name]').value==='失败后保留草稿'
           &&document.querySelector('.project-engineering-list__link[aria-expanded=true]').textContent.includes('直接编辑工程')));window.fetch=window.failureFetch;true
-      - click: '.engineering-identity-form .auto-save-form__status button'
-      - wait: '.engineering-identity-form[data-save-state="saved"]'
+      - click: '.project-name-direct .auto-save-form__status button'
+      - wait: '.project-name-direct[data-save-state="saved"]'
       - fill:
-          {
-            sel: '.engineering-identity-form input[name="identifier"]',
-            text: 连续输入最终名称,
-          }
-      - wait: '.engineering-identity-form[data-save-state="saved"]'
+          { sel: '.project-name-direct input[name="name"]', text: 自动保存验收 }
+      - wait: '.project-name-direct[data-save-state="saved"]'
       - open: __BASE_URL__/projects
       - click: 'text=自动保存验收'
       - wait: '.project-overview__engineering-list'
@@ -520,6 +511,10 @@ cases:
       - count: { sel: '.environment-direct-row', eq: 1 }
       - count: { sel: '.environment-selector [role=option]', eq: 2 }
       - hidden: '.environment-card-grid'
+      - hidden: '.project-engineering input[name=identifier]'
+      - hidden: '.project-engineering input[name=type]'
+      - hidden: '.project-engineering select[name=type]'
+      - text: { sel: '.engineering-identity-summary', contains: 前端 }
       - eval: >-
           (()=>{const selectors=['.project-engineering-create-trigger','.project-members-toggle','.project-overview__heading nav > a[href="/submissions"]'];
           const boxes=selectors.map(selector=>document.querySelector(selector).getBoundingClientRect());
@@ -527,17 +522,17 @@ cases:
           &&selectors.every(selector=>{const css=getComputedStyle(document.querySelector(selector));return css.fontSize==='12px'&&css.fontWeight==='500';})
           &&boxes[0].right<boxes[1].left&&boxes[1].right<boxes[2].left;})()
       - eval: >-
-          (()=>{const identifier=document.querySelector('.engineering-identity-form__identifier,.engineering-identifier-readonly');
+          (()=>{const identifier=document.querySelector('.engineering-identity-summary > div:last-child');
           const members=document.querySelector('.engineering-heading-members');
           return members.getBoundingClientRect().left>identifier.getBoundingClientRect().right
           &&Math.abs(members.querySelector('.engineering-field-label').getBoundingClientRect().top-identifier.firstElementChild.getBoundingClientRect().top)<1;})()
       - hidden: '.engineering-detail__environments > .collaboration-section-title'
       - eval: >-
           document.querySelector('.project-name-direct input[name=name]').value==='自动保存验收'
-          &&document.querySelector('.engineering-identity-form input[name=identifier]').value==='连续输入最终名称'
+          &&document.querySelector('.engineering-identity-summary').textContent.includes('autosave-web')
           &&[...document.querySelectorAll('.environment-direct-row input[name=name]')].some(input=>input.value==='集成环境')
           &&document.querySelector('.environment-selector__key code').textContent==='test'
-          &&['directControls','environmentFieldsAligned','environmentDraftPreserved','environmentConfirmationFits','environmentErrorReadable','navigationWaitsForSave','failedDraftPreserved'].every(key=>sessionStorage.getItem(key)==='true')
+          &&['engineeringIdentityReadOnly','directControls','environmentFieldsAligned','environmentDraftPreserved','environmentConfirmationFits','environmentErrorReadable','navigationWaitsForSave','failedDraftPreserved'].every(key=>sessionStorage.getItem(key)==='true')
 
   - name: environment deletion uses a button and anchored confirmation
     steps:
@@ -646,7 +641,7 @@ cases:
           }
       - click: '.engineering-editor > .dialog-actions button[type="submit"]'
       - wait: 'body:not(:has(.engineering-create-modal[open]))'
-      - wait: '.engineering-identity-form'
+      - wait: '.engineering-identity-summary'
       - eval: >-
           (()=>{const footer=document.querySelector('.project-engineering-list__detail footer');
           sessionStorage.setItem('archiveWithEngineering',String(!!footer.querySelector('.engineering-archive-trigger')

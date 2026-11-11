@@ -21,7 +21,6 @@ import {
 import {
   EngineeringDetail,
   EngineeringEnvironmentManagement,
-  EngineeringInformationManagement,
 } from '../engineering/engineeringSettings';
 import { EngineeringList, ProjectRouteFeedback } from './engineeringList';
 import { AutoSaveBoundary, AutoSaveForm } from './autoSaveForm';
@@ -116,17 +115,6 @@ export default async function ProjectSettingsPage({
           runners={availableRunners}
           bindingRequestId={
             route.engineeringId === item.id ? route.bindingRequestId : undefined
-          }
-          informationEditor={
-            canEdit ? (
-              <EngineeringInformationManagement
-                workspace={workspace}
-                identifierLocked={engineeringReader.isIdentifierLocked(
-                  user.id,
-                  item.id,
-                )}
-              />
-            ) : null
           }
           membersEditor={
             canEdit ? (

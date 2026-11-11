@@ -167,11 +167,6 @@ export class EngineeringService {
     });
   }
 
-  isIdentifierLocked(userId: string, engineeringId: string): boolean {
-    this.getEngineering(userId, engineeringId);
-    return this.guards.engineeringReferenced(engineeringId);
-  }
-
   updateEngineering(
     actorUserId: string,
     engineeringId: string,
@@ -192,31 +187,20 @@ export class EngineeringService {
           throw new PlatformError('INVALID_TRANSITION', '已归档工程不能修改');
         if (current.version !== input.expectedVersion)
           throw new PlatformError('STALE_STATE', '工程已更新，请刷新后重试');
-        if (
-          current.identifier !== identifier &&
-          this.guards.engineeringReferenced(engineeringId)
-        )
+        if (current.type !== type || current.identifier !== identifier)
           throw new PlatformError(
             'RESOURCE_CONFLICT',
-            '工程已被提测引用，稳定标识不能修改',
+            '工程归属和稳定标识创建后不能修改',
           );
         if (current.name.toLowerCase() !== name.toLowerCase())
           this.queries.ensureEngineeringNameAvailable(current.projectId, name);
-        if (current.identifier !== identifier)
-          this.queries.ensureEngineeringIdentifierAvailable(
-            current.projectId,
-            identifier,
-            engineeringId,
-          );
         const updatedAt = this.now().toISOString();
         const update = this.db.get<EngineeringRow>(
           `UPDATE platform_engineering
-             SET name = ?, type = ?, identifier = ?, version = version + 1,
+             SET name = ?, version = version + 1,
                  updated_at = ?
              WHERE id = ? AND version = ? AND archived_at IS NULL RETURNING *`,
           name,
-          type,
-          identifier,
           updatedAt,
           engineeringId,
           input.expectedVersion,

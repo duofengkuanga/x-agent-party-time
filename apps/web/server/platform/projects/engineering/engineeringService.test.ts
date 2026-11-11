@@ -243,36 +243,44 @@ describe('EngineeringService', () => {
     ).toBe('web');
   });
 
-  test('首次被提测引用后名称和归属仍可修改，但稳定标识锁定', async () => {
-    const { project, references, service, users } = await setup();
-    const engineering = service.createEngineering(users.owner.id, project.id, {
-      mutationId: randomUUID(),
-      name: '旧名称',
-      type: 'FRONTEND',
-      identifier: 'web',
-    });
-    references.engineering.add(engineering.id);
-    const renamed = service.updateEngineering(users.owner.id, engineering.id, {
-      ...mutation(engineering.version),
-      name: '新名称',
-      type: 'BACKEND',
-      identifier: engineering.identifier,
-    });
-    expect(renamed).toMatchObject({
-      name: '新名称',
-      type: 'BACKEND',
-      identifier: 'web',
-    });
-    expect(service.isIdentifierLocked(users.owner.id, engineering.id)).toBe(true);
-    expect(() =>
-      service.updateEngineering(users.owner.id, engineering.id, {
-        ...mutation(renamed.version),
-        name: '继续改名',
-        type: 'BACKEND',
-        identifier: 'admin-web',
-      }),
-    ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
-  });
+  test.each([false, true])(
+    '创建后归属与稳定标识固定，名称仍可修改（已引用：%s）',
+    async (referenced) => {
+      const { project, references, service, users } = await setup();
+      const engineering = service.createEngineering(users.owner.id, project.id, {
+        mutationId: randomUUID(),
+        name: '旧名称',
+        type: 'FRONTEND',
+        identifier: 'web',
+      });
+      if (referenced) references.engineering.add(engineering.id);
+      for (const change of [{ type: 'BACKEND' as const }, { identifier: 'admin-web' }]) {
+        expect(() =>
+          service.updateEngineering(users.owner.id, engineering.id, {
+            ...mutation(engineering.version),
+            name: engineering.name,
+            type: engineering.type,
+            identifier: engineering.identifier,
+            ...change,
+          }),
+        ).toThrow(expect.objectContaining({ code: 'RESOURCE_CONFLICT' }));
+        expect(service.getEngineering(users.owner.id, engineering.id)).toEqual(
+          engineering,
+        );
+      }
+      const renamed = service.updateEngineering(users.owner.id, engineering.id, {
+        ...mutation(engineering.version),
+        name: '新名称',
+        type: engineering.type,
+        identifier: engineering.identifier,
+      });
+      expect(renamed).toMatchObject({
+        name: '新名称',
+        type: 'FRONTEND',
+        identifier: 'web',
+      });
+    },
+  );
 
   test('工程成员必须先属于项目，添加幂等且活动职责阻止移除', async () => {
     const { database, project, references, service, users } = await setup();

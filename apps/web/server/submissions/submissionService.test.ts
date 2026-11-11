@@ -93,7 +93,7 @@ describe('SubmissionService create', () => {
     engineering.updateEngineering(fixture.users.owner.id, fixture.engineering.front.id, {
       ...mutation(current.version),
       name: '改名后的工程',
-      type: 'BACKEND',
+      type: current.type,
       identifier: current.identifier,
     });
 

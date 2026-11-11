@@ -50,26 +50,6 @@ export async function createEngineeringAction(formData: FormData): Promise<never
   });
 }
 
-export async function updateEngineeringAction(formData: FormData) {
-  return runInteractiveMutation({
-    validationEvent: 'engineering_autosave_validation_failed',
-    command: ({ userId }) => ({
-      result: engineeringService().updateEngineering(
-        userId,
-        formField(formData, 'engineeringId'),
-        {
-          mutationId: formField(formData, 'mutationId'),
-          expectedVersion: integerFormField(formData, 'expectedVersion'),
-          name: formField(formData, 'name'),
-          type: EngineeringTypeSchema.parse(formField(formData, 'type')),
-          identifier: formField(formData, 'identifier'),
-        },
-      ),
-      refreshPaths: REFRESH_PATHS,
-    }),
-  });
-}
-
 export async function archiveEngineeringAction(formData: FormData) {
   return runInteractiveMutation({
     validationEvent: 'engineering_archive_validation_failed',
