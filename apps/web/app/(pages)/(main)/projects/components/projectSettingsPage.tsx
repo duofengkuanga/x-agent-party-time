@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { redirect, RedirectType } from 'next/navigation';
 import { requireCurrentUser } from '@/app/auth';
 import { engineeringService, projectService } from '@/server/runtime/services';
+import { runnerService } from '@/server/runtime/runner';
 import { updateProjectAction } from '@/app/actions/projects/projects';
 import {
   normalizeProjectSettingsRoute,
@@ -87,6 +88,11 @@ export default async function ProjectSettingsPage({
   const creatingEngineering =
     route.panel === 'engineering' && route.engineeringId === 'new';
 
+  const availableRunners = engineering.length
+    ? runnerService()
+        .listRunners(user.id)
+        .filter(({ online, runner }) => online && !runner.revokedAt)
+    : [];
   const engineeringPanels = engineering.map((item) => {
     const workspace = engineeringReader.getWorkspace(user.id, item.id);
     const canEdit = owner && !workspace.engineering.archivedAt;
@@ -106,6 +112,11 @@ export default async function ProjectSettingsPage({
         <EngineeringDetail
           key={item.id}
           workspace={workspace}
+          userId={user.id}
+          runners={availableRunners}
+          bindingRequestId={
+            route.engineeringId === item.id ? route.bindingRequestId : undefined
+          }
           informationEditor={
             canEdit ? (
               <EngineeringInformationManagement

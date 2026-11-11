@@ -1,7 +1,18 @@
 import { randomUUID } from 'node:crypto';
 import type { ReactNode } from 'react';
-import type { EngineeringWorkspace } from '@/contracts/projects/engineering';
+import Link from 'next/link';
+import type { RunnerStatus } from '@agent-party-time/runner-contract';
+import type {
+  BindingRequest,
+  EngineeringWorkspace,
+} from '@/contracts/projects/engineering';
+import { PlatformError } from '@/server/platform/errors/index';
 import {
+  bindingRequestService,
+  bindingService,
+} from '@/server/runtime/services';
+import {
+  createEngineeringBindingAction,
   updateEngineeringAction,
   updateEnvironmentAction,
 } from '@/app/actions/projects/engineering';
@@ -9,6 +20,8 @@ import { EngineeringFields } from './settingsFields';
 import { AutoSaveForm } from '../components/autoSaveForm';
 import { EnvironmentSelect } from './environmentSelect';
 import { EnvironmentDeleteControl } from './environmentDeleteControl';
+import { AutoRefresh } from '@/app/(pages)/(main)/components/autoRefresh';
+import { SaveButton } from '../components/saveButton';
 
 export function EngineeringEnvironmentManagement({
   workspace,
@@ -142,16 +155,44 @@ export function EngineeringInformationManagement({
 
 export function EngineeringDetail({
   workspace,
+  userId,
+  runners,
+  bindingRequestId,
   informationEditor,
   membersEditor,
   environmentsEditor,
 }: {
   workspace: EngineeringWorkspace;
+  userId: string;
+  runners: RunnerStatus[];
+  bindingRequestId?: string;
   informationEditor?: ReactNode;
   membersEditor?: ReactNode;
   environmentsEditor?: ReactNode;
 }) {
-  const { id: engineeringId } = workspace.engineering;
+  const { id: engineeringId, projectId } = workspace.engineering;
+  const canBind =
+    !workspace.engineering.archivedAt &&
+    workspace.members.some(({ user }) => user.id === userId) &&
+    !bindingService()
+      .listBindings(userId, engineeringId)
+      .some(({ binding }) => binding.userId === userId);
+  let bindingRequest: BindingRequest | null = null;
+  if (canBind && bindingRequestId) {
+    try {
+      const request = bindingRequestService().getRequest(
+        userId,
+        bindingRequestId,
+      );
+      if (request.engineeringId === engineeringId) bindingRequest = request;
+    } catch (error) {
+      if (!(error instanceof PlatformError && error.code === 'NOT_FOUND'))
+        throw error;
+    }
+  }
+  const awaitingBinding =
+    bindingRequest?.state === 'PENDING' ||
+    bindingRequest?.state === 'PROCESSING';
 
   return (
     <article
@@ -189,6 +230,76 @@ export function EngineeringDetail({
           )}
         </div>
       </header>
+
+      {canBind ? (
+        <section
+          className="engineering-binding-strip"
+          aria-label={`${workspace.engineering.name}本机 Agent 绑定`}
+        >
+          <div className="collaboration-section-title">
+            <h5>绑定本机 Agent</h5>
+          </div>
+          {bindingRequest && bindingRequest.state !== 'SUCCEEDED' ? (
+            <div
+              className="engineering-binding-request"
+              data-state={bindingRequest.state}
+              role="status"
+            >
+              <AutoRefresh active={awaitingBinding} />
+              <strong>
+                {
+                  {
+                    PENDING: '等待 Agent 响应',
+                    PROCESSING: '等待选择仓库',
+                    FAILED: '工程绑定未完成',
+                    CANCELLED: '工程绑定已取消',
+                  }[bindingRequest.state]
+                }
+              </strong>
+              <p>
+                {bindingRequest.errorMessage ??
+                  (awaitingBinding
+                    ? '请在本机 Agent 提示后选择要绑定的 Git 仓库。'
+                    : '如需继续，请重新发起工程绑定。')}
+              </p>
+            </div>
+          ) : null}
+          {awaitingBinding ? null : runners.length ? (
+            <div className="engineering-binding-disclosure">
+              <form
+                action={createEngineeringBindingAction}
+                className="engineering-binding-form"
+              >
+                <EngineeringFields
+                  engineeringId={engineeringId}
+                  projectId={projectId}
+                />
+                <label>
+                  <span>选择本机 Agent</span>
+                  <select name="runnerId" required>
+                    {runners.map(({ runner }) => (
+                      <option key={runner.id} value={runner.id}>
+                        {runner.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <SaveButton pendingLabel="正在发起绑定…">
+                  绑定本机 Agent
+                </SaveButton>
+              </form>
+            </div>
+          ) : (
+            <div className="collab-form__blocked">
+              <div>
+                <strong>需要先连接本机 Agent</strong>
+                <p>连接完成后再为当前工程建立绑定。</p>
+              </div>
+              <Link href="/agents">我的 Agent</Link>
+            </div>
+          )}
+        </section>
+      ) : null}
 
       <div className="project-engineering__body">
         <section
