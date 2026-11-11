@@ -334,6 +334,46 @@ test.each([false, true])(
   },
 );
 
+test('PersonAgent 可以关闭提测并释放环境，没有工作区时不创建清理任务', async () => {
+  const f = await setup();
+  f.lifecycle.closeSubmission(f.users.tester.id, f.submission.id, {
+    mutationId: randomUUID(),
+    expectedVersion: f.submission.version,
+  });
+  const members = f.submissions.getWorkspace(f.users.developer.id, f.submission.id)
+    .submission.items;
+  const submission = f.submissions.createSubmission(f.users.owner.id, f.project.id, {
+    mutationId: randomUUID(),
+    title: 'PersonAgent 关闭验收',
+    requirementDescription: '关闭时查询修复与更新历史并释放环境',
+    testerUserId: f.users.tester.id,
+    mode: 'PERSON_AGENT',
+    personAgent: { responsibleUserId: f.users.developer.id, runnerId: f.runner.id },
+    items: members.map((member) => ({
+      engineeringId: member.engineering.id,
+      responsibleUserId: f.users.developer.id,
+      bindingId: member.technical!.bindingId,
+      targetBranch: member.targetBranch,
+      environmentId: member.environment.id,
+    })),
+  });
+  const closed = f.lifecycle.closeSubmission(f.users.tester.id, submission.id, {
+    mutationId: randomUUID(),
+    expectedVersion: submission.version,
+  });
+  expect(closed.cleanupExecutionIds).toEqual([]);
+  expect(
+    f.submissions.getWorkspace(f.users.tester.id, submission.id).submission.submission
+      .status,
+  ).toBe('CLOSED');
+  expect(
+    f.database.all(
+      'SELECT submission_id FROM submission_environment_lock WHERE submission_id = ?',
+      submission.id,
+    ),
+  ).toEqual([]);
+});
+
 test('20 工程的 PersonAgent 可领取修复，每个工程均有 Git 断言且文本断言不超协议上限', async () => {
   const f = await setup();
   f.lifecycle.closeSubmission(f.users.tester.id, f.submission.id, {

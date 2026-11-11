@@ -7,7 +7,8 @@ export function personAgentCleanupHeads(
   bindingId: string,
 ): Record<string, string | null> {
   const executions = db.all<{ workspace_json: string; outcome_json: string | null }>(
-    `SELECT execution.workspace_json, attempt.outcome_json, execution.created_at, attempt.attempt
+    `SELECT execution.workspace_json, attempt.outcome_json,
+            execution.created_at AS execution_created_at, attempt.attempt AS attempt_number
        FROM submission_repair_attempt attempt
        JOIN submission_bug bug ON bug.id = attempt.bug_id
        JOIN platform_execution execution ON execution.id = attempt.execution_id
@@ -18,7 +19,7 @@ export function personAgentCleanupHeads(
        JOIN submission_update_batch batch ON batch.id = attempt.batch_id
        JOIN platform_execution execution ON execution.id = attempt.execution_id
        WHERE batch.submission_id = ?
-     ORDER BY created_at, attempt`,
+     ORDER BY execution_created_at, attempt_number`,
     submissionId,
     submissionId,
   );
