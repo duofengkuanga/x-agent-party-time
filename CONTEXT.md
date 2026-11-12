@@ -75,7 +75,7 @@ _Avoid_: Skill Version、Prompt Version
 _Avoid_: Binding、Latest Skill
 
 **Interaction**:
-Execution 过程中 Codex 明确请求用户输入或权限决定的等待点；它暂停执行，但不构成失败的 Execution Outcome。
+Execution 过程中 Codex 明确请求用户输入或权限决定、由平台保存答复的等待点；等待以及答复后排队恢复都不构成失败的 Execution Outcome，与将会话交给负责人在平台外处理相区分。
 _Avoid_: Feedback、Chat Message
 
 **External Session Continuation**:
@@ -83,7 +83,7 @@ _Avoid_: Feedback、Chat Message
 _Avoid_: Platform Retry、Manual Repair Node
 
 **Manual Session Handoff**:
-自动执行请求人工确认后，将原会话交给工程负责人处理的交接；等待人工处理不表示修复或更新失败，完成后由负责人同步结果。
+将原会话的后续处理交给工程负责人的交接；负责人在平台外处理后同步结果，与平台内答复并排队续接的 Interaction 相区分，交接本身不表示修复或更新失败。
 _Avoid_: Failure、Automatic Retry
 
 **External Session Attempt**:
