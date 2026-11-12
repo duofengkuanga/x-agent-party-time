@@ -16,6 +16,18 @@ const runCli = (
 ) => executeCli(args, runtime, progress);
 
 describe('runCli', () => {
+  test('恢复阻塞时明确提示人工核验，不暴露本机路径或进程参数', async () => {
+    const result = await runCli(
+      ['daemon', 'status'],
+      fakeRuntime({
+        ...runningSnapshot('CONNECTED'),
+        recoveryRequired: true,
+      }),
+    );
+    expect(result.stdout).toContain('请人工核验原会话及工具进程');
+    expect(result.stdout).not.toMatch(/\/Users\/|processGroups|leaseToken/);
+  });
+
   test('renders only the confirmed public command tree', async () => {
     const result = await runCli(['--help']);
 

@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react';
 import type { SubmissionWorkspaceSnapshot } from '@/contracts/submissions/workspace';
 import {
+  cancelBugAction,
   reopenBugAction,
   reviewLinkedBugsAction,
   restoreBugAction,
@@ -22,6 +23,7 @@ import {
 } from './boardModel';
 import { latestTesterFeedback, linkedReviewPairFor } from './testerDetailModel';
 import { PassConfirmButton } from './passConfirmButton';
+import { Popconfirm } from '@/app/(pages)/(main)/components/popconfirm';
 import { TesterChecklist } from './testerChecklist';
 import { TesterAttachments } from './testerAttachments';
 import {
@@ -58,6 +60,7 @@ export function TesterBugDetail({
     'VERIFY_FAIL' | 'REOPEN' | null
   >(null);
   const [feedback, setFeedback] = useState('');
+  const [cancelOpen, setCancelOpen] = useState(false);
   const [ownership, setOwnership] = useState<LinkedOwnership>('BOTH');
   const [files, setFiles] = useState<File[]>([]);
   const feedbackInput = useRef<HTMLInputElement>(null);
@@ -84,6 +87,7 @@ export function TesterBugDetail({
     (pair ? pair.ready : bug.availableActions.includes(feedbackKind));
   const showActions =
     canEdit ||
+    (bug.stage === 'REPAIRING' && bug.availableActions.includes('CANCEL')) ||
     Boolean(pair?.ready) ||
     bug.availableActions.some((action) =>
       [
@@ -369,6 +373,27 @@ export function TesterBugDetail({
                   >
                     {issueLabel}
                   </button>
+                ) : null}
+                {bug.stage === 'REPAIRING' &&
+                bug.availableActions.includes('CANCEL') ? (
+                  <Popconfirm
+                    label="取消等待"
+                    title="确认取消这个缺陷？"
+                    description="取消后移出修复队列，已有问题和答复不再触发恢复，处理记录会保留。"
+                    confirmLabel="确认取消"
+                    pendingLabel="正在取消…"
+                    open={cancelOpen}
+                    onOpenChange={setCancelOpen}
+                    pending={pending}
+                    error={error}
+                    onConfirm={() =>
+                      run(
+                        () => cancelBugAction(bug.id, mutation()),
+                        '缺陷已取消，旧确认已失效。',
+                        () => setCancelOpen(false),
+                      )
+                    }
+                  />
                 ) : null}
                 {bug.availableActions.includes('RESTORE') ? (
                   <button

@@ -218,6 +218,8 @@ function renderDaemonStatus(snapshot: DaemonSnapshot): string {
   );
   if (snapshot.connection === 'UNCONFIGURED' && snapshot.service === 'RUNNING')
     lines.push('下一步：xapt daemon connect <server-url>');
+  if (snapshot.recoveryRequired)
+    lines.push('执行恢复      暂不领取新任务，请人工核验原会话及工具进程。');
   return lines.join('\n');
 }
 

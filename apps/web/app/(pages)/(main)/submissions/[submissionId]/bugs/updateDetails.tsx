@@ -97,6 +97,7 @@ export function UpdateAttemptDetails({
           ) : null}
           {node.interactions.map((interaction) => (
             <SubmissionInteractionRecord
+              subject="UPDATE"
               key={interaction.id}
               interaction={interaction}
               pending={pending}

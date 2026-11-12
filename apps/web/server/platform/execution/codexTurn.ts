@@ -11,6 +11,7 @@ export function createInitialCodexTurn(input: {
   requiredSkillName: string;
   requiredSkillProtocol?: string;
   manualHandoff?: 'EXTERNAL_SESSION';
+  managedInteractions?: true;
   executionBrief: JsonObject;
   outputJsonSchema: JsonObject;
   resultAssertions?: ExecutionResultAssertion[];
@@ -19,6 +20,7 @@ export function createInitialCodexTurn(input: {
   return {
     kind: 'INITIAL',
     manualHandoff: input.manualHandoff,
+    managedInteractions: input.managedInteractions,
     requiredSkillName: input.requiredSkillName,
     requiredSkillProtocol: input.requiredSkillProtocol,
     executionBrief: input.executionBrief,
@@ -32,6 +34,7 @@ export function createInitialCodexTurn(input: {
 export function createContinuationCodexTurn(input: {
   taskId: string;
   manualHandoff?: 'EXTERNAL_SESSION';
+  managedInteractions?: true;
   taskSkillBinding: TaskSkillBinding;
   text: string;
   outputJsonSchema: JsonObject;
@@ -40,6 +43,7 @@ export function createContinuationCodexTurn(input: {
   return {
     kind: 'CONTINUATION',
     manualHandoff: input.manualHandoff,
+    managedInteractions: input.managedInteractions,
     taskId: input.taskId,
     taskSkillBinding: input.taskSkillBinding,
     input: input.text,

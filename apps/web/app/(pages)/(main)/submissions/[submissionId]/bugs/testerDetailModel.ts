@@ -27,7 +27,7 @@ export function testerBugStatus(
       case 'QUEUED_FOR_ENGINEERING':
         return '已提交修复，正在等待处理。';
       case 'WAITING_TO_RESUME':
-        return `修复暂时中断，等待${responsible}恢复处理。`;
+        return '处理决定已保存，正在排队等待 Agent 继续修复。';
       default:
         return `${responsible}正在处理，当前无需你操作。`;
     }

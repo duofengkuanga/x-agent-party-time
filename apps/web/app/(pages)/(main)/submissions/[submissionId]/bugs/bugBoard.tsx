@@ -153,6 +153,10 @@ export function BugBoard({
   }
 
   function storeBug(bug: BugView, kind: BugStorageKind) {
+    if (kind === 'cancelled' && bug.stage === 'REPAIRING') {
+      setDrawer({ mode: 'view', bugId: bug.id });
+      return;
+    }
     const transition = STORAGE_TRANSITIONS[kind];
     const message = `${bugLabel(bug)} ${transition.message}`;
     run(

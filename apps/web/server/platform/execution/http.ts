@@ -19,6 +19,7 @@ import {
   OpenInteractionResponseSchema,
   WaitInteractionRequestSchema,
   WaitInteractionResponseSchema,
+  YieldInteractionRequestSchema,
 } from '@agent-party-time/execution-contract';
 import type { ExecutionService } from './service';
 
@@ -80,6 +81,19 @@ export async function handleOpenInteraction(
     return {
       interaction: executions.openInteraction(runner.id, executionId, body),
     };
+  });
+}
+
+export async function handleYieldInteraction(
+  request: Request,
+  executionId: string,
+  runners: RunnerAuthenticator,
+  executions: Pick<ExecutionService, 'yieldInteraction'>,
+): Promise<Response> {
+  return jsonOperation(ExecutionMutationResponseSchema, async () => {
+    const runner = runners.authenticateCredential(bearerCredential(request));
+    const body = YieldInteractionRequestSchema.parse(await request.json());
+    return { execution: executions.yieldInteraction(runner.id, executionId, body) };
   });
 }
 

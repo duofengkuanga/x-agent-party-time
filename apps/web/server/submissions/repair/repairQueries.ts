@@ -52,6 +52,25 @@ const REPAIR_ATTEMPT_SELECT = `SELECT attempt.id, attempt.bug_id, attempt.execut
   JOIN platform_execution execution ON execution.id = attempt.execution_id
   JOIN platform_runner runner ON runner.id = execution.runner_id`;
 
+export function waitingRepairExecutionId(db: AppDatabase, bugId: string): string | null {
+  const latest = db.get<{
+    id: string;
+    state: Execution['state'];
+    managed: number | null;
+  }>(
+    `SELECT execution.id, execution.state,
+      json_extract(execution.codex_turn_json, '$.managedInteractions') managed
+     FROM submission_repair_attempt attempt
+     JOIN platform_execution execution ON execution.id = attempt.execution_id
+     WHERE attempt.bug_id = ? ORDER BY attempt.attempt DESC LIMIT 1`,
+    bugId,
+  );
+  return latest?.managed === 1 &&
+    ['WAITING_FOR_INTERACTION', 'WAITING_TO_RESUME'].includes(latest.state)
+    ? latest.id
+    : null;
+}
+
 export class RepairQueries {
   constructor(
     private readonly db: AppDatabase,

@@ -1,0 +1,139 @@
+suite: Repair interaction queue
+setup:
+  - open: __BASE_URL__/login?next=/submissions/__SUBMISSION_ID__
+  - fill: { sel: 'input[name="username"]', text: __DEVELOPER_USERNAME__ }
+  - fill: { sel: 'input[name="password"]', text: __PASSWORD__ }
+  - click: '.auth-submit'
+  - wait: '.collab-board'
+cases:
+  - name: repair approval only grants the current request
+    steps:
+      - click: 'button[aria-label^="等待审批缺陷，"]'
+      - wait: '.collab-interaction-actions'
+    assert:
+      - count: { sel: '.collab-interaction-actions button', eq: 2 }
+      - text: { sel: '.collab-interaction-actions', contains: 仅允许这一次 }
+      - text: { sel: '.collab-interaction-actions', contains: 满一分钟 }
+      - eval: '!document.querySelector(".collab-interaction-actions").textContent.includes("本次会话允许")'
+
+  - name: a declined approval waits to resume instead of cancelling the bug
+    steps:
+      - click: '.collab-interaction-actions button:first-child'
+      - wait: '.collab-interaction-resolution'
+    assert:
+      - text: { sel: '.collab-interaction-resolution', contains: 已拒绝 }
+      - text:
+          { sel: '.collab-bug-drawer', contains: 答复已保存，正在排队等待继续 }
+      - visible: 'article[data-stage="REPAIRING"] button[aria-label^="等待审批缺陷，"]'
+
+  - name: asynchronous questions retain options and require an answer
+    steps:
+      - click: 'button[aria-label="关闭详情抽屉"]'
+      - click: 'button[aria-label^="等待方案回答缺陷，"]'
+      - wait: '.collab-interaction-questions'
+    assert:
+      - count:
+          { sel: '.collab-interaction-questions input[type="radio"]', eq: 3 }
+      - text: { sel: '.collab-interaction-questions', contains: 保留现有布局 }
+      - text: { sel: '.collab-interaction-questions', contains: 调整布局 }
+      - eval: 'document.querySelector(".collab-interaction-questions > button").disabled'
+
+  - name: pending answers cannot be submitted twice
+    steps:
+      - click: 'input[type="radio"][value="保留现有布局"]'
+      - press: Tab
+      - eval: >-
+          window.interactionFetch=window.fetch;
+          window.fetch=async (...args)=>{
+            if(new Headers(args[1]?.headers).has('next-action'))
+              return await new Promise((resolve,reject)=>{window.rejectInteraction=reject;});
+            return window.interactionFetch(...args);
+          }; true
+      - click: '.collab-interaction-questions > button'
+      - wait: '.collab-interaction-questions > button:disabled'
+    assert:
+      - eval: 'document.querySelector("input[value=\"保留现有布局\"]").checked'
+      - eval: 'document.querySelector(".collab-interaction-questions > button").disabled'
+
+  - name: failed answer keeps its selection and permits retry
+    steps:
+      - eval: 'window.fetch=window.interactionFetch;window.rejectInteraction(new TypeError("Failed to fetch"));true'
+      - wait: '.collab-interaction-questions > button:not(:disabled)'
+    assert:
+      - eval: 'document.querySelector("input[value=\"保留现有布局\"]").checked'
+      - visible: '.collab-bug-drawer [role="alert"]'
+
+  - name: the saved answer becomes a queued continuation
+    steps:
+      - click: '.collab-interaction-questions > button'
+      - wait: '.collab-interaction-record[data-state="RESOLVED"]'
+    assert:
+      - text: { sel: '.collab-interaction-record', contains: 保留现有布局 }
+      - text:
+          { sel: '.collab-bug-drawer', contains: 答复已保存，正在排队等待继续 }
+      - hidden: '.collab-interaction-questions'
+
+  - name: tester cancellation explains that old answers become invalid
+    steps:
+      - click: 'button[aria-label="关闭详情抽屉"]'
+      - click: 'button[aria-label="打开账号菜单"]'
+      - click: '.collab-account-menu__panel form button'
+      - wait: 'input[name="username"]'
+      - fill: { sel: 'input[name="username"]', text: __USERNAME__ }
+      - fill: { sel: 'input[name="password"]', text: __PASSWORD__ }
+      - click: '.auth-submit'
+      - wait: '.collab-board'
+      - click: 'button[aria-label^="等待方案回答缺陷，"]'
+      - click: '.collab-tester-detail__actions .popconfirm__trigger'
+      - wait: '.popconfirm:popover-open'
+    assert:
+      - text:
+          {
+            sel: '.popconfirm:popover-open',
+            contains: 已有问题和答复不再触发恢复,
+          }
+      - text: { sel: '.popconfirm:popover-open', contains: 处理记录会保留 }
+      - eval: 'document.activeElement.textContent.trim()==="取消"'
+      - eval: '(() => {const r=document.querySelector(".popconfirm:popover-open").getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight&&r.left>=0&&r.right<=innerWidth;})()'
+
+  - name: Escape preserves the waiting bug and restores focus
+    steps:
+      - press: Escape
+    assert:
+      - hidden: '.popconfirm:popover-open'
+      - eval: 'document.activeElement.textContent.trim()==="取消等待"'
+      - visible: 'article[data-stage="REPAIRING"] button[aria-label^="等待方案回答缺陷，"]'
+
+  - name: cancellation remains visible while pending and on error
+    steps:
+      - eval: >-
+          window.cancelFetch=window.fetch;
+          window.fetch=async (...args)=>{
+            if(new Headers(args[1]?.headers).has('next-action'))
+              return await new Promise((resolve,reject)=>{window.rejectCancellation=reject;});
+            return window.cancelFetch(...args);
+          }; true
+      - click: '.collab-tester-detail__actions .popconfirm__trigger'
+      - wait: '.popconfirm:popover-open'
+      - click: '.popconfirm:popover-open .popconfirm__actions button:last-child'
+      - wait: '.popconfirm:popover-open[aria-busy="true"]'
+    assert:
+      - eval: '[...document.querySelectorAll(".popconfirm:popover-open button")].every(button=>button.disabled)'
+
+  - name: cancellation failure permits a deliberate retry
+    steps:
+      - eval: 'window.fetch=window.cancelFetch;window.rejectCancellation(new TypeError("Failed to fetch"));true'
+      - wait: '.popconfirm:popover-open [role="alert"]'
+    assert:
+      - visible: '.popconfirm:popover-open'
+      - eval: '!document.querySelector(".popconfirm:popover-open .popconfirm__actions button:last-child").disabled'
+      - visible: 'article[data-stage="REPAIRING"] button[aria-label^="等待方案回答缺陷，"]'
+
+  - name: confirmed cancellation removes the bug from the repair queue
+    steps:
+      - click: '.popconfirm:popover-open .popconfirm__actions button:last-child'
+      - wait: '.collab-tester-detail__actions:not(:has(.popconfirm:popover-open))'
+    assert:
+      - text: { sel: '.collab-bug-drawer', contains: 缺陷已取消 }
+      - text: { sel: '.collab-tester-detail__actions', contains: 恢复到待修复 }
+      - hidden: 'article[data-stage="REPAIRING"] button[aria-label^="等待方案回答缺陷，"]'

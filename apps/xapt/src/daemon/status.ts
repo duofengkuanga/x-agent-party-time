@@ -19,6 +19,7 @@ export interface DaemonSnapshot {
   bindingCount: number;
   bindingActive: boolean;
   observationStatus: 'HEALTHY' | 'DEGRADED' | 'UNAVAILABLE';
+  recoveryRequired?: true;
 }
 
 export function stoppedSnapshot(version: string): DaemonSnapshot {

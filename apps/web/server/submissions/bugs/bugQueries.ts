@@ -1,4 +1,5 @@
 import { LifecycleQueries } from '@/server/submissions/lifecycle/lifecycleQueries';
+import { waitingRepairExecutionId } from '@/server/submissions/repair/repairQueries';
 import { BugRelations, stageLabel } from './bugRelations';
 import { parseRow, type DatabaseRow } from '@/server/database/rowMapper';
 import { deliveryEnvironmentAvailable } from '@/server/submissions/environmentAccess';
@@ -273,7 +274,13 @@ export class BugQueries {
     if (canRequestRepair && (tester || userId === access.created_by_user_id))
       actions.push('REQUEST_REPAIR');
     if (!tester) return actions;
-    if (canRequestRepair) actions.push('CANCEL');
+    if (
+      canRequestRepair ||
+      (bug.stage === 'REPAIRING' &&
+        !bug.transferredAt &&
+        waitingRepairExecutionId(this.db, bug.id))
+    )
+      actions.push('CANCEL');
     if (bug.stage === 'CANCELLED' && !bug.transferredAt) actions.push('RESTORE');
     if (
       bug.stage === 'WAITING_FOR_VERIFICATION' &&

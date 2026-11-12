@@ -467,20 +467,31 @@ export class BugLifecycleCommands {
           )
         )
           throw new PlatformError('INVALID_TRANSITION', '因转交关闭的缺陷不能恢复或取消');
-        if (kind === 'cancel' && source.stage !== transition.from)
-          throw new PlatformError('INVALID_TRANSITION', '只有待修复缺陷可以取消');
+        const waitingRepair = kind === 'cancel' && source.stage === 'REPAIRING';
+        if (kind === 'cancel' && source.stage !== transition.from && !waitingRepair)
+          throw new PlatformError(
+            'INVALID_TRANSITION',
+            '只有待修复或等待人工处理的缺陷可以取消',
+          );
         const now = this.now().toISOString();
         const update = this.db.run(
           `UPDATE submission_bug
              SET stage = ?, version = version + 1, updated_at = ?
              WHERE id = ? AND version = ? AND stage = ?`,
-          [transition.to, now, bugId, input.expectedVersion, transition.from],
+          [
+            transition.to,
+            now,
+            bugId,
+            input.expectedVersion,
+            waitingRepair ? 'REPAIRING' : transition.from,
+          ],
         );
         if (update.changes !== 1) {
           if (kind === 'cancel')
             throw new PlatformError('STALE_STATE', '缺陷已变化，请刷新后重试');
           throw new PlatformError('INVALID_TRANSITION', '当前缺陷不能恢复到待修复');
         }
+        if (waitingRepair) this.repairs.cancelWaitingExecution(bugId);
         this.recordBugTransition(bugId, transition.event, actorUserId, now);
         const revision = this.writes.bumpRevision(source.submission_id, now);
         return { revision, action: transition.audit, details: {} };

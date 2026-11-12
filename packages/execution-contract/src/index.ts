@@ -192,6 +192,7 @@ export const CodexTurnSchema = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('INITIAL'),
     manualHandoff: z.literal('EXTERNAL_SESSION').optional(),
+    managedInteractions: z.literal(true).optional(),
     requiredSkillName: z.string().trim().min(1).max(120),
     requiredSkillProtocol: z
       .string()
@@ -206,6 +207,7 @@ export const CodexTurnSchema = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('CONTINUATION'),
     manualHandoff: z.literal('EXTERNAL_SESSION').optional(),
+    managedInteractions: z.literal(true).optional(),
     taskId: SessionIdSchema,
     taskSkillBinding: TaskSkillBindingSchema,
     input: z.string().trim().min(1).max(200_000),
@@ -372,6 +374,10 @@ export const OpenInteractionResponseSchema = z.object({
   interaction: ExecutionInteractionSchema,
 });
 
+export const YieldInteractionRequestSchema = OpenInteractionRequestSchema.extend({
+  sessionId: SessionIdSchema,
+});
+
 export const WaitInteractionRequestSchema = z.object({
   executionId: ExecutionIdSchema,
   leaseToken: LeaseTokenSchema,
@@ -381,6 +387,7 @@ export const WaitInteractionRequestSchema = z.object({
 export const WaitInteractionResponseSchema = z.object({
   interaction: ExecutionInteractionSchema,
   laneAcquired: z.boolean(),
+  yieldRequested: z.literal(true).optional(),
 });
 
 export const CompleteExecutionRequestSchema = z.object({
@@ -412,6 +419,7 @@ export type ExecutionStartRequest = z.infer<typeof ExecutionStartRequestSchema>;
 export type ExecutionRenewResponse = z.infer<typeof ExecutionRenewResponseSchema>;
 export type ExecutionInteraction = z.infer<typeof ExecutionInteractionSchema>;
 export type OpenInteractionRequest = z.infer<typeof OpenInteractionRequestSchema>;
+export type YieldInteractionRequest = z.infer<typeof YieldInteractionRequestSchema>;
 export type WaitInteractionResponse = z.infer<typeof WaitInteractionResponseSchema>;
 export type CompleteExecutionRequest = z.infer<typeof CompleteExecutionRequestSchema>;
 export type RunnerActivity = z.infer<typeof RunnerActivitySchema>;
@@ -446,6 +454,7 @@ const UserInputResolutionSchema = z.strictObject({
 
 const INTERACTION_PAYLOAD_KEYS: Record<string, readonly string[]> = {
   'xapt/manualHandoff': ['questions'],
+  'xapt/asyncQuestions': ['itemId', 'turnId', 'questions'],
   'item/commandExecution/requestApproval': ['command', 'reason'],
   'item/fileChange/requestApproval': ['reason'],
   'item/permissions/requestApproval': ['permissions', 'reason'],
@@ -471,7 +480,7 @@ export function parseExecutionInteractionResolution(
       invalidInteraction('scope', '拒绝权限请求只能使用 turn scope');
     return resolution;
   }
-  if (method === 'item/tool/requestUserInput') {
+  if (method === 'item/tool/requestUserInput' || method === 'xapt/asyncQuestions') {
     const resolution = UserInputResolutionSchema.parse(resolutionValue);
     const questions = jsonRecord(payloadValue).questions;
     const questionIds = Array.isArray(questions)

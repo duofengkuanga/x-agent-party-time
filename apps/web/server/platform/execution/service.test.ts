@@ -158,6 +158,438 @@ test('工作区等待同步审批保留通道，独立更新仍可并发且审�
   expect(f.executions.get(second.id).state).toBe('QUEUED');
 });
 
+test('人工等待满一分钟后先确认会话停止才让位，答复后不抢占并优先恢复', async () => {
+  const f = await setup();
+  const binding = bindingId(97);
+  const makeRepair = (key: string) =>
+    f.executions.enqueue({
+      ...input(f.runnerId, binding, key),
+      codexTurn: createInitialCodexTurn({
+        requiredSkillName: 'repair',
+        executionBrief: {},
+        outputJsonSchema: {},
+        managedInteractions: true,
+      }),
+      workspaces: executionWorkspaces(binding, {
+        key,
+        isolation: 'BRANCH_WORKTREE',
+        baseRef: 'main',
+        branch: key,
+      }),
+    });
+  const first = makeRepair('waiting-first');
+  const second = makeRepair('waiting-second');
+  const third = makeRepair('waiting-third');
+  const claimed = (await f.executions.claim(f.runnerId, 1, 0))[0]!;
+  f.executions.start(f.runnerId, first.id, {
+    kind: 'STARTED',
+    leaseToken: claimed.lease.token,
+    sessionId: 'first-session',
+    taskSkillBinding: {
+      skillName: 'repair',
+      bundleHash: 'a'.repeat(64),
+      sourceRevision: 'b'.repeat(40),
+    },
+  });
+  const request = {
+    leaseToken: claimed.lease.token,
+    kind: 'USER_INPUT' as const,
+    method: 'item/tool/requestUserInput',
+    payload: { questions: [{ id: 'choice', question: '选哪个？' }] },
+  };
+  const opened = f.executions.openInteraction(f.runnerId, first.id, request);
+  for (let seconds = 8; seconds <= 56; seconds += 8) {
+    f.setNow(`2026-07-27T08:00:${String(seconds).padStart(2, '0')}.000Z`);
+    f.executions.renew(f.runnerId, first.id, claimed.lease.token);
+  }
+  f.setNow('2026-07-27T08:00:59.999Z');
+  expect(
+    await f.executions.waitInteraction(
+      f.runnerId,
+      first.id,
+      opened.id,
+      claimed.lease.token,
+      0,
+    ),
+  ).not.toHaveProperty('yieldRequested');
+  f.setNow('2026-07-27T08:01:00.000Z');
+  expect(
+    await f.executions.waitInteraction(
+      f.runnerId,
+      first.id,
+      opened.id,
+      claimed.lease.token,
+      0,
+    ),
+  ).toMatchObject({ yieldRequested: true, laneAcquired: false });
+  expect(await f.executions.claim(f.runnerId, 3, 0)).toEqual([]);
+  f.executions.yieldInteraction(f.runnerId, first.id, {
+    ...request,
+    sessionId: 'first-session',
+  });
+  expect(f.executions.get(first.id)).toMatchObject({
+    state: 'WAITING_FOR_INTERACTION',
+    outcome: null,
+  });
+  const next = (await f.executions.claim(f.runnerId, 3, 0))[0]!;
+  expect(next.id).toBe(second.id);
+  f.executions.start(f.runnerId, second.id, {
+    kind: 'STARTED',
+    leaseToken: next.lease.token,
+    sessionId: 'second-session',
+    taskSkillBinding: {
+      skillName: 'repair',
+      bundleHash: 'a'.repeat(64),
+      sourceRevision: 'b'.repeat(40),
+    },
+  });
+  f.executions.resolveInteraction(opened.id, { answers: { choice: { answers: ['A'] } } });
+  expect(await f.executions.claim(f.runnerId, 3, 0)).toEqual([]);
+  f.executions.complete(f.runnerId, second.id, {
+    leaseToken: next.lease.token,
+    sessionId: 'second-session',
+    outcome: { kind: 'SUCCEEDED', result: {} },
+  });
+  expect((await f.executions.claim(f.runnerId, 3, 0))[0]).toMatchObject({
+    id: first.id,
+    sessionId: 'first-session',
+    codexTurn: { kind: 'CONTINUATION', managedInteractions: true },
+    recoveredInteraction: { resolution: { answers: { choice: { answers: ['A'] } } } },
+  });
+  expect(f.executions.get(third.id).state).toBe('QUEUED');
+});
+
+test('重启确认进程已停止仍保留原请求的一分钟宽限，长期等待不占工作区执行通道', async () => {
+  const f = await setup();
+  const binding = bindingId(98);
+  const enqueue = (key: string) =>
+    f.executions.enqueue({
+      ...input(f.runnerId, binding, key),
+      codexTurn: createInitialCodexTurn({
+        requiredSkillName: 'repair',
+        executionBrief: {},
+        outputJsonSchema: {},
+        managedInteractions: true,
+      }),
+      workspaces: executionWorkspaces(binding, {
+        key,
+        isolation: 'BRANCH_WORKTREE',
+        baseRef: 'main',
+        branch: key,
+      }),
+    });
+  const first = enqueue('restart-first');
+  const second = enqueue('restart-second');
+  const claimed = (await f.executions.claim(f.runnerId, 1, 0))[0]!;
+  f.executions.start(f.runnerId, first.id, {
+    kind: 'STARTED',
+    leaseToken: claimed.lease.token,
+    sessionId: 'restart-session',
+    taskSkillBinding: {
+      skillName: 'repair',
+      bundleHash: 'a'.repeat(64),
+      sourceRevision: 'b'.repeat(40),
+    },
+  });
+  const request = {
+    leaseToken: claimed.lease.token,
+    kind: 'USER_INPUT' as const,
+    method: 'item/tool/requestUserInput',
+    payload: { questions: [{ id: 'choice', question: '选择？' }] },
+  };
+  const opened = f.executions.openInteraction(f.runnerId, first.id, request);
+  f.setNow('2026-07-27T08:00:30.000Z');
+  f.executions.yieldInteraction(f.runnerId, first.id, {
+    ...request,
+    sessionId: 'restart-session',
+  });
+  expect(await f.executions.claim(f.runnerId, 3, 0)).toEqual([]);
+  f.setNow('2026-07-28T08:00:00.000Z');
+  expect(f.executions.get(first.id).state).toBe('WAITING_FOR_INTERACTION');
+  expect((await f.executions.claim(f.runnerId, 3, 0))[0]?.id).toBe(second.id);
+  expect(
+    f.executions.resolveInteraction(opened.id, {
+      answers: { choice: { answers: ['A'] } },
+    }).createdAt,
+  ).toBe('2026-07-27T08:00:00.000Z');
+});
+
+test('三个缺陷连续让位后，已答复任务按答复顺序排在未开始任务前', async () => {
+  const f = await setup();
+  const binding = bindingId(99);
+  const tasks = ['one', 'two', 'three', 'four'].map((key) =>
+    f.executions.enqueue({
+      ...input(f.runnerId, binding, key),
+      codexTurn: createInitialCodexTurn({
+        requiredSkillName: 'repair',
+        executionBrief: {},
+        outputJsonSchema: {},
+        managedInteractions: true,
+      }),
+      workspaces: executionWorkspaces(binding, {
+        key,
+        isolation: 'BRANCH_WORKTREE',
+        baseRef: 'main',
+        branch: key,
+      }),
+    }),
+  );
+  const start = async (position: number) => {
+    const claimed = (await f.executions.claim(f.runnerId, 3, 0))[0]!;
+    expect(claimed.id).toBe(tasks[position]!.id);
+    const sessionId = `repair-${position}`;
+    f.executions.start(f.runnerId, claimed.id, {
+      kind: 'STARTED',
+      leaseToken: claimed.lease.token,
+      sessionId,
+      taskSkillBinding: {
+        skillName: 'repair',
+        bundleHash: 'a'.repeat(64),
+        sourceRevision: 'b'.repeat(40),
+      },
+    });
+    return { ...claimed, sessionId };
+  };
+  const wait = (claimed: Awaited<ReturnType<typeof start>>) => {
+    const request = {
+      leaseToken: claimed.lease.token,
+      kind: 'USER_INPUT' as const,
+      method: 'item/tool/requestUserInput',
+      payload: { questions: [{ id: 'choice', question: '选择？' }] },
+    };
+    const interaction = f.executions.openInteraction(f.runnerId, claimed.id, request);
+    return { request: { ...request, sessionId: claimed.sessionId }, interaction };
+  };
+  const first = await start(0);
+  const firstWait = wait(first);
+  f.setNow('2026-07-27T08:01:00.000Z');
+  expect((await f.executions.claim(f.runnerId, 3, 0)).map(({ id }) => id)).toEqual([]);
+  f.executions.yieldInteraction(f.runnerId, first.id, firstWait.request);
+  const second = await start(1);
+  const secondWait = wait(second);
+  f.setNow('2026-07-27T08:02:00.000Z');
+  f.executions.yieldInteraction(f.runnerId, second.id, secondWait.request);
+  const third = await start(2);
+  const answer = { answers: { choice: { answers: ['继续'] } } };
+  f.setNow('2026-07-27T08:02:01.000Z');
+  f.executions.resolveInteraction(firstWait.interaction.id, answer);
+  f.setNow('2026-07-27T08:02:02.000Z');
+  f.executions.resolveInteraction(secondWait.interaction.id, answer);
+  expect((await f.executions.claim(f.runnerId, 3, 0)).map(({ id }) => id)).toEqual([]);
+  const complete = (claimed: Awaited<ReturnType<typeof start>>) =>
+    f.executions.complete(f.runnerId, claimed.id, {
+      leaseToken: claimed.lease.token,
+      sessionId: claimed.sessionId,
+      outcome: { kind: 'SUCCEEDED', result: {} },
+    });
+  complete(third);
+  complete(await start(0));
+  complete(await start(1));
+  expect((await f.executions.claim(f.runnerId, 3, 0)).map(({ id }) => id)).toEqual([
+    tasks[3]!.id,
+  ]);
+});
+
+test('问题发送前网络中断，租约回收后仍可从原会话的持久回执恢复等待', async () => {
+  const f = await setup();
+  const execution = f.executions.enqueue({
+    ...input(f.runnerId, bindingId(100), 'unopened'),
+    codexTurn: createInitialCodexTurn({
+      requiredSkillName: 'repair',
+      executionBrief: {},
+      outputJsonSchema: {},
+      managedInteractions: true,
+    }),
+  });
+  const claimed = (await f.executions.claim(f.runnerId, 1, 0))[0]!;
+  f.executions.start(f.runnerId, execution.id, {
+    kind: 'STARTED',
+    leaseToken: claimed.lease.token,
+    sessionId: 'unopened-session',
+    taskSkillBinding: {
+      skillName: 'repair',
+      bundleHash: 'a'.repeat(64),
+      sourceRevision: 'b'.repeat(40),
+    },
+  });
+  f.setNow('2026-07-27T08:00:20.000Z');
+  expect(f.executions.queueStatus(execution.id).state).toBe('QUEUED');
+  const waiting = f.executions.yieldInteraction(f.runnerId, execution.id, {
+    leaseToken: claimed.lease.token,
+    sessionId: 'unopened-session',
+    kind: 'USER_INPUT',
+    method: 'item/tool/requestUserInput',
+    payload: { questions: [{ id: 'choice', question: '继续？' }] },
+  });
+  expect(waiting.state).toBe('WAITING_FOR_INTERACTION');
+  expect(waiting.outcome).toBeNull();
+  expect(waiting.sessionId).toBe('unopened-session');
+});
+
+test('答复已取得恢复资格但尚未送达就重启时，重新领取仍携带原答复', async () => {
+  const f = await setup();
+  const execution = f.executions.enqueue({
+    ...input(f.runnerId, bindingId(101), 'answer-before-crash'),
+    codexTurn: createInitialCodexTurn({
+      requiredSkillName: 'repair',
+      executionBrief: {},
+      outputJsonSchema: {},
+      managedInteractions: true,
+    }),
+  });
+  const claimed = (await f.executions.claim(f.runnerId, 1, 0))[0]!;
+  f.executions.start(f.runnerId, execution.id, {
+    kind: 'STARTED',
+    leaseToken: claimed.lease.token,
+    sessionId: 'answer-session',
+    taskSkillBinding: {
+      skillName: 'repair',
+      bundleHash: 'a'.repeat(64),
+      sourceRevision: 'b'.repeat(40),
+    },
+  });
+  const interaction = f.executions.openInteraction(f.runnerId, execution.id, {
+    leaseToken: claimed.lease.token,
+    kind: 'USER_INPUT',
+    method: 'item/tool/requestUserInput',
+    payload: { questions: [{ id: 'choice', question: '继续？' }] },
+  });
+  const resolution = { answers: { choice: { answers: ['继续'] } } };
+  f.executions.resolveInteraction(interaction.id, resolution);
+  expect(
+    (
+      await f.executions.waitInteraction(
+        f.runnerId,
+        execution.id,
+        interaction.id,
+        claimed.lease.token,
+        0,
+      )
+    ).laneAcquired,
+  ).toBe(true);
+  f.setNow('2026-07-27T08:00:20.000Z');
+  const recovered = (await f.executions.claim(f.runnerId, 1, 0))[0]!;
+  expect(recovered.id).toBe(execution.id);
+  expect(recovered.recoveredInteraction?.resolution).toEqual(resolution);
+});
+
+test('旧问题的让位回执迟到重放时不会覆盖后续已保存的答复', async () => {
+  const f = await setup();
+  const task = f.executions.enqueue({
+    ...input(f.runnerId, bindingId(102), 'old-receipt'),
+    codexTurn: createInitialCodexTurn({
+      requiredSkillName: 'repair',
+      executionBrief: {},
+      outputJsonSchema: {},
+      managedInteractions: true,
+    }),
+  });
+  const first = (await f.executions.claim(f.runnerId, 1, 0))[0]!;
+  const start = (claim: ClaimedExecution) =>
+    f.executions.start(f.runnerId, claim.id, {
+      kind: 'STARTED',
+      leaseToken: claim.lease.token,
+      sessionId: 'receipt-session',
+      taskSkillBinding: {
+        skillName: 'repair',
+        bundleHash: 'a'.repeat(64),
+        sourceRevision: 'b'.repeat(40),
+      },
+    });
+  start(first);
+  const oldRequest = {
+    leaseToken: first.lease.token,
+    sessionId: 'receipt-session',
+    kind: 'USER_INPUT' as const,
+    method: 'item/tool/requestUserInput',
+    payload: { questions: [{ id: 'A', question: 'A？' }] },
+  };
+  const questionA = f.executions.openInteraction(f.runnerId, task.id, oldRequest);
+  f.setNow('2026-07-27T08:01:00.000Z');
+  f.executions.yieldInteraction(f.runnerId, task.id, oldRequest);
+  f.executions.resolveInteraction(questionA.id, {
+    answers: { A: { answers: ['A 的回答'] } },
+  });
+  const continued = (await f.executions.claim(f.runnerId, 1, 0))[0]!;
+  start(continued);
+  const questionB = f.executions.openInteraction(f.runnerId, task.id, {
+    ...oldRequest,
+    leaseToken: continued.lease.token,
+    payload: { questions: [{ id: 'B', question: 'B？' }] },
+  });
+  const answerB = { answers: { B: { answers: ['B 的回答'] } } };
+  f.executions.resolveInteraction(questionB.id, answerB);
+  await f.executions.waitInteraction(
+    f.runnerId,
+    task.id,
+    questionB.id,
+    continued.lease.token,
+    0,
+  );
+  f.setNow('2026-07-27T08:01:20.000Z');
+  const before = f.executions.queueStatus(task.id).state;
+  expect(f.executions.yieldInteraction(f.runnerId, task.id, oldRequest).state).toBe(
+    before,
+  );
+  const resumed = (await f.executions.claim(f.runnerId, 1, 0))[0]!;
+  expect(resumed.recoveredInteraction?.resolution).toEqual(answerB);
+});
+
+test('恢复领取后崩溃重领仍保留两条答复的原顺序', async () => {
+  const f = await setup();
+  const binding = bindingId(103);
+  const tasks = ['first', 'second'].map((key) =>
+    f.executions.enqueue({
+      ...input(f.runnerId, binding, key),
+      codexTurn: createInitialCodexTurn({
+        requiredSkillName: 'repair',
+        executionBrief: {},
+        outputJsonSchema: {},
+        managedInteractions: true,
+      }),
+      workspaces: executionWorkspaces(binding, {
+        key,
+        isolation: 'BRANCH_WORKTREE',
+        baseRef: 'main',
+        branch: key,
+      }),
+    }),
+  );
+  const questions: string[] = [];
+  for (let index = 0; index < 2; index++) {
+    const claim = (await f.executions.claim(f.runnerId, 1, 0))[0]!;
+    const sessionId = `priority-${index}`;
+    f.executions.start(f.runnerId, claim.id, {
+      kind: 'STARTED',
+      leaseToken: claim.lease.token,
+      sessionId,
+      taskSkillBinding: {
+        skillName: 'repair',
+        bundleHash: 'a'.repeat(64),
+        sourceRevision: 'b'.repeat(40),
+      },
+    });
+    const request = {
+      leaseToken: claim.lease.token,
+      sessionId,
+      kind: 'USER_INPUT' as const,
+      method: 'item/tool/requestUserInput',
+      payload: { questions: [{ id: 'choice', question: '继续？' }] },
+    };
+    questions.push(f.executions.openInteraction(f.runnerId, claim.id, request).id);
+    f.setNow(`2026-07-27T08:0${index + 1}:00.000Z`);
+    f.executions.yieldInteraction(f.runnerId, claim.id, request);
+  }
+  const resolution = { answers: { choice: { answers: ['继续'] } } };
+  f.setNow('2026-07-27T08:02:01.000Z');
+  f.executions.resolveInteraction(questions[1]!, resolution);
+  f.setNow('2026-07-27T08:02:02.000Z');
+  f.executions.resolveInteraction(questions[0]!, resolution);
+  expect((await f.executions.claim(f.runnerId, 1, 0))[0]?.id).toBe(tasks[1]!.id);
+  f.setNow('2026-07-27T08:02:20.000Z');
+  expect((await f.executions.claim(f.runnerId, 1, 0))[0]?.id).toBe(tasks[1]!.id);
+});
+
 async function setup() {
   const { directory, database } = await createDatabase();
   const user = await seedTestUser(new AuthService(database), [

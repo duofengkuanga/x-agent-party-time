@@ -154,6 +154,7 @@ export function RepairAttemptDetails({
           ) : null}
           {node.interactions.map((interaction) => (
             <SubmissionInteractionRecord
+              subject="REPAIR"
               key={interaction.id}
               interaction={interaction}
               pending={pending}

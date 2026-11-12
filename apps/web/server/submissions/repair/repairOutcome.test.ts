@@ -249,7 +249,7 @@ describe('RepairService', () => {
       interaction.id,
       {
         ...mutation(2),
-        resolution: { decision: 'acceptForSession' },
+        resolution: { decision: 'accept' },
       },
     );
     expect(resolved.bugVersion).toBe(3);
@@ -266,7 +266,7 @@ describe('RepairService', () => {
         ?.interactions.at(-1),
     ).toMatchObject({
       state: 'RESOLVED',
-      resolution: 'ACCEPTED_FOR_SESSION',
+      resolution: 'ACCEPTED_ONCE',
       canResolve: false,
     });
     const eventsBeforeResume = fixture.events.length;

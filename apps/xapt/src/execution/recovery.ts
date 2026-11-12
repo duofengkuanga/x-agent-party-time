@@ -34,8 +34,11 @@ export class ExecutionRecovery {
     phase: ExecutionRecoveryState['phase'],
     sessionId: string | null,
   ): Promise<void> {
-    return this.writeExecution(execution.id, () =>
-      this.state.saveExecution({
+    return this.writeExecution(execution.id, async () => {
+      const previous = (await this.state.loadExecutions()).find(
+        (entry) => entry.executionId === execution.id,
+      );
+      await this.state.saveExecution({
         schemaVersion: EXECUTION_STATE_SCHEMA_VERSION,
         executionId: execution.id,
         bindingId: execution.bindingId,
@@ -43,7 +46,29 @@ export class ExecutionRecovery {
         sessionId,
         claimedExecution: execution,
         updatedAt: this.now().toISOString(),
-      }),
+        ...(previous?.processGroups ? { processGroups: previous.processGroups } : {}),
+      });
+    });
+  }
+
+  recordProcessGroups(executionId: string, groups: number[]): Promise<void> {
+    return this.writeExecution(executionId, async () => {
+      const record = (await this.state.loadExecutions()).find(
+        (entry) => entry.executionId === executionId,
+      );
+      if (!record) throw new Error('缺少本机执行记录，不能启动进程');
+      const { processGroups: _previousGroups, ...withoutGroups } = record;
+      await this.state.saveExecution({
+        ...withoutGroups,
+        ...(groups.length ? { processGroups: groups } : {}),
+        updatedAt: this.now().toISOString(),
+      });
+    });
+  }
+
+  async hasOwnedProcesses(active: ReadonlySet<string>): Promise<boolean> {
+    return (await this.state.loadExecutions()).some(
+      (entry) => !active.has(entry.executionId) && Boolean(entry.processGroups?.length),
     );
   }
 
@@ -51,7 +76,10 @@ export class ExecutionRecovery {
     const recoveries = await this.state.loadExecutions();
     const now = this.now().getTime();
     for (const recovery of recoveries)
-      if (Date.parse(recovery.claimedExecution.lease.expiresAt) <= now)
+      if (
+        !recovery.processGroups?.length &&
+        Date.parse(recovery.claimedExecution.lease.expiresAt) <= now
+      )
         await this.state.removeExecution(recovery.executionId);
     return recoveries.length > 0;
   }

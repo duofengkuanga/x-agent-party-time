@@ -29,7 +29,11 @@ import {
   type ResolveRepairInteractionInput,
   type SynchronizeRepairSessionInput,
 } from '../../../contracts/submissions/repair';
-import { type RepairSourceRow, RepairQueries } from './repairQueries';
+import {
+  type RepairSourceRow,
+  RepairQueries,
+  waitingRepairExecutionId,
+} from './repairQueries';
 import { RepairProjection } from './repairProjection';
 import {
   parseCommits,
@@ -129,9 +133,9 @@ export class RepairService {
       runnerId: repairContext.runnerId,
       bindingId: repairContext.bindingId,
       priority: 0,
-      approvalPolicy: 'never',
+      approvalPolicy: 'on-request',
       codexTurn: createInitialCodexTurn({
-        manualHandoff: 'EXTERNAL_SESSION',
+        managedInteractions: true,
         requiredSkillName: 'XBugRepaire',
         requiredSkillProtocol: 'engineering-workflow-v2',
         executionBrief,
@@ -192,7 +196,7 @@ export class RepairService {
     const codexTurn = retryInitial
       ? previousExecution.codexTurn
       : createContinuationCodexTurn({
-          manualHandoff: 'EXTERNAL_SESSION',
+          managedInteractions: true,
           taskId: context.session_id!,
           taskSkillBinding: requireTaskSkillBinding(previousExecution, '修复'),
           text: lifecycleContext
@@ -209,7 +213,7 @@ export class RepairService {
       runnerId: repairContext.runnerId,
       bindingId: repairContext.bindingId,
       priority: 0,
-      approvalPolicy: 'never',
+      approvalPolicy: 'on-request',
       codexTurn,
       workspaces: retryInitial
         ? previousExecution.workspaces
@@ -371,6 +375,16 @@ export class RepairService {
     });
   }
 
+  cancelWaitingExecution(bugId: string): void {
+    const executionId = waitingRepairExecutionId(this.db, bugId);
+    if (!executionId)
+      throw new PlatformError(
+        'INVALID_TRANSITION',
+        '只有等待人工或等待恢复的修复可以取消',
+      );
+    this.executions.requestCancellation(executionId);
+  }
+
   resolveInteraction(
     actorUserId: string,
     interactionId: string,
@@ -390,6 +404,14 @@ export class RepairService {
         this.requireActiveVersion(source, input.expectedVersion);
         if (source.stage !== 'REPAIRING')
           throw new PlatformError('INVALID_TRANSITION', '当前缺陷不在修复中');
+        const resolution = input.resolution;
+        if (
+          resolution &&
+          typeof resolution === 'object' &&
+          !Array.isArray(resolution) &&
+          (resolution.decision === 'acceptForSession' || resolution.scope === 'session')
+        )
+          throw new PlatformError('INVALID_TRANSITION', '修复权限只能批准当前请求');
         this.executions.resolveInteraction(interactionId, input.resolution);
         const now = this.now().toISOString();
         const update = this.db.run(

@@ -293,6 +293,11 @@ class FakeExecutionHttp implements RunnerExecutionHttp {
   async downloadExecutionFile(): Promise<Uint8Array> {
     return new Uint8Array();
   }
+
+  async yieldInteraction(): Promise<Execution> {
+    this.events.push('yield');
+    return {} as Execution;
+  }
 }
 
 class FakeCodexExecutor implements CodexExecutor {

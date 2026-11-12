@@ -227,9 +227,24 @@ bun run eval:handoff --skills-root /path/to/x-skills --baseline-app <旧版本�
 
 对照看完整 Repair + Update 耗时及实际重复命令，人工等待单列；小样本和模型服务波动不能证明固定提速比例。现有 Skill 文案检查和预写 Git 沙盒验证不等于真实 Agent 行为验收。
 
+## 人工交互与修复队列
+
+PersonAgent 与 AgentParty 的 Repair 都在平台内处理权限审批、同步问答和异步问题。每个请求从平台记录时保留 60 秒等待窗口，刷新页面或重启不重新计时。满一分钟仍未回答时，xapt 确认该次修复的会话与工具进程已停止，再让后续缺陷运行；连续等待不会占满执行槽位。
+
+答复只让缺陷进入恢复队列，不打断当前任务。已答复缺陷优先于尚未开始的缺陷，按答复时间继续原 Session 和工作区；恢复允许开启新 Turn，并重新核对现场。拒绝权限也会作为答复保存，批准仅适用于原请求。测试负责人可在等待缺陷的详情中确认“取消等待”，使旧问题和答复失效并保留处理记录。
+
+等待本身不会自动失败或过期。断线后的释放回执会重试，重启保留原答复和排序；只有当前执行确实停止，才解除执行保护。该策略需配套更新 Server 与 xapt，Update 继续使用原来的人工接管和工程部署约定。设计依据见 [ADR-0018](docs/adr/adr0018YieldRepairQueueDuringHumanInteraction.md)。
+
+```bash
+bun test apps/web/server/platform/execution/service.test.ts apps/xapt/src/execution/interactionYield.test.ts apps/xapt/src/codex/queuedInteraction.test.ts
+AGENT_PARTY_TIME_BROWSER_SUITE=interactionQueue bun run test:browser
+```
+
 ## 故障排查
 
-修复或更新遇到异步人工确认时，网页先显示正在释放会话，随后显示“等待人工确认”。工程负责人点击“打开原 Codex 会话”，回答问题并完成任务后，再返回网页点击“同步状态”。无需手动退出 xapt 或删除锁文件。尚未完成或结果无效的同步不会改变等待状态，也不会自动重启任务。
+Update 或明确采用人工接管策略的任务遇到异步确认时，网页先显示正在释放会话，随后显示“等待人工确认”。工程负责人点击“打开原 Codex 会话”，回答问题并完成任务后，再返回网页点击“同步状态”。无需手动退出 xapt 或删除锁文件。尚未完成或结果无效的同步不会改变等待状态，也不会自动重启任务。
+
+若 `xapt daemon status` 提示需要人工核验原会话及工具进程，Agent 会暂停领取。异常退出可能使后台工具脱离原父进程，根进程消失不等于工具已停止；恢复记录中的进程归属只有取得退出证明才会自动清除。无法自动确认时，由维护者在允许中断当前执行的情况下停止 Agent，核验原会话和相关工具进程均已结束，备份后再清除该 Execution 本机恢复记录（`state/executions/<executionId>.json`）中的 `processGroups` 标记并重新启动。保留问题、答复和 Outbox；不删除 Codex 锁文件、不重建原会话，也不上传或展示恢复记录里的领取凭据。
 
 Repair Handoff 随候选提交冻结，包含历史验证入口、环境经验和剩余事项；Update 核实这些线索后，对最终组合完成当前工程要求的验收。历史通过不代表本轮免检。工程负责人在更新详情中查看来源和使用依据，测试负责人只看到业务结果与验证摘要。
 

@@ -183,6 +183,7 @@ export function resolvePersonAgentRepair(
           requiredSkillName: turn.requiredSkillName,
           requiredSkillProtocol: 'engineering-workflow-v2',
           manualHandoff: turn.manualHandoff,
+          managedInteractions: turn.managedInteractions,
           executionBrief: {
             ...turn.executionBrief,
             targetBranch: items[0]!.target_branch,
@@ -195,6 +196,7 @@ export function resolvePersonAgentRepair(
           taskId: turn.taskId,
           taskSkillBinding: turn.taskSkillBinding,
           manualHandoff: turn.manualHandoff,
+          managedInteractions: turn.managedInteractions,
           text: `${turn.input}\n本轮工程范围：${JSON.stringify(engineeringWorkspaces)}`,
           outputJsonSchema: output,
           resultAssertions,

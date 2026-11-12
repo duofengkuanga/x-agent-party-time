@@ -6,6 +6,7 @@ import {
   handleExecutionStart,
   handleOpenInteraction,
   handleWaitInteraction,
+  handleYieldInteraction,
 } from '@/server/platform/execution/http';
 import type { ExecutionService } from '@/server/platform/execution/service';
 import type { LocalFileStore } from '@/server/platform/files/localFileStore';
@@ -100,6 +101,10 @@ export function runnerFetch({
     [
       /^\/api\/runner\/interactions\/([^/]+)\/wait$/,
       { POST: (r, [id]) => handleWaitInteraction(r, id!, runners, executions) },
+    ],
+    [
+      /^\/api\/runner\/executions\/([^/]+)\/interactions\/yield$/,
+      { POST: (r, [id]) => handleYieldInteraction(r, id!, runners, executions) },
     ],
     [
       /^\/api\/runner\/executions\/([^/]+)\/files\/([^/]+)$/,

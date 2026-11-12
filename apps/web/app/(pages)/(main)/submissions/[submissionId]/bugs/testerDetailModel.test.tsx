@@ -244,7 +244,9 @@ test('测试的异常提示不直接复用含技术信息的执行文案，转�
       ...visual,
       label: '技术命令：git reset；内部会话',
     };
-    expect(testerBugStatus(bug, snapshot)).toContain('工程负责人');
+    expect(testerBugStatus(bug, snapshot)).toContain(
+      visual.state === 'WAITING_TO_RESUME' ? '排队等待 Agent' : '工程负责人',
+    );
     expect(testerBugStatus(bug, snapshot)).not.toMatch(/git|内部会话|技术命令/);
   }
   bug.transferredAt = new Date().toISOString();

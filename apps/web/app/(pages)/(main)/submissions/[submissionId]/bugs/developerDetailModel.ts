@@ -108,6 +108,7 @@ export function executionRoundProgress(node: RepairRound | UpdateRound): string 
   if (node.executionState === 'RUNNING') return 'Agent 正在执行，尚未回传步骤明细。';
   if (node.executionState === 'CLAIMED') return 'Agent 已领取，正在准备执行。';
   if (node.executionState === 'QUEUED') return '等待 Agent 执行。';
-  if (node.executionState === 'WAITING_TO_RESUME') return '执行暂时中断，等待恢复。';
+  if (node.executionState === 'WAITING_TO_RESUME')
+    return '答复已保存，正在排队等待继续。';
   return executionRoundStatus(node);
 }

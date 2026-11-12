@@ -19,7 +19,9 @@ import type { AuthenticatedRunnerSession } from '../agent/connection';
 import type { RunnerExecutionHttp } from '../agent/serverHttp';
 import { RunnerHttpError } from '@agent-party-time/runner-contract/http-client';
 import { type CodexExecutor, type StartedCodexExecution } from '../codex/contract';
-import { CodexAppServerError } from '../codex/errors';
+import { CodexAppServerError, CodexSessionReleaseError } from '../codex/errors';
+import { processGroupExists } from '../platform/processGroups';
+import { interactionContinuation } from '../codex/interaction';
 import type { LocalFileSystem } from '../platform/files';
 import type { SkillBundleManager } from '../skills/manager';
 import type { LocalStateStore } from '../state/store';
@@ -53,6 +55,7 @@ export class ExecutionService {
   private readonly scheduledExecutions = new Map<string, ClaimedExecution>();
   private readonly controllers = new Map<string, AbortController>();
   private readonly runningExecutionIds = new Set<string>();
+  private readonly blockedReleases = new Set<string>();
   private waitingInteractionCount = 0;
   private forceStopping = false;
   private recoveryRequired = false;
@@ -131,8 +134,16 @@ export class ExecutionService {
 
   async cycle(session: AuthenticatedRunnerSession): Promise<boolean> {
     await this.observations.prepareCycle(session);
+    const active = new Set(this.tasks.keys());
+    if (this.blockedReleases.size || (await this.recovery.hasOwnedProcesses(active))) {
+      this.recoveryRequired = true;
+      return false;
+    }
+    if (!(await this.outbox.replayOutbox(session, active))) {
+      this.recoveryRequired = true;
+      return false;
+    }
     if (this.tasks.size === 0) {
-      if (!(await this.outbox.replayOutbox(session))) return false;
       if (await this.recovery.recoverInterrupted()) {
         this.recoveryRequired = true;
         return true;
@@ -340,6 +351,8 @@ export class ExecutionService {
     let startAccepted = false;
     let started: StartedCodexExecution;
     let handoffEntry: Promise<OutboxEntry> | undefined;
+    let interactionEntry: OutboxEntry | undefined;
+    let interactionQueue: Promise<unknown> = Promise.resolve();
     try {
       started = await this.executor.begin(
         {
@@ -348,9 +361,11 @@ export class ExecutionService {
           repositoryPath,
           workspaceDirectories,
           text:
-            turn.kind === 'INITIAL'
-              ? serializeDeterministicJson(turn.executionBrief)
-              : turn.input,
+            recoveredInteraction && turn.managedInteractions
+              ? interactionContinuation(recoveredInteraction)
+              : turn.kind === 'INITIAL'
+                ? serializeDeterministicJson(turn.executionBrief)
+                : turn.input,
           skill:
             turn.kind === 'INITIAL'
               ? { name: resolvedSkill.skillName, path: resolvedSkill.path }
@@ -365,6 +380,10 @@ export class ExecutionService {
           // Materialization above restores the files at their original paths.
           attachments: execution.sessionId ? [] : materialized,
           taskId: turn.kind === 'CONTINUATION' ? turn.taskId : null,
+          managedInteractions: turn.managedInteractions,
+          onProcessGroups: turn.managedInteractions
+            ? (groups) => this.recovery.recordProcessGroups(execution.id, groups)
+            : undefined,
           observe: (notice) => {
             observeProtocol(notice);
             if (!deliveryTargets.length) return;
@@ -399,26 +418,60 @@ export class ExecutionService {
                   await handoffEntry;
                 }
               : undefined,
-          onInteraction: async (interaction) => {
-            await startGate;
-            if (!startAccepted) throw new Error('任务启动状态尚未被服务接受');
-            if (
-              recoveredInteraction &&
-              recoveredInteraction.method === interaction.method &&
-              JSON.stringify(recoveredInteraction.payload) ===
-                JSON.stringify(interaction.payload)
-            ) {
-              const resolution = recoveredInteraction.resolution;
-              recoveredInteraction = null;
-              return resolution;
-            }
-            return await this.handleInteraction(
-              session,
-              execution,
-              started.sessionId,
-              interaction.method,
-              interaction.payload,
-            );
+          onInteraction: (interaction) => {
+            const response = interactionQueue.then(async () => {
+              controller.signal.throwIfAborted();
+              if (this.blockedReleases.has(execution.id))
+                throw new Error('正在确认本机执行已停止');
+              await startGate;
+              controller.signal.throwIfAborted();
+              if (!startAccepted) throw new Error('任务启动状态尚未被服务接受');
+              if (
+                recoveredInteraction &&
+                recoveredInteraction.method === interaction.method &&
+                JSON.stringify(recoveredInteraction.payload) ===
+                  JSON.stringify(interaction.payload)
+              ) {
+                const resolution = recoveredInteraction.resolution;
+                recoveredInteraction = null;
+                return resolution;
+              }
+              try {
+                if (turn.managedInteractions)
+                  interactionEntry = await this.outbox.prepareInteractionYield(
+                    execution.id,
+                    {
+                      leaseToken: execution.lease.token,
+                      sessionId: started.sessionId,
+                      kind:
+                        interaction.method === 'item/tool/requestUserInput' ||
+                        interaction.method === 'xapt/asyncQuestions'
+                          ? 'USER_INPUT'
+                          : 'APPROVAL',
+                      ...interaction,
+                    },
+                  );
+                const resolution = await this.handleInteraction(
+                  session,
+                  execution,
+                  started.sessionId,
+                  interaction.method,
+                  interaction.payload,
+                  controller,
+                );
+                if (interactionEntry) {
+                  await this.state.removeOutbox(interactionEntry.id);
+                  interactionEntry = undefined;
+                }
+                return resolution;
+              } catch (error) {
+                if (turn.managedInteractions && !this.blockedReleases.has(execution.id))
+                  controller.abort();
+                throw error;
+              }
+            });
+            interactionQueue = response.catch(() => undefined);
+            return response;
           },
         },
         controller.signal,
@@ -426,12 +479,17 @@ export class ExecutionService {
       // The turn can end while its START acknowledgement is still in flight.
       void started.completion.catch(() => undefined);
     } catch (error) {
+      if (error instanceof CodexSessionReleaseError)
+        await this.waitForProcessRelease(execution.id, error, controller);
       await failStart({
         code: 'CODEX_START_FAILED',
         message:
-          error instanceof CodexAppServerError
-            ? failureMessage(error.message)
-            : 'Codex 本机服务启动任务失败',
+          turn.managedInteractions &&
+          (execution.sessionId || turn.kind === 'CONTINUATION')
+            ? `原会话无法继续，需要工程负责人处理。${error instanceof CodexAppServerError ? failureMessage(error.message) : ''}`
+            : error instanceof CodexAppServerError
+              ? failureMessage(error.message)
+              : 'Codex 本机服务启动任务失败',
         retryable: true,
       });
       return;
@@ -451,7 +509,10 @@ export class ExecutionService {
     ) {
       releaseStartGate();
       controller.abort();
-      await started.completion.catch(() => undefined);
+      await started.completion.catch(async (error) => {
+        if (error instanceof CodexSessionReleaseError)
+          await this.waitForProcessRelease(execution.id, error, controller);
+      });
       return;
     }
     startAccepted = true;
@@ -500,13 +561,19 @@ export class ExecutionService {
         },
       };
     } catch (error) {
+      // A failed renewal can win the race before the executor has stopped.
+      // Completion is also the executor's cleanup acknowledgement.
+      await started.completion.catch(async (completionError) => {
+        if (completionError instanceof CodexSessionReleaseError)
+          await this.waitForProcessRelease(execution.id, completionError, controller);
+      });
+      if (interactionEntry) {
+        await this.outbox.finishInteractionYield(session, interactionEntry, lease.stop());
+        return;
+      }
       if (handoffEntry) {
         await this.recovery.recordPhase(execution, 'OUTCOME_PENDING', started.sessionId);
-        await this.outbox.finishHandoff(
-          session,
-          handoffEntry,
-          started.completion.finally(lease.stop),
-        );
+        await this.outbox.finishHandoff(session, handoffEntry, lease.stop());
         return;
       }
       request = {
@@ -538,22 +605,30 @@ export class ExecutionService {
     sessionId: string,
     method: string,
     payload: JsonValue,
+    controller: AbortController,
   ): Promise<JsonValue> {
+    controller.signal.throwIfAborted();
     const opened = await this.http.openInteraction(
       session.serverOrigin,
       session.credential,
       execution.id,
       {
         leaseToken: execution.lease.token,
-        kind: method === 'item/tool/requestUserInput' ? 'USER_INPUT' : 'APPROVAL',
+        kind:
+          method === 'item/tool/requestUserInput' || method === 'xapt/asyncQuestions'
+            ? 'USER_INPUT'
+            : 'APPROVAL',
         method,
         payload,
       },
     );
+    controller.signal.throwIfAborted();
     this.waitingInteractionCount += 1;
-    await this.recovery.recordPhase(execution, 'WAITING_INTERACTION', sessionId);
     try {
+      await this.recovery.recordPhase(execution, 'WAITING_INTERACTION', sessionId);
       for (;;) {
+        if (this.blockedReleases.has(execution.id))
+          throw new Error('正在确认本机执行已停止');
         const waited = await this.http.waitInteraction(
           session.serverOrigin,
           session.credential,
@@ -562,9 +637,13 @@ export class ExecutionService {
           execution.lease.token,
           5_000,
         );
+        controller.signal.throwIfAborted();
+        if (this.blockedReleases.has(execution.id))
+          throw new Error('正在确认本机执行已停止');
+        if (waited.yieldRequested) throw new Error('人工等待已让位');
         const renewed = await this.recovery.renew(session, execution);
         if (renewed.cancellationRequested) {
-          this.controllers.get(execution.id)?.abort();
+          controller.abort();
           throw new CancellationRequested();
         }
         if (waited.interaction.state === 'RESOLVED' && waited.laneAcquired)
@@ -575,6 +654,24 @@ export class ExecutionService {
     } finally {
       this.waitingInteractionCount -= 1;
     }
+  }
+
+  private async waitForProcessRelease(
+    executionId: string,
+    error: CodexSessionReleaseError,
+    controller: AbortController,
+  ): Promise<void> {
+    this.blockedReleases.add(executionId);
+    this.recoveryRequired = true;
+    // Keep the task and its renewal alive. Restart checks the same durable groups
+    // before replaying receipts or claiming anything, even after the lease expires.
+    while (error.ownershipUncertain || error.processGroups.some(processGroupExists)) {
+      if (error.ownershipUncertain && this.forceStopping) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    await this.recovery.recordProcessGroups(executionId, []);
+    controller.abort();
+    this.blockedReleases.delete(executionId);
   }
 
   private async reportStartFailure(

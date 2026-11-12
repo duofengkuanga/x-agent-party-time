@@ -5,6 +5,16 @@ import {
 } from '@agent-party-time/execution-contract';
 import { asRecord } from './wireValues';
 
+export function interactionContinuation(interaction: CodexInteractionAnswer): string {
+  return `继续原会话中未完成的工作，先核对现场，不要从头重做已经完成的步骤。以下是用户对原人工请求的答复；权限决定仅适用于这一请求，其他请求或变化后的操作必须重新确认。\n${JSON.stringify(interaction)}`;
+}
+
+type CodexInteractionAnswer = {
+  method: string;
+  payload: JsonValue;
+  resolution: JsonValue;
+};
+
 export function isInteractionMethod(method: string): boolean {
   return [
     'item/commandExecution/requestApproval',

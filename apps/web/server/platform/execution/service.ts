@@ -32,6 +32,7 @@ export class ExecutionService {
   readonly openInteraction: ExecutionInteractions['openInteraction'];
   readonly waitInteraction: ExecutionInteractions['waitInteraction'];
   readonly resolveInteraction: ExecutionInteractions['resolveInteraction'];
+  readonly yieldInteraction: ExecutionInteractions['yieldInteraction'];
   readonly get: ExecutionRecords['get'];
   readonly activityForRunner: ExecutionQueue['activityForRunner'];
   readonly hasActiveExecutions: ExecutionQueue['hasActiveExecutions'];
@@ -67,6 +68,7 @@ export class ExecutionService {
     this.openInteraction = interactions.openInteraction.bind(interactions);
     this.waitInteraction = interactions.waitInteraction.bind(interactions);
     this.resolveInteraction = interactions.resolveInteraction.bind(interactions);
+    this.yieldInteraction = interactions.yieldInteraction.bind(interactions);
     this.get = this.records.get.bind(this.records);
     this.activityForRunner = this.queue.activityForRunner.bind(this.queue);
     this.hasActiveExecutions = this.queue.hasActiveExecutions.bind(this.queue);
@@ -329,10 +331,16 @@ export class ExecutionService {
       const row = this.records.getRow(executionId);
       if (isTerminal(row.state)) return this.records.mapExecution(row);
       const cancelledAt = this.now().toISOString();
+      const turn = this.records.get(executionId).codexTurn;
+      const awaitingStop =
+        Boolean(row.lease_token_hash) &&
+        turn?.kind !== 'READ_SESSION' &&
+        turn?.managedInteractions;
       if (
-        row.state === 'QUEUED' ||
-        row.state === 'WAITING_FOR_INTERACTION' ||
-        row.state === 'WAITING_TO_RESUME'
+        !awaitingStop &&
+        (row.state === 'QUEUED' ||
+          row.state === 'WAITING_FOR_INTERACTION' ||
+          row.state === 'WAITING_TO_RESUME')
       ) {
         const outcome: ExecutionOutcome = {
           kind: 'CANCELLED',
@@ -357,6 +365,7 @@ export class ExecutionService {
            WHERE id = ?`,
         [executionId],
       );
+      this.records.invalidatePendingInteractions(executionId, cancelledAt);
       return this.records.get(executionId);
     });
   }

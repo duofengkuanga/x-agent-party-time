@@ -14,6 +14,73 @@ import { testerChecklist } from '@/app/(pages)/(main)/submissions/[submissionId]
 
 const setup = lifecycleFixture(testDatabases());
 
+test('PersonAgent 的双工程修复可以连续让位，恢复仍保留原来的工作区集合', async () => {
+  const f = await setup();
+  f.lifecycle.closeSubmission(f.users.tester.id, f.submission.id, {
+    mutationId: randomUUID(),
+    expectedVersion: f.submission.version,
+  });
+  const items = f.submissions.getWorkspace(f.users.developer.id, f.submission.id)
+    .submission.items;
+  const submission = f.submissions.createSubmission(f.users.owner.id, f.project.id, {
+    mutationId: randomUUID(),
+    title: '人工等待与跨工程队列',
+    requirementDescription: '三个缺陷连续修复',
+    testerUserId: f.users.tester.id,
+    mode: 'PERSON_AGENT',
+    personAgent: { responsibleUserId: f.users.developer.id, runnerId: f.runner.id },
+    items: items.map((item) => ({
+      engineeringId: item.engineering.id,
+      responsibleUserId: f.users.developer.id,
+      bindingId: item.technical!.bindingId,
+      targetBranch: item.targetBranch,
+      environmentId: item.environment.id,
+    })),
+  });
+  for (const description of ['问题一', '问题二', '问题三'])
+    f.bugs.createBug(f.users.tester.id, submission.id, {
+      mutationId: randomUUID(),
+      description,
+      attachmentIds: [],
+      startRepair: true,
+    });
+  const stopped: Array<{ id: string; interactionId: string; workspaces: unknown }> = [];
+  for (let index = 0; index < 2; index++) {
+    const claim = (await f.executions.claim(f.runner.id, 3, 0))[0]!;
+    expect(claim.workspaces).toHaveLength(2);
+    expect(claim.codexTurn).toHaveProperty('managedInteractions', true);
+    const sessionId = `person-wait-${index}`;
+    f.executions.start(f.runner.id, claim.id, {
+      kind: 'STARTED',
+      leaseToken: claim.lease.token,
+      sessionId,
+      taskSkillBinding: testSkillBinding('XBugRepaire'),
+    });
+    const request = {
+      leaseToken: claim.lease.token,
+      sessionId,
+      kind: 'USER_INPUT' as const,
+      method: 'item/tool/requestUserInput',
+      payload: { questions: [{ id: 'choice', header: '方案', question: '选择？' }] },
+    };
+    const interaction = f.executions.openInteraction(f.runner.id, claim.id, request);
+    stopped.push({
+      id: claim.id,
+      interactionId: interaction.id,
+      workspaces: claim.workspaces,
+    });
+    f.clock.set(`2026-07-27T12:0${index + 1}:00.000Z`);
+    f.executions.yieldInteraction(f.runner.id, claim.id, request);
+  }
+  const third = (await f.executions.claim(f.runner.id, 3, 0))[0]!;
+  expect(stopped.map(({ id }) => id)).not.toContain(third.id);
+  f.executions.resolveInteraction(stopped[0]!.interactionId, {
+    answers: { choice: { answers: ['继续'] } },
+  });
+  expect((await f.executions.claim(f.runner.id, 3, 0)).map(({ id }) => id)).toEqual([]);
+  expect(f.executions.get(stopped[0]!.id).workspaces).toEqual(stopped[0]!.workspaces);
+});
+
 test.each([false, true])(
   'PersonAgent 保留一条 Bug 并统一交付，双端改动：%s',
   async (both) => {

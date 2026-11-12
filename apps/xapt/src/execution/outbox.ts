@@ -2,9 +2,11 @@ import type {
   ClaimedExecution,
   CompleteExecutionRequest,
   ExecutionStartRequest,
+  YieldInteractionRequest,
 } from '@agent-party-time/execution-contract';
 import { sanitizeExecutionInteractionPayload } from '@agent-party-time/execution-contract';
 import type { CodexExecutor } from '../codex/contract';
+import { CodexSessionReleaseError } from '../codex/errors';
 import type { AuthenticatedRunnerSession } from '../agent/connection';
 import type { RunnerExecutionHttp } from '../agent/serverHttp';
 import { RunnerHttpError } from '@agent-party-time/runner-contract/http-client';
@@ -80,19 +82,51 @@ export class ExecutionOutbox {
     return entry;
   }
 
+  async prepareInteractionYield(
+    executionId: string,
+    request: YieldInteractionRequest,
+  ): Promise<OutboxEntry> {
+    const entry: OutboxEntry = {
+      schemaVersion: OUTBOX_STATE_SCHEMA_VERSION,
+      id: this.createId(),
+      kind: 'INTERACTION_YIELD',
+      executionId,
+      request,
+      createdAt: this.now().toISOString(),
+    };
+    await this.state.saveOutbox(entry);
+    return entry;
+  }
+
+  async finishInteractionYield(
+    session: AuthenticatedRunnerSession,
+    entry: OutboxEntry,
+    completion: Promise<unknown>,
+  ): Promise<boolean> {
+    await completion.catch((error) => {
+      if (error instanceof CodexSessionReleaseError) throw error;
+    });
+    return this.deliver(session, await this.confirmSessionReleased(entry), 'LIVE');
+  }
+
   async finishHandoff(
     session: AuthenticatedRunnerSession,
     entry: Promise<OutboxEntry>,
     completion: Promise<unknown>,
   ): Promise<boolean> {
     // The owning app-server has exited when completion settles, including rejection.
-    await completion.catch(() => undefined);
+    await completion.catch((error) => {
+      if (error instanceof CodexSessionReleaseError) throw error;
+    });
     return this.deliver(session, await this.confirmSessionReleased(await entry), 'LIVE');
   }
 
   private async confirmSessionReleased(entry: OutboxEntry): Promise<OutboxEntry> {
-    if (entry.kind !== 'OUTCOME' || entry.request.outcome.kind !== 'HANDED_OFF')
-      throw new Error('只有人工接管回执可以记录会话释放');
+    if (
+      entry.kind !== 'INTERACTION_YIELD' &&
+      (entry.kind !== 'OUTCOME' || entry.request.outcome.kind !== 'HANDED_OFF')
+    )
+      throw new Error('只有交互释放回执可以记录会话释放');
     const released = { ...entry, sessionReleased: true as const };
     await this.state.saveOutbox(released);
     return released;
@@ -114,8 +148,12 @@ export class ExecutionOutbox {
     );
   }
 
-  async replayOutbox(session: AuthenticatedRunnerSession): Promise<boolean> {
+  async replayOutbox(
+    session: AuthenticatedRunnerSession,
+    active: ReadonlySet<string>,
+  ): Promise<boolean> {
     for (const entry of await this.state.loadOutbox()) {
+      if (active.has(entry.executionId)) continue;
       if (!(await this.deliver(session, entry, 'RECOVERY'))) return false;
     }
     return true;
@@ -128,7 +166,8 @@ export class ExecutionOutbox {
   ): Promise<boolean> {
     const handoff =
       entry.kind === 'OUTCOME' && entry.request.outcome.kind === 'HANDED_OFF';
-    if (handoff && !entry.sessionReleased) {
+    const yielding = entry.kind === 'INTERACTION_YIELD';
+    if ((handoff || yielding) && !entry.sessionReleased) {
       if (!this.executor.releaseSession) return false;
       try {
         await this.executor.releaseSession(entry.request.sessionId);
@@ -138,7 +177,9 @@ export class ExecutionOutbox {
       }
     }
     const attemptId = randomUUID();
-    const terminal = entry.kind === 'OUTCOME' || entry.request.kind === 'START_FAILED';
+    const terminal =
+      entry.kind === 'OUTCOME' ||
+      (entry.kind === 'START' && entry.request.kind === 'START_FAILED');
     const observe = (stage: DeliveryNotice['stage']) => {
       try {
         this.observation({
@@ -162,6 +203,8 @@ export class ExecutionOutbox {
       ] as const;
       if (entry.kind === 'START')
         await this.http.startExecution(...address, entry.request);
+      else if (entry.kind === 'INTERACTION_YIELD')
+        await this.http.yieldInteraction(...address, entry.request);
       else {
         try {
           await this.http.completeExecution(...address, entry.request);
@@ -192,7 +235,7 @@ export class ExecutionOutbox {
         return false;
     }
     try {
-      if (terminal || (mode === 'RECOVERY' && !accepted))
+      if (terminal || yielding || (mode === 'RECOVERY' && !accepted))
         await this.state.removeExecution(entry.executionId);
       // Keep the receipt until all local cleanup succeeds, so an accepted Outcome can be retried.
       await this.state.removeOutbox(entry.id);

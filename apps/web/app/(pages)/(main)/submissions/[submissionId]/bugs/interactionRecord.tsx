@@ -33,7 +33,9 @@ export function SubmissionInteractionRecord({
   onResolve,
   pending,
   run,
+  subject,
 }: {
+  subject: 'REPAIR' | 'UPDATE';
   interaction: SubmissionInteractionView;
   onResolve: (resolution: JsonValue) => Promise<WorkspaceActionResult>;
   pending: boolean;
@@ -103,7 +105,10 @@ export function SubmissionInteractionRecord({
           </p>
         ) : interaction.canResolve ? (
           <div className="collab-interaction-actions">
-            {APPROVAL_CHOICES.map(({ decision, label, feedback }) => (
+            {APPROVAL_CHOICES.filter(
+              ({ decision }) =>
+                subject !== 'REPAIR' || decision !== 'ACCEPTED_FOR_SESSION',
+            ).map(({ decision, label, feedback }) => (
               <button
                 aria-describedby={
                   decision === 'ACCEPTED_FOR_SESSION'
@@ -125,7 +130,9 @@ export function SubmissionInteractionRecord({
               </button>
             ))}
             <small id={`session-scope-${interaction.id}`}>
-              仅对当前修复或更新会话后续同类请求生效。
+              {subject === 'REPAIR'
+                ? '决定仅适用于当前请求；满一分钟未处理会先执行其他缺陷。'
+                : '仅对当前更新会话后续同类请求生效。'}
             </small>
           </div>
         ) : null}
@@ -152,6 +159,9 @@ export function SubmissionInteractionRecord({
         <strong>Codex 请求补充信息</strong>
         <time>{formatDateTime(interaction.createdAt)}</time>
       </header>
+      {!resolved && subject === 'REPAIR' ? (
+        <p>满一分钟未回答会先执行其他缺陷；回答后按队列继续。</p>
+      ) : null}
       {resolved ? (
         <dl className="collab-bug-detail-list">
           {interaction.request.questions.map((question) => (
@@ -248,7 +258,7 @@ export function SubmissionInteractionRecord({
                       ]),
                     ),
                   }),
-                '回答已提交给 Codex。',
+                '回答已保存。',
                 () => setAnswers({}),
               )
             }

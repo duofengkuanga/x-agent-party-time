@@ -4,6 +4,7 @@ import { RunnerHttpError } from '@agent-party-time/runner-contract/http-client';
 import { codexUserInput } from '../codex/turnInput';
 import { claimedExecution, createFixture, session } from './serviceFixture';
 import { ExecutionRecovery } from './recovery';
+import { CodexAppServerError } from '../codex/errors';
 
 const workspace = {
   key: 'lease-test',
@@ -27,6 +28,52 @@ async function waitFor(condition: () => boolean) {
   }
   throw new Error('condition timeout');
 }
+
+test('续租失败先返回时，仍等待 Codex 清理完成才能发送终态', async () => {
+  const f = await createFixture();
+  const stopped = gate();
+  let aborted = false;
+  Object.assign(f.executor, {
+    begin: async (_input: unknown, signal: AbortSignal) => ({
+      sessionId: 'lease-cleanup',
+      completion: new Promise((_resolve, reject) => {
+        signal.addEventListener(
+          'abort',
+          () => {
+            aborted = true;
+            void stopped.promise.then(() =>
+              reject(new CodexAppServerError('会话已停止', 'lease-cleanup')),
+            );
+          },
+          { once: true },
+        );
+      }),
+    }),
+  });
+  f.http.renewExecution = async () => {
+    throw new Error('续租暂时断网');
+  };
+  jest.useFakeTimers();
+  try {
+    await f.service.cycle(session);
+    await waitFor(() => f.http.starts.length === 1);
+    jest.advanceTimersByTime(5_000);
+    await waitFor(() => aborted);
+    for (let i = 0; i < 100 && !f.http.outcomes.length; i++)
+      await readFile(import.meta.path);
+    expect(f.http.outcomes).toHaveLength(0);
+    expect(f.service.projection.activeExecutionCount).toBe(1);
+    stopped.resolve();
+    await f.service.waitForIdle();
+    expect(f.http.outcomes[0]?.outcome.kind).toBe('FAILED');
+  } finally {
+    stopped.resolve();
+    f.service.forceStop();
+    await f.service.waitForIdle();
+    jest.useRealTimers();
+    await f.shutdownObservations();
+  }
+});
 
 for (const phase of [
   'workspace',

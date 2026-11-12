@@ -23,6 +23,8 @@ export type CodexExecutionInput = {
   outputSchema: JsonObject;
   attachments: MaterializedAttachment[];
   taskId: string | null;
+  managedInteractions?: boolean;
+  onProcessGroups?: (groups: number[]) => Promise<void>;
   onInteraction: (interaction: CodexInteraction) => Promise<JsonValue>;
   onManualHandoff?: (questions: string[]) => Promise<void>;
   observe?: (notice: CodexObservationNotice) => void;

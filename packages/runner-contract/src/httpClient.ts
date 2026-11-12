@@ -10,6 +10,7 @@ import {
   OpenInteractionResponseSchema,
   WaitInteractionRequestSchema,
   WaitInteractionResponseSchema,
+  YieldInteractionRequestSchema,
   type ClaimedExecution,
   type CompleteExecutionRequest,
   type Execution,
@@ -18,6 +19,7 @@ import {
   type ExecutionStartRequest,
   type OpenInteractionRequest,
   type WaitInteractionResponse,
+  type YieldInteractionRequest,
 } from '@agent-party-time/execution-contract';
 import {
   RunnerAuthorizationClaimResponseSchema,
@@ -269,6 +271,23 @@ export class RunnerHttpClient {
         body,
       )
     ).interaction;
+  }
+
+  async yieldInteraction(
+    serverOrigin: string,
+    credential: string | undefined,
+    executionId: string,
+    request: YieldInteractionRequest,
+  ): Promise<Execution> {
+    return (
+      await this.authorizedJson(
+        serverOrigin,
+        credential,
+        `/api/runner/executions/${encodeURIComponent(executionId)}/interactions/yield`,
+        ExecutionMutationResponseSchema,
+        YieldInteractionRequestSchema.parse(request),
+      )
+    ).execution;
   }
 
   async waitInteraction(

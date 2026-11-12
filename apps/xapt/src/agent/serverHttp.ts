@@ -33,6 +33,7 @@ export type RunnerExecutionHttp = Pick<
   | 'renewExecution'
   | 'completeExecution'
   | 'openInteraction'
+  | 'yieldInteraction'
   | 'waitInteraction'
   | 'deleteBugs'
   | 'downloadExecutionFile'

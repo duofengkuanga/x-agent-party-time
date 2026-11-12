@@ -125,7 +125,7 @@ test('新修复轮次不会继承上一轮检查结果，也不会臆造当前�
   );
   expect(
     executionRoundProgress({ ...running, executionState: 'WAITING_TO_RESUME' }),
-  ).toContain('等待恢复');
+  ).toContain('排队等待继续');
   expect(executionRoundProgress(original)).toBe('本轮执行已完成。');
 });
 

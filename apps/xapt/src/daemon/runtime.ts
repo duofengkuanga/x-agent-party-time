@@ -105,6 +105,9 @@ export class DaemonRuntime {
       outboxCount: outbox.length,
       bindingCount: Object.keys(bindings.bindings).length,
       bindingActive: this.options.agentService?.projection.bindingActive ?? false,
+      ...(this.options.agentService?.projection.recoveryRequired
+        ? { recoveryRequired: true as const }
+        : {}),
     };
   }
 }

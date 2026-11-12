@@ -165,8 +165,10 @@ export class ExecutionQueue {
             !hasExecutionCapacity(row.access, occupied)
           )
             continue;
+          const previousTurn = row.session_id ? this.records.get(row.id).codexTurn : null;
           const recoveredInteraction =
-            row.state === 'WAITING_TO_RESUME'
+            row.state === 'WAITING_TO_RESUME' ||
+            (previousTurn?.kind !== 'READ_SESSION' && previousTurn?.managedInteractions)
               ? this.records.latestInteraction(row.id)
               : undefined;
           const plan = plans.get(row.id);
@@ -186,7 +188,8 @@ export class ExecutionQueue {
           this.db.run(
             `UPDATE platform_execution SET state = 'CLAIMED', lease_token_hash = ?,
              lease_expires_at = ?, claimed_at = COALESCE(claimed_at, ?),
-             resume_requested_at = NULL WHERE id = ?`,
+             resume_requested_at = CASE WHEN json_extract(codex_turn_json, '$.managedInteractions') = 1
+               THEN resume_requested_at ELSE NULL END WHERE id = ?`,
             [hashSecret(leaseToken), expiresAt, this.now().toISOString(), row.id],
           );
           const execution = this.records.get(row.id);
@@ -224,6 +227,10 @@ export class ExecutionQueue {
         `SELECT candidate.id, candidate.state, candidate.priority,
          candidate.workspace_json, candidate.lease_token_hash, candidate.lease_expires_at,
          candidate.cancellation_requested, candidate.resume_requested_at, candidate.created_at,
+         CASE WHEN json_extract(candidate.codex_turn_json, '$.managedInteractions') = 1
+           THEN (SELECT created_at FROM platform_execution_interaction
+             WHERE execution_id = candidate.id AND state = 'PENDING'
+             ORDER BY created_at DESC LIMIT 1) END interaction_created_at,
          COALESCE(candidate.session_id, json_extract(candidate.codex_turn_json, '$.taskId')) session_id,
          candidate.rowid queue_order,
          ${manualWorkspaceAvailable('candidate')} manual_available
@@ -247,6 +254,9 @@ export class ExecutionQueue {
           : row.manual_available;
         return {
           ...row,
+          interactionGraceHeld:
+            row.interaction_created_at !== null &&
+            this.now().getTime() - Date.parse(row.interaction_created_at) < 60_000,
           manual_available: available ?? 0,
           access: {
             workspaces: plan ? plan.workspaces : JSON.parse(row.workspace_json),
@@ -281,12 +291,7 @@ export class ExecutionQueue {
       );
       const release = this.db.prepare(
         `UPDATE platform_execution
-         SET state = CASE
-               WHEN state IN (
-                 'WAITING_FOR_INTERACTION', 'WAITING_TO_RESUME'
-               ) THEN state
-               ELSE 'QUEUED'
-             END,
+         SET state = ?, resume_requested_at = COALESCE(?, resume_requested_at),
              lease_token_hash = NULL, lease_expires_at = NULL
          WHERE id = ?`,
       );
@@ -297,6 +302,17 @@ export class ExecutionQueue {
          WHERE id = ?`,
       );
       for (const row of expired) {
+        const turn = this.records.get(row.id).codexTurn;
+        const latestInteraction = this.records.latestInteraction(row.id);
+        if (
+          turn?.kind !== 'READ_SESSION' &&
+          turn?.managedInteractions &&
+          latestInteraction &&
+          ['WAITING_FOR_INTERACTION', 'WAITING_TO_RESUME', 'CANCEL_REQUESTED'].includes(
+            row.state,
+          )
+        )
+          continue; // Only the Agent's durable, verified process-release receipt frees this lane.
         if (row.cancellation_requested === 1) {
           const outcome: ExecutionOutcome = {
             kind: 'CANCELLED',
@@ -319,7 +335,18 @@ export class ExecutionQueue {
           );
           continue;
         }
-        release.run(row.id);
+        const resume =
+          turn?.kind !== 'READ_SESSION' &&
+          turn?.managedInteractions &&
+          latestInteraction?.state === 'RESOLVED';
+        const nextState = ['WAITING_FOR_INTERACTION', 'WAITING_TO_RESUME'].includes(
+          row.state,
+        )
+          ? row.state
+          : resume
+            ? 'WAITING_TO_RESUME'
+            : 'QUEUED';
+        release.run(nextState, resume ? latestInteraction.resolved_at : null, row.id);
       }
     });
   }
@@ -329,6 +356,9 @@ function manualWorkspaceAvailable(candidate: string): string {
     SELECT 1 FROM platform_execution manual
     WHERE manual.id <> ${candidate}.id
       AND (manual.state = 'HANDED_OFF' OR (
+        manual.state IN ('WAITING_FOR_INTERACTION', 'WAITING_TO_RESUME') AND
+        json_extract(manual.codex_turn_json, '$.managedInteractions') = 1
+      ) OR (
         manual.state = 'WAITING_FOR_INTERACTION' AND EXISTS (
           SELECT 1 FROM platform_execution_interaction interaction
           WHERE interaction.execution_id = manual.id AND interaction.state = 'PENDING'
@@ -362,6 +392,7 @@ function codexTurnForClaim(execution: Execution): CodexTurn | null {
   return {
     kind: 'CONTINUATION',
     manualHandoff: turn.manualHandoff,
+    managedInteractions: turn.managedInteractions,
     taskId: execution.sessionId,
     taskSkillBinding: turn.taskSkillBinding,
     input: '继续完成上次未完成的任务。',
@@ -385,9 +416,11 @@ type SchedulingRow = Pick<
 > & {
   queue_order: number;
   manual_available: number;
+  interaction_created_at: string | null;
 };
 type ScheduledExecution = SchedulingRow & {
   access: ExecutionAccess;
+  interactionGraceHeld: boolean;
 };
 
 function occupiesLane(row: ScheduledExecution): boolean {
@@ -395,8 +428,8 @@ function occupiesLane(row: ScheduledExecution): boolean {
     ['CLAIMED', 'RUNNING', 'CANCEL_REQUESTED'].includes(row.state) ||
     (row.state === 'WAITING_FOR_INTERACTION' &&
       row.access.workspaces.some(({ workspace }) => workspace !== null) &&
-      Boolean(row.lease_token_hash) &&
-      Boolean(row.lease_expires_at))
+      ((Boolean(row.lease_token_hash) && Boolean(row.lease_expires_at)) ||
+        row.interactionGraceHeld))
   );
 }
 function holdsSlot(row: SchedulingRow): boolean {

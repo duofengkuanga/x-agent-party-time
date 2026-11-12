@@ -3,6 +3,7 @@ import {
   DeploymentReceiptSchema,
   ClaimedExecutionSchema,
   ExecutionStartRequestSchema,
+  YieldInteractionRequestSchema,
 } from '@agent-party-time/execution-contract';
 import { isAbsolute } from 'node:path';
 import { z } from 'zod';
@@ -52,6 +53,10 @@ export const ExecutionRecoveryStateSchema = z.strictObject({
   bindingId: z.uuid(),
   phase: z.enum(['CLAIMED', 'RUNNING', 'WAITING_INTERACTION', 'OUTCOME_PENDING']),
   sessionId: z.string().min(1).nullable(),
+  processGroups: z
+    .array(z.number().int().positive().max(2_147_483_647))
+    .min(1)
+    .optional(),
   claimedExecution: ClaimedExecutionSchema,
   updatedAt: z.iso.datetime(),
 });
@@ -63,6 +68,15 @@ export const ExecutionResultBaselineStateSchema = z.strictObject({
 });
 
 export const OutboxEntrySchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    schemaVersion: z.literal(OUTBOX_STATE_SCHEMA_VERSION),
+    id: z.uuid(),
+    kind: z.literal('INTERACTION_YIELD'),
+    sessionReleased: z.literal(true).optional(),
+    executionId: z.uuid(),
+    request: YieldInteractionRequestSchema,
+    createdAt: z.iso.datetime(),
+  }),
   z.strictObject({
     schemaVersion: z.literal(OUTBOX_STATE_SCHEMA_VERSION),
     id: z.uuid(),

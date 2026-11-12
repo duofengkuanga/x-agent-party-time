@@ -35,7 +35,11 @@ export type BrowserFixture = {
 
 export async function seedBrowserFixture(
   home: string,
-  options: { queuedUpdates?: boolean; testerScope?: boolean } = {},
+  options: {
+    queuedUpdates?: boolean;
+    testerScope?: boolean;
+    interactionQueue?: boolean;
+  } = {},
 ): Promise<BrowserFixture> {
   const db = openDatabase(join(home, 'server', 'server.sqlite'));
   try {
@@ -563,15 +567,77 @@ export async function seedBrowserFixture(
       sessionId: `browser-interaction-${interactionBug.id}`,
       taskSkillBinding: fixtureSkillBinding('XBugRepaire'),
     });
-    executions.openInteraction(paired.runner.id, claimed.id, {
+    const approvalRequest = {
       leaseToken: claimed.lease.token,
-      kind: 'APPROVAL',
+      kind: 'APPROVAL' as const,
       method: 'item/commandExecution/requestApproval',
       payload: {
         command: 'bun test',
         reason: '验证浏览器中的原生审批交互',
       },
-    });
+    };
+    const approval = executions.openInteraction(
+      paired.runner.id,
+      claimed.id,
+      approvalRequest,
+    );
+    if (options.interactionQueue) {
+      const elapsed = new Date(Date.now() - 61_000).toISOString();
+      db.run('UPDATE platform_execution_interaction SET created_at = ? WHERE id = ?', [
+        elapsed,
+        approval.id,
+      ]);
+      executions.yieldInteraction(paired.runner.id, claimed.id, {
+        ...approvalRequest,
+        sessionId: `browser-interaction-${interactionBug.id}`,
+      });
+      const questionBug = createBug('等待方案回答缺陷');
+      bugs.requestRepair(tester.id, questionBug.id, {
+        mutationId: randomUUID(),
+        expectedVersion: questionBug.version,
+      });
+      const questionExecution = (await executions.claim(paired.runner.id, 1, 0))[0]!;
+      const sessionId = `browser-question-${questionBug.id}`;
+      executions.start(paired.runner.id, questionExecution.id, {
+        kind: 'STARTED',
+        leaseToken: questionExecution.lease.token,
+        sessionId,
+        taskSkillBinding: fixtureSkillBinding('XBugRepaire'),
+      });
+      const request = {
+        leaseToken: questionExecution.lease.token,
+        kind: 'USER_INPUT' as const,
+        method: 'xapt/asyncQuestions',
+        payload: {
+          itemId: 'question-item',
+          turnId: 'question-turn',
+          questions: [
+            {
+              id: 'question-item:0',
+              header: '选择修复方案',
+              question: '采用哪种修复方案？',
+              options: [
+                { label: '保留现有布局', description: '只修正错误行为' },
+                { label: '调整布局', description: '同时调整相关布局' },
+              ],
+            },
+          ],
+        },
+      };
+      const question = executions.openInteraction(
+        paired.runner.id,
+        questionExecution.id,
+        request,
+      );
+      db.run('UPDATE platform_execution_interaction SET created_at = ? WHERE id = ?', [
+        elapsed,
+        question.id,
+      ]);
+      executions.yieldInteraction(paired.runner.id, questionExecution.id, {
+        ...request,
+        sessionId,
+      });
+    }
 
     // 两条缺陷共享一个更新会话，等待工程负责人确认整批部署。
     for (const [index, title] of ['批次更新缺陷甲', '批次更新缺陷乙'].entries()) {

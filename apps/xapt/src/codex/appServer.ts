@@ -1,9 +1,14 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { join } from 'node:path';
+import { createHash } from 'node:crypto';
+import { z } from 'zod';
 import {
   sanitizeExecutionInteractionPayload,
+  serializeDeterministicJson,
   type JsonValue,
 } from '@agent-party-time/execution-contract';
 import { XAPT_VERSION } from '../version';
+import { ownedProcessGroups, processGroupExists } from '../platform/processGroups';
 import type {
   CodexExecutionInput,
   CodexExecutor,
@@ -29,9 +34,10 @@ import {
   isInteractionMethod,
   defaultDecline,
   restorePrivateInteractionResolution,
+  interactionContinuation,
 } from './interaction';
 
-import { CodexAppServerError } from './errors';
+import { CodexAppServerError, CodexSessionReleaseError } from './errors';
 import { readCompletedTurn } from './sessionReader';
 import type { CodexObservationNotice } from '../observability/protocol';
 
@@ -50,6 +56,7 @@ type ActiveTurn = {
   threadId: string;
   turnId: string;
   input: CodexExecutionInput;
+  signal: AbortSignal;
   resolve: (result: JsonValue) => void;
   reject: (error: Error) => void;
 };
@@ -59,11 +66,25 @@ const XAPT_THREAD_SECURITY = {
   sandbox: 'danger-full-access',
 } as const;
 
+const asyncQuestionList = z
+  .array(
+    z.strictObject({
+      title: z.string().trim().min(1),
+      options: z.array(z.string().trim().min(1)).nullable(),
+    }),
+  )
+  .min(1);
+
 export class CodexAppServerExecutor implements CodexExecutor {
   private observer?: (notice: CodexObservationNotice) => void;
   private readonly operations = new Set<CodexAppServerExecutor>();
   private closing: Promise<void> | null = null;
   private child: ChildProcessWithoutNullStreams | null = null;
+  private ownedChild: ChildProcessWithoutNullStreams | null = null;
+  private managedProcessGroup = false;
+  private recordProcessGroups?: CodexExecutionInput['onProcessGroups'];
+  private terminationSent = false;
+  private unexpectedExit = false;
   private initialized: Promise<void> | null = null;
   private nextRequestId = 1;
   private pendingLine = '';
@@ -71,7 +92,7 @@ export class CodexAppServerExecutor implements CodexExecutor {
   private readonly turns = new Map<string, ActiveTurn>();
   private readonly completedTurns = new Map<string, Record<string, unknown>>();
   private readonly agentMessages = new Map<string, string>();
-  private readonly handoffs = new Map<string, string[]>();
+  private readonly handoffs = new Map<string, unknown>();
   private readonly handingOff = new Set<string>();
 
   constructor(
@@ -125,6 +146,8 @@ export class CodexAppServerExecutor implements CodexExecutor {
   ): Promise<StartedCodexExecution> {
     signal.throwIfAborted();
     this.observer = input.observe;
+    this.managedProcessGroup = Boolean(input.managedInteractions);
+    this.recordProcessGroups = input.onProcessGroups;
     await this.ensureStarted();
     let threadId = input.taskId;
     try {
@@ -136,6 +159,9 @@ export class CodexAppServerExecutor implements CodexExecutor {
           approvalPolicy: input.approvalPolicy,
           config: { model_reasoning_effort: this.reasoningEffort },
           ...XAPT_THREAD_SECURITY,
+          approvalsReviewer: input.managedInteractions
+            ? 'user'
+            : XAPT_THREAD_SECURITY.approvalsReviewer,
         });
       } else {
         const response = asRecord(
@@ -144,6 +170,9 @@ export class CodexAppServerExecutor implements CodexExecutor {
             approvalPolicy: input.approvalPolicy,
             config: { model_reasoning_effort: this.reasoningEffort },
             ...XAPT_THREAD_SECURITY,
+            approvalsReviewer: input.managedInteractions
+              ? 'user'
+              : XAPT_THREAD_SECURITY.approvalsReviewer,
           }),
         );
         threadId = requiredString(asRecord(response.thread), 'id');
@@ -203,17 +232,75 @@ export class CodexAppServerExecutor implements CodexExecutor {
   async close(): Promise<void> {
     await Promise.all([...this.operations].map((operation) => operation.close()));
     if (this.closing) return this.closing;
-    const child = this.child;
-    if (!child) return;
+    const child = this.ownedChild;
+    if (!child?.pid) return;
+    const pid = child.pid;
+    let groups = [pid];
+    let ownershipKnown = false;
     this.observe({ type: 'closing' });
-    this.closing = new Promise<void>((resolve) => {
-      child.once('close', () => {
-        clearTimeout(timeout);
-        resolve();
+    this.closing = (async () => {
+      if (this.managedProcessGroup) {
+        if (this.unexpectedExit)
+          throw new Error('执行进程已异常退出，需人工核验工具进程');
+        groups = await ownedProcessGroups(pid);
+        ownershipKnown = true;
+        await this.recordProcessGroups?.(groups);
+        if (this.unexpectedExit) {
+          ownershipKnown = false;
+          throw new Error('记录释放证明前执行进程已异常退出');
+        }
+      }
+      await new Promise<void>((resolve, reject) => {
+        let finishing = false;
+        const stop = (signal: NodeJS.Signals) => {
+          this.terminationSent = true;
+          if (this.managedProcessGroup) {
+            for (const group of groups) signalProcessGroup(group, signal);
+          } else child.kill(signal);
+        };
+        const finish = async () => {
+          if (finishing) return;
+          finishing = true;
+          clearTimeout(timeout);
+          try {
+            if (this.managedProcessGroup) {
+              stop('SIGKILL');
+              const deadline = Date.now() + 5_000;
+              while (groups.some(processGroupExists)) {
+                if (Date.now() >= deadline) throw new Error('工具进程组仍未退出');
+                await new Promise((resolve) => setTimeout(resolve, 20));
+              }
+            }
+            if (this.managedProcessGroup) await this.recordProcessGroups?.([]);
+            this.ownedChild = null;
+            resolve();
+          } catch (error) {
+            reject(error);
+          }
+        };
+        child.once('close', () => {
+          void finish();
+        });
+        const timeout = setTimeout(() => {
+          try {
+            stop('SIGKILL');
+          } catch (error) {
+            reject(error);
+          }
+        }, 5000);
+        timeout.unref();
+        try {
+          stop('SIGTERM');
+          if (child.exitCode !== null || child.signalCode !== null) void finish();
+        } catch (error) {
+          clearTimeout(timeout);
+          reject(error);
+        }
       });
-      const timeout = setTimeout(() => child.kill('SIGKILL'), 5000);
-      timeout.unref();
-      child.kill('SIGTERM');
+    })().catch((error) => {
+      if (this.managedProcessGroup)
+        throw new CodexSessionReleaseError(groups, error, !ownershipKnown);
+      throw error;
     });
     this.failProcess(new Error('Codex 本机服务已关闭'));
     return this.closing;
@@ -234,12 +321,15 @@ export class CodexAppServerExecutor implements CodexExecutor {
     this.observe({ type: 'spawn' });
     const child = this.spawnProcess(this.executable, ['app-server'], {
       stdio: ['pipe', 'pipe', 'pipe'],
+      detached: this.managedProcessGroup,
     }) as ChildProcessWithoutNullStreams;
     this.child = child;
+    this.ownedChild = child;
     child.stdout.on('data', (chunk: Buffer) => this.consume(chunk));
     child.stderr.on('data', () => this.observe({ type: 'stderr' }));
     child.once('error', (error) => this.failProcess(error));
     child.once('close', (code, closeSignal) => {
+      if (this.managedProcessGroup && !this.terminationSent) this.unexpectedExit = true;
       this.observe({ type: 'exit', code });
       this.failProcess(
         new Error(
@@ -249,6 +339,8 @@ export class CodexAppServerExecutor implements CodexExecutor {
         ),
       );
     });
+    if (this.managedProcessGroup && child.pid)
+      await this.recordProcessGroups?.([child.pid]);
     await this.request('initialize', {
       clientInfo: {
         name: 'xapt',
@@ -282,15 +374,16 @@ export class CodexAppServerExecutor implements CodexExecutor {
         threadId,
         turnId,
         input,
+        signal,
         resolve: (result) => finish(() => resolve(result)),
         reject: (error) => finish(() => reject(error)),
       };
       signal.addEventListener('abort', abort, { once: true });
       this.turns.set(key, active);
       const handoff = this.handoffs.get(key);
-      if (handoff && input.onManualHandoff) {
+      if (handoff && (input.onManualHandoff || input.managedInteractions)) {
         this.handoffs.delete(key);
-        void this.handoff(active, handoff);
+        this.handleAsyncQuestions(active, handoff);
         return;
       }
       const completed = this.completedTurns.get(key);
@@ -345,8 +438,8 @@ export class CodexAppServerExecutor implements CodexExecutor {
     if (method === 'item/completed' && threadId && turnId) {
       const questions = asyncQuestions(params.item);
       if (questions) {
-        if (active?.input.onManualHandoff) void this.handoff(active, questions);
-        else if (!active) this.handoffs.set(turnKey(threadId, turnId), questions);
+        if (active) this.handleAsyncQuestions(active, params.item);
+        else this.handoffs.set(turnKey(threadId, turnId), params.item);
       }
     }
 
@@ -414,25 +507,109 @@ export class CodexAppServerExecutor implements CodexExecutor {
     }
   }
 
+  private handleAsyncQuestions(active: ActiveTurn, value: unknown): void {
+    if (active.input.managedInteractions) void this.answerAsyncQuestions(active, value);
+    else if (active.input.onManualHandoff)
+      void this.handoff(active, asyncQuestions(value)!);
+  }
+
+  private async answerAsyncQuestions(active: ActiveTurn, value: unknown): Promise<void> {
+    const key = turnKey(active.threadId, active.turnId);
+    if (this.handingOff.has(key)) return;
+    this.handingOff.add(key);
+    try {
+      const item = asRecord(value);
+      const itemId = requiredString(item, 'id');
+      const parsed = asyncQuestionList.safeParse(item.questions);
+      if (!parsed.success)
+        throw new CodexAppServerError(
+          'Codex 提问格式无效，未保存不完整的问题或选项',
+          active.threadId,
+        );
+      const questions = parsed.data.map((question, index) => {
+        return {
+          id: `${itemId}:${index}`,
+          header: question.title,
+          question: question.title,
+          options: question.options?.map((label) => ({ label, description: '' })) ?? null,
+        };
+      });
+      const interaction = {
+        method: 'xapt/asyncQuestions',
+        payload: sanitizeExecutionInteractionPayload('xapt/asyncQuestions', {
+          itemId,
+          turnId: active.turnId,
+          questions,
+        }),
+      };
+      const resolution = active.input.onInteraction(interaction);
+      void resolution.catch(() => undefined);
+      // Async messages do not block Codex. Detach this turn before closing its
+      // process; only the saved answer may start the next turn in the session.
+      this.turns.delete(key);
+      void this.request('turn/interrupt', {
+        threadId: active.threadId,
+        turnId: active.turnId,
+      }).catch(() => undefined);
+      await this.close();
+      const answer = await resolution;
+      active.signal.throwIfAborted();
+      const resumed = await this.begin(
+        {
+          ...active.input,
+          taskId: active.threadId,
+          text: interactionContinuation({ ...interaction, resolution: answer }),
+          skill: null,
+          boundSkillPath: active.input.skill
+            ? join(active.input.skill.path, 'SKILL.md')
+            : active.input.boundSkillPath,
+          attachments: [],
+        },
+        active.signal,
+      );
+      active.resolve(await resumed.completion);
+    } catch (error) {
+      active.reject(error instanceof Error ? error : new Error('无法续接人工问答'));
+    }
+  }
+
   private async handleServerRequest(
     request: JsonRpcRequest,
     active: ActiveTurn | null | undefined,
   ): Promise<void> {
     if (!active || !isInteractionMethod(request.method)) {
-      this.respond(request.id, defaultDecline(request.method));
+      if (this.child) this.respond(request.id, defaultDecline(request.method));
       return;
     }
     try {
+      const payload = sanitizeExecutionInteractionPayload(request.method, request.params);
       const result = await active.input.onInteraction({
         method: request.method,
-        payload: sanitizeExecutionInteractionPayload(request.method, request.params),
+        payload: active.input.managedInteractions
+          ? {
+              ...(asRecord(payload) as Record<string, JsonValue>),
+              // Exact original request identity includes private targets locally;
+              // only an opaque digest is persisted with its public projection.
+              requestKey: createHash('sha256')
+                .update(
+                  serializeDeterministicJson({
+                    method: request.method,
+                    id: request.id,
+                    params: request.params as JsonValue,
+                    repositoryPath: active.input.repositoryPath,
+                  }),
+                )
+                .digest('hex'),
+            }
+          : payload,
       });
       this.respond(
         request.id,
         restorePrivateInteractionResolution(request.method, result, request.params),
       );
     } catch {
-      this.respond(request.id, defaultDecline(request.method));
+      if (this.child && !active.signal.aborted)
+        this.respond(request.id, defaultDecline(request.method));
     }
   }
 
@@ -480,5 +657,13 @@ export class CodexAppServerExecutor implements CodexExecutor {
     } catch {
       // The business execution is independent of diagnostic subscribers.
     }
+  }
+}
+
+function signalProcessGroup(group: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(-group, signal);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
   }
 }
