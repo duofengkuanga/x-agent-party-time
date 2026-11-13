@@ -20,7 +20,11 @@ import {
   projectTestingScope,
 } from '@/contracts/submissions/testingScope';
 import { RepairExecutionResultSchema } from '@/contracts/submissions/repair';
-import { TesterChecklist, testerChecklist } from './testerChecklist';
+import {
+  TesterChecklist,
+  testerChecklist,
+  testInstructionLines,
+} from './testerChecklist';
 import { TesterAttachments } from './testerAttachments';
 import type { StoredAttachment } from './attachments';
 
@@ -122,7 +126,20 @@ test('清单从修复预览冻结到最终部署，按 Bug 分流并在返修后
   );
   expect(markup).toContain('最终单笔付款');
   expect(markup).toContain('衍生回归');
-  expect(markup).toContain('尚未覆盖弱网');
+  expect(markup).not.toContain('尚未覆盖');
+  expect(markup).not.toContain('role="tab"');
+  expect(markup.match(/class="collab-tester-checklist__panel"/g)).toHaveLength(
+    2,
+  );
+  expect(markup.match(/hidden=""/g)).toHaveLength(1);
+  expect(markup).toContain('操作步骤');
+  expect(markup).toContain('预期结果');
+  expect(markup).toContain('关联原因');
+  expect(
+    [...markup.matchAll(/<h3 id="[^"]+">([^<]+)<\/h3>/g)].map(
+      (match) => match[1],
+    ),
+  ).toEqual(['最终单笔付款的批量提交', '最终单笔付款']);
   expect(markup).not.toContain('另一个缺陷');
   expect(markup).not.toContain('src/privatePayment.ts');
   expect(JSON.stringify(snapshot)).not.toContain('headCommit');
@@ -170,6 +187,54 @@ test('清单从修复预览冻结到最终部署，按 Bug 分流并在返修后
       snapshot,
     ).scopes[0]!.points[0]!.title,
   ).toBe('第二轮最终单笔付款');
+});
+
+test('关联缺陷的全部测试项进入轮播，衍生回归前置且同类顺序保留', async () => {
+  const f = await setup();
+  const first = await repair(f, '前端保存');
+  const second = await repair(f, '后端保存', 'b'.repeat(40));
+  const snapshot = createSubmissionWorkflow(f.database, {
+    now: f.clock.now,
+  }).workspace.getWorkspace(f.users.tester.id, f.submission.id);
+  const markup = renderToStaticMarkup(
+    <TesterChecklist
+      bug={snapshot.bugs.find(({ id }) => id === first.id)!}
+      relatedBug={snapshot.bugs.find(({ id }) => id === second.id)!}
+      snapshot={snapshot}
+    />,
+  );
+  expect(markup.match(/class="collab-tester-checklist__panel"/g)).toHaveLength(
+    4,
+  );
+  expect(markup.match(/hidden=""/g)).toHaveLength(3);
+  expect(
+    [...markup.matchAll(/<h3 id="[^"]+">([^<]+)<\/h3>/g)].map(
+      (match) => match[1],
+    ),
+  ).toEqual([
+    '前端保存的批量提交',
+    '后端保存的批量提交',
+    '前端保存',
+    '后端保存',
+  ]);
+});
+
+test.each([
+  [
+    '打开详情。点击编辑；取消后返回。',
+    ['打开详情。', '点击编辑；', '取消后返回。'],
+  ],
+  [
+    '1. 打开详情\n2. 点击编辑\n- 检查列表',
+    ['打开详情', '点击编辑', '检查列表'],
+  ],
+  [
+    '金额 1.5，访问 https://example.com/a?x=1.5',
+    ['金额 1.5，访问 https://example.com/a?x=1.5'],
+  ],
+  ['\r\n 保存内容。\r\n\r\n刷新。 ', ['保存内容。', '刷新。']],
+] as const)('测试指引分段保留原文含义：%s', (text, expected) => {
+  expect(testInstructionLines(text)).toEqual(expected);
 });
 
 test.each(['缺项', '重复', '错误版本', '错误工程', '错误位置'] as const)(
@@ -254,7 +319,7 @@ test('无改动修复仍要求同一版本的范围，缺失清单不能报告�
   ).toBe(false);
 });
 
-test('截图直接展示且多图使用轮播，普通附件仍可下载', () => {
+test('截图直接展示且提供放大入口，多图可轮播，普通附件仍可下载', () => {
   const attachments: StoredAttachment[] = [
     {
       id: 'first',
@@ -284,6 +349,8 @@ test('截图直接展示且多图使用轮播，普通附件仍可下载', () =>
   expect(markup).toContain('<img');
   expect(markup).toContain('1 / 2');
   expect(markup).toContain('下一张截图');
+  expect(markup).toContain('aria-label="放大截图 第一张.png"');
+  expect(markup).toContain('正在加载截图');
   expect(markup).toContain('/api/submissions/attachments/file');
   expect(markup).not.toContain('role="dialog"');
   expect(markup).not.toContain('查看图片');

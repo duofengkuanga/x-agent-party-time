@@ -8,60 +8,202 @@ setup:
   - click: 'button[aria-label^="测试范围与截图轮播，"]'
   - wait: '.collab-tester-checklist'
 cases:
-  - name: original and derived coverage are distinct with explicit limitations
+  - name: derived coverage is selected first with structured instructions
     assert:
       - text: { sel: '.collab-tester-checklist', contains: '本次要测' }
       - text:
           {
-            sel: '.collab-tester-checklist',
-            contains: '保存后刷新，内容仍然保留',
+            sel: '.collab-tester-checklist__panel:not([hidden])',
+            contains: '批量保存',
           }
-      - text: { sel: '.collab-tester-checklist__derived', contains: '衍生回归' }
       - text:
           {
-            sel: '.collab-tester-checklist__derived',
+            sel: '.collab-tester-checklist__panel:not([hidden])',
             contains: '本次修复调整了',
           }
-      - text: { sel: '[aria-label="尚未覆盖"]', contains: '弱网' }
-      - count: { sel: '.collab-tester-checklist__badge', eq: 1 }
+      - count: { sel: '[aria-label="尚未覆盖"]', eq: 0 }
+      - count: { sel: '[role="tab"]', eq: 0 }
+      - count: { sel: '.collab-tester-checklist__navigation', eq: 0 }
+      - count: { sel: '.collab-tester-checklist__panel:not([hidden])', eq: 1 }
+      - visible: '.collab-tester-checklist__panel:not([hidden]) ol'
+      - visible: '.collab-tester-checklist__panel:not([hidden]) ul'
+      - text: { sel: '.collab-tester-checklist__position', contains: '1 / 2' }
+      - text: { sel: '.collab-bug-drawer__heading h2', contains: '缺陷详情' }
       - eval: '!document.querySelector(".collab-tester-detail").textContent.includes("src/report.ts")'
       - eval: '!document.querySelector(".collab-tester-detail__meta").textContent.includes("缺陷-")'
       - text: { sel: '.collab-tester-detail__meta', contains: '待验证' }
-      - hidden: '.collab-tester-detail__status'
 
-  - name: screenshots fit the dialog and preserve their aspect ratio
+  - name: both carousels use side arrows and the dialog fits its content
     steps:
       - wait: '.collab-tester-attachments figure[data-image-state="loaded"] img'
     assert:
-      - eval: '(() => { const image = document.querySelector(".collab-tester-attachments img"); return image.complete && image.naturalWidth > 0 && Math.abs(image.width / image.height - image.naturalWidth / image.naturalHeight) < 0.01 && image.width <= image.parentElement.clientWidth + 1 && image.height <= image.parentElement.clientHeight + 1; })()'
-      - eval: '(() => { const body = document.querySelector(".collab-tester-detail"); const dialog = document.querySelector(".collab-bug-drawer").getBoundingClientRect(); return body.scrollHeight <= body.clientHeight + 1 && dialog.top >= 0 && dialog.bottom <= innerHeight; })()'
-      - eval: '(() => { const viewer = document.querySelector(".collab-tester-attachments__viewer").getBoundingClientRect(); const arrows = [...document.querySelectorAll(".collab-tester-attachments__arrow")]; return arrows.length === 2 && arrows.every(arrow => { const box = arrow.getBoundingClientRect(); return !arrow.textContent.trim() && Math.abs(box.top + box.height / 2 - viewer.top - viewer.height / 2) < 1; }); })()'
+      - eval: >-
+          (() => { const image = document.querySelector(".collab-tester-attachments img"); return image.complete && image.naturalWidth > 0 && Math.abs(image.width / image.height - image.naturalWidth / image.naturalHeight) < 0.01 && image.width <= image.parentElement.clientWidth && image.height <= image.parentElement.clientHeight; })()
+      - eval: >-
+          (() => { const body = document.querySelector(".collab-tester-detail").getBoundingClientRect(); const panel = document.querySelector(".collab-tester-checklist__panel:not([hidden])").getBoundingClientRect(); const image = document.querySelector(".collab-tester-attachments__viewer").getBoundingClientRect(); const dialog = document.querySelector(".collab-bug-drawer").getBoundingClientRect(); return dialog.top >= 0 && dialog.bottom <= innerHeight && body.bottom - Math.max(panel.bottom, image.bottom) <= 32; })()
+      - eval: >-
+          (() => { const arrows = [...document.querySelectorAll(".collab-tester-checklist__arrow, .collab-tester-detail__comparison .collab-tester-attachments__arrow")]; const centers = arrows.map(arrow => { const box = arrow.getBoundingClientRect(); return box.top + box.height / 2; }); return arrows.length === 4 && arrows.every(arrow => !arrow.textContent.trim()) && Math.max(...centers) - Math.min(...centers) < 1; })()
       - count: { sel: '.collab-tester-attachments img', eq: 1 }
       - count:
           { sel: '[role="dialog"]:is(:not([popover]),:popover-open)', eq: 1 }
       - eval: 'document.querySelector("button[aria-label=\"上一张截图\"]").disabled'
-      - text: { sel: '.collab-tester-attachments__controls', contains: '1 / 2' }
+      - text: { sel: '.collab-tester-attachments__meta', contains: '1 / 2' }
+
+  - name: side arrows show one test point without changing the screenshot
+    steps:
+      - eval: 'window.testerImageSource = document.querySelector(".collab-tester-attachments img").src; true'
+      - click: 'button[aria-label="下一测试项"]'
+    assert:
+      - text:
+          {
+            sel: '.collab-tester-checklist__panel:not([hidden])',
+            contains: '保存后刷新，内容仍然保留',
+          }
+      - count: { sel: '.collab-tester-checklist__panel:not([hidden])', eq: 1 }
+      - eval: 'document.querySelector("button[aria-label=\"下一测试项\"]").disabled'
+      - eval: '!document.querySelector("button[aria-label=\"上一测试项\"]").disabled'
+      - eval: 'document.querySelector(".collab-tester-attachments img").src === window.testerImageSource'
+      - text: { sel: '.collab-tester-checklist__position', contains: '2 / 2' }
+
+  - name: test carousel supports keyboard selection and visible focus
+    steps:
+      - click: 'button[aria-label="上一测试项"]'
+      - press: End
+      - press: Home
+      - press: ArrowRight
+    assert:
+      - text:
+          {
+            sel: '.collab-tester-checklist__panel:not([hidden])',
+            contains: '保存后刷新',
+          }
+      - eval: 'document.activeElement === document.querySelector(".collab-tester-checklist__panels")'
+      - eval: 'getComputedStyle(document.activeElement).outlineStyle !== "none"'
+
+  - name: first test point is reachable and has no previous page
+    steps:
+      - press: ArrowLeft
+    assert:
+      - text:
+          {
+            sel: '.collab-tester-checklist__panel:not([hidden])',
+            contains: '批量保存也能保留内容',
+          }
+      - eval: 'document.querySelector("button[aria-label=\"上一测试项\"]").disabled'
+      - text: { sel: '.collab-tester-attachments__meta', contains: '1 / 2' }
+
+  - name: long instructions scroll inside the bounded dialog
+    steps:
+      - eval: >-
+          (() => { const steps = document.querySelector(".collab-tester-checklist__panel:not([hidden]) ol"); window.testerOriginalSteps = steps.innerHTML; steps.firstElementChild.textContent = "这是较长的实际操作说明。".repeat(240); return true; })()
+    assert:
+      - eval: >-
+          (() => { const panels = document.querySelector(".collab-tester-checklist__panels"); const dialog = document.querySelector(".collab-bug-drawer").getBoundingClientRect(); panels.scrollTop = panels.scrollHeight; return panels.scrollHeight > panels.clientHeight && panels.scrollTop > 0 && dialog.top >= 0 && dialog.bottom <= innerHeight; })()
+      - visible: 'button[aria-label="下一测试项"]'
+
+  - name: content height returns after long instruction stress
+    steps:
+      - eval: 'document.querySelector(".collab-tester-checklist__panel:not([hidden]) ol").innerHTML = window.testerOriginalSteps; true'
+    assert:
+      - eval: >-
+          (() => { const body = document.querySelector(".collab-tester-detail").getBoundingClientRect(); const panel = document.querySelector(".collab-tester-checklist__panel:not([hidden])").getBoundingClientRect(); const image = document.querySelector(".collab-tester-attachments__viewer").getBoundingClientRect(); return body.bottom - Math.max(panel.bottom, image.bottom) <= 32; })()
 
   - name: carousel switches images without another dialog and supports keyboard focus
     steps:
       - click: 'button[aria-label="下一张截图"]'
       - wait: 'img[alt="截图2.png"]'
       - press: Shift+Tab
+      - press: Shift+Tab
     assert:
-      - text: { sel: '.collab-tester-attachments__controls', contains: '2 / 2' }
+      - text: { sel: '.collab-tester-attachments__meta', contains: '2 / 2' }
       - eval: 'document.querySelector("button[aria-label=\"下一张截图\"]").disabled'
       - count:
           { sel: '[role="dialog"]:is(:not([popover]),:popover-open)', eq: 1 }
       - eval: 'document.activeElement?.getAttribute("aria-label") === "上一张截图"'
 
-  - name: previous screenshot and footer remain reachable
+  - name: previous screenshot and verification actions remain reachable
     steps:
       - press: ArrowLeft
       - wait: 'img[alt="截图1.png"]'
     assert:
-      - text: { sel: '.collab-tester-attachments__controls', contains: '1 / 2' }
+      - text: { sel: '.collab-tester-attachments__meta', contains: '1 / 2' }
       - visible: '.collab-tester-detail__actions'
       - eval: 'document.querySelector(".collab-bug-drawer").scrollWidth <= document.querySelector(".collab-bug-drawer").clientWidth'
+
+  - name: clicking the screenshot opens a focus-contained enlarged carousel
+    steps:
+      - wait: '.collab-tester-attachments__viewer figure[data-image-state="loaded"] img'
+      - click: '.collab-tester-attachments__zoom'
+      - wait: 'dialog.collab-tester-image-dialog[open]'
+      - wait: '.collab-tester-image-dialog figure[data-image-state="loaded"] img'
+    assert:
+      - eval: 'document.activeElement?.getAttribute("aria-label") === "关闭放大截图"'
+      - text: { sel: '.collab-tester-image-dialog > header', contains: '1 / 2' }
+      - eval: 'document.querySelector("button[aria-label=\"上一张放大截图\"]").disabled'
+      - eval: 'document.querySelector(".collab-tester-image-dialog img").width > document.querySelector(".collab-tester-attachments__viewer img").width'
+
+  - name: enlarged images scroll and keyboard focus stays in the image dialog
+    steps:
+      - press: Shift+Tab
+      - eval: 'window.enlargedFocusTrapped = document.activeElement?.getAttribute("aria-label") === "下一张放大截图"; true'
+      - click: 'button[aria-label="下一张放大截图"]'
+      - wait: '.collab-tester-image-dialog figure[data-image-state="loaded"] img[alt="截图2.png"]'
+    assert:
+      - eval: 'window.enlargedFocusTrapped'
+      - eval: >-
+          (() => { const area = document.querySelector(".collab-tester-image-dialog__image"); area.scrollTop = area.scrollHeight; area.scrollLeft = area.scrollWidth; return getComputedStyle(area).overflow === "auto" && (area.scrollTop > 0 || area.scrollLeft > 0); })()
+
+  - name: enlarged carousel switches with arrows and keyboard and resets scrolling
+    steps:
+      - click: 'button[aria-label="上一张放大截图"]'
+      - wait: '.collab-tester-image-dialog img[alt="截图1.png"]'
+      - click: 'button[aria-label="下一张放大截图"]'
+      - wait: '.collab-tester-image-dialog img[alt="截图2.png"]'
+      - press: ArrowLeft
+      - wait: '.collab-tester-image-dialog img[alt="截图1.png"]'
+      - press: ArrowRight
+      - wait: '.collab-tester-image-dialog img[alt="截图2.png"]'
+    assert:
+      - text: { sel: '.collab-tester-image-dialog > header', contains: '2 / 2' }
+      - eval: 'document.querySelector("button[aria-label=\"下一张放大截图\"]").disabled'
+      - eval: 'document.querySelector(".collab-tester-image-dialog__image").scrollTop === 0 && document.querySelector(".collab-tester-image-dialog__image").scrollLeft === 0'
+
+  - name: closing the enlarged image restores the selected screenshot and focus
+    steps:
+      - press: Escape
+    assert:
+      - count: { sel: 'dialog.collab-tester-image-dialog', eq: 0 }
+      - text: { sel: '.collab-tester-attachments__meta', contains: '2 / 2' }
+      - eval: 'document.activeElement === document.querySelector(".collab-tester-attachments__zoom")'
+      - visible: '.collab-bug-drawer--tester'
+
+  - name: close button also returns from the enlarged carousel
+    steps:
+      - click: '.collab-tester-attachments__zoom'
+      - wait: 'dialog.collab-tester-image-dialog[open]'
+      - click: 'button[aria-label="关闭放大截图"]'
+      - click: 'button[aria-label="上一张截图"]'
+      - wait: '.collab-tester-attachments figure[data-image-state="loaded"] img'
+    assert:
+      - count: { sel: 'dialog.collab-tester-image-dialog', eq: 0 }
+      - text: { sel: '.collab-tester-attachments__meta', contains: '1 / 2' }
+
+  - name: image errors remain visible and recover on the next screenshot
+    steps:
+      - eval: 'document.querySelector(".collab-tester-attachments img").src = "data:image/png;base64,invalid"; true'
+      - wait: '.collab-tester-attachments figure[data-image-state="error"]'
+    assert:
+      - text: { sel: '.collab-tester-attachments', contains: '截图加载失败' }
+      - hidden: '.collab-tester-attachments img'
+      - visible: 'button[aria-label="下一张截图"]'
+
+  - name: another screenshot loads after an image error
+    steps:
+      - click: 'button[aria-label="下一张截图"]'
+      - wait: '.collab-tester-attachments figure[data-image-state="loaded"] img'
+    assert:
+      - text: { sel: '.collab-tester-attachments__meta', contains: '2 / 2' }
+      - visible: '.collab-tester-attachments img'
 
   - name: pending repair has an explicit empty checklist
     steps:
@@ -74,4 +216,5 @@ cases:
             sel: '.collab-tester-checklist',
             contains: '本轮尚未生成可用的测试范围',
           }
+      - count: { sel: '.collab-tester-checklist__arrow', eq: 0 }
       - count: { sel: '.collab-tester-checklist__badge', eq: 0 }

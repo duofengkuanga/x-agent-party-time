@@ -86,7 +86,11 @@ export function BugDrawer({
         <header className={viewing ? 'collab-bug-drawer__chrome' : undefined}>
           {drawer.mode === 'view' && bug ? (
             <div className="collab-bug-drawer__heading">
-              <h2>{bug.report.description.slice(0, 120)}</h2>
+              <h2>
+                {summaryOnly
+                  ? '缺陷详情'
+                  : bug.report.description.slice(0, 120)}
+              </h2>
               {summaryOnly ? (
                 <div className="collab-tester-detail__meta">
                   {pair?.ready ? <span>前端＋后端 · 同一问题</span> : null}
@@ -103,7 +107,9 @@ export function BugDrawer({
                       </span>
                     </>
                   ) : null}
-                  <span>{bug.presentation.stageLabel}</span>
+                  <span className="collab-tester-detail__stage">
+                    {bug.presentation.stageLabel}
+                  </span>
                   <span aria-live="polite">
                     {bug.linkedReview?.blockedReason ??
                       (pair?.ready

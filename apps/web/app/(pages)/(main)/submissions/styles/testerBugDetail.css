@@ -1,32 +1,37 @@
 .collab-bug-drawer--tester {
   max-height: calc(100dvh - 48px);
-  width: min(1100px, 100%);
-}
-
-.collab-bug-drawer--tester:has(.collab-tester-attachments img) {
-  height: min(900px, calc(100dvh - 48px));
+  width: min(1280px, 100%);
 }
 
 .collab-dialog.collab-bug-drawer--tester > .collab-bug-drawer__chrome {
   align-items: start;
-  border-bottom: 0;
+  border-bottom: 1px solid var(--line);
   flex: 0 0 auto;
   gap: 20px;
   max-height: 30%;
   overflow-y: auto;
-  padding: 18px 24px 12px;
+  padding: 18px 24px;
 }
 
 .collab-bug-drawer--tester > .collab-bug-drawer__chrome h2 {
   font-family: inherit;
-  font-size: 21px;
+  font-size: 20px;
   font-style: normal;
   line-height: 1.5;
   margin: 0;
   overflow-wrap: anywhere;
 }
 
+.collab-bug-drawer--tester .collab-bug-drawer__chrome-actions button {
+  font-size: 20px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  width: 32px;
+}
+
 .collab-tester-detail__meta {
+  align-items: center;
   color: var(--muted);
   display: flex;
   flex-wrap: wrap;
@@ -35,11 +40,18 @@
   margin-top: 10px;
 }
 
+.collab-tester-detail__stage {
+  border: 1px solid var(--line);
+  color: var(--ink);
+  padding: 1px 6px;
+}
+
 .collab-tester-detail {
   display: flex;
   flex-direction: column;
   max-height: none;
-  padding: 0 24px;
+  padding: 0;
+  position: relative;
 }
 
 .collab-tester-detail > * {
@@ -72,6 +84,7 @@
   display: grid;
   gap: 0 24px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 0 24px;
 }
 
 .collab-tester-detail__pair > div {
@@ -89,22 +102,17 @@
 
 .collab-tester-detail__report {
   display: flex;
-  flex: 1 0 auto;
   flex-direction: column;
-  gap: 16px;
+  gap: 24px;
   min-height: 0;
-  padding: 12px 0;
-}
-
-.collab-tester-detail__report:has(.collab-tester-attachments img) {
-  flex-basis: 260px;
+  min-width: 0;
+  padding: 24px;
 }
 
 .collab-tester-detail__comparison {
   display: flex;
-  flex: 1;
   flex-direction: column;
-  gap: 12px;
+  gap: 24px;
   margin: 0;
   min-height: 0;
 }
@@ -117,28 +125,17 @@
   display: none;
 }
 
-.collab-tester-detail__comparison > div + div {
-  border-top: 1px solid var(--line);
-  padding-top: 12px;
-}
-
-.collab-tester-detail__comparison > div:has(.collab-tester-attachments img),
-.collab-tester-detail__comparison
-  > div
-  > dd:has(.collab-tester-attachments img),
-.collab-tester-attachments:has(img),
 .collab-tester-attachments > section {
   display: flex;
-  flex: 1;
   flex-direction: column;
   min-height: 0;
 }
 
 .collab-tester-detail dt,
 .collab-tester-detail h3 {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 500;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
   margin: 0 0 9px;
 }
 
@@ -191,7 +188,7 @@
 
 .collab-tester-detail__form {
   border-top: 1px solid var(--line);
-  padding: 18px 0 24px;
+  padding: 18px 24px 24px;
 }
 
 .collab-tester-detail__form label > span {
@@ -312,52 +309,103 @@
 }
 
 .collab-tester-checklist {
-  border-block: 1px solid var(--line);
-  padding-block: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  min-width: 0;
+  padding: 24px;
 }
 
-.collab-tester-checklist > h3 {
+.collab-tester-checklist h3 {
   color: var(--ink);
   font-size: 15px;
   font-weight: 600;
+  margin: 0;
 }
 
-.collab-tester-checklist ol,
-.collab-tester-attachments > ul {
-  display: grid;
-  gap: 16px;
-  list-style: none;
-  margin: 16px 0 0;
-  padding: 0;
+.collab-tester-checklist__heading {
+  flex-shrink: 0;
 }
 
-.collab-tester-checklist ol > li {
-  border-left: 3px solid var(--line);
-  padding-left: 14px;
-}
-
-.collab-tester-checklist ol > .collab-tester-checklist__derived {
-  border-color: var(--accent);
-}
-
-.collab-tester-checklist li > div {
+.collab-tester-checklist__heading > div {
   align-items: baseline;
   display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.collab-tester-checklist__position {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.collab-tester-checklist__carousel {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 32px minmax(0, 1fr) 32px;
+  min-height: 0;
+}
+
+.collab-tester-checklist__panels {
+  min-height: 0;
+  min-width: 0;
+}
+
+.collab-tester-checklist__panels:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.collab-tester-checklist__panel:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.collab-tester-checklist__panel > header {
+  align-items: baseline;
+  border-bottom: 1px solid var(--line);
+  display: flex;
   flex-wrap: wrap;
-  gap: 6px 12px;
+  gap: 8px;
+  padding-bottom: 12px;
 }
 
 .collab-tester-checklist p,
 .collab-tester-checklist li,
 .collab-tester-checklist h4 {
   font-size: 13px;
-  line-height: 1.8;
+  line-height: 1.7;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
 
 .collab-tester-checklist p {
-  margin: 5px 0 0;
+  margin: 0;
+}
+
+.collab-tester-checklist__heading p {
+  margin-top: 8px;
+}
+
+.collab-tester-checklist h4 {
+  color: var(--muted);
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+
+.collab-tester-checklist__panel ol,
+.collab-tester-checklist__panel ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 22px;
+}
+
+.collab-tester-checklist__panel li::marker {
+  color: var(--muted);
 }
 
 .collab-tester-checklist__badge {
@@ -365,88 +413,259 @@
   color: var(--ink);
   font-size: 11px;
   padding: 1px 6px;
+  white-space: nowrap;
 }
 
 .collab-tester-checklist__notice,
 .collab-tester-checklist__reason,
-.collab-tester-attachments__controls {
+.collab-tester-attachments__meta {
   color: var(--muted);
 }
 
-.collab-tester-checklist aside {
-  border-top: 1px dashed var(--line);
-  margin-top: 18px;
-  padding-top: 12px;
+.collab-tester-checklist__reason {
+  background: var(--panel);
+  border-left: 3px solid var(--accent);
+  padding: 10px 12px;
 }
 
-.collab-tester-checklist h4 {
-  margin: 0;
-}
-.collab-tester-checklist aside ul {
-  margin: 6px 0 0;
-  padding-left: 20px;
-}
 .collab-tester-attachments__viewer {
   align-items: center;
-  display: flex;
-  flex: 1;
+  display: grid;
   gap: 12px;
-  min-height: 160px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.collab-tester-attachments__viewer:has(> button) {
+  grid-template-columns: 32px minmax(0, 1fr) 32px;
 }
 
 .collab-tester-attachments figure {
   align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
   display: flex;
-  flex: 1;
-  height: 100%;
+  flex-direction: column;
   justify-content: center;
   margin: 0;
   min-height: 0;
   min-width: 0;
+  padding: 12px;
 }
+
+.collab-tester-attachments figure:not([data-image-state='loaded']) {
+  min-height: 160px;
+  gap: 12px;
+}
+
+.collab-tester-attachments figure[data-image-state='error'] img {
+  display: none;
+}
+
 .collab-tester-attachments img {
   display: block;
   height: auto;
-  max-height: 100%;
+  max-height: min(440px, 48dvh);
   max-width: 100%;
   object-fit: contain;
   width: auto;
 }
 
-.collab-tester-attachments__controls {
-  margin-top: 8px;
-  text-align: center;
+.collab-tester-attachments figure > .collab-tester-attachments__zoom {
+  background: transparent;
+  border: 0;
+  cursor: zoom-in;
+  display: block;
+  max-width: 100%;
+  min-height: 0;
+  padding: 0;
 }
 
-.collab-tester-attachments__controls span {
+.collab-tester-attachments__zoom:hover {
+  outline: 1px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.collab-tester-attachments__meta {
+  margin-bottom: 8px;
+  text-align: right;
+}
+
+.collab-tester-attachments__meta span {
   font-size: 11px;
   overflow-wrap: anywhere;
 }
+
+.collab-tester-checklist__carousel > .collab-tester-checklist__arrow,
 .collab-tester-attachments__viewer > .collab-tester-attachments__arrow {
   display: grid;
   flex-shrink: 0;
+  height: 36px;
+  padding: 0;
+  place-items: center;
+  width: 32px;
+}
+
+.collab-tester-attachments > ul {
+  display: grid;
+  gap: 12px;
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+}
+
+.collab-tester-image-dialog {
+  background: var(--paper);
+  border: 1px solid var(--strong-line);
+  color: var(--ink);
+  height: calc(100dvh - 48px);
+  margin: auto;
+  max-height: none;
+  max-width: none;
+  overflow: hidden;
+  padding: 0;
+  width: calc(100vw - 48px);
+}
+
+.collab-tester-image-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.collab-tester-image-dialog::backdrop {
+  background: rgba(12, 13, 13, 0.8);
+}
+
+.collab-tester-image-dialog > header {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-shrink: 0;
+  font-size: 13px;
+  gap: 16px;
+  max-height: 25dvh;
+  overflow-y: auto;
+  padding: 12px 20px;
+}
+
+.collab-tester-image-dialog > header strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.collab-tester-image-dialog > header span {
+  color: var(--muted);
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.collab-tester-image-dialog > header button {
+  flex-shrink: 0;
+  font-size: 20px;
+  height: 32px;
+  padding: 0;
+  width: 32px;
+}
+
+.collab-tester-image-dialog__body {
+  align-items: center;
+  display: grid;
+  flex: 1;
+  gap: 16px;
+  grid-template-columns: 36px minmax(0, 1fr) 36px;
+  min-height: 0;
+  padding: 20px;
+}
+
+.collab-tester-image-dialog__body > button {
+  display: grid;
   height: 40px;
   padding: 0;
   place-items: center;
   width: 36px;
 }
 
+.collab-tester-image-dialog__image {
+  align-self: stretch;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.collab-tester-image-dialog__image:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.collab-tester-image-dialog figure {
+  background: transparent;
+  border: 0;
+  display: block;
+  min-width: 100%;
+  padding: 0;
+  width: max-content;
+}
+
+.collab-tester-image-dialog img {
+  max-height: none;
+  max-width: none;
+  min-width: 100%;
+}
+
 @media (min-width: 900px) {
-  .collab-tester-detail:has(.collab-tester-checklist ol):has(
-      .collab-tester-attachments img
-    ) {
-    column-gap: 24px;
+  .collab-tester-detail {
     display: grid;
-    grid-template-columns: minmax(260px, 0.85fr) minmax(0, 2fr);
+    grid-template-columns: minmax(0, 46fr) minmax(0, 54fr);
     grid-template-rows: minmax(0, 1fr) auto auto;
   }
 
-  .collab-tester-detail > .collab-tester-checklist {
-    min-height: 0;
+  .collab-tester-checklist__panels {
+    align-self: stretch;
     overflow-y: auto;
+    padding-right: 6px;
+  }
+
+  .collab-tester-checklist__carousel {
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .collab-tester-checklist__panels,
+  .collab-tester-detail__comparison
+    .collab-tester-attachments__viewer:has(> button)
+    > figure {
+    grid-column: 2;
+  }
+
+  .collab-tester-checklist__arrow,
+  .collab-tester-detail__comparison .collab-tester-attachments__arrow {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  .collab-tester-checklist__arrow:first-child {
+    left: 24px;
+  }
+
+  .collab-tester-checklist__arrow:last-child {
+    left: calc(46% - 56px);
+  }
+
+  .collab-tester-detail__comparison
+    .collab-tester-attachments__arrow:first-child {
+    left: calc(46% + 24px);
+  }
+
+  .collab-tester-detail__comparison
+    .collab-tester-attachments__arrow:last-child {
+    right: 24px;
   }
 
   .collab-tester-detail__report {
+    border-left: 1px solid var(--line);
+    overflow-y: auto;
     grid-column: 2;
     grid-row: 1 / 3;
   }
@@ -458,6 +677,10 @@
 
   .collab-tester-detail__form {
     grid-column: 1 / -1;
+  }
+
+  .collab-tester-detail:has(.collab-tester-detail__form) {
+    grid-template-rows: minmax(360px, 1fr) auto auto;
   }
 }
 
@@ -471,8 +694,16 @@
   }
 
   .collab-dialog.collab-bug-drawer--tester > .collab-bug-drawer__chrome,
-  .collab-tester-detail,
+  .collab-tester-checklist,
+  .collab-tester-detail__report,
+  .collab-tester-detail__pair,
+  .collab-tester-detail__form,
   .collab-tester-detail__actions {
     padding-inline: 18px;
+  }
+
+  .collab-tester-checklist__carousel,
+  .collab-tester-attachments__viewer {
+    gap: 8px;
   }
 }
