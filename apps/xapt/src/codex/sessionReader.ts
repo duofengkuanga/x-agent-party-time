@@ -44,7 +44,13 @@ export async function readCompletedTurn(
         'Codex 会话的最新轮次未返回可识别的结果，请在原会话处理后再同步',
         sessionId,
       );
-    return { turnId, result };
+    return {
+      turnId,
+      result,
+      commandExecutions: Array.isArray(turn.items)
+        ? turn.items.filter((item) => asRecord(item).type === 'commandExecution')
+        : [],
+    };
   } catch (error) {
     if (error instanceof CodexAppServerError && error.sessionId === sessionId)
       throw error;

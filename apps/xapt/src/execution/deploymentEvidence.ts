@@ -121,7 +121,15 @@ export function observeDeploymentEvidence(
   if (notice.type !== 'receive') return null;
   const message = record(notice.message);
   if (message.method !== 'item/completed') return null;
-  const item = record(record(message.params).item);
+  return deploymentEvidenceFromCommand(record(message.params).item, targets, executionId);
+}
+
+export function deploymentEvidenceFromCommand(
+  value: unknown,
+  targets: DeploymentEvidenceTarget[],
+  executionId: string,
+): DeploymentEvidence | null {
+  const item = record(value);
   if (
     item.type !== 'commandExecution' ||
     item.status !== 'completed' ||

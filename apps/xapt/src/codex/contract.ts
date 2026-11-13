@@ -38,6 +38,7 @@ export type StartedCodexExecution = {
 export type CompletedCodexTurn = {
   turnId: string;
   result: JsonValue;
+  commandExecutions: unknown[];
 };
 
 export interface CodexExecutor {

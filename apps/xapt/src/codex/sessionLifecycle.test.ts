@@ -131,11 +131,13 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', li
     expect(await executor.readLastCompletedTurn('session')).toEqual({
       turnId: 'old',
       result: { summary: 'old' },
+      commandExecutions: [],
     });
     await writeFile(history, JSON.stringify([turn('old'), turn('new')]));
     expect(await executor.readLastCompletedTurn('session')).toEqual({
       turnId: 'new',
       result: { summary: 'new' },
+      commandExecutions: [],
     });
     for (const status of ['inProgress', 'interrupted']) {
       await writeFile(history, JSON.stringify([turn('old'), turn('new', status)]));

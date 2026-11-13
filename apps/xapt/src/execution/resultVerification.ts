@@ -209,8 +209,34 @@ export class GitExecutionResultVerifier implements ExecutionResultVerifier {
       'origin',
       branch,
     ]);
-    if (!lines(remote).includes(`${head}\t${branch}`))
-      throw new ExecutionResultVerificationError('工程远端分支尚未确认当前交付提交');
+    if (lines(remote).includes(`${head}\t${branch}`)) return;
+    const remoteHead = lines(remote)
+      .find((line) => line.endsWith(`\t${branch}`))
+      ?.split('\t')[0];
+    if (
+      member.state === 'DEPLOYED' &&
+      remoteHead &&
+      /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u.test(remoteHead)
+    ) {
+      // A later push must not invalidate a deployment already awaiting synchronization.
+      await this.git(repositoryPath, [
+        'fetch',
+        '--no-tags',
+        '--no-write-fetch-head',
+        'origin',
+        remoteHead,
+      ]);
+      const ancestry = await this.commands.run('git', [
+        '-C',
+        repositoryPath,
+        'merge-base',
+        '--is-ancestor',
+        head,
+        remoteHead,
+      ]);
+      if (ancestry.exitCode === 0) return;
+    }
+    throw new ExecutionResultVerificationError('工程远端分支尚未确认当前交付提交');
   }
 
   private async git(repositoryPath: string, args: string[]): Promise<string> {

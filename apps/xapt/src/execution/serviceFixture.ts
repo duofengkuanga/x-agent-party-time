@@ -342,7 +342,11 @@ class FakeCodexExecutor implements CodexExecutor {
 
   async readLastCompletedTurn() {
     if (this.readFailure) throw this.readFailure;
-    return { turnId: 'turn-latest', result: this.readResult };
+    return {
+      turnId: 'turn-latest',
+      result: this.readResult,
+      commandExecutions: [] as unknown[],
+    };
   }
 
   resolveNext(): void {

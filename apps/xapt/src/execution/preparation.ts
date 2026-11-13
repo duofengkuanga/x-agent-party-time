@@ -1,4 +1,8 @@
-import { attachDeploymentEvidence, readEngineeringDelivery } from './deploymentEvidence';
+import {
+  attachDeploymentEvidence,
+  deploymentEvidenceFromCommand,
+  readEngineeringDelivery,
+} from './deploymentEvidence';
 import {
   serializeDeterministicJson,
   type ClaimedExecution,
@@ -338,16 +342,18 @@ export class ExecutionPreparation {
           completed.result,
         );
         for (const assertion of rules)
-          if (assertion.kind === 'GIT_DELIVERY_STATE')
-            await attachDeploymentEvidence(
-              this.state,
-              {
-                repositoryPath,
-                workspaceKey: workspace.key,
-                assertion,
-              },
-              completed.result,
-            );
+          if (assertion.kind === 'GIT_DELIVERY_STATE') {
+            const target = { repositoryPath, workspaceKey: workspace.key, assertion };
+            for (const item of completed.commandExecutions) {
+              const evidence = deploymentEvidenceFromCommand(
+                item,
+                [target],
+                execution.id,
+              );
+              if (evidence) await this.state.saveDeploymentEvidence(evidence);
+            }
+            await attachDeploymentEvidence(this.state, target, completed.result);
+          }
       }
       return {
         kind: 'READY',

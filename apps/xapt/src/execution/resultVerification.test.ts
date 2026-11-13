@@ -164,6 +164,52 @@ test('更新结果核对远端目标的完整 SHA，未改动成员必须仍在�
   ).resolves.toBeUndefined();
 });
 
+test('已部署提交在远端继续快进后仍可同步，未部署或远端回退不能通过', async () => {
+  const repository = await gitRepository();
+  const remote = await createTestDirectory();
+  await git(remote, ['init', '--bare']);
+  await git(repository, ['remote', 'add', 'origin', remote]);
+  const base = await git(repository, ['rev-parse', 'HEAD']);
+  await git(repository, ['commit', '--allow-empty', '-m', 'delivered']);
+  const head = await git(repository, ['rev-parse', 'HEAD']);
+  await git(repository, ['push', 'origin', 'HEAD:main']);
+  const concurrent = await createTestDirectory();
+  await git(concurrent, ['clone', '--branch', 'main', remote, '.']);
+  await git(concurrent, [
+    '-c',
+    'user.name=Fixture',
+    '-c',
+    'user.email=fixture@example.invalid',
+    'commit',
+    '--allow-empty',
+    '-m',
+    'next change',
+  ]);
+  await git(concurrent, ['push', 'origin', 'HEAD:main']);
+  const verifier = new GitExecutionResultVerifier(new NodeCommandRunner());
+  const assertion: ExecutionResultAssertion = {
+    kind: 'GIT_DELIVERY_STATE',
+    workspaceBindingId: '00000000-0000-4000-8000-000000000101',
+    targetBranch: 'main',
+    resultPath: ['result', 'deliveries', 'repo-1'],
+  };
+  const result = (state: string) => ({
+    result: { deliveries: { 'repo-1': { state, commit: head } } },
+  });
+  await expect(
+    verifier.verify(repository, [assertion], { gitHead: base }, result('PUSHED')),
+  ).rejects.toThrow('远端分支尚未确认');
+  await expect(
+    verifier.verify(repository, [assertion], { gitHead: base }, result('DEPLOYED')),
+  ).resolves.toBeUndefined();
+  expect(await git(repository, ['rev-parse', 'HEAD'])).toBe(head);
+  expect(await git(repository, ['rev-parse', 'origin/main'])).toBe(head);
+  await git(concurrent, ['push', '--force', 'origin', `${base}:main`]);
+  await expect(
+    verifier.verify(repository, [assertion], { gitHead: base }, result('DEPLOYED')),
+  ).rejects.toThrow('远端分支尚未确认');
+});
+
 test('目标前进后 rebase 的候选通过补丁身份验收，漏交候选仍被拒绝', async () => {
   const repository = await gitRepository();
   const remote = await createTestDirectory();

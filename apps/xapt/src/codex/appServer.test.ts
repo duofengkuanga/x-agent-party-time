@@ -99,6 +99,7 @@ rl.on('line', (line) => {
   expect(await executor.readLastCompletedTurn('thread-1')).toEqual({
     turnId: 'turn-latest',
     result: { outcome: 'FAILED' },
+    commandExecutions: [],
   });
 
   const requests = (await readFile(requestLog, 'utf8'))
