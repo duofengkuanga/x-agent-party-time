@@ -164,6 +164,60 @@ test('更新结果核对远端目标的完整 SHA，未改动成员必须仍在�
   ).resolves.toBeUndefined();
 });
 
+test('目标前进后 rebase 的候选通过补丁身份验收，漏交候选仍被拒绝', async () => {
+  const repository = await gitRepository();
+  const remote = await createTestDirectory();
+  await git(remote, ['init', '--bare']);
+  await git(repository, ['remote', 'add', 'origin', remote]);
+  await git(repository, ['push', 'origin', 'HEAD:main']);
+  const base = await git(repository, ['rev-parse', 'HEAD']);
+  await git(repository, ['checkout', '-b', 'repair']);
+  await writeFile(join(repository, 'fix.txt'), 'fixed\n');
+  await git(repository, ['add', 'fix.txt']);
+  await git(repository, ['commit', '-m', 'fix: candidate']);
+  const candidate = await git(repository, ['rev-parse', 'HEAD']);
+  await writeFile(join(repository, 'missing.txt'), 'required\n');
+  await git(repository, ['add', 'missing.txt']);
+  await git(repository, ['commit', '-m', 'fix: another candidate']);
+  const missing = await git(repository, ['rev-parse', 'HEAD']);
+  await git(repository, ['checkout', 'main']);
+  await writeFile(join(repository, 'concurrent.txt'), 'concurrent\n');
+  await git(repository, ['add', 'concurrent.txt']);
+  await git(repository, ['commit', '-m', 'feat: concurrent target change']);
+  await git(repository, ['push', 'origin', 'main']);
+  await git(repository, ['checkout', '--detach', candidate]);
+  await git(repository, ['rebase', '--onto', 'origin/main', base]);
+  const head = await git(repository, ['rev-parse', 'HEAD']);
+  expect(head).not.toBe(candidate);
+  expect(await git(repository, ['rev-parse', 'repair'])).toBe(missing);
+  const verifier = new GitExecutionResultVerifier(new NodeCommandRunner());
+  const assertion: ExecutionResultAssertion = {
+    kind: 'GIT_DELIVERY_STATE',
+    workspaceBindingId: '00000000-0000-4000-8000-000000000101',
+    targetBranch: 'main',
+    candidateCommits: [candidate],
+    resultPath: ['result', 'deliveries', 'repo-1'],
+  };
+  const result = {
+    result: { deliveries: { 'repo-1': { state: 'PUSHED', commit: head } } },
+  };
+  await expect(
+    verifier.verify(repository, [assertion], { gitHead: base }, result),
+  ).rejects.toThrow('远端分支尚未确认');
+  await git(repository, ['push', 'origin', 'HEAD:main']);
+  await expect(
+    verifier.verify(repository, [assertion], { gitHead: base }, result),
+  ).resolves.toBeUndefined();
+  await expect(
+    verifier.verify(
+      repository,
+      [{ ...assertion, candidateCommits: [candidate, missing] }],
+      { gitHead: base },
+      result,
+    ),
+  ).rejects.toThrow('未包含本批冻结候选');
+});
+
 async function gitRepository(): Promise<string> {
   const repository = await createTestDirectory();
   await git(repository, ['init', '-b', 'main']);

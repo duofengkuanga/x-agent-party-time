@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rename, symlink, writeFile } from 'node:fs/pr
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import type { JsonValue } from '@agent-party-time/execution-contract';
 import {
   RepairExecutionResultSchema,
   RepairOutputJsonSchema,
@@ -10,7 +11,11 @@ import {
 import { outputJsonSchema } from '../apps/web/contracts/outputSchema';
 import { personAgentUpdateResultSchema } from '../apps/web/server/submissions/update/personAgentUpdate';
 import { bundleHash } from '../apps/xapt/src/skills/manager';
-import { verifyResultContent } from '../apps/xapt/src/execution/resultVerification';
+import {
+  GitExecutionResultVerifier,
+  verifyResultContent,
+} from '../apps/xapt/src/execution/resultVerification';
+import { NodeCommandRunner } from '../apps/xapt/src/platform/system';
 import {
   REPAIR_HANDOFF_TEXT_ASSERTION,
   UPDATE_HANDOFF_TEXT_ASSERTION,
@@ -66,12 +71,14 @@ if (
 )
   throw new Error('case 只允许 all/node/python；variant 只允许 all/baseline/current');
 if (
-  !['single', 'independent', 'stale', 'multi', 'resume'].includes(values.scenario!) ||
+  !['single', 'independent', 'stale', 'multi', 'resume', 'target-advanced'].includes(
+    values.scenario!,
+  ) ||
   (values.scenario !== 'single' &&
     (values.case !== 'node' || values.variant !== 'current'))
 )
   throw new Error(
-    '扩展 scenario 需要 --case node --variant current，可选 independent/stale/multi/resume',
+    '扩展 scenario 需要 --case node --variant current，可选 independent/stale/multi/resume/target-advanced',
   );
 
 function git(cwd: string, ...args: string[]): string {
@@ -654,6 +661,14 @@ try {
       const updateBase = await changeDeliveryInputs(fixture.source);
       git(fixture.source, 'worktree', 'add', '--detach', updateWorktree, updateBase);
       await symlink(join(fixture.source, '.xapt'), join(updateWorktree, '.xapt'), 'dir');
+      let integrationTarget = updateBase;
+      if (values.scenario === 'target-advanced') {
+        await writeFile(join(fixture.source, 'concurrent.txt'), 'concurrent change\n');
+        git(fixture.source, 'add', 'concurrent.txt');
+        git(fixture.source, 'commit', '-m', 'test: advance target after preparation');
+        git(fixture.source, 'push', 'origin', 'main');
+        integrationTarget = git(fixture.source, 'rev-parse', 'HEAD');
+      }
       const update = await runAgent(
         updateWorktree,
         directory,
@@ -692,10 +707,41 @@ try {
             git(updateWorktree, 'rev-parse', 'HEAD')
         )
           throw new Error('Update 没有完成隔离部署');
+        await new GitExecutionResultVerifier(new NodeCommandRunner()).verify(
+          updateWorktree,
+          [
+            {
+              kind: 'GIT_DELIVERY_STATE',
+              workspaceBindingId: fixtureId,
+              targetBranch: 'main',
+              candidateCommits: actualCommits,
+              resultPath: ['result', 'deliveries', 'repo-1'],
+            },
+          ],
+          { gitHead: updateBase },
+          update.outcome as JsonValue,
+        );
         const updateEvents = (await readFile(update.eventsFile, 'utf8'))
           .trim()
           .split('\n')
           .map((line) => JSON.parse(line));
+        if (values.scenario === 'target-advanced') {
+          git(updateWorktree, 'merge-base', '--is-ancestor', integrationTarget, 'HEAD');
+          if (
+            git(updateWorktree, 'rev-list', '--merges', `${integrationTarget}..HEAD`) ||
+            (await readFile(join(updateWorktree, 'concurrent.txt'), 'utf8')) !==
+              'concurrent change\n' ||
+            git(repairWorktree, 'rev-parse', 'HEAD') !== actualCommits.at(-1) ||
+            !updateEvents.some(
+              (event) =>
+                event.type === 'item.completed' &&
+                event.item?.type === 'command_execution' &&
+                event.item.exit_code === 0 &&
+                /\bgit\b[^\n]*\brebase\b/u.test(event.item.command),
+            )
+          )
+            throw new Error('目标前进场景未保留并发变更、原候选或优先执行 rebase');
+        }
         const artifactSha = (
           await readFile(join(updateWorktree, '.eval/deployed-sha256'), 'utf8')
         ).trim();
@@ -720,8 +766,9 @@ try {
       ) {
         throw new Error('基线 Update 没有确认 Push');
       }
-      for (const commit of actualCommits)
-        git(fixture.remote, 'merge-base', '--is-ancestor', commit, 'main');
+      if (variant === 'baseline')
+        for (const commit of actualCommits)
+          git(fixture.remote, 'merge-base', '--is-ancestor', commit, 'main');
       if (git(updateWorktree, 'status', '--porcelain'))
         throw new Error('Update 留下未提交改动');
       if (

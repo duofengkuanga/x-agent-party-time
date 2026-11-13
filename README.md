@@ -225,6 +225,8 @@ bun run eval:handoff --skills-root /path/to/x-skills --baseline-app <旧版本�
 
 使用 `--case node --variant current --scenario independent|stale|multi|resume` 验证独立强制检查、失效入口、多候选与真实会话恢复。恢复场景保留原 Codex Task 并续接同一会话，模拟终态传输丢失，核对远端和已完成验收没有被盲目重复；其他场景使用临时会话。
 
+使用 `--case node --variant current --scenario target-advanced` 验证工作区准备后远端前进：真实 Agent 应优先 rebase 未推送的候选，保留并发变更及原修复历史，重新验证后普通推送并完成隔离部署。验收复用 xapt 的候选补丁身份校验，允许交付 SHA 变化，并检查实际 rebase 命令及最终线性历史。
+
 对照看完整 Repair + Update 耗时及实际重复命令，人工等待单列；小样本和模型服务波动不能证明固定提速比例。现有 Skill 文案检查和预写 Git 沙盒验证不等于真实 Agent 行为验收。
 
 ## 人工交互与修复队列
