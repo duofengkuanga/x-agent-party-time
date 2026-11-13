@@ -29,11 +29,13 @@ cases:
       - text: { sel: '.collab-tester-detail__meta', contains: '待验证' }
       - hidden: '.collab-tester-detail__status'
 
-  - name: screenshots are inline full width and preserve their aspect ratio
+  - name: screenshots fit the dialog and preserve their aspect ratio
     steps:
       - wait: '.collab-tester-attachments figure[data-image-state="loaded"] img'
     assert:
-      - eval: '(() => { const image = document.querySelector(".collab-tester-attachments img"); return image.complete && image.naturalWidth > 0 && Math.abs(image.width / image.height - image.naturalWidth / image.naturalHeight) < 0.01 && image.width >= image.parentElement.clientWidth - 1; })()'
+      - eval: '(() => { const image = document.querySelector(".collab-tester-attachments img"); return image.complete && image.naturalWidth > 0 && Math.abs(image.width / image.height - image.naturalWidth / image.naturalHeight) < 0.01 && image.width <= image.parentElement.clientWidth + 1 && image.height <= image.parentElement.clientHeight + 1; })()'
+      - eval: '(() => { const body = document.querySelector(".collab-tester-detail"); const dialog = document.querySelector(".collab-bug-drawer").getBoundingClientRect(); return body.scrollHeight <= body.clientHeight + 1 && dialog.top >= 0 && dialog.bottom <= innerHeight; })()'
+      - eval: '(() => { const viewer = document.querySelector(".collab-tester-attachments__viewer").getBoundingClientRect(); const arrows = [...document.querySelectorAll(".collab-tester-attachments__arrow")]; return arrows.length === 2 && arrows.every(arrow => { const box = arrow.getBoundingClientRect(); return !arrow.textContent.trim() && Math.abs(box.top + box.height / 2 - viewer.top - viewer.height / 2) < 1; }); })()'
       - count: { sel: '.collab-tester-attachments img', eq: 1 }
       - count:
           { sel: '[role="dialog"]:is(:not([popover]),:popover-open)', eq: 1 }

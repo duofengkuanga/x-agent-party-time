@@ -41,31 +41,59 @@ export function TesterAttachments({
             }
           }}
         >
-          <TesterImage key={current.id} attachment={current} />
-          <div className="collab-tester-attachments__controls">
+          <div className="collab-tester-attachments__viewer">
             {images.length > 1 ? (
               <button
                 type="button"
+                className="collab-tester-attachments__arrow"
                 aria-label="上一张截图"
                 disabled={index === 0}
                 onClick={() => setSelectedId(images[index - 1]!.id)}
               >
-                上一张
+                <svg
+                  aria-hidden="true"
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="m15 18-6-6 6-6" />
+                </svg>
               </button>
             ) : null}
-            <span aria-live="polite">
-              {index + 1} / {images.length} · {current.originalName}
-            </span>
+            <TesterImage key={current.id} attachment={current} />
             {images.length > 1 ? (
               <button
                 type="button"
+                className="collab-tester-attachments__arrow"
                 aria-label="下一张截图"
                 disabled={index === images.length - 1}
                 onClick={() => setSelectedId(images[index + 1]!.id)}
               >
-                下一张
+                <svg
+                  aria-hidden="true"
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="m9 18 6-6-6-6" />
+                </svg>
               </button>
             ) : null}
+          </div>
+          <div className="collab-tester-attachments__controls">
+            <span aria-live="polite">
+              {index + 1} / {images.length} · {current.originalName}
+            </span>
           </div>
         </section>
       ) : null}
